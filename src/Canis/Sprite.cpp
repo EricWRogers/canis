@@ -1,6 +1,6 @@
 #include "Sprite.hpp"
 
-namespace canis
+namespace Canis
 {
 
 Sprite::Sprite()
@@ -75,24 +75,28 @@ void Sprite::draw()
 {
     glBindTexture(GL_TEXTURE_2D, _texture.id);
 
+    // bind the buffer object
     glBindBuffer(GL_ARRAY_BUFFER, _vboID);
 
+    // Tell OpenGL that we want to use the first
+    // attribute array. We only need one array right
+    // new since we are only using position.
     glEnableVertexAttribArray(0);
-    //glEnableVertexAttribArray(1);
-    //glEnableVertexAttribArray(2);
 
+    // Position
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
-    //color
+    // Color
     glVertexAttribPointer(1, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (void*)offsetof(Vertex, color));
-    //uv
+    // uv
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE,sizeof(Vertex), (void*)offsetof(Vertex, uv));
 
+    // Draw the 6 vertices to the screen
     glDrawArrays(GL_TRIANGLES, 0, 6);
 
+    // Disable the vertices attrib array.
     glDisableVertexAttribArray(0);
-    //glDisableVertexAttribArray(1);
-    //glDisableVertexAttribArray(2);
 
+    // Unbind the buffer object
     glBindBuffer(GL_ARRAY_BUFFER, 0);
 }
-} // end of canis namespace
+} // end of Canis namespace

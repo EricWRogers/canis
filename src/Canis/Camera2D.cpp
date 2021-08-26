@@ -1,6 +1,6 @@
 #include "Camera2D.hpp"
 
-namespace canis
+namespace Canis
 {
     Camera2D::Camera2D() : _cameraMatrix(1.0f),
                            _orthoMatrix(1.0f),
@@ -36,4 +36,4 @@ namespace canis
             _needsMatrixUpdate = false;
         }
     }
-} // end of canis namespace
+} // end of Canis namespace

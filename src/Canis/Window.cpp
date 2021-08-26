@@ -1,6 +1,6 @@
 #include "Window.hpp"
 
-namespace canis
+namespace Canis
 {
     Window::Window()
     {
@@ -46,4 +46,4 @@ namespace canis
     {
         SDL_GL_SwapWindow(_sdlWindow);
     }
-} // end of canis namespace
+} // end of Canis namespace

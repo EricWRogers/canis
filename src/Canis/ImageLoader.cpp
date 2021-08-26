@@ -1,6 +1,6 @@
 #include "ImageLoader.hpp"
 
-namespace canis
+namespace Canis
 {
 
 	GLTexture ImageLoader::loadPNG(std::string filePath)

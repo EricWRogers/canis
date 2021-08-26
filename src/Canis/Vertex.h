@@ -2,7 +2,7 @@
 
 #include <GL/glew.h>
 
-namespace canis
+namespace Canis
 {
 	struct Position
 	{
@@ -50,4 +50,4 @@ namespace canis
 			uv.v = v;
 		}
 	};
-} // end of canis namespace
+} // end of Canis namespace

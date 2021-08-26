@@ -1,6 +1,6 @@
 #include "TextureCache.hpp"
 
-namespace canis
+namespace Canis
 {
     TextureCache::TextureCache()
     {
@@ -29,4 +29,4 @@ namespace canis
         // std::cout << "Loaded Cached Texture!\n";
         return mit->second;
     }
-} // end of canis namespace
+} // end of Canis namespace

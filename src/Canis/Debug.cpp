@@ -1,6 +1,6 @@
 #include "Debug.h"
 
-namespace canis
+namespace Canis
 {
 
     void FatalError(std::string message)
@@ -28,4 +28,4 @@ namespace canis
         std::cout << "\033[1;32mLog: \033[0m" + message << std::endl;
     }
 
-} // end of canis namespace
+} // end of Canis namespace

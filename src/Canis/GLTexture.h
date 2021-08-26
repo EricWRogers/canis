@@ -1,7 +1,7 @@
 #pragma once
 #include <GL/glew.h>
 
-namespace canis
+namespace Canis
 {
 	struct GLTexture
 	{

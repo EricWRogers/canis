@@ -6,7 +6,7 @@
 #include "IOManager.hpp"
 #include "Debug.h"
 
-namespace canis
+namespace Canis
 {
 
 	class ImageLoader
@@ -14,4 +14,4 @@ namespace canis
 	public:
 		static GLTexture loadPNG(std::string filePath);
 	};
-} // end of canis namespace
+} // end of Canis namespace

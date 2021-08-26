@@ -2,7 +2,7 @@
 #include "TextureCache.hpp"
 #include <string>
 
-namespace canis
+namespace Canis
 {
     class ResourceManager
     {

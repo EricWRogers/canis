@@ -1,6 +1,6 @@
 #include "SpriteBatch.hpp"
 
-namespace canis
+namespace Canis
 {
     SpriteBatch::SpriteBatch() : _vbo(0), _vao(0) {}
 
@@ -163,4 +163,4 @@ namespace canis
     bool SpriteBatch::compareBackToFront(Glyph *a, Glyph *b) { return (a->depth > b->depth); }
     bool SpriteBatch::compareTexture(Glyph *a, Glyph *b) { return (a->texture < b->texture); }
 
-} // end of canis namespace
+} // end of Canis namespace

@@ -4,7 +4,7 @@
 #include <SDL2/SDL.h>
 #include <string>
 
-namespace canis
+namespace Canis
 {
 
     void FatalError(std::string message);
@@ -15,4 +15,4 @@ namespace canis
 
     void Log(std::string message);
 
-} // end of canis namespace
+} // end of Canis namespace

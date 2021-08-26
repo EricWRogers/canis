@@ -1,6 +1,6 @@
 #include "ResourceManager.hpp"
 
-namespace canis
+namespace Canis
 {
     TextureCache ResourceManager::_textureCache;
 
@@ -8,4 +8,4 @@ namespace canis
     {
         return _textureCache.getTexture(texturePath);
     }
-} // end of canis namespace
+} // end of Canis namespace

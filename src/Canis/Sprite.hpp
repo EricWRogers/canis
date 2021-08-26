@@ -7,7 +7,7 @@
 #include "Vertex.h"
 #include "ResourceManager.hpp"
 
-namespace canis
+namespace Canis
 {
     class Sprite
     {
@@ -27,4 +27,4 @@ namespace canis
         GLuint _vboID;
         GLTexture _texture;
     };
-} // end of canis namespace
+} // end of Canis namespace

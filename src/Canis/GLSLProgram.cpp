@@ -1,6 +1,6 @@
 #include "GLSLProgram.hpp"
 
-namespace canis
+namespace Canis
 {
 
     GLSLProgram::GLSLProgram() : _numAttributes(0), _programID(0), _vertexShaderID(0), _fragmentShaderID(0)
@@ -128,4 +128,4 @@ namespace canis
         }
     }
 
-} // end of canis namespace
+} // end of Canis namespace

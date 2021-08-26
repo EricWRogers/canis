@@ -6,63 +6,59 @@
 #include <stdio.h>
 #include <string>
 
-#include "Sprite.hpp"
-#include "GLSLProgram.hpp"
-#include "Debug.h"
-#include "Window.hpp"
-#include "GLTexture.h"
-#include "Window.hpp"
-#include "Camera2D.hpp"
-#include "SpriteBatch.hpp"
-#include "ResourceManager.hpp"
+#include "Canis/Canis.h"
+#include "Canis/Sprite.hpp"
+#include "Canis/GLSLProgram.hpp"
+#include "Canis/Debug.h"
+#include "Canis/Window.hpp"
+#include "Canis/GLTexture.h"
+#include "Canis/Window.hpp"
+#include "Canis/Camera2D.hpp"
+#include "Canis/SpriteBatch.hpp"
+#include "Canis/ResourceManager.hpp"
 
-namespace canis
+enum class GameState
 {
+    PLAY,
+    EXIT
+};
 
-    enum class GameState
-    {
-        PLAY,
-        EXIT
-    };
+class MainGame
+{
+public:
+    MainGame();
+    ~MainGame();
 
-    class MainGame
-    {
-    public:
-        MainGame();
-        ~MainGame();
+    void run();
 
-        void run();
+private:
+    void initSystem();
+    void initShaders();
+    void gameLoop();
+    void processInput();
+    void drawGame();
+    void calculateFPS();
 
-    private:
-        void initSystem();
-        void initShaders();
-        void gameLoop();
-        void processInput();
-        void drawGame();
-        void calculateFPS();
+    Canis::Window _window;
+    int _screenWidth, _screenHeight;
+    GameState _gameState;
 
-        Window _window;
-        int _screenWidth, _screenHeight;
-        GameState _gameState;
+    std::vector<Canis::Sprite *> _sprites;
 
-        std::vector<Sprite *> _sprite;
+    Canis::GLSLProgram _colorProgram;
 
-        GLSLProgram _colorProgram;
+    Canis::SpriteBatch _spriteBatch;
 
-        SpriteBatch _spriteBatch;
+    Canis::Camera2D _camera;
 
-        Camera2D _camera;
+    Canis::GLTexture _texture;
 
-        GLTexture _texture;
+    float _fps;
+    float _maxFPS;
+    float _frameTime;
+    float _time;
 
-        float _fps;
-        float _maxFPS;
-        float _frameTime;
-        float _time;
-
-        //const int NUM_SDL_SCANCODES = 512;
-        //bool _keys[NUM_SDL_SCANCODES];
-        //bool _prevKeys[NUM_SDL_SCANCODES];
-    };
-
-} // end of canis namespace
+    //const int NUM_SDL_SCANCODES = 512;
+    //bool _keys[NUM_SDL_SCANCODES];
+    //bool _prevKeys[NUM_SDL_SCANCODES];
+};

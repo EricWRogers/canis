@@ -5,7 +5,7 @@
 
 #include "Debug.h"
 
-namespace canis
+namespace Canis
 {
     enum WindowFlags
     {
@@ -31,4 +31,4 @@ namespace canis
         SDL_Window *_sdlWindow;
         int _screenWidth, _screenHeight;
     };
-} // end of canis namespace
+} // end of Canis namespace

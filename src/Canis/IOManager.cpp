@@ -1,6 +1,6 @@
 #include "IOManager.hpp"
 
-namespace canis
+namespace Canis
 {
 	bool IOManager::readFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer)
 	{
@@ -29,4 +29,4 @@ namespace canis
 
 		return true;
 	}
-} // end of canis namespace
+} // end of Canis namespace

@@ -6,7 +6,7 @@
 #include "ImageLoader.hpp"
 #include "GLTexture.h"
 
-namespace canis
+namespace Canis
 {
     class TextureCache
     {
@@ -19,4 +19,4 @@ namespace canis
     private:
         std::map<std::string, GLTexture> _textureMap;
     };
-} // end of canis namespace
+} // end of Canis namespace

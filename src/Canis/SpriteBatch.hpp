@@ -7,7 +7,7 @@
 #include "Vertex.h"
 #include "Debug.h"
 
-namespace canis
+namespace Canis
 {
     enum class GlyphSortType
     {
@@ -70,4 +70,4 @@ namespace canis
         std::vector<Glyph *> _glyphs;
         std::vector<RenderBatch> _renderBatch;
     };
-} // end of canis namespace
+} // end of Canis namespace

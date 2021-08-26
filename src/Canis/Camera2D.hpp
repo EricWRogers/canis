@@ -2,7 +2,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
-namespace canis
+namespace Canis
 {
     class Camera2D
     {
@@ -37,4 +37,4 @@ namespace canis
         glm::mat4 _cameraMatrix;
         glm::mat4 _orthoMatrix;
     };
-} // end of canis namespace
+} // end of Canis namespace

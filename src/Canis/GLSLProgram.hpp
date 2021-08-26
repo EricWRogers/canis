@@ -6,7 +6,7 @@
 
 #include "Debug.h"
 
-namespace canis
+namespace Canis
 {
 
     class GLSLProgram
@@ -37,4 +37,4 @@ namespace canis
         GLuint _fragmentShaderID;
     };
 
-} // end of canis namespace
+} // end of Canis namespace
