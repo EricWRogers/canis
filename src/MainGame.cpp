@@ -63,7 +63,7 @@ void MainGame::gameLoop()
 
         static int frameCounter = 0;
         frameCounter++;
-        if (frameCounter == 100)
+        if (frameCounter == 10000)
         {
             std::cout << _fps << std::endl;
             frameCounter = 0;
@@ -187,7 +187,7 @@ void MainGame::drawGame()
 
 void MainGame::calculateFPS()
 {
-    static const int NUM_SAMPLES = 100;
+    static const int NUM_SAMPLES = 10000;
     static float frameTimes[NUM_SAMPLES];
     static int currentFrame = 0;
 

@@ -1,0 +1,106 @@
+c_cpp_properties.json
+
+{
+    "configurations": [
+        {
+            "name": "Linux",
+            "includePath": [
+                "${workspaceFolder}/**",
+                "${workspaceFolder}/src/",
+                "${workspaceFolder}/src/Canis/",
+                "/usr/include/SDL2"
+            ],
+            "defines": [],
+            "compilerPath": "/usr/bin/g++",
+            "cStandard": "c11",
+            "cppStandard": "c++14",
+            "intelliSenseMode": "linux-gcc-x64",
+            "compilerArgs": [
+                "-lSDL2 -lGL -lGLEW -pthread -llua5.3"
+            ]
+        }
+    ],
+    "version": 4
+}
+
+launch.json
+
+{
+	"version": "0.2.0",
+	"configurations": [
+		{
+			"name": "g++ build and debug active file",
+			"type": "cppdbg",
+			"request": "launch",
+			"program": "${workspaceFolder}/bin/run}",
+			"args": [],
+			"stopAtEntry": false,
+			"cwd": "${workspaceFolder}",
+			"environment": [],
+			"externalConsole": false,
+			"MIMode": "gdb",
+			"setupCommands": [
+				{
+					"description": "Enable pretty-printing for gdb",
+					"text": "-enable-pretty-printing",
+					"ignoreFailures": true
+				}
+			],
+			"preLaunchTask": "g++ build active file",
+			"miDebuggerPath": "/usr/bin/gdb"
+		}
+	]
+}
+
+settings.json
+
+{
+    "files.associations": {
+        "*.tcc": "cpp",
+        "unordered_map": "cpp",
+        "fstream": "cpp",
+        "istream": "cpp",
+        "numeric": "cpp",
+        "ostream": "cpp",
+        "sstream": "cpp"
+    },
+    "cSpell.words": [
+        "Canis",
+        "luint",
+        "sdlk"
+    ]
+}
+
+tasks.json
+
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"type": "shell",
+			"label": "g++ build active file",
+			"command": "/usr/bin/g++",
+			"args": [
+				"-g",
+				"${workspaceFolder}/src/*.cpp",
+				"${workspaceFolder}/src/Canis/*.cpp",
+				"-lSDL2",
+				"-lGL",
+				"-lGLEW",
+				"-llua5.3",
+				"-o",
+				"${workspaceFolder}/bin/run}"
+			],
+			"options": {
+				"cwd": "/usr/bin"
+			},
+			"problemMatcher": [
+				"$gcc"
+			],
+			"group": {
+				"kind": "build",
+				"isDefault": true
+			}
+		}
+	]
+}

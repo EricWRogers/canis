@@ -83,6 +83,10 @@ void Sprite::draw()
     // new since we are only using position.
     glEnableVertexAttribArray(0);
 
+    glEnableVertexAttribArray(1);
+
+    glEnableVertexAttribArray(2);
+
     // Position
     glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, sizeof(Vertex), (void*)offsetof(Vertex, position));
     // Color
@@ -95,6 +99,10 @@ void Sprite::draw()
 
     // Disable the vertices attrib array.
     glDisableVertexAttribArray(0);
+
+    glDisableVertexAttribArray(1);
+
+    glDisableVertexAttribArray(2);
 
     // Unbind the buffer object
     glBindBuffer(GL_ARRAY_BUFFER, 0);
