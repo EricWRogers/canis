@@ -32,7 +32,7 @@ launch.json
 			"name": "g++ build and debug active file",
 			"type": "cppdbg",
 			"request": "launch",
-			"program": "${workspaceFolder}/bin/run}",
+			"program": "${workspaceFolder}/bin/run",
 			"args": [],
 			"stopAtEntry": false,
 			"cwd": "${workspaceFolder}",
