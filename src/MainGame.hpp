@@ -16,6 +16,8 @@
 #include "Canis/Camera2D.hpp"
 #include "Canis/SpriteBatch.hpp"
 #include "Canis/ResourceManager.hpp"
+#include "Canis/InputManager.hpp"
+#include "Canis/Timing.hpp"
 
 enum class GameState
 {
@@ -37,7 +39,6 @@ private:
     void gameLoop();
     void processInput();
     void drawGame();
-    void calculateFPS();
 
     Canis::Window _window;
     int _screenWidth, _screenHeight;
@@ -53,12 +54,11 @@ private:
 
     Canis::GLTexture _texture;
 
+    Canis::InputManager _inputManager;
+
+    Canis::FpsLimiter _fpsLimiter;
+
     float _fps;
     float _maxFPS;
-    float _frameTime;
     float _time;
-
-    //const int NUM_SDL_SCANCODES = 512;
-    //bool _keys[NUM_SDL_SCANCODES];
-    //bool _prevKeys[NUM_SDL_SCANCODES];
 };
