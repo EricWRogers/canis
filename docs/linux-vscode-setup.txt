@@ -89,7 +89,7 @@ tasks.json
 				"-lGLEW",
 				"-llua5.3",
 				"-o",
-				"${workspaceFolder}/bin/run}"
+				"${workspaceFolder}/bin/run"
 			],
 			"options": {
 				"cwd": "/usr/bin"

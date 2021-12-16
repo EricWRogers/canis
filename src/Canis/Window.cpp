@@ -29,7 +29,7 @@ namespace Canis
         if (glew_status != GLEW_OK)
             FatalError("Could not init GLEW");
         
-        std::printf("*** OpenGL Version: %s ***", glGetString(GL_VERSION));
+        Log("OpenGL Version: " + std::string(reinterpret_cast<const char*>(glGetString(GL_VERSION))));
         glClearColor(1.0f, 0.0f, 0.0f, 1.0f);
 
         // VSYNC 0 off 1 on
