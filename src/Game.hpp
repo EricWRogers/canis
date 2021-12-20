@@ -2,6 +2,7 @@
 
 #include "Canis/Canis.h"
 #include "Canis/Debug.h"
+#include "Canis/Shader.hpp"
 #include "Canis/Window.hpp"
 #include "Canis/Limiter.hpp"
 #include "Canis/InputManager.hpp"
@@ -36,6 +37,8 @@ private:
     Canis::Limiter frame_limiter;
 
     Canis::Window window;
+
+    Canis::Shader shader;
 
     int frame_counter;
     
