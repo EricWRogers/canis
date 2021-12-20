@@ -8,7 +8,7 @@ void Game::Run() {
 
     frame_counter = 0;
 
-    window.Spawn("Canis Engine Demo", 1280, 720, 0);
+    window.Spawn("Canis Engine Demo", 800, 600, 0);
 
     Load();
 
