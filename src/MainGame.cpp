@@ -1,6 +1,6 @@
 #include "MainGame.hpp"
 
-MainGame::MainGame() : _screenWidth(800), _screenHeight(600), _time(0), _gameState(GameState::PLAY), _maxFPS(120.0f)
+MainGame::MainGame() : _screenWidth(800), _screenHeight(600), _time(0), _gameState(GameState::PLAY), _maxFPS(60.0f)
 {
 }
 
@@ -155,13 +155,13 @@ void MainGame::drawGame()
     glUniformMatrix4fv(pLocation, 1, GL_FALSE, &(cameraMatrix[0][0]));
 
     /*for (int i = 0; i < _sprites.size(); i++)
-        {
-            _sprites[i]->draw();
-        }*/
+    {
+        _sprites[i]->draw();
+    }*/
 
     _spriteBatch.begin();
 
-    glm::vec4 pos(0.0f, 0.0f, 50.0f, 50.0f);
+    glm::vec4 pos(0.0f, 0.0f, 30.0f, 0.0f);
     glm::vec4 uv(0.0f, 0.0f, 1.0f, 1.0f);
 
     Canis::Color color;
@@ -172,13 +172,56 @@ void MainGame::drawGame()
 
     // 12 & 16
 
-    for (int y_mul = 0; y_mul < 200; y_mul++)
+    /*for (int y_mul = 0; y_mul < 200; y_mul++)
     {
         for (int x_mul = 0; x_mul < 200; x_mul++)
         {
             _spriteBatch.draw(pos + glm::vec4(50.0f * x_mul, 50.0f * y_mul, 0.0f, 0.0f), uv, _texture.id, 0.0f, color);
         }
+    }*/
+
+    for (int i = 0; i < sizeof(_array_to_sort)/sizeof(_array_to_sort[0]); i++)
+    {
+        _spriteBatch.draw(pos + glm::vec4(30.0f * i, 0, 0.0f, 20 * _array_to_sort[i]), uv, _texture.id, 0.0f, color);
     }
+
+    if (!_is_sorted)
+    {
+        // sort array
+        if(_current_index < sizeof(_array_to_sort)/sizeof(_array_to_sort[0]) - 1)
+        {
+            if(_array_to_sort[_current_index + 1] < _array_to_sort[_current_index])
+            {
+                int temp = _array_to_sort[_current_index];
+                _array_to_sort[_current_index] = _array_to_sort[_current_index + 1];
+                _array_to_sort[_current_index + 1] = temp;
+            }
+        }
+        _current_index++;
+        _current_index = (_current_index >= sizeof(_array_to_sort)/sizeof(_array_to_sort[0]) - 1) ? 0 : _current_index;
+        // check if the array is sorted
+        int _check_index = 0;
+        bool _is_checking = true;
+        while(_is_checking)
+        {
+            if(_check_index == sizeof(_array_to_sort)/sizeof(_array_to_sort[0]))
+            {
+                _is_checking = false;
+                _is_sorted = true;
+            }
+            else
+            {
+                if(_array_to_sort[_check_index + 1] < _array_to_sort[_check_index])
+                {
+                    _is_checking = false;
+                    _is_sorted = false;
+                }
+            }
+
+            _check_index++;
+        }
+    }
+    
 
     _spriteBatch.end();
 
