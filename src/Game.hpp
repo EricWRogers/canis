@@ -51,7 +51,8 @@ private:
     // move out to external class
     unsigned int vertexShader;
     unsigned int shaderProgram;
-    unsigned int VBO, VAO;
+    unsigned int VBO, VAO, EBO;
+    unsigned int texture1, texture2;
 
     const char *vertexShaderSource = "#version 330 core\n"
     "layout (location = 0) in vec3 aPos;\n"
