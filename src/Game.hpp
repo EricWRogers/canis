@@ -2,6 +2,8 @@
 
 #include "Canis/Canis.h"
 #include "Canis/Debug.h"
+#include "Canis/GLTexture.h"
+#include "Canis/IOManager.h"
 #include "Canis/Shader.hpp"
 #include "Canis/Window.hpp"
 #include "Canis/Limiter.hpp"
@@ -52,7 +54,11 @@ private:
     unsigned int vertexShader;
     unsigned int shaderProgram;
     unsigned int VBO, VAO, EBO;
-    unsigned int texture1, texture2;
+
+    Canis::GLTexture texture1 = {};
+    Canis::GLTexture texture2 = {};
+
+    int imageWidth, imageHeight, nrChannels;
 
     const char *vertexShaderSource = "#version 330 core\n"
     "layout (location = 0) in vec3 aPos;\n"

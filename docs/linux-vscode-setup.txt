@@ -8,6 +8,7 @@ c_cpp_properties.json
                 "${workspaceFolder}/**",
                 "${workspaceFolder}/src/",
                 "${workspaceFolder}/src/Canis/",
+                "${workspaceFolder}/src/Canis/External/",
                 "/usr/include/SDL2"
             ],
             "defines": [],
@@ -82,8 +83,9 @@ tasks.json
 			"command": "/usr/bin/g++",
 			"args": [
 				"-g",
-				"${workspaceFolder}/src/*.cpp",
-				"${workspaceFolder}/src/Canis/*.cpp",
+				"${workspaceFolder}/src/*.c*",
+				"${workspaceFolder}/src/Canis/*.c*",
+				"${workspaceFolder}/src/Canis/External/*.c*",
 				"-lSDL2",
 				"-lGL",
 				"-lGLEW",

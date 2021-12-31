@@ -1,7 +1,13 @@
 #include "Game.hpp"
 
 Game::Game() {}
-Game::~Game() {}
+Game::~Game() {
+    // optional: de-allocate all resources once they've outlived their purpose:
+    // ------------------------------------------------------------------------
+    glDeleteVertexArrays(1, &VAO);
+    glDeleteBuffers(1, &VBO);
+    glDeleteBuffers(1, &EBO);
+}
 
 void Game::Run() {
     Canis::Init();
@@ -22,8 +28,9 @@ void Game::Run() {
 
 void Game::Load() {
     // build and compile our shader program
-    shader.Compile("bin/shaders/3.3.shader.vs","bin/shaders/3.3.shader.fs");
-    //shader.AddAttribute("ourColor");
+    shader.Compile("bin/shaders/4.2.texture.vs","bin/shaders/4.2.texture.fs");
+    shader.AddAttribute("ourColor");
+    shader.AddAttribute("TexCoord");
     shader.Link();
     // set up vertex data (and buffer(s)) and configure vertex attributes
     // ------------------------------------------------------------------
@@ -65,20 +72,26 @@ void Game::Load() {
     glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
     glEnableVertexAttribArray(2);
 
-    // load and create a texture
-
-    // texture 1
-    glGenTextures(1, &texture1);
-    glBindTexture(GL_TEXTURE_2D, texture1);
-    // set the texture wrapping parameters
-    glTexParameteri(GL_)
+    // load texture 1
+    texture1 = Canis::LoadPNGToGLTexture("bin/Textures/container.png", GL_RGBA, GL_RGBA);
+    // load texture 2
+    texture2 = Canis::LoadPNGToGLTexture("bin/Textures/awesomeface.png", GL_RGBA, GL_RGBA);
 
     // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
     glBindBuffer(GL_ARRAY_BUFFER, 0); 
 
     // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
     // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
-    glBindVertexArray(0); 
+    glBindVertexArray(0);
+
+    // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
+    // -------------------------------------------------------------------------------------------
+    shader.Use(); // don't forget to activate/use the shader before setting uniforms!
+    // either set it manually like so:
+    //glUniform1i(glGetUniformLocation(shader.program_id, "texture1"), texture1.id);
+    // or set it via the texture class
+    shader.SetInt("texture1", 0);
+    shader.SetInt("texture2", 1);
 }
 
 void Game::Loop() {
@@ -120,10 +133,16 @@ void Game::Draw() {
     glClearColor(0.2f,0.3,0.3f,1.0f);
     glClear(GL_COLOR_BUFFER_BIT);
 
+    // bind textures on corresponding texture units
+    glActiveTexture(GL_TEXTURE0);
+    glBindTexture(GL_TEXTURE_2D, texture1.id);
+    glActiveTexture(GL_TEXTURE1);
+    glBindTexture(GL_TEXTURE_2D, texture2.id);
+
     // draw first triangle
     shader.Use();
     glBindVertexArray(VAO);
-    glDrawArrays(GL_TRIANGLES, 0, 3);
+    glDrawElements(GL_TRIANGLES, 6, GL_UNSIGNED_INT, 0);
     glBindVertexArray(0);
     shader.UnUse();
 }
