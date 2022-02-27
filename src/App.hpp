@@ -52,6 +52,8 @@ private:
 
     int imageWidth, imageHeight, nrChannels;
 
+    
+
     const char *vertexShaderSource = "#version 330 core\n"
                                      "layout (location = 0) in vec3 aPos;\n"
                                      "layout (location = 1) in vec3 aColor;\n"
@@ -69,4 +71,6 @@ private:
                                        "{\n"
                                        "   FragColor = vec4(ourColor, 1.0);\n"
                                        "}\n\0";
+    
+    
 };
