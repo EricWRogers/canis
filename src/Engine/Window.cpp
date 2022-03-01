@@ -57,7 +57,7 @@ namespace Engine
         glClearColor(0.223f, 0.203f, 0.341f, 1.0f);
 
         // VSYNC 0 off 1 on
-        SDL_GL_SetSwapInterval(0);
+        SDL_GL_SetSwapInterval(1);
 
         // Enable alpha blending
         glEnable(GL_BLEND);
