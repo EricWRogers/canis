@@ -1,89 +1,87 @@
 #include "App.hpp"
 
 // set up vertex data (and buffer(s)) and configure vertex attributes
-    // ------------------------------------------------------------------
-    float vertices[] = {
-        // positions           // texture coords
-        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
-            0.5f, -0.5f, -0.5f,  1.0f, 0.0f,
-            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 0.0f,
+// ------------------------------------------------------------------
+float vertices[] = {
+    // positions           // texture coords
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
 
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 1.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 1.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
 
-        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
 
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
 
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f, -0.5f, -0.5f,  1.0f, 1.0f,
-            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-            0.5f, -0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f, -0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f, -0.5f, -0.5f,  0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    0.5f, -0.5f, -0.5f, 1.0f, 1.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
+    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
+    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
 
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f,
-            0.5f,  0.5f, -0.5f,  1.0f, 1.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-            0.5f,  0.5f,  0.5f,  1.0f, 0.0f,
-        -0.5f,  0.5f,  0.5f,  0.0f, 0.0f,
-        -0.5f,  0.5f, -0.5f,  0.0f, 1.0f
-    };
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f,
+    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f,
+    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f};
 
-    // world space positions of our cubes
-    glm::vec3 cubePositions[] = {
-        glm::vec3( 0.0f,  0.0f,  0.0f),
-        glm::vec3( 2.0f,  5.0f, -15.0f),
-        glm::vec3(-1.5f, -2.2f, -2.5f),
-        glm::vec3(-3.8f, -2.0f, -12.3f),
-        glm::vec3( 2.4f, -0.4f, -3.5f),
-        glm::vec3(-1.7f,  3.0f, -7.5f),
-        glm::vec3( 1.3f, -2.0f, -2.5f),
-        glm::vec3( 1.5f,  2.0f, -2.5f),
-        glm::vec3( 1.5f,  0.2f, -1.5f),
-        glm::vec3(-1.3f,  1.0f, -1.5f)
-    };
+// world space positions of our cubes
+glm::vec3 cubePositions[] = {
+    glm::vec3(0.0f, 0.0f, 0.0f),
+    glm::vec3(2.0f, 5.0f, -15.0f),
+    glm::vec3(-1.5f, -2.2f, -2.5f),
+    glm::vec3(-3.8f, -2.0f, -12.3f),
+    glm::vec3(2.4f, -0.4f, -3.5f),
+    glm::vec3(-1.7f, 3.0f, -7.5f),
+    glm::vec3(1.3f, -2.0f, -2.5f),
+    glm::vec3(1.5f, 2.0f, -2.5f),
+    glm::vec3(1.5f, 0.2f, -1.5f),
+    glm::vec3(-1.3f, 1.0f, -1.5f)};
 
 App::App()
 {
-  Engine::Log("Object Made");
+  Canis::Log("Object Made");
 }
 App::~App()
 {
-  Engine::Log("Object Destroyed");
+  Canis::Log("Object Destroyed");
 }
 
 void App::Run()
 {
   if (appState == AppState::ON)
-    Engine::FatalError("App already running.");
+    Canis::FatalError("App already running.");
 
-  Engine::Init();
+  Canis::Init();
 
   unsigned int windowFlags = 0;
 
-  // windowFlags |= Engine::WindowFlags::FULLSCREEN;
+  // windowFlags |= Canis::WindowFlags::FULLSCREEN;
 
-  // windowFlags |= Engine::WindowFlags::BORDERLESS;
+  // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
-  window.Create("Engine", 800, 600, windowFlags);
+  window.Create("Canis", 800, 600, windowFlags);
 
   Load();
 
@@ -97,12 +95,12 @@ void App::Load()
   // configure global opengl state
   glEnable(GL_DEPTH_TEST);
   // build and compile our shader program
-  shader.Compile("assets/shaders/6.3.coordinate_systems.vs","assets/shaders/6.3.coordinate_systems.fs");
+  shader.Compile("assets/shaders/7.4.camera.vs", "assets/shaders/7.4.camera.fs");
   shader.AddAttribute("aPos");
   shader.AddAttribute("aTexCoord");
   shader.Link();
 
-  //unsigned int VBO, VAO;
+  // unsigned int VBO, VAO;
   glGenVertexArrays(1, &VAO);
   glGenBuffers(1, &VBO);
 
@@ -113,20 +111,20 @@ void App::Load()
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
   // position attribute
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
 
   // texture coord attribute
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
   glEnableVertexAttribArray(1);
 
   // load texture 1
-  texture1 = Engine::LoadPNGToGLTexture("assets/textures/container.png", GL_RGBA, GL_RGBA);
+  texture1 = Canis::LoadPNGToGLTexture("assets/textures/container.png", GL_RGBA, GL_RGBA);
   // load texture 2
-  texture2 = Engine::LoadPNGToGLTexture("assets/textures/awesomeface.png", GL_RGBA, GL_RGBA);
+  texture2 = Canis::LoadPNGToGLTexture("assets/textures/awesomeface.png", GL_RGBA, GL_RGBA);
 
   // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
-  glBindBuffer(GL_ARRAY_BUFFER, 0); 
+  glBindBuffer(GL_ARRAY_BUFFER, 0);
 
   // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
   // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
@@ -139,13 +137,13 @@ void App::Load()
   glUniform1i(glGetUniformLocation(shader.GetProgramID(), "texture1"), 0);
   glUniform1i(glGetUniformLocation(shader.GetProgramID(), "texture2"), 1);
   // or set it via the texture class
-  //shader.SetInt("texture1", 0);
-  //shader.SetInt("texture2", 1);
+  // shader.SetInt("texture1", 0);
+  // shader.SetInt("texture2", 1);
 
   // wireframe
   // glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
   // fill
-  glPolygonMode( GL_FRONT_AND_BACK, GL_FILL);
+  glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 }
 
 void App::Loop()
@@ -176,10 +174,10 @@ void App::Draw()
   shader.Use();
 
   // create transformations
-  glm::mat4 view          = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
-  glm::mat4 projection    = glm::mat4(1.0f);
-  projection = glm::perspective(glm::radians(45.0f), (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
-  view       = glm::translate(view, glm::vec3(0.0f, 0.0f, -3.0f));
+  glm::mat4 view = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+  glm::mat4 projection = glm::mat4(1.0f);
+  projection = glm::perspective(glm::radians(camera.Zoom), (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
+  view = camera.GetViewMatrix();
   // pass transformation matrices to the shader
   shader.SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
   shader.SetMat4("view", view);
@@ -188,14 +186,14 @@ void App::Draw()
   glBindVertexArray(VAO);
   for (unsigned int i = 0; i < 10; i++)
   {
-      // calculate the model matrix for each object and pass it to shader before drawing
-      glm::mat4 model = glm::mat4(1.0f);
-      model = glm::translate(model, cubePositions[i]);
-      float angle = 20.0f * i;
-      model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
-      shader.SetMat4("model", model);
+    // calculate the model matrix for each object and pass it to shader before drawing
+    glm::mat4 model = glm::mat4(1.0f);
+    model = glm::translate(model, cubePositions[i]);
+    float angle = 20.0f * i;
+    model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+    shader.SetMat4("model", model);
 
-      glDrawArrays(GL_TRIANGLES, 0, 36);
+    glDrawArrays(GL_TRIANGLES, 0, 36);
   }
 
   shader.UnUse();
@@ -214,11 +212,37 @@ void App::InputUpdate()
       appState = AppState::OFF;
       break;
     case SDL_MOUSEMOTION:
+      camera.ProcessMouseMovement(
+        event.motion.xrel,
+        event.motion.yrel
+      );
       break;
     case SDL_KEYUP:
+      inputManager.releasedKey(event.key.keysym.sym);
       break;
     case SDL_KEYDOWN:
+      inputManager.pressKey(event.key.keysym.sym);
       break;
     }
+  }
+
+  if (inputManager.isKeyPressed(SDLK_w))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, 1);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_s))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, 1);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_a))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, 1);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_d))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, 1);
   }
 }

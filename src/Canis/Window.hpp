@@ -5,7 +5,7 @@
 
 #include "Debug.hpp"
 
-namespace Engine
+namespace Canis
 {
     enum WindowFlags
     {
@@ -31,4 +31,4 @@ namespace Engine
         SDL_Window *sdlWindow;
         int screenWidth, screenHeight;
     };
-} // end of Engine namespace
+} // end of Canis namespace

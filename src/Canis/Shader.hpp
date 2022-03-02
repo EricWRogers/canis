@@ -9,7 +9,7 @@
 
 #include "Debug.hpp"
 
-namespace Engine
+namespace Canis
 {
     class Shader
     {
@@ -48,4 +48,4 @@ namespace Engine
         void compile(const std::string &filePath, GLuint &id);
     };
 
-} // end of Engine namespace
+} // end of Canis namespace

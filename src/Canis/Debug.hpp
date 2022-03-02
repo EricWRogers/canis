@@ -2,7 +2,7 @@
 #include <iostream>
 #include <string>
 
-namespace Engine
+namespace Canis
 {
   extern void FatalError(std::string message);
 
@@ -11,4 +11,4 @@ namespace Engine
   extern void Warning(std::string message);
 
   extern void Log(std::string message);
-} // end of Engine namespace
+} // end of Canis namespace

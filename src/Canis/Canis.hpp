@@ -2,7 +2,7 @@
 #include <SDL.h>
 #include <GL/glew.h>
 
-namespace Engine
+namespace Canis
 {
     int Init();
-} // end of Engine namespace
+} // end of Canis namespace

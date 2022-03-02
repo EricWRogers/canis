@@ -5,12 +5,14 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "Engine/Engine.hpp"
-#include "Engine/Debug.hpp"
-#include "Engine/Window.hpp"
-#include "Engine/Shader.hpp"
-#include "Engine/IOManager.hpp"
-#include "Engine/Data/GLTexture.hpp"
+#include "Canis/Canis.hpp"
+#include "Canis/Debug.hpp"
+#include "Canis/Window.hpp"
+#include "Canis/Shader.hpp"
+#include "Canis/Camera.hpp"
+#include "Canis/IOManager.hpp"
+#include "Canis/InputManager.hpp"
+#include "Canis/Data/GLTexture.hpp"
 
 
 enum AppState
@@ -38,19 +40,26 @@ private:
 
     AppState appState = AppState::OFF;
 
-    Engine::Window window;
+    Canis::Window window;
 
-    Engine::Shader shader;
+    Canis::Shader shader;
+
+    Canis::InputManager inputManager;
+
+    Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.0f, 3.0f));
 
     // move out to external class
     unsigned int vertexShader;
     unsigned int shaderProgram;
     unsigned int VBO, VAO, EBO;
 
-    Engine::GLTexture texture1 = {};
-    Engine::GLTexture texture2 = {};
+    Canis::GLTexture texture1 = {};
+    Canis::GLTexture texture2 = {};
 
-    int imageWidth, imageHeight, nrChannels;
+    float lastXMousePos;
+    float lastYMousePos;
+    
+    bool firstMouseMove = true;
 
     
 

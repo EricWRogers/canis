@@ -8,9 +8,9 @@
 #include "Debug.hpp"
 
 
-namespace Engine
+namespace Canis
 {
 	extern bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer);
 
 	extern GLTexture LoadPNGToGLTexture(std::string filePath, GLint sourceFormat, GLint format);
-} // end of Engine namespace
+} // end of Canis namespace

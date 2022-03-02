@@ -1,6 +1,6 @@
 #include "IOManager.hpp"
 
-namespace Engine
+namespace Canis
 {
 	bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer)
 	{
@@ -68,4 +68,4 @@ namespace Engine
 
 		return texture;
 	}
-} // end of Engine namespace
+} // end of Canis namespace

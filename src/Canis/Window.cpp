@@ -1,6 +1,6 @@
 #include "Window.hpp"
 
-namespace Engine
+namespace Canis
 {
     Window::Window()
     {
@@ -78,4 +78,4 @@ namespace Engine
         // get the old buffer to start drawing our next frame to
         SDL_GL_SwapWindow(sdlWindow);
     }
-} // end of Engine namespace
+} // end of Canis namespace

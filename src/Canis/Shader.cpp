@@ -1,6 +1,6 @@
 #include "Shader.hpp"
 
-namespace Engine
+namespace Canis
 {
     Shader::Shader()
     {
@@ -188,4 +188,4 @@ namespace Engine
         }
     }
 
-} // end of Engine namespace
+} // end of Canis namespace

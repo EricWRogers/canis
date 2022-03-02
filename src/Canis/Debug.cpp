@@ -2,7 +2,7 @@
 
 // https://www.codegrepper.com/code-examples/cpp/c%2B%2B+cout+with+color
 
-namespace Engine
+namespace Canis
 {
 
   void FatalError(std::string message)
@@ -33,4 +33,4 @@ namespace Engine
     std::cout << "\033[1;32mLog: \033[0m" + message << std::endl;
   }
 
-} // end of Engine namespace
+} // end of Canis namespace

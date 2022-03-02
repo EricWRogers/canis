@@ -1,6 +1,6 @@
-#include "Engine.hpp"
+#include "Canis.hpp"
 
-namespace Engine
+namespace Canis
 {
     int Init()
     {
@@ -10,4 +10,4 @@ namespace Engine
         
         return 0;
     }
-} // end of Engine namespace
+} // end of Canis namespace
