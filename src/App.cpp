@@ -72,7 +72,7 @@ void App::Run()
 {
   if (appState == AppState::ON)
     Canis::FatalError("App already running.");
-
+  
   Canis::Init();
 
   unsigned int windowFlags = 0;
@@ -82,6 +82,8 @@ void App::Run()
   // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
   window.Create("Canis", 800, 600, windowFlags);
+
+  timer.init(60);
 
   Load();
 
@@ -144,19 +146,30 @@ void App::Load()
   // glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
   // fill
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+  // start timer
+  previousTime = std::chrono::high_resolution_clock::now();
 }
 
 void App::Loop()
 {
   while (appState == AppState::ON)
   {
+    timer.begin();
+
+    currentTime = std::chrono::high_resolution_clock::now();
+    deltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count() / 1000000000.0;
+    previousTime = currentTime;
+    Canis::Log("" + std::to_string(deltaTime));
     Update();
     Draw();
     // Get SDL to swap our buffer
     window.SwapBuffer();
     LateUpdate();
-    FixedUpdate(0.0f);
+    FixedUpdate(deltaTime);
     InputUpdate();
+
+    timer.end();
   }
 }
 void App::Update() {}
@@ -200,7 +213,29 @@ void App::Draw()
 }
 
 void App::LateUpdate() {}
-void App::FixedUpdate(float _delta_time) {}
+void App::FixedUpdate(float dt)
+{
+    if (inputManager.isKeyPressed(SDLK_w))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, dt);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_s))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, dt);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_a))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, dt);
+  }
+
+  if (inputManager.isKeyPressed(SDLK_d))
+  {
+    camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
+  }
+}
+
 void App::InputUpdate()
 {
   SDL_Event event;
@@ -214,7 +249,7 @@ void App::InputUpdate()
     case SDL_MOUSEMOTION:
       camera.ProcessMouseMovement(
         event.motion.xrel,
-        event.motion.yrel
+        -event.motion.yrel
       );
       break;
     case SDL_KEYUP:
@@ -224,25 +259,5 @@ void App::InputUpdate()
       inputManager.pressKey(event.key.keysym.sym);
       break;
     }
-  }
-
-  if (inputManager.isKeyPressed(SDLK_w))
-  {
-    camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, 1);
-  }
-
-  if (inputManager.isKeyPressed(SDLK_s))
-  {
-    camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, 1);
-  }
-
-  if (inputManager.isKeyPressed(SDLK_a))
-  {
-    camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, 1);
-  }
-
-  if (inputManager.isKeyPressed(SDLK_d))
-  {
-    camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, 1);
   }
 }

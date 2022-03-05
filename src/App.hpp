@@ -1,12 +1,14 @@
 #include <iostream>
 #include <SDL.h>
 #include <math.h>
+#include <chrono>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
 #include "Canis/Canis.hpp"
 #include "Canis/Debug.hpp"
+#include "Canis/Timer.hpp"
 #include "Canis/Window.hpp"
 #include "Canis/Shader.hpp"
 #include "Canis/Camera.hpp"
@@ -35,7 +37,7 @@ private:
     void Update();
     void Draw();
     void LateUpdate();
-    void FixedUpdate(float _delta_time);
+    void FixedUpdate(float dt);
     void InputUpdate();
 
     AppState appState = AppState::OFF;
@@ -43,6 +45,8 @@ private:
     Canis::Window window;
 
     Canis::Shader shader;
+
+    Canis::Timer timer;
 
     Canis::InputManager inputManager;
 
@@ -60,6 +64,10 @@ private:
     float lastYMousePos;
     
     bool firstMouseMove = true;
+
+    std::chrono::_V2::system_clock::time_point currentTime;
+    std::chrono::_V2::system_clock::time_point previousTime;
+    double deltaTime;
 
     
 
