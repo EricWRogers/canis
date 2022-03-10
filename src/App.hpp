@@ -65,8 +65,8 @@ private:
     
     bool firstMouseMove = true;
 
-    std::chrono::_V2::system_clock::time_point currentTime;
-    std::chrono::_V2::system_clock::time_point previousTime;
+    std::chrono::steady_clock::time_point currentTime;
+    std::chrono::steady_clock::time_point previousTime;
     double deltaTime;
 
     
