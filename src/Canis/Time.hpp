@@ -28,8 +28,8 @@ namespace Canis
             float frameTime;
             float deltaTime;
 
-            system_clock::time_point currentTime;
-            system_clock::time_point previousTime;
+            high_resolution_clock::time_point currentTime;
+            high_resolution_clock::time_point previousTime;
 
             float frameTimes[100];
 

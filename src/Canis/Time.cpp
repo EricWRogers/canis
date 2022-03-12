@@ -36,8 +36,8 @@ namespace Canis
         if (1000000000.0f / targetFPS > frameTicks)
         {
             float sleepTime = 1000000000.0f / targetFPS - frameTicks;
-            system_clock::time_point beforeSleep;
-            system_clock::time_point afterSleep;
+            high_resolution_clock::time_point beforeSleep;
+            high_resolution_clock::time_point afterSleep;
 
             beforeSleep = high_resolution_clock::now();
 

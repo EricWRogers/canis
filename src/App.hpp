@@ -76,8 +76,8 @@ private:
     
     bool firstMouseMove = true;
 
-    system_clock::time_point currentTime;
-    system_clock::time_point previousTime;
+    high_resolution_clock::time_point currentTime;
+    high_resolution_clock::time_point previousTime;
     double deltaTime;
 
     
