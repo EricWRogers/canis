@@ -83,7 +83,7 @@ void App::Run()
 
   window.Create("Canis", 800, 600, windowFlags);
 
-  time.init(3000000);
+  time.init(30);
 
   Load();
 
@@ -148,7 +148,7 @@ void App::Load()
   glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
   // start timer
-  previousTime = std::chrono::high_resolution_clock::now();
+  previousTime = high_resolution_clock::now();
 }
 
 void App::Loop()

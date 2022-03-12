@@ -8,7 +8,7 @@ namespace Canis
     void Time::init(float _targetFPS)
     {
         setTargetFPS(_targetFPS);
-        previousTime = std::chrono::high_resolution_clock::now();
+        previousTime = high_resolution_clock::now();
     }
 
     void Time::setTargetFPS(float _targetFPS)
@@ -18,7 +18,7 @@ namespace Canis
 
     float Time::startFrame()
     {
-        currentTime = std::chrono::high_resolution_clock::now();
+        currentTime = high_resolution_clock::now();
         nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count();
         deltaTime = nanoSecondsDeltaTime / 1000000000.0f;
         previousTime = currentTime;
@@ -31,21 +31,21 @@ namespace Canis
         calculateFPS();
 
         float frameTicks = std::chrono::duration_cast<std::chrono::nanoseconds>
-            (std::chrono::high_resolution_clock::now() - previousTime).count();
+            (high_resolution_clock::now() - previousTime).count();
         
         if (1000000000.0f / targetFPS > frameTicks)
         {
             float sleepTime = 1000000000.0f / targetFPS - frameTicks;
-            std::chrono::steady_clock::time_point beforeSleep;
-            std::chrono::steady_clock::time_point afterSleep;
+            system_clock::time_point beforeSleep;
+            system_clock::time_point afterSleep;
 
-            beforeSleep = std::chrono::high_resolution_clock::now();
+            beforeSleep = high_resolution_clock::now();
 
             std::this_thread::sleep_for(
                 std::chrono::nanoseconds(static_cast<unsigned int>(sleepTime))
             );
 
-            afterSleep = std::chrono::high_resolution_clock::now();
+            afterSleep = high_resolution_clock::now();
 
             unsigned int nanoS = std::chrono::duration_cast<std::chrono::nanoseconds>(afterSleep - beforeSleep).count();
 
@@ -58,7 +58,7 @@ namespace Canis
     void Time::calculateFPS()
     {
         frameTime = std::chrono::duration_cast<std::chrono::nanoseconds>
-            (std::chrono::high_resolution_clock::now() - previousTime).count();
+            (high_resolution_clock::now() - previousTime).count();
         
         frameTimes[currentFrame % NUM_SAMPLES] = frameTime;
 

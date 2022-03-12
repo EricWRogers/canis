@@ -5,6 +5,14 @@
 
 #include "Debug.hpp"
 
+#ifdef __linux__
+using namespace std::chrono::_V2;
+#elif _WIN32
+using namespace std::chrono;
+#else
+
+#endif
+
 namespace Canis
 {
     class Time
@@ -20,8 +28,8 @@ namespace Canis
             float frameTime;
             float deltaTime;
 
-            std::chrono::steady_clock::time_point currentTime;
-            std::chrono::steady_clock::time_point previousTime;
+            system_clock::time_point currentTime;
+            system_clock::time_point previousTime;
 
             float frameTimes[100];
 

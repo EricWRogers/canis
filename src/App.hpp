@@ -17,6 +17,14 @@
 #include "Canis/InputManager.hpp"
 #include "Canis/Data/GLTexture.hpp"
 
+#ifdef __linux__
+using namespace std::chrono::_V2;
+#elif _WIN32
+using namespace std::chrono;
+#else
+
+#endif
+
 
 enum AppState
 {
@@ -68,8 +76,8 @@ private:
     
     bool firstMouseMove = true;
 
-    std::chrono::steady_clock::time_point currentTime;
-    std::chrono::steady_clock::time_point previousTime;
+    system_clock::time_point currentTime;
+    system_clock::time_point previousTime;
     double deltaTime;
 
     
