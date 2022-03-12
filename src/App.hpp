@@ -8,6 +8,7 @@
 
 #include "Canis/Canis.hpp"
 #include "Canis/Debug.hpp"
+#include "Canis/Time.hpp"
 #include "Canis/Timer.hpp"
 #include "Canis/Window.hpp"
 #include "Canis/Shader.hpp"
@@ -47,6 +48,8 @@ private:
     Canis::Shader shader;
 
     Canis::Timer timer;
+
+    Canis::Time time;
 
     Canis::InputManager inputManager;
 

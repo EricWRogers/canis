@@ -83,7 +83,7 @@ void App::Run()
 
   window.Create("Canis", 800, 600, windowFlags);
 
-  timer.init(60);
+  time.init(3000000);
 
   Load();
 
@@ -155,12 +155,8 @@ void App::Loop()
 {
   while (appState == AppState::ON)
   {
-    timer.begin();
+    deltaTime = time.startFrame();
 
-    currentTime = std::chrono::high_resolution_clock::now();
-    deltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count() / 1000000000.0;
-    previousTime = currentTime;
-    Canis::Log("" + std::to_string(deltaTime));
     Update();
     Draw();
     // Get SDL to swap our buffer
@@ -169,7 +165,9 @@ void App::Loop()
     FixedUpdate(deltaTime);
     InputUpdate();
 
-    timer.end();
+    float fps = time.endFrame();
+
+    Canis::Log("fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime));
   }
 }
 void App::Update() {}
