@@ -83,7 +83,7 @@ void App::Run()
 
   window.Create("Canis", 800, 600, windowFlags);
 
-  time.init(30);
+  time.init(120);
 
   Load();
 

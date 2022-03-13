@@ -2,65 +2,51 @@
 
 namespace Canis
 {
-    Time::Time() {}
-    Time::~Time() {}
-
-    void Time::init(float _targetFPS)
+    Time::Time()
     {
-        setTargetFPS(_targetFPS);
-        previousTime = high_resolution_clock::now();
     }
 
-    void Time::setTargetFPS(float _targetFPS)
+    Time::~Time()
     {
-        targetFPS = _targetFPS;
+    }
+
+    void Time::init(float maxFPS)
+    {
+        setTargetFPS(maxFPS);
+    }
+
+    void Time::setTargetFPS(float maxFPS)
+    {
+        _maxFPS = maxFPS;
     }
 
     float Time::startFrame()
     {
-        currentTime = high_resolution_clock::now();
-        nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count();
-        deltaTime = nanoSecondsDeltaTime / 1000000000.0f;
-        previousTime = currentTime;
+        _startTicks = SDL_GetTicks();
 
-        return deltaTime;
-    }
+        _currentTime = high_resolution_clock::now();
+        _nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(_currentTime - _previousTime).count();
+        _deltaTime = _nanoSecondsDeltaTime / 1000000000.0f;
+        _previousTime = _currentTime;
 
-    float Time::endFrame()
-    {
-        calculateFPS();
-
-        float frameTicks = std::chrono::duration_cast<std::chrono::nanoseconds>
-            (high_resolution_clock::now() - previousTime).count();
-        
-        if (1000000000.0f / targetFPS > frameTicks)
-        {
-            float sleepTime = 1000000000.0f / targetFPS - frameTicks;
-            high_resolution_clock::time_point beforeSleep;
-            high_resolution_clock::time_point afterSleep;
-
-            beforeSleep = high_resolution_clock::now();
-
-            std::this_thread::sleep_for(
-                std::chrono::nanoseconds(static_cast<unsigned int>(sleepTime))
-            );
-
-            afterSleep = high_resolution_clock::now();
-
-            unsigned int nanoS = std::chrono::duration_cast<std::chrono::nanoseconds>(afterSleep - beforeSleep).count();
-
-            //Log("sleep : " + std::to_string(sleepTime) + " chrono nano : " + std::to_string(nanoS));
-        }
-
-        return fps;
+        return _deltaTime;
     }
 
     void Time::calculateFPS()
     {
-        frameTime = std::chrono::duration_cast<std::chrono::nanoseconds>
-            (high_resolution_clock::now() - previousTime).count();
-        
-        frameTimes[currentFrame % NUM_SAMPLES] = frameTime;
+        static const int NUM_SAMPLES = 10000;
+        static float frameTimes[NUM_SAMPLES];
+        static int currentFrame = 0;
+
+        static float prevTicks = SDL_GetTicks();
+
+        float currentTicks;
+        currentTicks = SDL_GetTicks();
+
+        _frameTime = currentTicks - prevTicks;
+        frameTimes[currentFrame % NUM_SAMPLES] = _frameTime;
+
+        prevTicks = currentTicks;
 
         int count;
         currentFrame++;
@@ -83,11 +69,24 @@ namespace Canis
 
         if (frameTimeAverage > 0)
         {
-            fps = 1000000000.0f / frameTimeAverage;
+            _fps = 1000.0f / frameTimeAverage;
         }
         else
         {
-            fps = 60.0f;
+            _fps = 60.0f;
         }
+    }
+
+    float Time::endFrame()
+    {
+        calculateFPS();
+        
+        float frameTicks = SDL_GetTicks() - _startTicks;
+        if (1000.0f / _maxFPS > frameTicks)
+        {
+            SDL_Delay(1000.0f / _maxFPS - frameTicks);
+        }
+
+        return _fps;
     }
 } // end of Canis namespace

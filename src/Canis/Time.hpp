@@ -17,35 +17,28 @@ namespace Canis
 {
     class Time
     {
-        private:
-            unsigned int NUM_SAMPLES = 100;
-            
-            unsigned int nanoSecondsDeltaTime;
-            unsigned int currentFrame = 0;
+    private:
+        high_resolution_clock::time_point _currentTime;
+        high_resolution_clock::time_point _previousTime;
 
-            float fps;
-            float targetFPS;
-            float frameTime;
-            float deltaTime;
-
-            high_resolution_clock::time_point currentTime;
-            high_resolution_clock::time_point previousTime;
-
-            float frameTimes[100];
-
-
-
-            void calculateFPS();
+        unsigned int _nanoSecondsDeltaTime;
         
-        public:
-            Time();
-            ~Time();
+        float _fps;
+        float _maxFPS;
+        float _frameTime;
+        float _deltaTime;
 
-            void init(float _targetFPS);
-            void setTargetFPS(float _targetFPS);
-            
-            float startFrame();
-            
-            float endFrame();
+        unsigned int _startTicks;
+
+    public:
+        Time();
+        ~Time();
+
+        void init(float targetFPS);
+        void setTargetFPS(float targetFPS);
+        float startFrame();
+        void calculateFPS();
+
+        float endFrame();
     };
 } // end of Canis namespace
