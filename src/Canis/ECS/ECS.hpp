@@ -17,10 +17,10 @@ class ECSListener
 public:
 	virtual void OnMakeEntity(EntityHandle handle) {}
 	virtual void OnRemoveEntity(EntityHandle handle) {}
-	virtual void OnAddComponent(EntityHandle handle, u_int32_t id) {}
-	virtual void OnRemoveComponent(EntityHandle handle, u_int32_t id) {}
+	virtual void OnAddComponent(EntityHandle handle, glm::uint32 id) {}
+	virtual void OnRemoveComponent(EntityHandle handle, glm::uint32 id) {}
 
-	const std::vector<u_int32_t>& GetComponentIDs() { 
+	const std::vector<glm::uint32>& GetComponentIDs() { 
 		return componentIDs;
 	}
 
@@ -38,11 +38,11 @@ protected:
 		notifyOnAllComponentOperations = ShouldNotifyOnAllComponentOperations;
 		notifyOnAllEntityOperations = shouldNotifyOnAllEntityOperations;
 	}
-	void AddComponentID(u_int32_t id) {
+	void AddComponentID(glm::uint32 id) {
 		componentIDs.push_back(id);
 	}
 private:
-	std::vector<u_int32_t> componentIDs;
+	std::vector<glm::uint32> componentIDs;
 	bool notifyOnAllComponentOperations = false;
 	bool notifyOnAllEntityOperations = false;
 };
@@ -59,14 +59,14 @@ public:
 	}
 
 	// Entity methods
-	EntityHandle MakeEntity(BaseECSComponent** components, const u_int32_t* componentIDs, size_t numComponents);
+	EntityHandle MakeEntity(BaseECSComponent** components, const glm::uint32* componentIDs, size_t numComponents);
 	void RemoveEntity(EntityHandle handle);
 
 	template<class A>
 	EntityHandle MakeEntity(A& c1)
 	{
 		BaseECSComponent* components[] = { &c1 };
-		u_int32_t componentIDs[] = {A::ID};
+		glm::uint32 componentIDs[] = {A::ID};
 		return MakeEntity(components, componentIDs, 1);
 	}
 
@@ -74,7 +74,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2)
 	{
 		BaseECSComponent* components[] = { &c1, &c2 };
-		u_int32_t componentIDs[] = {A::ID, B::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID};
 		return MakeEntity(components, componentIDs, 2);
 	}
 
@@ -82,7 +82,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3 };
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID};
 		return MakeEntity(components, componentIDs, 3);
 	}
 
@@ -90,7 +90,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4 };
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID};
 		return MakeEntity(components, componentIDs, 4);
 	}
 
@@ -98,7 +98,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5 };
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID};
 		return MakeEntity(components, componentIDs, 5);
 	}
 
@@ -106,7 +106,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5, F& c6)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5, &c6};
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID};
 		return MakeEntity(components, componentIDs, 6);
 	}
 
@@ -114,7 +114,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5, F& c6, G& c7)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5, &c6, &c7};
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID};
 		return MakeEntity(components, componentIDs, 7);
 	}
 
@@ -122,7 +122,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5, F& c6, G& c7, H& c8)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5, &c6, &c7, &c8};
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID};
 		return MakeEntity(components, componentIDs, 8);
 	}
 
@@ -130,7 +130,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5, F& c6, G& c7, H& c8, I& c9)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5, &c6, &c7, &c8, &c9 };
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID, I::ID};
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID, I::ID};
 		return MakeEntity(components, componentIDs, 9);
 	}
 
@@ -138,7 +138,7 @@ public:
 	EntityHandle MakeEntity(A& c1, B& c2, C& c3, D& c4, E& c5, F& c6, G& c7, H& c8, I& c9, J& c10)
 	{
 		BaseECSComponent* components[] = { &c1, &c2, &c3, &c4, &c5, &c6, &c7, &c8, &c9, &c10 };
-		u_int32_t componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID, I::ID, J::ID };
+		glm::uint32 componentIDs[] = {A::ID, B::ID, C::ID, D::ID, E::ID, F::ID, G::ID, H::ID, I::ID, J::ID };
 		return MakeEntity(components, componentIDs, 10);
 	}
 
@@ -149,12 +149,12 @@ public:
 	inline void AddComponent(EntityHandle entity, Component* component)
 	{
 		AddComponentInternal(entity, HandleToEntity(entity), Component::ID, component);
-		for(u_int32_t i = 0; i < listeners.size(); i++) {
-			const std::vector<u_int32_t>& componentIDs = listeners[i]->GetComponentIDs();
+		for(glm::uint32 i = 0; i < listeners.size(); i++) {
+			const std::vector<glm::uint32>& componentIDs = listeners[i]->GetComponentIDs();
 			if(listeners[i]->ShouldNotifyOnAllComponentOperations()) {
 				listeners[i]->OnAddComponent(entity, Component::ID);
 			} else {
-				for(u_int32_t j = 0; j < componentIDs.size(); j++) {
+				for(glm::uint32 j = 0; j < componentIDs.size(); j++) {
 					if(componentIDs[j] == Component::ID) {
 						listeners[i]->OnAddComponent(entity, Component::ID);
 						break;
@@ -167,9 +167,9 @@ public:
 	template<class Component>
 	bool RemoveComponent(EntityHandle entity)
 	{
-		for(u_int32_t i = 0; i < listeners.size(); i++) {
-			const std::vector<u_int32_t>& componentIDs = listeners[i]->GetComponentIDs();
-			for(u_int32_t j = 0; j < componentIDs.size(); j++) {
+		for(glm::uint32 i = 0; i < listeners.size(); i++) {
+			const std::vector<glm::uint32>& componentIDs = listeners[i]->GetComponentIDs();
+			for(glm::uint32 j = 0; j < componentIDs.size(); j++) {
 				if(listeners[i]->ShouldNotifyOnAllComponentOperations()) {
 					listeners[i]->OnRemoveComponent(entity, Component::ID);
 				} else {
@@ -189,7 +189,7 @@ public:
 		return (Component*)GetComponentInternal(HandleToEntity(entity), components[Component::ID], Component::ID);
 	}
 
-	BaseECSComponent* GetComponentByType(EntityHandle entity, u_int32_t componentID)
+	BaseECSComponent* GetComponentByType(EntityHandle entity, glm::uint32 componentID)
 	{
 		return GetComponentInternal(HandleToEntity(entity), components[componentID], componentID);
 	}
@@ -198,33 +198,33 @@ public:
 	void UpdateSystems(ECSSystemList& systems, float delta);
 	
 private:
-	std::map<u_int32_t, std::vector<u_int8_t>> components;
-	std::vector<std::pair<u_int32_t, std::vector<std::pair<u_int32_t, u_int32_t> > >* > entities;
+	std::map<glm::uint32, std::vector<glm::uint8>> components;
+	std::vector<std::pair<glm::uint32, std::vector<std::pair<glm::uint32, glm::uint32> > >* > entities;
 	std::vector<ECSListener*> listeners;
 
-	inline std::pair<u_int32_t, std::vector<std::pair<u_int32_t, u_int32_t> > >* HandleToRawType(EntityHandle handle)
+	inline std::pair<glm::uint32, std::vector<std::pair<glm::uint32, glm::uint32> > >* HandleToRawType(EntityHandle handle)
 	{
-		return (std::pair<u_int32_t, std::vector<std::pair<u_int32_t, u_int32_t> > >*)handle;
+		return (std::pair<glm::uint32, std::vector<std::pair<glm::uint32, glm::uint32> > >*)handle;
 	}
 
-	inline u_int32_t HandleToEntityIndex(EntityHandle handle)
+	inline glm::uint32 HandleToEntityIndex(EntityHandle handle)
 	{
 		return HandleToRawType(handle)->first;
 	}
 
-	inline std::vector<std::pair<u_int32_t, u_int32_t> >& HandleToEntity(EntityHandle handle)
+	inline std::vector<std::pair<glm::uint32, glm::uint32> >& HandleToEntity(EntityHandle handle)
 	{
 		return HandleToRawType(handle)->second;
 	}
 
-	void DeleteComponent(u_int32_t componentID, u_int32_t index);
-	bool RemoveComponentInternal(EntityHandle handle, u_int32_t componentID);
-	void AddComponentInternal(EntityHandle handle, std::vector<std::pair<u_int32_t, u_int32_t> >& entity, u_int32_t componentID, BaseECSComponent* component);
-	BaseECSComponent* GetComponentInternal(std::vector<std::pair<u_int32_t, u_int32_t> >& entityComponents, std::vector<u_int8_t>& array, u_int32_t componentID);
+	void DeleteComponent(glm::uint32 componentID, glm::uint32 index);
+	bool RemoveComponentInternal(EntityHandle handle, glm::uint32 componentID);
+	void AddComponentInternal(EntityHandle handle, std::vector<std::pair<glm::uint32, glm::uint32> >& entity, glm::uint32 componentID, BaseECSComponent* component);
+	BaseECSComponent* GetComponentInternal(std::vector<std::pair<glm::uint32, glm::uint32> >& entityComponents, std::vector<glm::uint8>& array, glm::uint32 componentID);
 
-	void UpdateSystemWithMultipleComponents(u_int32_t index, ECSSystemList& systems, float delta, const std::vector<u_int32_t>& componentTypes,
-			std::vector<BaseECSComponent*>& componentParam, std::vector<std::vector<u_int8_t>*>& componentArrays);
-	u_int32_t FindLeastCommonComponent(const std::vector<u_int32_t>& componentTypes, const std::vector<u_int32_t>& componentFlags);
+	void UpdateSystemWithMultipleComponents(glm::uint32 index, ECSSystemList& systems, float delta, const std::vector<glm::uint32>& componentTypes,
+			std::vector<BaseECSComponent*>& componentParam, std::vector<std::vector<glm::uint8>*>& componentArrays);
+	glm::uint32 FindLeastCommonComponent(const std::vector<glm::uint32>& componentTypes, const std::vector<glm::uint32>& componentFlags);
 
 	NULL_COPY_AND_ASSIGN(ECS);
 };

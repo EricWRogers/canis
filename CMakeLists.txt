@@ -26,7 +26,7 @@ target_link_libraries(${PROJECT_NAME}
         libglew_static
         SDL2main
         SDL2-static
-	glad
+	    glad
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -36,7 +36,7 @@ target_include_directories(${PROJECT_NAME}
         stb
         SDL2main
         SDL2-static
-	glad
+	    glad
 )
 
 # This command will copy your assets folder to your running directory, in order to have access to your shaders, textures, etc
