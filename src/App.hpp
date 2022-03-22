@@ -15,6 +15,9 @@
 #include "Canis/IOManager.hpp"
 #include "Canis/InputManager.hpp"
 #include "Canis/Data/GLTexture.hpp"
+#include "Canis/ECS/ECS.hpp"
+#include "Canis/ECS/ECSSystem.hpp"
+#include "Canis/ECS/ECSComponent.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;
@@ -59,6 +62,10 @@ private:
     Canis::InputManager inputManager;
 
     Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+
+    ECS ecs;
+
+    EntityHandle entity;
 
     // move out to external class
     unsigned int vertexShader;

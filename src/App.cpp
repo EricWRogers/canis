@@ -59,6 +59,40 @@ glm::vec3 cubePositions[] = {
     glm::vec3(1.5f, 0.2f, -1.5f),
     glm::vec3(-1.3f, 1.0f, -1.5f)};
 
+
+struct TransformComponent : public ECSComponent<TransformComponent>
+{
+  glm::vec3 position;
+};
+
+class RenderCubeSystem : public BaseECSSystem
+{
+public:
+  RenderCubeSystem() : BaseECSSystem()
+  {
+    AddComponentType(TransformComponent::ID);
+  }
+
+  virtual void UpdateComponents(float deltaTime, BaseECSComponent** components)
+  {
+    TransformComponent* transform = (TransformComponent*)components[0];
+    transform->position.y += -0.1f * deltaTime;
+  }
+private:
+};
+
+
+
+// Create Components
+
+// Create Entities
+
+// Create Systems
+RenderCubeSystem renderCubeSystem;
+ECSSystemList mainSystem;
+
+
+
 App::App()
 {
   Canis::Log("Object Made");
@@ -94,6 +128,16 @@ void App::Run()
 
 void App::Load()
 {
+  // Create Components
+  TransformComponent transformComponent;
+  transformComponent.position = glm::vec3(0.0f, 5.0f, 0.0f);
+
+  // Create Entities
+  entity = ecs.MakeEntity(transformComponent);
+
+  // System
+  mainSystem.AddSystem(renderCubeSystem);
+
   // configure global opengl state
   glEnable(GL_DEPTH_TEST);
   // build and compile our shader program
@@ -170,7 +214,10 @@ void App::Loop()
     Canis::Log("fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime));
   }
 }
-void App::Update() {}
+void App::Update()
+{
+  ecs.UpdateSystems(mainSystem, deltaTime);
+}
 void App::Draw()
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
@@ -206,6 +253,15 @@ void App::Draw()
 
     glDrawArrays(GL_TRIANGLES, 0, 36);
   }
+
+  // calculate the model matrix for each object and pass it to shader before drawing
+  glm::vec3& position = ecs.GetComponent<TransformComponent>(entity)->position;
+
+  glm::mat4 model = glm::mat4(1.0f);
+  model = glm::translate(model, position);
+  shader.SetMat4("model", model);
+
+  glDrawArrays(GL_TRIANGLES, 0, 36);
 
   shader.UnUse();
 }
