@@ -61,7 +61,7 @@ private:
 
     Canis::InputManager inputManager;
 
-    Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.0f, 3.0f));
+    Canis::Camera camera = Canis::Camera(glm::vec3(4.0f, 10.0f, 6.2f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW,Canis::PITCH-80.0f);
 
     ECS ecs;
 

@@ -13,6 +13,7 @@ namespace Canis
     void Time::init(float maxFPS)
     {
         setTargetFPS(maxFPS);
+        _previousTime = high_resolution_clock::now();
     }
 
     void Time::setTargetFPS(float maxFPS)

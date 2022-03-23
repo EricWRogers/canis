@@ -3,48 +3,48 @@
 // set up vertex data (and buffer(s)) and configure vertex attributes
 // ------------------------------------------------------------------
 float vertices[] = {
-    // positions           // texture coords
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 0.0f,
+    // positions
+    -0.5f, -0.5f, -0.5f,
+    0.5f, -0.5f, -0.5f,
+    0.5f, 0.5f, -0.5f,
+    0.5f, 0.5f, -0.5f,
+    -0.5f, 0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
 
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 1.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 1.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
+    -0.5f, -0.5f, 0.5f,
+    0.5f, -0.5f, 0.5f,
+    0.5f, 0.5f, 0.5f,
+    0.5f, 0.5f, 0.5f,
+    -0.5f, 0.5f, 0.5f,
+    -0.5f, -0.5f, 0.5f,
 
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    -0.5f, 0.5f, 0.5f,
+    -0.5f, 0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, -0.5f,
+    -0.5f, -0.5f, 0.5f,
+    -0.5f, 0.5f, 0.5f,
 
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-    0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-    0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
+    0.5f, 0.5f, 0.5f,
+    0.5f, 0.5f, -0.5f,
+    0.5f, -0.5f, -0.5f,
+    0.5f, -0.5f, -0.5f,
+    0.5f, -0.5f, 0.5f,
+    0.5f, 0.5f, 0.5f,
 
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
-    0.5f, -0.5f, -0.5f, 1.0f, 1.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
-    0.5f, -0.5f, 0.5f, 1.0f, 0.0f,
-    -0.5f, -0.5f, 0.5f, 0.0f, 0.0f,
-    -0.5f, -0.5f, -0.5f, 0.0f, 1.0f,
+    -0.5f, -0.5f, -0.5f,
+    0.5f, -0.5f, -0.5f,
+    0.5f, -0.5f, 0.5f,
+    0.5f, -0.5f, 0.5f,
+    -0.5f, -0.5f, 0.5f,
+    -0.5f, -0.5f, -0.5f,
 
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f,
-    0.5f, 0.5f, -0.5f, 1.0f, 1.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
-    0.5f, 0.5f, 0.5f, 1.0f, 0.0f,
-    -0.5f, 0.5f, 0.5f, 0.0f, 0.0f,
-    -0.5f, 0.5f, -0.5f, 0.0f, 1.0f};
+    -0.5f, 0.5f, -0.5f,
+    0.5f, 0.5f, -0.5f,
+    0.5f, 0.5f, 0.5f,
+    0.5f, 0.5f, 0.5f,
+    -0.5f, 0.5f, 0.5f,
+    -0.5f, 0.5f, -0.5f};
 
 // world space positions of our cubes
 glm::vec3 cubePositions[] = {
@@ -60,9 +60,77 @@ glm::vec3 cubePositions[] = {
     glm::vec3(-1.3f, 1.0f, -1.5f)};
 
 
+enum BlockTypes
+{
+  NONE   = 0,
+  GRASS  = 1,
+  DIRT   = 2,
+  PORTAL = 3,
+  CASTLE = 4
+};
+
+glm::uint8 layer1[2][9][9] = {
+  {
+    { 1,1,2,1,1,1,1,1,1 },
+    { 1,1,2,1,1,1,1,1,1 },
+    { 1,1,2,1,1,1,1,1,1 },
+    { 1,1,2,1,2,2,2,1,1 },
+    { 1,1,2,1,2,1,2,1,1 },
+    { 1,1,2,2,2,1,2,1,1 },
+    { 1,1,1,1,1,1,2,1,1 },
+    { 1,1,1,1,1,1,2,1,1 },
+    { 1,1,1,1,1,1,2,1,1 },
+  },
+  {
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,3,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+    { 0,0,0,0,0,0,4,0,0 },
+    { 0,0,0,0,0,0,0,0,0 },
+  }
+};
+
+glm::vec3 slimePath[15] = {
+  glm::vec3(2.0f,1.0f,1.0f),
+  glm::vec3(2.0f,1.0f,2.0f),
+  glm::vec3(2.0f,1.0f,3.0f),
+  glm::vec3(2.0f,1.0f,4.0f),
+  glm::vec3(2.0f,1.0f,5.0f),
+  glm::vec3(3.0f,1.0f,5.0f),
+  glm::vec3(4.0f,1.0f,5.0f),
+  glm::vec3(4.0f,1.0f,4.0f),
+  glm::vec3(4.0f,1.0f,3.0f),
+  glm::vec3(5.0f,1.0f,3.0f),
+  glm::vec3(6.0f,1.0f,3.0f),
+  glm::vec3(6.0f,1.0f,4.0f),
+  glm::vec3(6.0f,1.0f,5.0f),
+  glm::vec3(6.0f,1.0f,6.0f),
+  glm::vec3(6.0f,1.0f,7.0f)
+};
 struct TransformComponent : public ECSComponent<TransformComponent>
 {
   glm::vec3 position;
+  glm::vec3 scale;
+};
+
+struct ColorComponent : public ECSComponent<ColorComponent>
+{
+  glm::vec4 color;
+};
+
+struct SlimeMovementComponent : public ECSComponent<SlimeMovementComponent>
+{
+  glm::uint8 targetIndex;
+  glm::uint8 startIndex;
+  glm::uint8 endIndex;
+  float speed;
+  float maxHeight;
+  float minHeight;
+  
 };
 
 class RenderCubeSystem : public BaseECSSystem
@@ -71,14 +139,50 @@ public:
   RenderCubeSystem() : BaseECSSystem()
   {
     AddComponentType(TransformComponent::ID);
+    AddComponentType(ColorComponent::ID);
   }
 
   virtual void UpdateComponents(float deltaTime, BaseECSComponent** components)
   {
-    TransformComponent* transform = (TransformComponent*)components[0];
-    transform->position.y += -0.1f * deltaTime;
+    //TransformComponent* transform = (TransformComponent*)components[0];
+    //transform->position.y += -0.1f * deltaTime;
   }
 private:
+};
+
+class MoveSlimeSystem : public BaseECSSystem
+{
+public:
+  MoveSlimeSystem() : BaseECSSystem()
+  {
+    AddComponentType(TransformComponent::ID);
+    AddComponentType(SlimeMovementComponent::ID);
+  }
+
+  virtual void UpdateComponents(float delta, BaseECSComponent** components)
+  {
+    TransformComponent* transform = (TransformComponent*)components[0];
+    SlimeMovementComponent* slimeMovement = (SlimeMovementComponent*)components[1];
+
+    transform->position = lerp(
+      transform->position,
+      slimePath[slimeMovement->targetIndex],
+      delta
+    );
+
+    float distance = glm::length(transform->position - slimePath[slimeMovement->targetIndex]);
+    
+    slimeMovement->targetIndex = (distance < 0.1f) ? slimeMovement->targetIndex+1 : slimeMovement->targetIndex;
+    
+    transform->position = (slimeMovement->endIndex < slimeMovement->targetIndex) ? slimePath[slimeMovement->startIndex] : transform->position;
+
+    slimeMovement->targetIndex = (slimeMovement->endIndex < slimeMovement->targetIndex) ? slimeMovement->startIndex : slimeMovement->targetIndex;
+  }
+private:
+  glm::vec3 lerp(glm::vec3& x, glm::vec3& y, float t)
+  {
+    return x * (1.f - t) + y * t;
+  }
 };
 
 
@@ -89,7 +193,10 @@ private:
 
 // Create Systems
 RenderCubeSystem renderCubeSystem;
+MoveSlimeSystem moveSlimeSystem;
 ECSSystemList mainSystem;
+
+std::vector<EntityHandle> terrainEntities = {};
 
 
 
@@ -128,22 +235,68 @@ void App::Run()
 
 void App::Load()
 {
-  // Create Components
+  // ECS
   TransformComponent transformComponent;
-  transformComponent.position = glm::vec3(0.0f, 5.0f, 0.0f);
+  ColorComponent colorComponent;
+  SlimeMovementComponent slimeMovementComponent;
+  
+  for(int y; y < 2; y++)
+  {
+    for(int x = 0; x < 9; x++)
+    {
+      for(int z = 0; z < 9; z++)
+      {
+        switch (layer1[y][z][x]) // this looks bad
+        {
+        case GRASS:
+          colorComponent.color = glm::vec4(0.15f, 0.52f, 0.30f, 1.0f); // #26854c
+          transformComponent.position = glm::vec3(x, y, z);
+          transformComponent.scale = glm::vec3(1,1,1);
+          terrainEntities.push_back(ecs.MakeEntity(transformComponent,colorComponent));
+          break;
+        case DIRT:
+          colorComponent.color = glm::vec4(0.91f, 0.82f, 0.51f, 1.0f); // #e8d282
+          transformComponent.position = glm::vec3(x, y, z);
+          transformComponent.scale = glm::vec3(1,1,1);
+          terrainEntities.push_back(ecs.MakeEntity(transformComponent,colorComponent));
+          break;
+        case PORTAL:
+          colorComponent.color = glm::vec4(0.21f, 0.77f, 0.96f, 1.0f); // #36c5f4
+          transformComponent.position = glm::vec3(x, y, z);
+          transformComponent.scale = glm::vec3(1,1,1);
+          terrainEntities.push_back(ecs.MakeEntity(transformComponent,colorComponent));
+          break;
+        case CASTLE:
+          colorComponent.color = glm::vec4(0.69f, 0.65f, 0.72f, 1.0f); // #b0a7b8
+          transformComponent.position = glm::vec3(x, y, z);
+          transformComponent.scale = glm::vec3(1,1,1);
+          terrainEntities.push_back(ecs.MakeEntity(transformComponent,colorComponent));
+          break;
+        default:
+          break;
+        }
+      }
+    }
+  }
 
-  // Create Entities
-  entity = ecs.MakeEntity(transformComponent);
+  colorComponent.color = glm::vec4(0.35f, 0.71f, 0.32f, 0.8f); // #5ab552
+  transformComponent.position = slimePath[0];
+  transformComponent.scale = glm::vec3(0.8f,0.8f,0.8f);
+  slimeMovementComponent.targetIndex = 1;
+  slimeMovementComponent.startIndex = 0;
+  slimeMovementComponent.endIndex = 14;
+  slimeMovementComponent.speed = 2;
+  terrainEntities.push_back(ecs.MakeEntity(transformComponent,colorComponent,slimeMovementComponent));
 
   // System
   mainSystem.AddSystem(renderCubeSystem);
+  mainSystem.AddSystem(moveSlimeSystem);
 
   // configure global opengl state
   glEnable(GL_DEPTH_TEST);
   // build and compile our shader program
-  shader.Compile("assets/shaders/7.4.camera.vs", "assets/shaders/7.4.camera.fs");
+  shader.Compile("assets/shaders/sts.block.vs", "assets/shaders/sts.block.fs");
   shader.AddAttribute("aPos");
-  shader.AddAttribute("aTexCoord");
   shader.Link();
 
   // unsigned int VBO, VAO;
@@ -157,13 +310,8 @@ void App::Load()
   glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
 
   // position attribute
-  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
+  glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
   glEnableVertexAttribArray(0);
-
-  // texture coord attribute
-  glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
-  glEnableVertexAttribArray(1);
-
   // load texture 1
   texture1 = Canis::LoadPNGToGLTexture("assets/textures/container.png", GL_RGBA, GL_RGBA);
   // load texture 2
@@ -175,16 +323,6 @@ void App::Load()
   // You can unbind the VAO afterwards so other VAO calls won't accidentally modify this VAO, but this rarely happens. Modifying other
   // VAOs requires a call to glBindVertexArray anyways so we generally don't unbind VAOs (nor VBOs) when it's not directly necessary.
   glBindVertexArray(0);
-
-  // tell opengl for each sampler to which texture unit it belongs to (only has to be done once)
-  // -------------------------------------------------------------------------------------------
-  shader.Use(); // don't forget to activate/use the shader before setting uniforms!
-  // either set it manually like so:
-  glUniform1i(glGetUniformLocation(shader.GetProgramID(), "texture1"), 0);
-  glUniform1i(glGetUniformLocation(shader.GetProgramID(), "texture2"), 1);
-  // or set it via the texture class
-  // shader.SetInt("texture1", 0);
-  // shader.SetInt("texture2", 1);
 
   // wireframe
   // glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
@@ -212,6 +350,7 @@ void App::Loop()
     float fps = time.endFrame();
 
     Canis::Log("fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime));
+    //Canis::Log("x : " + std::to_string(camera.Position.x) + " y : " + std::to_string(camera.Position.y) +" z : " + std::to_string(camera.Position.z));
   }
 }
 void App::Update()
@@ -221,12 +360,6 @@ void App::Update()
 void App::Draw()
 {
   glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
-
-  // bind textures on corresponding texture units
-  glActiveTexture(GL_TEXTURE0);
-  glBindTexture(GL_TEXTURE_2D, texture1.id);
-  glActiveTexture(GL_TEXTURE1);
-  glBindTexture(GL_TEXTURE_2D, texture2.id);
 
   // activate shader
   shader.Use();
@@ -242,26 +375,22 @@ void App::Draw()
 
   // render boxes
   glBindVertexArray(VAO);
-  for (unsigned int i = 0; i < 10; i++)
+
+  for(int i = 0; i < terrainEntities.size(); i++)
   {
     // calculate the model matrix for each object and pass it to shader before drawing
+    glm::vec3& position = ecs.GetComponent<TransformComponent>(terrainEntities[i])->position;
+    glm::vec3& scale = ecs.GetComponent<TransformComponent>(terrainEntities[i])->scale;
+    glm::vec4& color = ecs.GetComponent<ColorComponent>(terrainEntities[i])->color;
+
     glm::mat4 model = glm::mat4(1.0f);
-    model = glm::translate(model, cubePositions[i]);
-    float angle = 20.0f * i;
-    model = glm::rotate(model, glm::radians(angle), glm::vec3(1.0f, 0.3f, 0.5f));
+    model = glm::translate(model, position);
+    model = glm::scale(model, scale);
     shader.SetMat4("model", model);
+    shader.SetVec4("fColor", color);
 
     glDrawArrays(GL_TRIANGLES, 0, 36);
   }
-
-  // calculate the model matrix for each object and pass it to shader before drawing
-  glm::vec3& position = ecs.GetComponent<TransformComponent>(entity)->position;
-
-  glm::mat4 model = glm::mat4(1.0f);
-  model = glm::translate(model, position);
-  shader.SetMat4("model", model);
-
-  glDrawArrays(GL_TRIANGLES, 0, 36);
 
   shader.UnUse();
 }
