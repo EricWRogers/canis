@@ -208,7 +208,6 @@ App::~App()
 {
   Canis::Log("Object Destroyed");
 }
-
 void App::Run()
 {
   if (appState == AppState::ON)
@@ -222,9 +221,9 @@ void App::Run()
 
   // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
-  window.Create("Canis", 800, 600, windowFlags);
+  window.Create("Canis", 1280, 720, windowFlags);
 
-  time.init(120);
+  time.init(1000);
 
   Load();
 
@@ -232,7 +231,6 @@ void App::Run()
 
   Loop();
 }
-
 void App::Load()
 {
   // ECS
@@ -332,7 +330,6 @@ void App::Load()
   // start timer
   previousTime = high_resolution_clock::now();
 }
-
 void App::Loop()
 {
   while (appState == AppState::ON)
@@ -367,7 +364,7 @@ void App::Draw()
   // create transformations
   glm::mat4 view = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
   glm::mat4 projection = glm::mat4(1.0f);
-  projection = glm::perspective(glm::radians(camera.Zoom), (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
+  projection = glm::perspective(glm::radians(75.0f), (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
   view = camera.GetViewMatrix();
   // pass transformation matrices to the shader
   shader.SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
@@ -394,7 +391,6 @@ void App::Draw()
 
   shader.UnUse();
 }
-
 void App::LateUpdate() {}
 void App::FixedUpdate(float dt)
 {
@@ -418,7 +414,6 @@ void App::FixedUpdate(float dt)
     camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
   }
 }
-
 void App::InputUpdate()
 {
   SDL_Event event;

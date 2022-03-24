@@ -25,7 +25,7 @@ namespace Canis
             flags |= SDL_WINDOW_BORDERLESS;
 
         // Create Window
-        sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, _screenWidth, _screenHeight, flags);
+        sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0), _screenWidth, _screenHeight, flags);
         
         if (sdlWindow == nullptr) // Check for an error when creating a window
         {
@@ -57,7 +57,7 @@ namespace Canis
         glClearColor(0.37f, 0.36f, 0.55f, 1.0f);
 
         // VSYNC 0 off 1 on
-        SDL_GL_SetSwapInterval(0);
+        SDL_GL_SetSwapInterval(1);
 
         // Enable alpha blending
         glEnable(GL_BLEND);
