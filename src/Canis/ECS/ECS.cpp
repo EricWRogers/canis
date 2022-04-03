@@ -172,10 +172,12 @@ void ECS::UpdateSystems(ECSSystemList& systems, float delta)
 		if(componentTypes.size() == 1) {
 			size_t typeSize = BaseECSComponent::GetTypeSize(componentTypes[0]);
 			std::vector<glm::uint8>& array = components[componentTypes[0]];
+			systems[i]->BeginUpdateComponents();
 			for(glm::uint32 j = 0; j < array.size(); j += typeSize) {
 				BaseECSComponent* component = (BaseECSComponent*)&array[j];
 				systems[i]->UpdateComponents(delta, &component);
 			}
+			systems[i]->EndUpdateComponents();
 		} else {
 			UpdateSystemWithMultipleComponents(i, systems, delta, componentTypes, componentParam, componentArrays);
 		}
@@ -205,6 +207,7 @@ void ECS::UpdateSystemWithMultipleComponents(glm::uint32 index, ECSSystemList& s
 		const std::vector<glm::uint32>& componentTypes, std::vector<BaseECSComponent*>& componentParam,
 		std::vector<std::vector<glm::uint8>*>& componentArrays)
 {
+	systems[index]->BeginUpdateComponents();
 	const std::vector<glm::uint32>& componentFlags = systems[index]->GetComponentFlags();
 
 	componentParam.resize(glm::max(componentParam.size(), componentTypes.size()));
@@ -239,4 +242,5 @@ void ECS::UpdateSystemWithMultipleComponents(glm::uint32 index, ECSSystemList& s
 			systems[index]->UpdateComponents(delta, &componentParam[0]);
 		}
 	}
+	systems[index]->EndUpdateComponents();
 }

@@ -13,7 +13,9 @@ public:
 		FLAG_OPTIONAL = 1,
 	};
 	BaseECSSystem() {}
+	virtual void BeginUpdateComponents() {}
 	virtual void UpdateComponents(float delta, BaseECSComponent** components) {}
+	virtual void EndUpdateComponents() {}
 	const std::vector<glm::uint32>& GetComponentTypes()
 	{
 		return componentTypes;

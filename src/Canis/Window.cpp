@@ -57,7 +57,7 @@ namespace Canis
         glClearColor(0.37f, 0.36f, 0.55f, 1.0f);
 
         // VSYNC 0 off 1 on
-        SDL_GL_SetSwapInterval(1);
+        SDL_GL_SetSwapInterval(0);
 
         // Enable alpha blending
         glEnable(GL_BLEND);
