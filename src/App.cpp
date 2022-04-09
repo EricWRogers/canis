@@ -98,42 +98,39 @@ enum BlockTypes
 	CASTLE = 4
 };
 
-struct TransformComponent : public ECSComponent<TransformComponent>
+struct TransformComponent
 {
 	glm::vec3 position;
 	glm::vec3 rotation;
 	glm::vec3 scale;
 };
 
-struct ColorComponent : public ECSComponent<ColorComponent>
+struct ColorComponent
 {
 	glm::vec4 color;
 };
 
-struct SlimeMovementComponent : public ECSComponent<SlimeMovementComponent>
+struct SlimeMovementComponent
 {
-	glm::uint8 targetIndex;
-	glm::uint8 startIndex;
-	glm::uint8 endIndex;
+	int targetIndex;
+	int startIndex;
+	int endIndex;
 	float speed;
 	float maxHeight;
 	float minHeight;
 };
 
-class RenderCubeSystem : public BaseECSSystem
+class RenderCubeSystem
 {
 public:
 	unsigned int VAO;
 	Canis::Shader *shader;
 	Canis::Camera *camera;
 	Canis::Window *window;
-	RenderCubeSystem() : BaseECSSystem()
-	{
-		AddComponentType(TransformComponent::ID);
-		AddComponentType(ColorComponent::ID);
-	}
 
-	virtual void BeginUpdateComponents()
+	RenderCubeSystem() {}
+
+	void UpdateComponents(float deltaTime, entt::registry &registry)
 	{
 		// activate shader
 		shader->Use();
@@ -168,97 +165,76 @@ public:
     	shader->SetFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f))); 
 
 		// create transformations
-		glm::mat4 view = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+		glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 		glm::mat4 projection = glm::mat4(1.0f);
 		projection = glm::perspective(glm::radians(75.0f), (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
-		view = camera->GetViewMatrix();
+		cameraView = camera->GetViewMatrix();
 		// pass transformation matrices to the shader
 		shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
-		shader->SetMat4("view", view);
+		shader->SetMat4("view", cameraView);
 
 		// render boxes
 		glBindVertexArray(VAO);
-	}
 
-	virtual void UpdateComponents(float deltaTime, BaseECSComponent **components)
-	{
-		TransformComponent *transform = (TransformComponent *)components[0];
-		ColorComponent *color = (ColorComponent *)components[1];
+		auto view = registry.view<const TransformComponent, ColorComponent>();
 
-		// material properties
-		shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
-		shader->SetVec3("material.diffuse", color->color);
-		shader->SetFloat("material.shininess", 32.0f);
+		for(auto [entity, transform, color]: view.each())
+		{
+			// material properties
+			shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
+			shader->SetVec3("material.diffuse", color.color);
+			shader->SetFloat("material.shininess", 32.0f);
 
-		glm::mat4 model = glm::mat4(1.0f);
-		model = glm::translate(model, transform->position);
-		model = glm::scale(model, transform->scale);
-		shader->SetMat4("model", model);
-		//shader->SetVec4("fColor", color->color);
+			glm::mat4 model = glm::mat4(1.0f);
+			model = glm::translate(model, transform.position);
+			model = glm::scale(model, transform.scale);
+			shader->SetMat4("model", model);
+			//shader->SetVec4("fColor", color->color);
 
-		glDrawArrays(GL_TRIANGLES, 0, 36);
-	}
+			glDrawArrays(GL_TRIANGLES, 0, 36);
+		}
 
-	virtual void EndUpdateComponents()
-	{
 		shader->UnUse();
 	}
 
 private:
 };
 
-class MoveSlimeSystem : public BaseECSSystem
+class MoveSlimeSystem
 {
 public:
-	MoveSlimeSystem() : BaseECSSystem()
+	void UpdateComponents(float delta, entt::registry &registry)
 	{
-		AddComponentType(TransformComponent::ID);
-		AddComponentType(SlimeMovementComponent::ID);
-	}
+		auto view = registry.view<TransformComponent, SlimeMovementComponent>();
 
-	virtual void BeginUpdateComponents()
-	{
-	}
+		for(auto [entity, transform, slimeMovement] : view.each())
+		{
+			transform.position = lerp(
+				transform.position,
+				slimePath[slimeMovement.targetIndex],
+				delta);
 
-	virtual void UpdateComponents(float delta, BaseECSComponent **components)
-	{
-		TransformComponent *transform = (TransformComponent *)components[0];
-		SlimeMovementComponent *slimeMovement = (SlimeMovementComponent *)components[1];
+			//transform.position = transform.position * (1.0f - delta) + slimePath[slimeMovement.targetIndex] * delta;
 
-		transform->position = lerp(
-			transform->position,
-			slimePath[slimeMovement->targetIndex],
-			delta);
+			float distance = glm::length(transform.position - slimePath[slimeMovement.targetIndex]);
 
-		float distance = glm::length(transform->position - slimePath[slimeMovement->targetIndex]);
+			slimeMovement.targetIndex = (distance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
 
-		slimeMovement->targetIndex = (distance < 0.1f) ? slimeMovement->targetIndex + 1 : slimeMovement->targetIndex;
+			transform.position = (slimeMovement.endIndex < slimeMovement.targetIndex) ? slimePath[slimeMovement.startIndex] : transform.position;
 
-		transform->position = (slimeMovement->endIndex < slimeMovement->targetIndex) ? slimePath[slimeMovement->startIndex] : transform->position;
-
-		slimeMovement->targetIndex = (slimeMovement->endIndex < slimeMovement->targetIndex) ? slimeMovement->startIndex : slimeMovement->targetIndex;
-	}
-
-	virtual void EndUpdateComponents()
-	{
+			slimeMovement.targetIndex = (slimeMovement.endIndex < slimeMovement.targetIndex) ? slimeMovement.startIndex : slimeMovement.targetIndex;
+		}
 	}
 
 private:
-	glm::vec3 lerp(glm::vec3 &x, glm::vec3 &y, float t)
+	glm::vec3 lerp(glm::vec3 x, glm::vec3 y, float t)
 	{
 		return x * (1.f - t) + y * t;
 	}
 };
 
-// Create Systems
 RenderCubeSystem renderCubeSystem;
 MoveSlimeSystem moveSlimeSystem;
-
-ECSSystemList updateSystem;
-ECSSystemList drawSystem;
-
-std::vector<EntityHandle> terrainEntities = {};
-std::vector<EntityHandle> slimeEntities = {};
 
 App::App()
 {
@@ -277,11 +253,11 @@ void App::Run()
 
 	unsigned int windowFlags = 0;
 
-	windowFlags |= Canis::WindowFlags::FULLSCREEN;
+	// windowFlags |= Canis::WindowFlags::FULLSCREEN;
 
 	// windowFlags |= Canis::WindowFlags::BORDERLESS;
 
-	window.Create("Canis", 3840, 2160, windowFlags);
+	window.Create("Canis", 1280, 720, windowFlags);
 
 	time.init(1000);
 
@@ -335,45 +311,54 @@ void App::Load()
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
 	// ECS
-	TransformComponent transformComponent;
-	ColorComponent colorComponent;
-	SlimeMovementComponent slimeMovementComponent;
-
 	for (int y = 0; y < 2; y++)
 	{
 		for (int x = 0; x < 9; x++)
 		{
 			for (int z = 0; z < 9; z++)
 			{
+				const auto entity = entity_registry.create();
 				switch (layer1[y][z][x]) // this looks bad
 				{
 				case GRASS:
-					colorComponent.color = glm::vec4(0.15f, 0.52f, 0.30f, 1.0f); // #26854c
-					transformComponent.position = glm::vec3(x, y, z);
-					transformComponent.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-					transformComponent.scale = glm::vec3(1, 1, 1);
-					terrainEntities.push_back(ecs.MakeEntity(transformComponent, colorComponent));
+					entity_registry.emplace<TransformComponent>(entity,
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+					);
 					break;
 				case DIRT:
-					colorComponent.color = glm::vec4(0.91f, 0.82f, 0.51f, 1.0f); // #e8d282
-					transformComponent.position = glm::vec3(x, y, z);
-					transformComponent.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-					transformComponent.scale = glm::vec3(1, 1, 1);
-					terrainEntities.push_back(ecs.MakeEntity(transformComponent, colorComponent));
+					entity_registry.emplace<TransformComponent>(entity,
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
+					);
 					break;
 				case PORTAL:
-					colorComponent.color = glm::vec4(0.21f, 0.77f, 0.96f, 1.0f); // #36c5f4
-					transformComponent.position = glm::vec3(x, y, z);
-					transformComponent.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-					transformComponent.scale = glm::vec3(1, 1, 1);
-					terrainEntities.push_back(ecs.MakeEntity(transformComponent, colorComponent));
+					entity_registry.emplace<TransformComponent>(entity,
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
+					);
 					break;
 				case CASTLE:
-					colorComponent.color = glm::vec4(0.69f, 0.65f, 0.72f, 1.0f); // #b0a7b8
-					transformComponent.position = glm::vec3(x, y, z);
-					transformComponent.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-					transformComponent.scale = glm::vec3(1, 1, 1);
-					terrainEntities.push_back(ecs.MakeEntity(transformComponent, colorComponent));
+					entity_registry.emplace<TransformComponent>(entity,
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
+					);
 					break;
 				default:
 					break;
@@ -382,24 +367,29 @@ void App::Load()
 		}
 	}
 
-	colorComponent.color = glm::vec4(0.35f, 0.71f, 0.32f, 0.8f); // #5ab552
-	transformComponent.position = slimePath[0];
-	transformComponent.rotation = glm::vec3(0.0f, 0.0f, 0.0f);
-	transformComponent.scale = glm::vec3(0.8f, 0.8f, 0.8f);
-	slimeMovementComponent.targetIndex = 1;
-	slimeMovementComponent.startIndex = 0;
-	slimeMovementComponent.endIndex = 14;
-	slimeMovementComponent.speed = 2;
-	slimeEntities.push_back(ecs.MakeEntity(transformComponent, colorComponent, slimeMovementComponent));
+	const auto entity = entity_registry.create();
+
+	entity_registry.emplace<TransformComponent>(entity,
+		slimePath[0], // position
+		glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+		glm::vec3(0.8f, 0.8f, 0.8f) // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity,
+		glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
+	);
+	entity_registry.emplace<SlimeMovementComponent>(entity,
+		  1, // targetIndex
+		  0, // startIndex
+		 14, // endIndex
+		2.0f, // speed
+		1.5f, // maxHeight
+		0.5f // minHeight
+	);
 
 	renderCubeSystem.VAO = VAO;
 	renderCubeSystem.shader = &shader;
 	renderCubeSystem.camera = &camera;
 	renderCubeSystem.window = &window;
-
-	// System
-	drawSystem.AddSystem(renderCubeSystem);
-	updateSystem.AddSystem(moveSlimeSystem);
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -426,13 +416,13 @@ void App::Loop()
 }
 void App::Update()
 {
-	ecs.UpdateSystems(updateSystem, deltaTime);
+	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
 
-	ecs.UpdateSystems(drawSystem, deltaTime);
+	renderCubeSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::LateUpdate() {}
 void App::FixedUpdate(float dt)

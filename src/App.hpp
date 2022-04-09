@@ -15,9 +15,7 @@
 #include "Canis/IOManager.hpp"
 #include "Canis/InputManager.hpp"
 #include "Canis/Data/GLTexture.hpp"
-#include "Canis/ECS/ECS.hpp"
-#include "Canis/ECS/ECSSystem.hpp"
-#include "Canis/ECS/ECSComponent.hpp"
+#include "Canis/External/entt.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;
@@ -53,6 +51,8 @@ private:
 
     AppState appState = AppState::OFF;
 
+    entt::registry entity_registry;
+
     Canis::Window window;
 
     Canis::Shader shader;
@@ -62,10 +62,6 @@ private:
     Canis::InputManager inputManager;
 
     Canis::Camera camera = Canis::Camera(glm::vec3(4.0f, 10.0f, 6.2f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW,Canis::PITCH-80.0f);
-
-    ECS ecs;
-
-    EntityHandle entity;
 
     // move out to external class
     unsigned int VBO, VAO, EBO;
