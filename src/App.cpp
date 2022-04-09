@@ -367,7 +367,7 @@ void App::Load()
 		}
 	}
 
-	const auto entity = entity_registry.create();
+	const entt::entity entity = entity_registry.create();
 
 	entity_registry.emplace<TransformComponent>(entity,
 		slimePath[0], // position
@@ -378,12 +378,12 @@ void App::Load()
 		glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
 	);
 	entity_registry.emplace<SlimeMovementComponent>(entity,
-		  1, // targetIndex
-		  0, // startIndex
-		 14, // endIndex
+		   1, // targetIndex
+		   0, // startIndex
+		  14, // endIndex
 		2.0f, // speed
 		1.5f, // maxHeight
-		0.5f // minHeight
+		0.5f  // minHeight
 	);
 
 	renderCubeSystem.VAO = VAO;
