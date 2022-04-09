@@ -16,3 +16,6 @@
 [submodule "external/GL"]
 	path = external/GL
 	url = https://github.com/Perlmint/glew-cmake
+[submodule "external/entt"]
+	path = external/entt
+	url = https://github.com/skypjack/entt.git
