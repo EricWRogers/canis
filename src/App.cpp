@@ -120,6 +120,88 @@ struct SlimeMovementComponent
 	float minHeight;
 };
 
+struct PortalComponent
+{
+	float timeToSpawn;
+	float currentTime;
+};
+
+struct CastleComponent
+{
+	int health;
+	int maxHealth;
+};
+
+class PortalSystem
+{
+public:
+	entt::registry *refRegistry;
+
+	void UpdateComponents(float delta, entt::registry &registry)
+	{
+		auto view = registry.view<TransformComponent, PortalComponent>();
+
+		for(auto [portal_entity, transform, portal] : view.each())
+		{
+			portal.currentTime -= delta;
+
+			if (portal.currentTime <= 0.0f)
+			{
+				// reset time
+				portal.currentTime = portal.timeToSpawn;
+				// spawn slime
+				const entt::entity entity = refRegistry->create();
+
+				refRegistry->emplace<TransformComponent>(entity,
+					transform.position, // position
+					glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+					glm::vec3(0.8f, 0.8f, 0.8f) // scale
+				);
+				refRegistry->emplace<ColorComponent>(entity,
+					glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
+				);
+				refRegistry->emplace<SlimeMovementComponent>(entity,
+					1, // targetIndex
+					0, // startIndex
+					14, // endIndex
+					2.0f, // speed
+					1.5f, // maxHeight
+					0.5f  // minHeight
+				);
+			}
+		}
+	}
+};
+
+class CastleSystem
+{
+public:
+	entt::registry *refRegistry;
+
+	void UpdateComponents(float delta, entt::registry &registry)
+	{
+		auto castleView = registry.view<TransformComponent, CastleComponent>();
+		auto slimeView = registry.view<TransformComponent, SlimeMovementComponent>();
+
+		for(auto [castle_entity, castle_transform, castle_component] : castleView.each())
+		{
+			for(auto [slime_entity, slime_transform, slimeMovement] : slimeView.each())
+			{
+				float distance = glm::length(castle_transform.position - slime_transform.position);
+
+				if (distance < 0.5f)
+				{
+					// kill slime
+					refRegistry->destroy(slime_entity);
+					// take damage
+					castle_component.health--;
+					Canis::Log("Health : " + std::to_string(castle_component.health));
+				}
+			}
+		}
+	}
+};
+
 class RenderCubeSystem
 {
 public:
@@ -220,8 +302,6 @@ public:
 
 			slimeMovement.targetIndex = (distance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
 
-			transform.position = (slimeMovement.endIndex < slimeMovement.targetIndex) ? slimePath[slimeMovement.startIndex] : transform.position;
-
 			slimeMovement.targetIndex = (slimeMovement.endIndex < slimeMovement.targetIndex) ? slimeMovement.startIndex : slimeMovement.targetIndex;
 		}
 	}
@@ -234,7 +314,10 @@ private:
 };
 
 RenderCubeSystem renderCubeSystem;
+PortalSystem portalSystem;
+CastleSystem castleSystem;
 MoveSlimeSystem moveSlimeSystem;
+
 
 App::App()
 {
@@ -349,6 +432,10 @@ void App::Load()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
 					);
+					entity_registry.emplace<PortalComponent>(entity,
+						3.0f,
+						0.1f
+					);
 					break;
 				case CASTLE:
 					entity_registry.emplace<TransformComponent>(entity,
@@ -359,6 +446,10 @@ void App::Load()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
 					);
+					entity_registry.emplace<CastleComponent>(entity,
+						20,
+						20
+					);
 					break;
 				default:
 					break;
@@ -367,29 +458,16 @@ void App::Load()
 		}
 	}
 
-	const entt::entity entity = entity_registry.create();
 
-	entity_registry.emplace<TransformComponent>(entity,
-		slimePath[0], // position
-		glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-		glm::vec3(0.8f, 0.8f, 0.8f) // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity,
-		glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
-	);
-	entity_registry.emplace<SlimeMovementComponent>(entity,
-		   1, // targetIndex
-		   0, // startIndex
-		  14, // endIndex
-		2.0f, // speed
-		1.5f, // maxHeight
-		0.5f  // minHeight
-	);
 
 	renderCubeSystem.VAO = VAO;
 	renderCubeSystem.shader = &shader;
 	renderCubeSystem.camera = &camera;
 	renderCubeSystem.window = &window;
+
+	castleSystem.refRegistry = &entity_registry;
+
+	portalSystem.refRegistry = &entity_registry;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -410,12 +488,13 @@ void App::Loop()
 
 		float fps = time.endFrame();
 
-		Canis::Log("fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime));
-		// Canis::Log("x : " + std::to_string(camera.Position.x) + " y : " + std::to_string(camera.Position.y) +" z : " + std::to_string(camera.Position.z));
+		window.SetWindowName("Canis : StopTheSlimes fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime) + " Enitity : " + std::to_string(entity_registry.size()));
 	}
 }
 void App::Update()
 {
+	castleSystem.UpdateComponents(deltaTime, entity_registry);
+	portalSystem.UpdateComponents(deltaTime, entity_registry);
 	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
