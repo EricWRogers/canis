@@ -118,6 +118,7 @@ struct SlimeMovementComponent
 	float speed;
 	float maxHeight;
 	float minHeight;
+	float beginningDistance;
 };
 
 struct PortalComponent
@@ -166,7 +167,8 @@ public:
 					14, // endIndex
 					2.0f, // speed
 					1.5f, // maxHeight
-					0.5f  // minHeight
+					0.5f,  // minHeight
+					-1.0f  // beginningDistance
 				);
 			}
 		}
@@ -291,14 +293,40 @@ public:
 
 		for(auto [entity, transform, slimeMovement] : view.each())
 		{
-			transform.position = lerp(
-				transform.position,
-				slimePath[slimeMovement.targetIndex],
-				delta);
+			
 
 			//transform.position = transform.position * (1.0f - delta) + slimePath[slimeMovement.targetIndex] * delta;
 
 			float distance = glm::length(transform.position - slimePath[slimeMovement.targetIndex]);
+
+			slimeMovement.beginningDistance = (slimeMovement.beginningDistance < 0.0f) ?
+			 	glm::length(
+					glm::vec3(transform.position.x, 0.0f, transform.position.z) -
+					glm::vec3(slimePath[slimeMovement.targetIndex].x, 0.0f, slimePath[slimeMovement.targetIndex].z)
+				) : 
+			 	slimeMovement.beginningDistance;
+
+			float flatDistance = glm::length(
+				glm::vec3(transform.position.x, 0.0f, transform.position.z) -
+				glm::vec3(slimePath[slimeMovement.targetIndex].x, 0.0f, slimePath[slimeMovement.targetIndex].z)
+			);
+
+			if (flatDistance > (slimeMovement.beginningDistance * 0.75))
+			{
+				transform.position = lerp(
+					transform.position,
+					slimePath[slimeMovement.targetIndex] + glm::vec3(0,1,0),
+					delta
+				);
+			}
+			else
+			{
+				transform.position = lerp(
+					transform.position,
+					slimePath[slimeMovement.targetIndex],
+					delta
+				);
+			}
 
 			slimeMovement.targetIndex = (distance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
 
