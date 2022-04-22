@@ -17,6 +17,19 @@
 #include "Canis/Data/GLTexture.hpp"
 #include "Canis/External/entt.hpp"
 
+#include "Canis/ECS/Systems/RenderCubeSystem.hpp"
+
+#include "Canis/ECS/Components/TransformComponent.hpp"
+#include "Canis/ECS/Components/ColorComponent.hpp"
+
+#include "ECS/Systems/CastleSystem.hpp"
+#include "ECS/Systems/MoveSlimeSystem.hpp"
+#include "ECS/Systems/PortalSystem.hpp"
+
+#include "ECS/Components/CastleComponent.hpp"
+#include "ECS/Components/PortalComponent.hpp"
+#include "ECS/Components/SlimeMovementComponent.hpp"
+
 #ifdef __linux__
 using namespace std::chrono::_V2;
 #elif _WIN32
