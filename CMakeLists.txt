@@ -1,5 +1,5 @@
 cmake_minimum_required(VERSION 3.18)
-project(learnopengl)
+project(canis)
 set(CMAKE_CXX_STANDARD 20)
 
 #find_package(OpenGL REQUIRED)

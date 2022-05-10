@@ -25,10 +25,15 @@
 #include "ECS/Systems/CastleSystem.hpp"
 #include "ECS/Systems/MoveSlimeSystem.hpp"
 #include "ECS/Systems/PortalSystem.hpp"
+#include "ECS/Systems/SpikeSystem.hpp"
+#include "ECS/Systems/SpikeTowerSystem.hpp"
 
 #include "ECS/Components/CastleComponent.hpp"
 #include "ECS/Components/PortalComponent.hpp"
 #include "ECS/Components/SlimeMovementComponent.hpp"
+#include "ECS/Components/HealthComponent.hpp"
+#include "ECS/Components/SpikeComponent.hpp"
+#include "ECS/Components/SpikeTowerComponent.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;

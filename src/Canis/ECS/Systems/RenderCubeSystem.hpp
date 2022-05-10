@@ -71,18 +71,21 @@ public:
 
 		for(auto [entity, transform, color]: view.each())
 		{
-			// material properties
-			shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
-			shader->SetVec3("material.diffuse", color.color);
-			shader->SetFloat("material.shininess", 32.0f);
+			if(transform.active == true)
+			{
+				// material properties
+				shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
+				shader->SetVec3("material.diffuse", color.color);
+				shader->SetFloat("material.shininess", 32.0f);
 
-			glm::mat4 model = glm::mat4(1.0f);
-			model = glm::translate(model, transform.position);
-			model = glm::scale(model, transform.scale);
-			shader->SetMat4("model", model);
-			//shader->SetVec4("fColor", color->color);
+				glm::mat4 model = glm::mat4(1.0f);
+				model = glm::translate(model, transform.position);
+				model = glm::scale(model, transform.scale);
+				shader->SetMat4("model", model);
+				//shader->SetVec4("fColor", color->color);
 
-			glDrawArrays(GL_TRIANGLES, 0, 36);
+				glDrawArrays(GL_TRIANGLES, 0, 36);
+			}
 		}
 
 		shader->UnUse();

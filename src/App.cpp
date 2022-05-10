@@ -64,7 +64,7 @@ glm::uint8 layer1[2][9][9] = {
 		{ 0,0,3,0,0,0,0,0,0 },
 		{ 0,0,0,0,0,0,0,0,0 },
 		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
+		{ 0,0,0,5,0,5,0,0,0 },
 		{ 0,0,0,0,0,0,0,0,0 },
 		{ 0,0,0,0,0,0,0,0,0 },
 		{ 0,0,0,0,0,0,4,0,0 },
@@ -78,13 +78,16 @@ enum BlockTypes
 	GRASS  = 1,
 	DIRT   = 2,
 	PORTAL = 3,
-	CASTLE = 4
+	CASTLE = 4,
+	SPIKETOWER  = 5
 };
 
 RenderCubeSystem renderCubeSystem;
 PortalSystem portalSystem;
 CastleSystem castleSystem;
 MoveSlimeSystem moveSlimeSystem;
+SpikeSystem spikeSystem;
+SpikeTowerSystem spikeTowerSystem;
 
 
 App::App()
@@ -173,6 +176,7 @@ void App::Load()
 				{
 				case GRASS:
 					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
 						glm::vec3(x, y, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 						glm::vec3(1, 1, 1) // scale
@@ -183,6 +187,7 @@ void App::Load()
 					break;
 				case DIRT:
 					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
 						glm::vec3(x, y, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 						glm::vec3(1, 1, 1) // scale
@@ -193,6 +198,7 @@ void App::Load()
 					break;
 				case PORTAL:
 					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
 						glm::vec3(x, y, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 						glm::vec3(1, 1, 1) // scale
@@ -207,6 +213,7 @@ void App::Load()
 					break;
 				case CASTLE:
 					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
 						glm::vec3(x, y, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 						glm::vec3(1, 1, 1) // scale
@@ -219,6 +226,22 @@ void App::Load()
 						20
 					);
 					break;
+				case SPIKETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+					);
+					entity_registry.emplace<SpikeTowerComponent>(entity,
+						false, // setup
+						0, // numOfSpikes
+						3.0f, // timeToSpawn
+						0.1f // currentTime
+					);
 				default:
 					break;
 				}
@@ -236,6 +259,10 @@ void App::Load()
 	castleSystem.refRegistry = &entity_registry;
 
 	portalSystem.refRegistry = &entity_registry;
+
+	spikeSystem.refRegistry = &entity_registry;
+
+	spikeTowerSystem.refRegistry = &entity_registry;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -264,6 +291,8 @@ void App::Update()
 	castleSystem.UpdateComponents(deltaTime, entity_registry);
 	portalSystem.UpdateComponents(deltaTime, entity_registry);
 	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
+	spikeSystem.UpdateComponents(deltaTime, entity_registry);
+	spikeTowerSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {
