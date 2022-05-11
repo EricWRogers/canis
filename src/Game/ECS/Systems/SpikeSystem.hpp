@@ -3,10 +3,10 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "../../Canis/External/entt.hpp"
+#include "../../../Canis/External/entt.hpp"
 
-#include "../../Canis/ECS/Components/TransformComponent.hpp"
-#include "../../Canis/ECS/Components/ColorComponent.hpp"
+#include "../../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/ColorComponent.hpp"
 
 #include "../Components/SpikeComponent.hpp"
 #include "../Components/SlimeMovementComponent.hpp"
@@ -43,9 +43,8 @@ public:
                         {
                             // take damage
                             spike_health.health -= slime_health.health;
-                            // kill slime
+                            // set slime health to zero it will destroy itself
                             slime_health.health = 0;
-                            refRegistry->destroy(slime_entity);
                         }
                     }
                 }

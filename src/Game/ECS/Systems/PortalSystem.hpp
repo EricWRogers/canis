@@ -1,7 +1,7 @@
 #pragma once
-#include "../../Canis/External/entt.hpp"
+#include "../../../Canis/External/entt.hpp"
 
-#include "../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/TransformComponent.hpp"
 
 #include "../Components/PortalComponent.hpp"
 #include "../Components/HealthComponent.hpp"

@@ -47,47 +47,14 @@ float vertices[] = {
 	-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
 };
 
-glm::uint8 layer1[2][9][9] = {
-	{
-		{ 1,1,2,1,1,1,1,1,1 },
-		{ 1,1,2,1,1,1,1,1,1 },
-		{ 1,1,2,1,1,1,1,1,1 },
-		{ 1,1,2,1,2,2,2,1,1 },
-		{ 1,1,2,1,2,1,2,1,1 },
-		{ 1,1,2,2,2,1,2,1,1 },
-		{ 1,1,1,1,1,1,2,1,1 },
-		{ 1,1,1,1,1,1,2,1,1 },
-		{ 1,1,1,1,1,1,2,1,1 },
-	},
-	{
-		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,3,0,0,0,0,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,0,5,0,5,0,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
-		{ 0,0,0,0,0,0,4,0,0 },
-		{ 0,0,0,0,0,0,0,0,0 },
-	}
-};
-
-enum BlockTypes
-{
-	NONE   = 0,
-	GRASS  = 1,
-	DIRT   = 2,
-	PORTAL = 3,
-	CASTLE = 4,
-	SPIKETOWER  = 5
-};
-
 RenderCubeSystem renderCubeSystem;
+RenderTextSystem renderTextSystem;
 PortalSystem portalSystem;
 CastleSystem castleSystem;
 MoveSlimeSystem moveSlimeSystem;
 SpikeSystem spikeSystem;
 SpikeTowerSystem spikeTowerSystem;
+
 
 
 App::App()
@@ -163,6 +130,7 @@ void App::Load()
 	// glPolygonMode( GL_FRONT_AND_BACK, GL_LINE );
 	// fill
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+	// Game Systems
 
 	// ECS
 	for (int y = 0; y < 2; y++)
@@ -172,7 +140,7 @@ void App::Load()
 			for (int z = 0; z < 9; z++)
 			{
 				const auto entity = entity_registry.create();
-				switch (layer1[y][z][x]) // this looks bad
+				switch (titleMap[y][z][x]) // this looks bad
 				{
 				case GRASS:
 					entity_registry.emplace<TransformComponent>(entity,
@@ -249,20 +217,76 @@ void App::Load()
 		}
 	}
 
+	const auto entity = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity,
+		true, // active
+		glm::vec2(25.0f, window.GetScreenHeight() - 65.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		1.0f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity,
+		new std::string("Health : 0") // text
+	);
 
+	const auto entity1 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity1,
+		true, // active
+		glm::vec2(25.0f, window.GetScreenHeight() - 130.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		1.0f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity1,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity1,
+		new std::string("Score : 0") // text
+	);
+
+	const auto entity2 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity2,
+		true, // active
+		glm::vec2(25.0f, window.GetScreenHeight() - 195.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		1.0f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity2,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity2,
+		new std::string("Gold : 0") // text
+	);
 
 	renderCubeSystem.VAO = VAO;
 	renderCubeSystem.shader = &shader;
 	renderCubeSystem.camera = &camera;
 	renderCubeSystem.window = &window;
 
+	renderTextSystem.Init();
+	renderTextSystem.camera = &camera;
+	renderTextSystem.window = &window;
+
 	castleSystem.refRegistry = &entity_registry;
+	castleSystem.healthText = entity;
+	castleSystem.Init();
+
+	wallet.refRegistry = &entity_registry;
+	wallet.walletText = entity2;
+	wallet.SetCash(200);
+
+	scoreSystem.refRegistry = &entity_registry;
+	scoreSystem.scoreText = entity1;
 
 	portalSystem.refRegistry = &entity_registry;
 
 	spikeSystem.refRegistry = &entity_registry;
 
 	spikeTowerSystem.refRegistry = &entity_registry;
+
+	moveSlimeSystem.wallet = &wallet;
+	moveSlimeSystem.scoreSystem = &scoreSystem;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -299,6 +323,7 @@ void App::Draw()
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
 
 	renderCubeSystem.UpdateComponents(deltaTime, entity_registry);
+	renderTextSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::LateUpdate() {}
 void App::FixedUpdate(float dt)

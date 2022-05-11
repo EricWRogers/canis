@@ -6,43 +6,20 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
 
-#include "../../Canis/External/entt.hpp"
+#include "../../../Canis/External/entt.hpp"
 
-#include "../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/TransformComponent.hpp"
 
 #include "../Components/SpikeComponent.hpp"
 #include "../Components/HealthComponent.hpp"
 #include "../Components/SpikeTowerComponent.hpp"
 
+#include "../../Scripts/TileMap.hpp"
+
 class SpikeTowerSystem
 {
 public:
 	entt::registry *refRegistry;
-
-    glm::uint8 layer1[2][9][9] = {
-        {
-            { 1,1,2,1,1,1,1,1,1 },
-            { 1,1,2,1,1,1,1,1,1 },
-            { 1,1,2,1,1,1,1,1,1 },
-            { 1,1,2,1,2,2,2,1,1 },
-            { 1,1,2,1,2,1,2,1,1 },
-            { 1,1,2,2,2,1,2,1,1 },
-            { 1,1,1,1,1,1,2,1,1 },
-            { 1,1,1,1,1,1,2,1,1 },
-            { 1,1,1,1,1,1,2,1,1 },
-        },
-        {
-            { 0,0,0,0,0,0,0,0,0 },
-            { 0,0,3,0,0,0,0,0,0 },
-            { 0,0,0,0,0,0,0,0,0 },
-            { 0,0,5,0,0,0,0,0,0 },
-            { 0,0,5,0,0,0,0,0,0 },
-            { 0,0,5,5,5,0,0,0,0 },
-            { 0,0,0,0,0,0,0,0,0 },
-            { 0,0,0,0,0,0,4,0,0 },
-            { 0,0,0,0,0,0,0,0,0 },
-        }
-    };
 
     std::unordered_map<std::string, entt::entity> spikes;
     std::unordered_map<std::string, std::vector<entt::entity>> towerSpikes;
@@ -80,7 +57,7 @@ public:
 
                 for(int i = 0; i < positionToCheck.size(); i++)
                 {
-                    if(layer1[0][(int)positionToCheck[i].z][(int)positionToCheck[i].x] == 2)
+                    if(titleMap[0][(int)positionToCheck[i].z][(int)positionToCheck[i].x] == BlockTypes::DIRT)
                     {
                         std::unordered_map<std::string, entt::entity>::iterator it = spikes.find(glm::to_string(positionToCheck[i]));
                         if(it != spikes.end()) // found
@@ -93,6 +70,9 @@ public:
                         {
                             // make new spike
                             const entt::entity entity = refRegistry->create();
+
+                            // update title map
+                            titleMap[1][(int)positionToCheck[i].z][(int)positionToCheck[i].x] = BlockTypes::SPIKE;
 
                             refRegistry->emplace<TransformComponent>(entity,
                                 false, // active

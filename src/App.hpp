@@ -18,22 +18,29 @@
 #include "Canis/External/entt.hpp"
 
 #include "Canis/ECS/Systems/RenderCubeSystem.hpp"
+#include "Canis/ECS/Systems/RenderTextSystem.hpp"
 
 #include "Canis/ECS/Components/TransformComponent.hpp"
 #include "Canis/ECS/Components/ColorComponent.hpp"
+#include "Canis/ECS/Components/RectTransformComponent.hpp"
+#include "Canis/ECS/Components/TextComponent.hpp"
 
-#include "ECS/Systems/CastleSystem.hpp"
-#include "ECS/Systems/MoveSlimeSystem.hpp"
-#include "ECS/Systems/PortalSystem.hpp"
-#include "ECS/Systems/SpikeSystem.hpp"
-#include "ECS/Systems/SpikeTowerSystem.hpp"
+#include "Game/ECS/Systems/CastleSystem.hpp"
+#include "Game/ECS/Systems/MoveSlimeSystem.hpp"
+#include "Game/ECS/Systems/PortalSystem.hpp"
+#include "Game/ECS/Systems/SpikeSystem.hpp"
+#include "Game/ECS/Systems/SpikeTowerSystem.hpp"
 
-#include "ECS/Components/CastleComponent.hpp"
-#include "ECS/Components/PortalComponent.hpp"
-#include "ECS/Components/SlimeMovementComponent.hpp"
-#include "ECS/Components/HealthComponent.hpp"
-#include "ECS/Components/SpikeComponent.hpp"
-#include "ECS/Components/SpikeTowerComponent.hpp"
+#include "Game/ECS/Components/CastleComponent.hpp"
+#include "Game/ECS/Components/PortalComponent.hpp"
+#include "Game/ECS/Components/SlimeMovementComponent.hpp"
+#include "Game/ECS/Components/HealthComponent.hpp"
+#include "Game/ECS/Components/SpikeComponent.hpp"
+#include "Game/ECS/Components/SpikeTowerComponent.hpp"
+
+#include "Game/Scripts/TileMap.hpp"
+#include "Game/Scripts/ScoreSystem.hpp"
+#include "Game/Scripts/Wallet.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;
@@ -95,5 +102,8 @@ private:
     high_resolution_clock::time_point currentTime;
     high_resolution_clock::time_point previousTime;
     double deltaTime;
+
+    Wallet wallet;
+    ScoreSystem scoreSystem;
     
 };

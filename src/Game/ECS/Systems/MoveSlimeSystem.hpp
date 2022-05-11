@@ -3,14 +3,23 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include "../../Canis/External/entt.hpp"
+#include "../../../Canis/External/entt.hpp"
 
-#include "../../Canis/ECS/Components/TransformComponent.hpp"
-#include "../../Canis/ECS/Components/ColorComponent.hpp"
+#include "../../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/ColorComponent.hpp"
+
+#include "../Components/SlimeMovementComponent.hpp"
+#include "../Components/HealthComponent.hpp"
+
+#include "../../Scripts/Wallet.hpp"
+#include "../../Scripts/ScoreSystem.hpp"
 
 class MoveSlimeSystem
 {
 public:
+	Wallet *wallet;
+	ScoreSystem *scoreSystem;
+
 	glm::vec3 slimePath[15] = {
 		glm::vec3(2.0f, 1.0f, 1.0f),
 		glm::vec3(2.0f, 1.0f, 2.0f),
@@ -30,10 +39,20 @@ public:
 
 	void UpdateComponents(float delta, entt::registry &registry)
 	{
-		auto view = registry.view<TransformComponent, SlimeMovementComponent>();
+		auto view = registry.view<TransformComponent, SlimeMovementComponent, HealthComponent>();
 
-		for(auto [entity, transform, slimeMovement] : view.each())
+		for(auto [entity, transform, slimeMovement, health] : view.each())
 		{
+			if (health.health <= 0)
+			{
+				registry.destroy(entity);
+
+				wallet->Earn(10);
+
+				scoreSystem->AddPoints(10);
+
+				continue;
+			}
 
 			float distance = glm::length(transform.position - slimePath[slimeMovement.targetIndex]);
 
