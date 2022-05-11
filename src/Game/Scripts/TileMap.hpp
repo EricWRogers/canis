@@ -3,13 +3,14 @@
 
 enum BlockTypes
 {
-	NONE        = 0,
-	GRASS       = 1,
-	DIRT        = 2,
-	PORTAL      = 3,
-	CASTLE      = 4,
-	SPIKETOWER  = 5,
-    SPIKE       = 6
+	NONE         = 0,
+	GRASS        = 1,
+	DIRT         = 2,
+	PORTAL       = 3,
+	CASTLE       = 4,
+	SPIKETOWER   = 5,
+    SPIKE        = 6,
+    GEMMINETOWER = 7
 };
 
 glm::uint8 static titleMap[2][9][9] = {
@@ -26,10 +27,10 @@ glm::uint8 static titleMap[2][9][9] = {
     },
     {
         { 0,0,0,0,0,0,0,0,0 },
-        { 0,0,3,0,0,0,0,0,0 },
+        { 0,0,3,0,0,0,0,7,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
-        { 0,0,0,5,0,5,0,0,0 },
+        { 0,0,0,5,0,0,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,4,0,0 },

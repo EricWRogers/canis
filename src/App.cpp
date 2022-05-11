@@ -54,6 +54,7 @@ CastleSystem castleSystem;
 MoveSlimeSystem moveSlimeSystem;
 SpikeSystem spikeSystem;
 SpikeTowerSystem spikeTowerSystem;
+GemMineTowerSystem gemMineTowerSystem;
 
 
 
@@ -210,6 +211,23 @@ void App::Load()
 						3.0f, // timeToSpawn
 						0.1f // currentTime
 					);
+					break;
+				case GEMMINETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
+					);
+					entity_registry.emplace<GemMineTowerComponent>(entity,
+						20, // gems
+						5.0f, // timeToSpawn
+						5.0f // currentTime
+					);
+					break;
 				default:
 					break;
 				}
@@ -285,6 +303,8 @@ void App::Load()
 
 	spikeTowerSystem.refRegistry = &entity_registry;
 
+	gemMineTowerSystem.wallet = &wallet;
+
 	moveSlimeSystem.wallet = &wallet;
 	moveSlimeSystem.scoreSystem = &scoreSystem;
 
@@ -317,6 +337,7 @@ void App::Update()
 	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
 	spikeSystem.UpdateComponents(deltaTime, entity_registry);
 	spikeTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	gemMineTowerSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {

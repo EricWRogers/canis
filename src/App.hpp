@@ -30,6 +30,7 @@
 #include "Game/ECS/Systems/PortalSystem.hpp"
 #include "Game/ECS/Systems/SpikeSystem.hpp"
 #include "Game/ECS/Systems/SpikeTowerSystem.hpp"
+#include "Game/ECS/Systems/GemMineTowerSystem.hpp"
 
 #include "Game/ECS/Components/CastleComponent.hpp"
 #include "Game/ECS/Components/PortalComponent.hpp"
@@ -37,6 +38,7 @@
 #include "Game/ECS/Components/HealthComponent.hpp"
 #include "Game/ECS/Components/SpikeComponent.hpp"
 #include "Game/ECS/Components/SpikeTowerComponent.hpp"
+#include "Game/ECS/Components/GemMineTowerComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"
