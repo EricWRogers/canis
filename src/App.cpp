@@ -55,6 +55,8 @@ MoveSlimeSystem moveSlimeSystem;
 SpikeSystem spikeSystem;
 SpikeTowerSystem spikeTowerSystem;
 GemMineTowerSystem gemMineTowerSystem;
+FireBallSystem fireBallSystem;
+FireTowerSystem fireTowerSystem;
 
 
 
@@ -228,6 +230,24 @@ void App::Load()
 						5.0f // currentTime
 					);
 					break;
+				case FIRETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
+					);
+					entity_registry.emplace<FireTowerComponent>(entity,
+						2, // damage
+						20.0f,// speed
+						5.0f, // range
+						2.0f, // timeToSpawn
+						2.0f // currentTime
+					);
+					break;
 				default:
 					break;
 				}
@@ -338,6 +358,8 @@ void App::Update()
 	spikeSystem.UpdateComponents(deltaTime, entity_registry);
 	spikeTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	gemMineTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	fireBallSystem.UpdateComponents(deltaTime, entity_registry);
+	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {

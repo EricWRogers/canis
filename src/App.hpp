@@ -31,6 +31,8 @@
 #include "Game/ECS/Systems/SpikeSystem.hpp"
 #include "Game/ECS/Systems/SpikeTowerSystem.hpp"
 #include "Game/ECS/Systems/GemMineTowerSystem.hpp"
+#include "Game/ECS/Systems/FireTowerSystem.hpp"
+#include "Game/ECS/Systems/FireBallSystem.hpp"
 
 #include "Game/ECS/Components/CastleComponent.hpp"
 #include "Game/ECS/Components/PortalComponent.hpp"
@@ -39,6 +41,8 @@
 #include "Game/ECS/Components/SpikeComponent.hpp"
 #include "Game/ECS/Components/SpikeTowerComponent.hpp"
 #include "Game/ECS/Components/GemMineTowerComponent.hpp"
+#include "Game/ECS/Components/FireTowerComponent.hpp"
+#include "Game/ECS/Components/FireBallComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"

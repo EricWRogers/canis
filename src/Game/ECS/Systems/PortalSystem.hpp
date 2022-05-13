@@ -36,8 +36,8 @@ public:
 					glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
 				);
 				refRegistry->emplace<HealthComponent>(entity,
-					4,// health
-					4 // max health
+					10,// health
+					10 // max health
 				);
 				refRegistry->emplace<SlimeMovementComponent>(entity,
 					1, // targetIndex

@@ -10,7 +10,8 @@ enum BlockTypes
 	CASTLE       = 4,
 	SPIKETOWER   = 5,
     SPIKE        = 6,
-    GEMMINETOWER = 7
+    GEMMINETOWER = 7,
+    FIRETOWER    = 8
 };
 
 glm::uint8 static titleMap[2][9][9] = {
@@ -30,7 +31,7 @@ glm::uint8 static titleMap[2][9][9] = {
         { 0,0,3,0,0,0,0,7,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
-        { 0,0,0,5,0,0,0,0,0 },
+        { 0,0,0,5,0,8,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,0,0,0,0,4,0,0 },
