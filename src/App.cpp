@@ -57,6 +57,8 @@ SpikeTowerSystem spikeTowerSystem;
 GemMineTowerSystem gemMineTowerSystem;
 FireBallSystem fireBallSystem;
 FireTowerSystem fireTowerSystem;
+IceTowerSystem iceTowerSystem;
+SlimeFreezeSystem slimeFreezeSystem;
 
 
 
@@ -178,7 +180,7 @@ void App::Load()
 						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
 					);
 					entity_registry.emplace<PortalComponent>(entity,
-						3.0f,
+						2.0f,
 						0.1f
 					);
 					break;
@@ -241,11 +243,30 @@ void App::Load()
 						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
 					);
 					entity_registry.emplace<FireTowerComponent>(entity,
-						2, // damage
+						1, // damage
 						20.0f,// speed
 						5.0f, // range
 						2.0f, // timeToSpawn
 						2.0f // currentTime
+					);
+					break;
+				case ICETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
+					);
+					entity_registry.emplace<IceTowerComponent>(entity,
+						1, // maxSlimesToFreeze
+						2, // damageOnBreak
+						0.5f,// freezeTime
+						2.0f, // range
+						4.0f, // timeToSpawn
+						4.0f // currentTime
 					);
 					break;
 				default:
@@ -360,6 +381,8 @@ void App::Update()
 	gemMineTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	fireBallSystem.UpdateComponents(deltaTime, entity_registry);
 	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	iceTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	slimeFreezeSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {

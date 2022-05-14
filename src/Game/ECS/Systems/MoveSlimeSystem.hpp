@@ -14,6 +14,8 @@
 #include "../../Scripts/Wallet.hpp"
 #include "../../Scripts/ScoreSystem.hpp"
 
+#include "../../Scripts/TileMap.hpp"
+
 class MoveSlimeSystem
 {
 public:
@@ -43,6 +45,25 @@ public:
 
 		for(auto [entity, transform, slimeMovement, health] : view.each())
 		{
+
+			float speed = slimeMovement.speed;
+			unsigned int newStatus = 0;
+
+			if (slimeMovement.status & SlimeStatus::CHILL)
+			{
+				slimeMovement.chillCountDown -= delta;
+
+				//Canis::Log("Slow");
+
+				if (slimeMovement.chillCountDown > 0.0f)
+				{
+					newStatus |= SlimeStatus::CHILL;
+					speed *= 0.5f;
+				}
+			}
+
+			slimeMovement.status = newStatus;
+
 			if (health.health <= 0)
 			{
 				registry.destroy(entity);
@@ -73,7 +94,7 @@ public:
 				transform.position = lerp(
 					transform.position,
 					slimePath[slimeMovement.targetIndex] + glm::vec3(0,1,0),
-					delta
+					speed * delta
 				);
 			}
 			else
@@ -81,7 +102,7 @@ public:
 				transform.position = lerp(
 					transform.position,
 					slimePath[slimeMovement.targetIndex],
-					delta
+					speed * delta
 				);
 			}
 

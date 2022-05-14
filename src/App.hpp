@@ -33,6 +33,8 @@
 #include "Game/ECS/Systems/GemMineTowerSystem.hpp"
 #include "Game/ECS/Systems/FireTowerSystem.hpp"
 #include "Game/ECS/Systems/FireBallSystem.hpp"
+#include "Game/ECS/Systems/IceTowerSystem.hpp"
+#include "Game/ECS/Systems/SlimeFreezeSystem.hpp"
 
 #include "Game/ECS/Components/CastleComponent.hpp"
 #include "Game/ECS/Components/PortalComponent.hpp"
@@ -43,6 +45,7 @@
 #include "Game/ECS/Components/GemMineTowerComponent.hpp"
 #include "Game/ECS/Components/FireTowerComponent.hpp"
 #include "Game/ECS/Components/FireBallComponent.hpp"
+#include "Game/ECS/Components/IceTowerComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"

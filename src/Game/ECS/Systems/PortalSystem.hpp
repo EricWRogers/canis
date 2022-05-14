@@ -6,10 +6,13 @@
 #include "../Components/PortalComponent.hpp"
 #include "../Components/HealthComponent.hpp"
 
+#include "../../Scripts/TileMap.hpp"
+
 class PortalSystem
 {
 public:
 	entt::registry *refRegistry;
+	GreenSlime gs;
 
 	void UpdateComponents(float delta, entt::registry &registry)
 	{
@@ -36,17 +39,20 @@ public:
 					glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
 				);
 				refRegistry->emplace<HealthComponent>(entity,
-					10,// health
-					10 // max health
+					gs.health,// health
+					gs.health // max health
 				);
 				refRegistry->emplace<SlimeMovementComponent>(entity,
-					1, // targetIndex
-					0, // startIndex
-					14, // endIndex
-					2.0f, // speed
-					1.5f, // maxHeight
+					0u,
+					1,     // targetIndex
+					0,     // startIndex
+					14,    // endIndex
+					gs.speed,  // speed
+					1.5f,  // maxHeight
 					0.5f,  // minHeight
-					-1.0f  // beginningDistance
+					-1.0f, // beginningDistance
+					0u,     // status
+					0.0f   // chillCountDown
 				);
 			}
 		}
