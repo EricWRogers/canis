@@ -22,7 +22,6 @@
 class SlimeFreezeSystem
 {
 public:
-    GreenSlime gs;
     void UpdateComponents(float delta, entt::registry &registry)
     {
         auto view = registry.view<TransformComponent, SlimeMovementComponent, SlimeFreezeComponent, HealthComponent>();
@@ -35,7 +34,26 @@ public:
 
             if (freeze.currentTime <= 0.0f)
             {
-                movement.speed = gs.speed;
+
+                switch(movement.slimeType)
+                {
+                    case SlimeType::GREEN:
+                        movement.speed = GreenSlimeInfo.speed;
+                        break;
+                    case SlimeType::BLUE:
+                        movement.speed = BlueSlimeInfo.speed;
+                        break;
+                    case SlimeType::PURPLE:
+                        movement.speed = PurpleSlimeInfo.speed;
+                        break;
+                    case SlimeType::ORANGE:
+                        movement.speed = OrangeSlimeInfo.speed;
+                        break;
+                    default:
+                        movement.speed = GreenSlimeInfo.speed;
+                        break;
+                };
+                
                 health.health = freeze.damageOnBreak;
                 registry.remove<SlimeFreezeComponent>(entity);
             }

@@ -12,7 +12,6 @@ class PortalSystem
 {
 public:
 	entt::registry *refRegistry;
-	GreenSlime gs;
 
 	void UpdateComponents(float delta, entt::registry &registry)
 	{
@@ -33,21 +32,21 @@ public:
 					true, // active
 					transform.position, // position
 					glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-					glm::vec3(0.8f, 0.8f, 0.8f) // scale
+					GreenSlimeInfo.size // scale
 				);
 				refRegistry->emplace<ColorComponent>(entity,
-					glm::vec4(0.35f, 0.71f, 0.32f, 0.8f) // #5ab552
+					GreenSlimeInfo.color
 				);
 				refRegistry->emplace<HealthComponent>(entity,
-					gs.health,// health
-					gs.health // max health
+					GreenSlimeInfo.health,// health
+					GreenSlimeInfo.health // max health
 				);
 				refRegistry->emplace<SlimeMovementComponent>(entity,
 					0u,
 					1,     // targetIndex
 					0,     // startIndex
 					14,    // endIndex
-					gs.speed,  // speed
+					GreenSlimeInfo.speed,  // speed
 					1.5f,  // maxHeight
 					0.5f,  // minHeight
 					-1.0f, // beginningDistance

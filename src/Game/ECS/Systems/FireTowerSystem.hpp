@@ -78,7 +78,7 @@ public:
                 for (auto [slime_entity, slime_transform, slime_color, slime_component] : slimeView.each())
                 {
 
-                    slime_color.color = glm::vec4(0.35f, 0.71f, 0.32f, 0.8f); // #5ab552
+                    //slime_color.color = glm::vec4(0.35f, 0.71f, 0.32f, 0.8f); // #5ab552
                     float distance = glm::length(slime_transform.position - transform.position);
 
                     if (distance < tower.range && registry.valid(slime_entity))
@@ -106,7 +106,7 @@ public:
                 {
                     auto [slime_transform, slime_color, slime_component] = registry.get<TransformComponent, ColorComponent, SlimeMovementComponent>(slime);
 
-                    slime_color.color = glm::vec4(1.0f);
+                    //slime_color.color = glm::vec4(1.0f);
 
                     glm::vec3 pos = transform.position + glm::vec3(0, 1, 0);//rtransform[3];
                     glm::vec3 rot;

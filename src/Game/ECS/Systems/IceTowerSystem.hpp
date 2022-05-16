@@ -21,7 +21,6 @@
 class IceTowerSystem
 {
 public:
-    GreenSlime gs;
     void UpdateComponents(float delta, entt::registry &registry)
     {
         auto view = registry.view<TransformComponent, IceTowerComponent>();
@@ -69,7 +68,25 @@ public:
                 for (auto [slime_entity, slime_transform, slime_color, slime_component] : singleSlimeView.each())
                 {
 
-                    slime_color.color = glm::vec4(0.35f, 0.71f, 0.32f, 0.8f); // #5ab552
+                    switch(slime_component.slimeType)
+                    {
+                        case SlimeType::GREEN:
+                            slime_color.color = GreenSlimeInfo.color;
+                            break;
+                        case SlimeType::BLUE:
+                            slime_color.color = BlueSlimeInfo.color;
+                            break;
+                        case SlimeType::PURPLE:
+                            slime_color.color = PurpleSlimeInfo.color;
+                            break;
+                        case SlimeType::ORANGE:
+                            slime_color.color = OrangeSlimeInfo.color;
+                            break;
+                        default:
+                            slime_color.color = GreenSlimeInfo.color;
+                            break;
+                    };
+
                     float distance = glm::length(slime_transform.position - transform.position);
 
                     if (distance < tower.range && slime_component.speed != 0.0f)
@@ -83,7 +100,7 @@ public:
                         );
 
                         if (slimesFroze >= tower.maxSlimesToFreeze)
-                            continue;
+                            return;
                     }
                 }
             }

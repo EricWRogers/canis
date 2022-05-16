@@ -50,12 +50,44 @@ enum SlimeStatus
 
 enum SlimeType
 {
-    GREEN = 0,
-    BLUE  = 1
+    GREEN  = 0,
+    BLUE   = 1,
+    PURPLE = 2,
+    ORANGE = 3
 };
 
-struct GreenSlime
+struct SlimeInfo
 {
-    float speed = 3.0f;
-    int health = 10;
+    float speed;
+    int health;
+    glm::vec3 size;
+    glm::vec4 color;
+};
+
+SlimeInfo const GreenSlimeInfo = {
+    3.0f,                                   // speed
+    3,                                      // health
+    glm::vec3(0.8f, 0.8f, 0.8f),            // size
+    glm::vec4(0.23f, 0.78f, 0.01f, 0.78f)    // color #c83dc705
+};
+
+SlimeInfo const BlueSlimeInfo = {
+    5.0f,                                   // speed
+    1,                                      // health
+    glm::vec3(0.8f, 0.8f, 0.8f),            // size
+    glm::vec4(0.18f, 0.70f, 0.91f, 0.78f)    // color #c82fb5e9
+};
+
+SlimeInfo const PurpleSlimeInfo = {
+    6.0f,                                   // speed
+    6,                                      // health
+    glm::vec3(0.8f, 0.8f, 0.8f),            // size
+    glm::vec4(0.53f, 0.18f, 0.91f, 0.78f)    // color #
+};
+
+SlimeInfo const OrangeSlimeInfo = {
+    3.0f,                                   // speed
+    30,                                      // health
+    glm::vec3(1.6f, 1.6f, 1.6f),            // size
+    glm::vec4(1.0f, 0.71f, 0.08f, 0.78f)    // color #
 };
