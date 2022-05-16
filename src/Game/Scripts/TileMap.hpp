@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <vector>
 
 enum BlockTypes
 {
@@ -30,11 +31,11 @@ glm::uint8 static titleMap[2][9][9] = {
     {
         { 0,0,0,0,0,0,0,0,0 },
         { 0,0,3,0,0,0,0,7,0 },
-        { 0,0,0,0,0,0,0,0,0 },
-        { 0,9,0,0,0,0,0,0,0 },
-        { 0,0,0,5,0,8,0,0,0 },
-        { 0,0,0,0,0,0,0,0,0 },
-        { 0,0,0,0,0,0,0,0,0 },
+        { 0,0,0,0,0,8,8,5,0 },
+        { 0,9,0,0,0,0,0,8,0 },
+        { 0,0,0,5,0,8,0,5,0 },
+        { 0,0,0,0,0,8,0,8,0 },
+        { 0,0,0,0,0,5,0,5,0 },
         { 0,0,0,0,0,0,4,0,0 },
         { 0,0,0,0,0,0,0,0,0 },
     }
@@ -64,6 +65,12 @@ struct SlimeInfo
     glm::vec4 color;
 };
 
+struct Wave
+{
+    float delay;
+    std::vector<int> enemies;
+};
+
 SlimeInfo const GreenSlimeInfo = {
     3.0f,                                   // speed
     3,                                      // health
@@ -88,6 +95,6 @@ SlimeInfo const PurpleSlimeInfo = {
 SlimeInfo const OrangeSlimeInfo = {
     3.0f,                                   // speed
     30,                                      // health
-    glm::vec3(1.6f, 1.6f, 1.6f),            // size
+    glm::vec3(1.1f, 1.1f, 1.1f),            // size 1.6f
     glm::vec4(1.0f, 0.71f, 0.08f, 0.78f)    // color #
 };
