@@ -1,7 +1,12 @@
 #pragma once
+#include <vector>
+#include <map>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/string_cast.hpp>
+
+#include "../../../Canis/GameHelper/AStar.hpp"
 
 #include "../../../Canis/External/entt.hpp"
 
@@ -11,6 +16,8 @@
 #include "../Components/SlimeMovementComponent.hpp"
 #include "../Components/HealthComponent.hpp"
 
+#include "../Systems/PortalSystem.hpp"
+
 #include "../../Scripts/Wallet.hpp"
 #include "../../Scripts/ScoreSystem.hpp"
 
@@ -19,10 +26,12 @@
 class MoveSlimeSystem
 {
 public:
+	Canis::AStar aStar;
 	Wallet *wallet;
 	ScoreSystem *scoreSystem;
-
-	glm::vec3 slimePath[15] = {
+	PortalSystem *portalSystem;
+	
+	std::vector<glm::vec3> slimePath= {
 		glm::vec3(2.0f, 1.0f, 1.0f),
 		glm::vec3(2.0f, 1.0f, 2.0f),
 		glm::vec3(2.0f, 1.0f, 3.0f),
@@ -38,6 +47,80 @@ public:
 		glm::vec3(6.0f, 1.0f, 5.0f),
 		glm::vec3(6.0f, 1.0f, 6.0f),
 		glm::vec3(6.0f, 1.0f, 7.0f)};
+
+	MoveSlimeSystem()
+	{
+		glm::vec3 portalPosition;
+		glm::vec3 castlePosition;
+
+		for (int y = 0; y < 2; y++) // this will just get the first layer
+		{
+			for (int x = 0; x < 23; x++)
+			{
+				for (int z = 0; z < 30; z++)
+				{
+					if (titleMap[y][z][x] == BlockTypes::DIRT)
+						aStar.AddPoint(glm::vec3(x,y,z));
+
+					if (titleMap[y][z][x] == BlockTypes::CASTLE)
+						castlePosition = glm::vec3(x,0.0f,z);
+
+					if (titleMap[y][z][x] == BlockTypes::PORTAL)
+						portalPosition = glm::vec3(x,0.0f,z);
+
+					//all_points[_to_index(cell)] = point_id
+				}
+			}
+		}
+
+		for (int y = 0; y < 1; y++) // this will just get the first layer
+		{
+			for (int x = 0; x < 23; x++)
+			{
+				for (int z = 0; z < 30; z++)
+				{
+					//for (int yOffset = -1; yOffset < 2; yOffset++) // this will just get the first layer
+					//{
+					if (aStar.ValidPoint( glm::vec3(x, y, z)))
+					{
+						for (int xOffset = -1; xOffset < 2; xOffset++)
+						{
+							for (int zOffset = -1; zOffset < 2; zOffset++)
+							{
+								if (aStar.ValidPoint( glm::vec3(x + xOffset, y, z + zOffset)))
+								{
+									if (glm::vec3(x + xOffset, y, z + zOffset) == glm::vec3(0.0f, 0.0f, 0.0f))
+										continue;
+									
+									if (xOffset == 0.0f || zOffset == 0.0f)
+									{
+										aStar.ConnectPoints(
+											aStar.GetPointByPosition(glm::vec3(x + xOffset, y, z + zOffset)),
+											aStar.GetPointByPosition(glm::vec3(x, y, z))
+										);
+									}
+								}
+							}
+						}
+					}
+					//}
+				}
+			}
+		}
+
+		if (aStar.ValidPoint(portalPosition) && aStar.ValidPoint(castlePosition))
+		{
+			slimePath = aStar.GetPath(
+				aStar.GetPointByPosition(portalPosition),
+				aStar.GetPointByPosition(castlePosition)
+			);
+		}
+
+		for(int i = 0; i < slimePath.size(); i++)
+		{
+			slimePath[i].y = 1.0f;
+		}
+	}
 
 	void UpdateComponents(float delta, entt::registry &registry)
 	{
@@ -71,6 +154,8 @@ public:
 				wallet->Earn(10);
 
 				scoreSystem->AddPoints(10);
+
+				portalSystem->SlimeKilled();
 
 				continue;
 			}
@@ -108,11 +193,13 @@ public:
 
 			slimeMovement.targetIndex = (distance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
 
-			slimeMovement.targetIndex = (slimeMovement.endIndex < slimeMovement.targetIndex) ? slimeMovement.startIndex : slimeMovement.targetIndex;
+			slimeMovement.targetIndex = (slimePath.size() < slimeMovement.targetIndex) ? 0 : slimeMovement.targetIndex;
 		}
 	}
 
 private:
+	
+
 	glm::vec3 lerp(glm::vec3 x, glm::vec3 y, float t)
 	{
 		return x * (1.f - t) + y * t;

@@ -21,10 +21,16 @@ private:
 public:
 	entt::registry *refRegistry;
 
+	void SlimeKilled()
+	{
+		NumKilledInRound++;
+	}
+
 	void UpdateCurrentWave()
     {
 		currentWaveCount++;
 		NumSpawned = 0;
+		NumKilledInRound = 0;
 
 		Canis::Log("Current Wave : " + std::to_string(currentWaveCount));
         //if(World.Instance.EndlessMode)
@@ -105,7 +111,10 @@ public:
 				// check end of round
 				if (NumSpawned >= wave.enemies.size())
 				{
-					UpdateCurrentWave();
+					if (NumSpawned <= NumKilledInRound)
+						UpdateCurrentWave();
+					else
+						return;
 				}
 
 				// slime config

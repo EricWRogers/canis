@@ -97,6 +97,7 @@ void App::Load()
 {
 	// configure global opengl state
 	glEnable(GL_DEPTH_TEST);
+	glEnable(GL_ALPHA);
 	// build and compile our shader program
 	shader.Compile("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
 	shader.AddAttribute("aPos");
@@ -140,9 +141,9 @@ void App::Load()
 	// ECS
 	for (int y = 0; y < 2; y++)
 	{
-		for (int x = 0; x < 9; x++)
+		for (int x = 0; x < 23; x++)
 		{
-			for (int z = 0; z < 9; z++)
+			for (int z = 0; z < 30; z++)
 			{
 				const auto entity = entity_registry.create();
 				switch (titleMap[y][z][x]) // this looks bad
@@ -348,6 +349,7 @@ void App::Load()
 
 	moveSlimeSystem.wallet = &wallet;
 	moveSlimeSystem.scoreSystem = &scoreSystem;
+	moveSlimeSystem.portalSystem = &portalSystem;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
