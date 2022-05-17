@@ -89,6 +89,8 @@ void App::Run()
 
 	Load();
 
+	window.MouseLock(mouseLock);
+
 	appState = AppState::ON;
 
 	Loop();
@@ -422,9 +424,18 @@ void App::FixedUpdate(float dt)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
 	}
+
+	if (inputManager.justReleasedKey(SDLK_ESCAPE))
+    {
+        mouseLock = !mouseLock;
+
+        window.MouseLock(mouseLock);
+    }
 }
 void App::InputUpdate()
 {
+	inputManager.swapMaps();
+
 	SDL_Event event;
 	while (SDL_PollEvent(&event))
 	{
@@ -434,15 +445,20 @@ void App::InputUpdate()
 			appState = AppState::OFF;
 			break;
 		case SDL_MOUSEMOTION:
-			camera.ProcessMouseMovement(
-				event.motion.xrel,
-				-event.motion.yrel);
+			if (mouseLock)
+			{
+				camera.ProcessMouseMovement(
+					event.motion.xrel,
+					-event.motion.yrel);
+			}
 			break;
 		case SDL_KEYUP:
 			inputManager.releasedKey(event.key.keysym.sym);
+			Canis::Log("UP" + std::to_string(event.key.keysym.sym));
 			break;
 		case SDL_KEYDOWN:
 			inputManager.pressKey(event.key.keysym.sym);
+			Canis::Log("DOWN");
 			break;
 		}
 	}

@@ -78,4 +78,18 @@ namespace Canis
         // get the old buffer to start drawing our next frame to
         SDL_GL_SwapWindow(sdlWindow);
     }
+
+    void Window::MouseLock(bool _isLocked)
+    {
+        if (_isLocked)
+        {
+            SDL_CaptureMouse(SDL_TRUE);
+            SDL_SetRelativeMouseMode(SDL_TRUE);
+        }
+        else
+        {
+            SDL_CaptureMouse(SDL_FALSE);
+            SDL_SetRelativeMouseMode(SDL_FALSE);
+        }
+    }
 } // end of Canis namespace

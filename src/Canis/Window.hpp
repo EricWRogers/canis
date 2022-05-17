@@ -23,6 +23,7 @@ namespace Canis
         void SetWindowName(std::string _windowName);
 
         void SwapBuffer();
+        void MouseLock(bool _isLocked);
 
         int GetScreenWidth() { return screenWidth; }
         int GetScreenHeight() { return screenHeight; }

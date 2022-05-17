@@ -108,6 +108,7 @@ private:
     float lastYMousePos;
     
     bool firstMouseMove = true;
+    bool mouseLock = false;
 
     high_resolution_clock::time_point currentTime;
     high_resolution_clock::time_point previousTime;
