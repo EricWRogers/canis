@@ -145,6 +145,9 @@ void App::Load()
 		{
 			for (int z = 0; z < 30; z++)
 			{
+				if (0 == titleMap[y][z][x])
+					continue;
+				
 				const auto entity = entity_registry.create();
 				switch (titleMap[y][z][x]) // this looks bad
 				{
@@ -369,7 +372,11 @@ void App::Loop()
 		InputUpdate();
 
 		float fps = time.endFrame();
-
+		
+		/*Canis::Log(
+			"pos: " + glm::to_string(camera.Position) +
+			" Yaw: "  + std::to_string(camera.Yaw) +
+			" Pitch: "  + std::to_string(camera.Pitch));*/
 		window.SetWindowName("Canis : StopTheSlimes fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime) + " Enitity : " + std::to_string(entity_registry.size()));
 	}
 }

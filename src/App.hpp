@@ -5,6 +5,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/string_cast.hpp>
 
 #include "Canis/Canis.hpp"
 #include "Canis/Debug.hpp"
@@ -95,7 +96,7 @@ private:
 
     Canis::InputManager inputManager;
 
-    Canis::Camera camera = Canis::Camera(glm::vec3(4.0f, 10.0f, 6.2f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW,Canis::PITCH-80.0f);
+    Canis::Camera camera = Canis::Camera(glm::vec3(0.907444f, 23.242630f, 18.476089f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW-17.499863f,Canis::PITCH-68.600151f);
 
     // move out to external class
     unsigned int VBO, VAO, EBO;
