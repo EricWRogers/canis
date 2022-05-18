@@ -425,9 +425,9 @@ void App::FixedUpdate(float dt)
 		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
 	}
 
-	if (inputManager.justReleasedKey(SDLK_ESCAPE))
+	if (inputManager.justPressedKey(SDLK_ESCAPE))
     {
-        mouseLock = !mouseLock;
+		mouseLock = !mouseLock;
 
         window.MouseLock(mouseLock);
     }
@@ -454,11 +454,11 @@ void App::InputUpdate()
 			break;
 		case SDL_KEYUP:
 			inputManager.releasedKey(event.key.keysym.sym);
-			Canis::Log("UP" + std::to_string(event.key.keysym.sym));
+			//Canis::Log("UP" + std::to_string(event.key.keysym.sym));
 			break;
 		case SDL_KEYDOWN:
 			inputManager.pressKey(event.key.keysym.sym);
-			Canis::Log("DOWN");
+			//Canis::Log("DOWN");
 			break;
 		}
 	}

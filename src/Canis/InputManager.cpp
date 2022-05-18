@@ -4,9 +4,7 @@ namespace Canis
 {
     InputManager::InputManager()
     {
-        _keyMap = &_keyMapOne;
-        _prevKeyMap = &_keyMapTwo;
-        keyMapIsOne = true;
+        
     }
 
     InputManager::~InputManager()
@@ -16,102 +14,102 @@ namespace Canis
 
     void InputManager::pressKey(unsigned int keyID)
     {
-        (*_keyMap)[keyID] = true;
+        _keyVec.push_back(InputData { keyID , true});
     }
 
     void InputManager::releasedKey(unsigned int keyID)
     {
-        (*_keyMap)[keyID] = false;
+        _keyVec.push_back(InputData { keyID , false});
     }
 
     void InputManager::swapMaps()
     {
-        keyMapIsOne = !keyMapIsOne;
-
-        _prevKeyMap->clear();
-
-        if (keyMapIsOne)
+        int index;
+        for (int i = 0; i < _keyVec.size(); i++)
         {
-            _keyMap = &_keyMapTwo;
-            _prevKeyMap = &_keyMapOne;
+            index = isInLastKnown(_keyVec[i].key);
+            if (index != -1)
+            {
+                lastKnown[index].value = _keyVec[i].value;
+            }
+            else
+            {
+                lastKnown.push_back(_keyVec[i]);
+            }
         }
-        else
-        {
-            _keyMap = &_keyMapOne;
-            _prevKeyMap = &_keyMapTwo;
-        }
+
+        _keyVec.clear();
     }
 
     bool InputManager::isKeyPressed(unsigned int keyID)
     {
-        std::unordered_map<unsigned int, bool>::iterator it = _keyMap->find(keyID);
-        if(it != _keyMap->end())
-        {
-            return it->second;
-        }
-        else
-        {
-            return false;
-        }
+        return isKeyUpInVec(&_keyVec, keyID);
     }
 
     bool InputManager::justPressedKey(unsigned int keyID)
     {
-        bool currentFrame = false;
-        bool lastFrame = false;
-        std::unordered_map<unsigned int, bool>::iterator it = _keyMap->find(keyID);
-        if(it != _keyMap->end())
+        bool currentValue = isKeyDownInVec(&_keyVec, keyID);
+
+        bool lastKnownValue = false;
+
+        int index = isInLastKnown(keyID);
+        if (index != -1)
         {
-            currentFrame = it->second;
-        }
-        else
-        {
-            currentFrame = false;
+            lastKnownValue = lastKnown[index].value;
         }
 
-        std::unordered_map<unsigned int, bool>::iterator itt = _prevKeyMap->find(keyID);
-        if(itt != _prevKeyMap->end())
-        {
-            lastFrame = itt->second;
-        }
-        else
-        {
-            lastFrame = false;
-        }
-
-        if (currentFrame == true && lastFrame == false)
+        if (currentValue && !lastKnownValue)
             return true;
-
-        return false;
+        
+        return false;       
     }
 
     bool InputManager::justReleasedKey(unsigned int keyID)
     {
-        bool currentFrame = false;
-        bool lastFrame = false;
-        std::unordered_map<unsigned int, bool>::iterator it = _keyMap->find(keyID);
-        if(it != _keyMap->end())
+        return isKeyUpInVec(&_keyVec, keyID);
+    }
+
+    bool InputManager::isKeyUpInVec(std::vector<InputData> *arr, unsigned int value)
+    {
+        for (int i = 0; i < arr->size(); i++)
         {
-            currentFrame = it->second;
+            if ((*arr)[i].key == value)
+                return !(*arr)[i].value;
         }
-        else
+        
+        return false;
+    }
+
+    bool InputManager::isKeyDownInVec(std::vector<InputData> *arr, unsigned int value)
+    {
+        for (int i = 0; i < arr->size(); i++)
         {
-            currentFrame = false;
+            if ((*arr)[i].key == value)
+                return (*arr)[i].value;
+        }
+        
+        return false;
+    }
+
+    int InputManager::isInLastKnown(unsigned int value)
+    {
+        for (int i = 0; i < lastKnown.size(); i++)
+        {
+            if (lastKnown[i].key == value)
+                return i;
         }
 
-        std::unordered_map<unsigned int, bool>::iterator itt = _prevKeyMap->find(keyID);
-        if(itt != _prevKeyMap->end())
+        return -1;
+    }
+    
+    bool InputManager::isKeyDownInLastKnowVec(unsigned int value)
+    {
+        for (int i = 0; i < lastKnown.size(); i++)
         {
-            lastFrame = itt->second;
+            if (lastKnown[i].key == value)
+                return lastKnown[i].value;
         }
-        else
-        {
-            lastFrame = false;
-        }
-
-        if (currentFrame == false && lastFrame == true)
-            return true;
-
+        
         return false;
     }
 } // end of Canis namespace

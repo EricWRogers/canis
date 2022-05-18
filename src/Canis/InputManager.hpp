@@ -1,8 +1,14 @@
 #pragma once
 #include <unordered_map>
+#include <vector>
 
 namespace Canis
 {
+    struct InputData
+    {
+        unsigned int key;
+        bool value;
+    };
     class InputManager
     {
     public:
@@ -17,12 +23,15 @@ namespace Canis
         bool justPressedKey(unsigned int keyID);
         bool justReleasedKey(unsigned int keyID);
     private:
-        std::unordered_map<unsigned int, bool> *_keyMap;
-        std::unordered_map<unsigned int, bool> *_prevKeyMap;
+        bool isKeyUpInVec(std::vector<InputData> *arr, unsigned int key);
+        bool isKeyDownInVec(std::vector<InputData> *arr, unsigned int value);
+        int isInLastKnown(unsigned int value);
+        bool isKeyDownInLastKnowVec(unsigned int value);
 
-        std::unordered_map<unsigned int, bool> _keyMapOne;
-        std::unordered_map<unsigned int, bool> _keyMapTwo;
+        std::vector<InputData> _keyVec;
 
-        bool keyMapIsOne = true;
+        std::vector<InputData> lastKnown;
+
+        bool keyVecIsOne = true;
     };
 } // end of Canis namespace
