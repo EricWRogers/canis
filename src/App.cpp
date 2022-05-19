@@ -101,7 +101,7 @@ void App::Load()
 	glEnable(GL_DEPTH_TEST);
 	glEnable(GL_ALPHA);
 	// build and compile our shader program
-	shader.Compile("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
+	shader.Compile("assets/shaders/sts.block.vs", "assets/shaders/sts.block.fs");
 	shader.AddAttribute("aPos");
 	shader.AddAttribute("aNormal");
 	shader.AddAttribute("aTexcoords");
@@ -322,6 +322,62 @@ void App::Load()
 	);
 	entity_registry.emplace<TextComponent>(entity2,
 		new std::string("Gold : 0") // text
+	);
+
+	const auto entity3 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity3,
+		true, // active
+		glm::vec2(25.0f, 120.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		0.5f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity3,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity3,
+		new std::string("[1] $100 Root Tower") // text
+	);
+
+	const auto entity4 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity4,
+		true, // active
+		glm::vec2(25.0f, 90.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		0.5f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity4,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity4,
+		new std::string("[2] $150 Fire Tower") // text
+	);
+
+	const auto entity5 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity5,
+		true, // active
+		glm::vec2(25.0f, 60.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		0.5f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity5,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity5,
+		new std::string("[3] $175 Ice Tower") // text
+	);
+
+	const auto entity6 = entity_registry.create();
+	entity_registry.emplace<RectTransformComponent>(entity6,
+		true, // active
+		glm::vec2(25.0f, 30.0f), // position
+		glm::vec2(0.0f, 0.0f), // rotation
+		0.5f // scale
+	);
+	entity_registry.emplace<ColorComponent>(entity6,
+		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
+	);
+	entity_registry.emplace<TextComponent>(entity6,
+		new std::string("[4] $200 Gold Mine") // text
 	);
 
 	renderCubeSystem.VAO = VAO;

@@ -25,7 +25,7 @@ public:
 	{
 		// activate shader
 		shader->Use();
-		shader->SetVec3("viewPos", camera->Position);
+		/*shader->SetVec3("viewPos", camera->Position);
 		shader->SetInt("numDirLights", 1);
 		shader->SetInt("numPointLights", 0);
 		shader->SetInt("numSpotLights", 0);
@@ -53,7 +53,7 @@ public:
     	shader->SetFloat("spotLight.linear", 0.09f);
     	shader->SetFloat("spotLight.quadratic", 0.032f);
     	shader->SetFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
-    	shader->SetFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f))); 
+    	shader->SetFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f))); */
 
 		// create transformations
 		glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
@@ -75,9 +75,9 @@ public:
 			if(transform.active == true)
 			{
 				// material properties
-				shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
-				shader->SetVec3("material.diffuse", color.color);
-				shader->SetFloat("material.shininess", 32.0f);
+				//shader->SetVec3("material.ambient", 1.0f, 0.5f, 0.31f);
+				//shader->SetVec3("material.diffuse", color.color);
+				//shader->SetFloat("material.shininess", 32.0f);
 
 				glm::mat4 model = glm::mat4(1.0f);
 				model = glm::translate(model, transform.position);
@@ -86,7 +86,7 @@ public:
 				model = glm::rotate(model, transform.rotation.z, glm::vec3(0,0,1));
 				model = glm::scale(model, transform.scale);
 				shader->SetMat4("model", model);
-				//shader->SetVec4("fColor", color->color);
+				shader->SetVec4("fColor", color.color);
 
 				glDrawArrays(GL_TRIANGLES, 0, 36);
 			}
