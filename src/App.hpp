@@ -17,6 +17,7 @@
 #include "Canis/InputManager.hpp"
 #include "Canis/Data/GLTexture.hpp"
 #include "Canis/External/entt.hpp"
+#include "Canis/GameHelper/AStar.hpp"
 
 #include "Canis/ECS/Systems/RenderCubeSystem.hpp"
 #include "Canis/ECS/Systems/RenderTextSystem.hpp"
@@ -36,6 +37,7 @@
 #include "Game/ECS/Systems/FireBallSystem.hpp"
 #include "Game/ECS/Systems/IceTowerSystem.hpp"
 #include "Game/ECS/Systems/SlimeFreezeSystem.hpp"
+#include "Game/ECS/Systems/PlacementToolSystem.hpp"
 
 #include "Game/ECS/Components/CastleComponent.hpp"
 #include "Game/ECS/Components/PortalComponent.hpp"
@@ -47,10 +49,12 @@
 #include "Game/ECS/Components/FireTowerComponent.hpp"
 #include "Game/ECS/Components/FireBallComponent.hpp"
 #include "Game/ECS/Components/IceTowerComponent.hpp"
+#include "Game/ECS/Components/PlacementToolComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"
 #include "Game/Scripts/Wallet.hpp"
+#include "Game/Scripts/HUDManager.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;
@@ -114,7 +118,10 @@ private:
     high_resolution_clock::time_point previousTime;
     double deltaTime;
 
+    HUDManager hudManager;
     Wallet wallet;
     ScoreSystem scoreSystem;
+
+    Canis::AStar aStar;
     
 };

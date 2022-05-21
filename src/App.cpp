@@ -59,6 +59,7 @@ FireBallSystem fireBallSystem;
 FireTowerSystem fireTowerSystem;
 IceTowerSystem iceTowerSystem;
 SlimeFreezeSystem slimeFreezeSystem;
+PlacementToolSystem placementToolSystem;
 
 
 
@@ -282,103 +283,10 @@ void App::Load()
 		}
 	}
 
-	const auto entity = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity,
-		true, // active
-		glm::vec2(25.0f, window.GetScreenHeight() - 65.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		1.0f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity,
-		new std::string("Health : 0") // text
-	);
-
-	const auto entity1 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity1,
-		true, // active
-		glm::vec2(25.0f, window.GetScreenHeight() - 130.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		1.0f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity1,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity1,
-		new std::string("Score : 0") // text
-	);
-
-	const auto entity2 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity2,
-		true, // active
-		glm::vec2(25.0f, window.GetScreenHeight() - 195.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		1.0f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity2,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity2,
-		new std::string("Gold : 0") // text
-	);
-
-	const auto entity3 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity3,
-		true, // active
-		glm::vec2(25.0f, 120.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		0.5f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity3,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity3,
-		new std::string("[1] $100 Root Tower") // text
-	);
-
-	const auto entity4 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity4,
-		true, // active
-		glm::vec2(25.0f, 90.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		0.5f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity4,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity4,
-		new std::string("[2] $150 Fire Tower") // text
-	);
-
-	const auto entity5 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity5,
-		true, // active
-		glm::vec2(25.0f, 60.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		0.5f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity5,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity5,
-		new std::string("[3] $175 Ice Tower") // text
-	);
-
-	const auto entity6 = entity_registry.create();
-	entity_registry.emplace<RectTransformComponent>(entity6,
-		true, // active
-		glm::vec2(25.0f, 30.0f), // position
-		glm::vec2(0.0f, 0.0f), // rotation
-		0.5f // scale
-	);
-	entity_registry.emplace<ColorComponent>(entity6,
-		glm::vec4(0.0f, 0.0f, 0.0f, 1.0f) // #26854c
-	);
-	entity_registry.emplace<TextComponent>(entity6,
-		new std::string("[4] $200 Gold Mine") // text
-	);
+	hudManager.inputManager = &inputManager;
+	hudManager.window = &window;
+	hudManager.wallet = &wallet;
+	hudManager.Load(entity_registry);
 
 	renderCubeSystem.VAO = VAO;
 	renderCubeSystem.shader = &shader;
@@ -390,15 +298,15 @@ void App::Load()
 	renderTextSystem.window = &window;
 
 	castleSystem.refRegistry = &entity_registry;
-	castleSystem.healthText = entity;
+	castleSystem.healthText = hudManager.healthText;
 	castleSystem.Init();
 
 	wallet.refRegistry = &entity_registry;
-	wallet.walletText = entity2;
+	wallet.walletText = hudManager.walletText;
 	wallet.SetCash(200);
 
 	scoreSystem.refRegistry = &entity_registry;
-	scoreSystem.scoreText = entity1;
+	scoreSystem.scoreText = hudManager.scoreText;
 
 	portalSystem.refRegistry = &entity_registry;
 
@@ -411,6 +319,12 @@ void App::Load()
 	moveSlimeSystem.wallet = &wallet;
 	moveSlimeSystem.scoreSystem = &scoreSystem;
 	moveSlimeSystem.portalSystem = &portalSystem;
+	moveSlimeSystem.aStar = &aStar;
+	moveSlimeSystem.Init();
+
+	placementToolSystem.inputManager = &inputManager;
+	placementToolSystem.aStar = &aStar;
+	placementToolSystem.wallet = &wallet;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -450,6 +364,12 @@ void App::Update()
 	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	iceTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	slimeFreezeSystem.UpdateComponents(deltaTime, entity_registry);
+
+	if (!mouseLock)
+	{
+		hudManager.Update(deltaTime, entity_registry);
+		placementToolSystem.UpdateComponents(deltaTime, entity_registry);
+	}
 }
 void App::Draw()
 {
@@ -461,22 +381,22 @@ void App::Draw()
 void App::LateUpdate() {}
 void App::FixedUpdate(float dt)
 {
-	if (inputManager.isKeyPressed(SDLK_w))
+	if (inputManager.isKeyPressed(SDLK_w) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_s))
+	if (inputManager.isKeyPressed(SDLK_s) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_a))
+	if (inputManager.isKeyPressed(SDLK_a) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_d))
+	if (inputManager.isKeyPressed(SDLK_d) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
 	}

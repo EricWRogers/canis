@@ -43,7 +43,7 @@ namespace Canis
 
     bool InputManager::isKeyPressed(unsigned int keyID)
     {
-        return isKeyUpInVec(&_keyVec, keyID);
+        return isKeyDownInVec(&_keyVec, keyID);
     }
 
     bool InputManager::justPressedKey(unsigned int keyID)
