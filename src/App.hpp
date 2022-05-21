@@ -9,6 +9,7 @@
 
 #include "Canis/Canis.hpp"
 #include "Canis/Debug.hpp"
+#include "Canis/Math.hpp"
 #include "Canis/Time.hpp"
 #include "Canis/Window.hpp"
 #include "Canis/Shader.hpp"
@@ -50,6 +51,7 @@
 #include "Game/ECS/Components/FireBallComponent.hpp"
 #include "Game/ECS/Components/IceTowerComponent.hpp"
 #include "Game/ECS/Components/PlacementToolComponent.hpp"
+#include "Game/ECS/Components/BlockComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"
@@ -120,6 +122,5 @@ private:
     Wallet wallet;
     ScoreSystem scoreSystem;
 
-    Canis::AStar aStar;
-    
+    Canis::AStar aStar;    
 };

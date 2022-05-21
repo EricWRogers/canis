@@ -1,4 +1,5 @@
 #pragma once
+#include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
 
@@ -22,6 +23,8 @@ namespace Canis
         bool isKeyPressed(unsigned int keyID);
         bool justPressedKey(unsigned int keyID);
         bool justReleasedKey(unsigned int keyID);
+
+        glm::vec2 mouse = glm::vec2(0,0);
     private:
         bool isKeyUpInVec(std::vector<InputData> *arr, unsigned int key);
         bool isKeyDownInVec(std::vector<InputData> *arr, unsigned int value);

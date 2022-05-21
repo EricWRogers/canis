@@ -8,16 +8,27 @@
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../../Canis/ECS/Components/ColorComponent.hpp"
 
+#include "../Components/BlockComponent.hpp"
+
 #include "../../Scripts/TileMap.hpp"
 #include "../../Scripts/Wallet.hpp"
 
 #include "../Components/PlacementToolComponent.hpp"
 
+enum ControllerMode {
+	KEYBOARD,
+	MOUSE,
+	GAMEPAD
+};
+
 class PlacementToolSystem
 {
 public:
+	Canis::Camera *camera;
+	Canis::Window *window;
     Canis::InputManager *inputManager;
     Canis::AStar *aStar;
+	ControllerMode controllerMode = ControllerMode::MOUSE;
 
     float RoundUpFloat(float number)
     {
@@ -193,18 +204,48 @@ public:
                 color.color = glm::vec4(1.0f, 0.0f, 0.0f, 1.0f);
             }
 
-            glm::vec3 moveDirection = glm::vec3( 0.0f, 0.0f, 0.0f);
+			switch(controllerMode)
+			{
+				case ControllerMode::MOUSE:
+				{
+					auto block_view = registry.view<TransformComponent, BlockComponent>();
 
-            if (inputManager->isKeyPressed(SDLK_w))
-                moveDirection += glm::vec3( 1.0f, 0.0f, 0.0f);
-            if (inputManager->isKeyPressed(SDLK_a))
-                moveDirection += glm::vec3( 0.0f, 0.0f, -1.0f);
-            if (inputManager->isKeyPressed(SDLK_s))
-                moveDirection += glm::vec3( -1.0f, 0.0f, 0.0f);
-            if (inputManager->isKeyPressed(SDLK_d))
-                moveDirection += glm::vec3( 0.0f, 0.0f, 1.0f);
-            
-            transform.position += moveDirection;
+					Canis::Ray ray = Canis::RayFromMouse((*camera), (*window), (*inputManager));
+
+					for(auto [block_entity, block_transform, block] : block_view.each())
+					{
+						if (Canis::HitSphere(block_transform.position, 0.5f, ray))//camera.Front))
+						{
+							transform.position = glm::vec3(
+								block_transform.position.x,
+								transform.position.y,
+								block_transform.position.z
+							);
+						}
+					}
+					break;
+				}
+				case ControllerMode::KEYBOARD:
+				{
+					glm::vec3 moveDirection = glm::vec3( 0.0f, 0.0f, 0.0f);
+
+					if (inputManager->isKeyPressed(SDLK_w))
+						moveDirection += glm::vec3( 1.0f, 0.0f, 0.0f);
+					if (inputManager->isKeyPressed(SDLK_a))
+						moveDirection += glm::vec3( 0.0f, 0.0f, -1.0f);
+					if (inputManager->isKeyPressed(SDLK_s))
+						moveDirection += glm::vec3( -1.0f, 0.0f, 0.0f);
+					if (inputManager->isKeyPressed(SDLK_d))
+						moveDirection += glm::vec3( 0.0f, 0.0f, 1.0f);
+					
+					transform.position += moveDirection;
+					break;
+				}
+				case ControllerMode::GAMEPAD:
+				{
+					break;
+				}
+			}
 
             if (inputManager->justPressedKey(SDLK_RETURN) && canPlace)
             {

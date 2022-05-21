@@ -71,6 +71,7 @@ App::~App()
 {
 	Canis::Log("Object Destroyed");
 }
+
 void App::Run()
 {
 	if (appState == AppState::ON)
@@ -164,6 +165,9 @@ void App::Load()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::GRASS
+					);
 					break;
 				case DIRT:
 					entity_registry.emplace<TransformComponent>(entity,
@@ -174,6 +178,9 @@ void App::Load()
 					);
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
+					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::DIRT
 					);
 					break;
 				case PORTAL:
@@ -429,6 +436,8 @@ void App::Load()
 	moveSlimeSystem.aStar = &aStar;
 	moveSlimeSystem.Init();
 
+	placementToolSystem.camera = &camera;
+	placementToolSystem.window = &window;
 	placementToolSystem.inputManager = &inputManager;
 	placementToolSystem.aStar = &aStar;
 
@@ -528,6 +537,11 @@ void App::InputUpdate()
 				camera.ProcessMouseMovement(
 					event.motion.xrel,
 					-event.motion.yrel);
+			}
+			else
+			{
+				inputManager.mouse.x = event.motion.x;
+				inputManager.mouse.y = event.motion.y;
 			}
 			break;
 		case SDL_KEYUP:
