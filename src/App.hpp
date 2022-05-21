@@ -51,11 +51,11 @@
 #include "Game/ECS/Components/FireBallComponent.hpp"
 #include "Game/ECS/Components/IceTowerComponent.hpp"
 #include "Game/ECS/Components/PlacementToolComponent.hpp"
-#include "Game/ECS/Components/BlockComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"
 #include "Game/Scripts/Wallet.hpp"
+#include "Game/Scripts/HUDManager.hpp"
 
 #ifdef __linux__
 using namespace std::chrono::_V2;
@@ -119,8 +119,10 @@ private:
     high_resolution_clock::time_point previousTime;
     double deltaTime;
 
+    HUDManager hudManager;
     Wallet wallet;
     ScoreSystem scoreSystem;
 
-    Canis::AStar aStar;    
+    Canis::AStar aStar;
+    
 };

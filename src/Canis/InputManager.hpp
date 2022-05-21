@@ -25,6 +25,8 @@ namespace Canis
         bool justReleasedKey(unsigned int keyID);
 
         glm::vec2 mouse = glm::vec2(0,0);
+        bool leftClick = false;
+        bool rightClick = false;
     private:
         bool isKeyUpInVec(std::vector<InputData> *arr, unsigned int key);
         bool isKeyDownInVec(std::vector<InputData> *arr, unsigned int value);

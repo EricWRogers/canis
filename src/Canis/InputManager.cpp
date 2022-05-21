@@ -24,6 +24,9 @@ namespace Canis
 
     void InputManager::swapMaps()
     {
+        leftClick = false;
+        rightClick = false;
+
         int index;
         for (int i = 0; i < _keyVec.size(); i++)
         {

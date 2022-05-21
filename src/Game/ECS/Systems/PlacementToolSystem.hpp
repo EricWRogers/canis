@@ -28,6 +28,7 @@ public:
 	Canis::Window *window;
     Canis::InputManager *inputManager;
     Canis::AStar *aStar;
+	Wallet *wallet;
 	ControllerMode controllerMode = ControllerMode::MOUSE;
 
     float RoundUpFloat(float number)
@@ -194,6 +195,7 @@ public:
         for(auto [entity, transform, color, tool] : view.each())
 		{
             bool canPlace = UpdateCanPlace(transform);
+			bool tryPlace = false;
 
             if (canPlace)
             {
@@ -208,6 +210,8 @@ public:
 			{
 				case ControllerMode::MOUSE:
 				{
+					tryPlace = inputManager->leftClick;
+
 					auto block_view = registry.view<TransformComponent, BlockComponent>();
 
 					Canis::Ray ray = Canis::RayFromMouse((*camera), (*window), (*inputManager));
@@ -227,6 +231,8 @@ public:
 				}
 				case ControllerMode::KEYBOARD:
 				{
+					tryPlace = inputManager->justPressedKey(SDLK_RETURN);
+
 					glm::vec3 moveDirection = glm::vec3( 0.0f, 0.0f, 0.0f);
 
 					if (inputManager->isKeyPressed(SDLK_w))
@@ -247,11 +253,31 @@ public:
 				}
 			}
 
-            if (inputManager->justPressedKey(SDLK_RETURN) && canPlace)
+            if (tryPlace && canPlace)
             {
                 PlaceTower(registry, transform, tool.blockType);
+
+				switch (tool.blockType)
+				{
+					case SPIKETOWER:
+						wallet->Pay(100);
+						break;
+					case GEMMINETOWER:
+						wallet->Pay(200);
+						break;
+					case FIRETOWER:
+						wallet->Pay(150);
+						break;
+					case ICETOWER:
+						wallet->Pay(175);
+						break;
+					default:
+						break;
+				}
+
                 registry.destroy(entity);
             }
         }
     }
 };
+				
