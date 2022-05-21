@@ -26,7 +26,7 @@
 class MoveSlimeSystem
 {
 public:
-	Canis::AStar aStar;
+	Canis::AStar *aStar;
 	Wallet *wallet;
 	ScoreSystem *scoreSystem;
 	PortalSystem *portalSystem;
@@ -48,7 +48,7 @@ public:
 		glm::vec3(6.0f, 1.0f, 6.0f),
 		glm::vec3(6.0f, 1.0f, 7.0f)};
 
-	MoveSlimeSystem()
+	void Init()
 	{
 		glm::vec3 portalPosition;
 		glm::vec3 castlePosition;
@@ -60,7 +60,7 @@ public:
 				for (int z = 0; z < 30; z++)
 				{
 					if (titleMap[y][z][x] == BlockTypes::DIRT)
-						aStar.AddPoint(glm::vec3(x,y,z));
+						aStar->AddPoint(glm::vec3(x,y,z));
 
 					if (titleMap[y][z][x] == BlockTypes::CASTLE)
 						castlePosition = glm::vec3(x,0.0f,z);
@@ -81,22 +81,22 @@ public:
 				{
 					//for (int yOffset = -1; yOffset < 2; yOffset++) // this will just get the first layer
 					//{
-					if (aStar.ValidPoint( glm::vec3(x, y, z)))
+					if (aStar->ValidPoint( glm::vec3(x, y, z)))
 					{
 						for (int xOffset = -1; xOffset < 2; xOffset++)
 						{
 							for (int zOffset = -1; zOffset < 2; zOffset++)
 							{
-								if (aStar.ValidPoint( glm::vec3(x + xOffset, y, z + zOffset)))
+								if (aStar->ValidPoint( glm::vec3(x + xOffset, y, z + zOffset)))
 								{
 									if (glm::vec3(x + xOffset, y, z + zOffset) == glm::vec3(0.0f, 0.0f, 0.0f))
 										continue;
 									
 									if (xOffset == 0.0f || zOffset == 0.0f)
 									{
-										aStar.ConnectPoints(
-											aStar.GetPointByPosition(glm::vec3(x + xOffset, y, z + zOffset)),
-											aStar.GetPointByPosition(glm::vec3(x, y, z))
+										aStar->ConnectPoints(
+											aStar->GetPointByPosition(glm::vec3(x + xOffset, y, z + zOffset)),
+											aStar->GetPointByPosition(glm::vec3(x, y, z))
 										);
 									}
 								}
@@ -108,11 +108,11 @@ public:
 			}
 		}
 
-		if (aStar.ValidPoint(portalPosition) && aStar.ValidPoint(castlePosition))
+		if (aStar->ValidPoint(portalPosition) && aStar->ValidPoint(castlePosition))
 		{
-			slimePath = aStar.GetPath(
-				aStar.GetPointByPosition(portalPosition),
-				aStar.GetPointByPosition(castlePosition)
+			slimePath = aStar->GetPath(
+				aStar->GetPointByPosition(portalPosition),
+				aStar->GetPointByPosition(castlePosition)
 			);
 		}
 

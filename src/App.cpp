@@ -59,6 +59,7 @@ FireBallSystem fireBallSystem;
 FireTowerSystem fireTowerSystem;
 IceTowerSystem iceTowerSystem;
 SlimeFreezeSystem slimeFreezeSystem;
+PlacementToolSystem placementToolSystem;
 
 
 
@@ -380,6 +381,20 @@ void App::Load()
 		new std::string("[4] $200 Gold Mine") // text
 	);
 
+	const auto entityPlacementTool = entity_registry.create();
+	entity_registry.emplace<TransformComponent>(entityPlacementTool,
+		true, // active
+		glm::vec3(11.0f, 0.5f, 16.0f), // position
+		glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+		glm::vec3(1.0f, 1.0f, 1.0f) // scale
+	);
+	entity_registry.emplace<ColorComponent>(entityPlacementTool,
+		glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)    // color #c82fb5e9
+	);
+	entity_registry.emplace<PlacementToolComponent>(entityPlacementTool,
+		BlockTypes::FIRETOWER // blockType
+	);
+
 	renderCubeSystem.VAO = VAO;
 	renderCubeSystem.shader = &shader;
 	renderCubeSystem.camera = &camera;
@@ -411,6 +426,11 @@ void App::Load()
 	moveSlimeSystem.wallet = &wallet;
 	moveSlimeSystem.scoreSystem = &scoreSystem;
 	moveSlimeSystem.portalSystem = &portalSystem;
+	moveSlimeSystem.aStar = &aStar;
+	moveSlimeSystem.Init();
+
+	placementToolSystem.inputManager = &inputManager;
+	placementToolSystem.aStar = &aStar;
 
 	// start timer
 	previousTime = high_resolution_clock::now();
@@ -450,6 +470,8 @@ void App::Update()
 	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	iceTowerSystem.UpdateComponents(deltaTime, entity_registry);
 	slimeFreezeSystem.UpdateComponents(deltaTime, entity_registry);
+	if (!mouseLock)
+		placementToolSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::Draw()
 {
@@ -461,22 +483,22 @@ void App::Draw()
 void App::LateUpdate() {}
 void App::FixedUpdate(float dt)
 {
-	if (inputManager.isKeyPressed(SDLK_w))
+	if (inputManager.isKeyPressed(SDLK_w) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_s))
+	if (inputManager.isKeyPressed(SDLK_s) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_a))
+	if (inputManager.isKeyPressed(SDLK_a) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, dt);
 	}
 
-	if (inputManager.isKeyPressed(SDLK_d))
+	if (inputManager.isKeyPressed(SDLK_d) && mouseLock)
 	{
 		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
 	}
