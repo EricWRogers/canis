@@ -7,6 +7,7 @@
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../../Canis/ECS/Components/ColorComponent.hpp"
+#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
 
 #include "../Components/BlockComponent.hpp"
 
@@ -14,6 +15,7 @@
 #include "../../Scripts/Wallet.hpp"
 
 #include "../Components/PlacementToolComponent.hpp"
+#include "../Components/TowerMeshComponent.hpp"
 
 enum ControllerMode {
 	KEYBOARD,
@@ -30,6 +32,11 @@ public:
     Canis::AStar *aStar;
 	Wallet *wallet;
 	ControllerMode controllerMode = ControllerMode::MOUSE;
+
+	unsigned int fireTowerVAO;
+	unsigned int spikeTowerVAO;
+	unsigned int goldTowerVAO;
+	unsigned int iceTowerVAO;
 
     float RoundUpFloat(float number)
     {
@@ -71,6 +78,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
+					registry.emplace<CubeMeshComponent>(entity,
+						0u
+					);
 					break;
 				case DIRT:
 					registry.emplace<TransformComponent>(entity,
@@ -82,6 +92,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
 					);
+					registry.emplace<CubeMeshComponent>(entity,
+						0u
+					);
 					break;
 				case PORTAL:
 					registry.emplace<TransformComponent>(entity,
@@ -92,6 +105,9 @@ public:
 					);
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
+					);
+					registry.emplace<CubeMeshComponent>(entity,
+						0u
 					);
 					registry.emplace<PortalComponent>(entity,
 						2.0f,
@@ -108,6 +124,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
 					);
+					registry.emplace<CubeMeshComponent>(entity,
+						0u
+					);
 					registry.emplace<CastleComponent>(entity,
 						20,
 						20
@@ -116,12 +135,15 @@ public:
 				case SPIKETOWER:
 					registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+					);
+					registry.emplace<TowerMeshComponent>(entity,
+						spikeTowerVAO
 					);
 					registry.emplace<SpikeTowerComponent>(entity,
 						false, // setup
@@ -133,12 +155,15 @@ public:
 				case GEMMINETOWER:
 					registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
+					);
+					registry.emplace<TowerMeshComponent>(entity,
+						goldTowerVAO
 					);
 					registry.emplace<GemMineTowerComponent>(entity,
 						20, // gems
@@ -149,12 +174,15 @@ public:
 				case FIRETOWER:
 					registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
+					);
+					registry.emplace<TowerMeshComponent>(entity,
+						fireTowerVAO
 					);
 					registry.emplace<FireTowerComponent>(entity,
 						1, // damage
@@ -167,12 +195,15 @@ public:
 				case ICETOWER:
 					registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
+					);
+					registry.emplace<TowerMeshComponent>(entity,
+						iceTowerVAO
 					);
 					registry.emplace<IceTowerComponent>(entity,
 						1, // maxSlimesToFreeze

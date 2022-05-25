@@ -11,6 +11,7 @@
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../../Canis/ECS/Components/ColorComponent.hpp"
+#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
 
 #include "../Components/FireBallComponent.hpp"
 #include "../Components/FireTowerComponent.hpp"
@@ -146,6 +147,9 @@ public:
                     registry.emplace<ColorComponent>(entity,
                         glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
                     );
+                    registry.emplace<CubeMeshComponent>(entity,
+						0u
+					);
                     registry.emplace<FireBallComponent>(entity,
                         tower.damage,
                         tower.fireBallSpeed

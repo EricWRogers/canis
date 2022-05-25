@@ -4,6 +4,7 @@
 #include "../../../Canis/External/entt.hpp"
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
 
 #include "../Components/PortalComponent.hpp"
 #include "../Components/HealthComponent.hpp"
@@ -133,6 +134,9 @@ public:
 				);
 				refRegistry->emplace<ColorComponent>(entity,
 					slimeInfo.color
+				);
+				refRegistry->emplace<CubeMeshComponent>(entity,
+					0u
 				);
 				refRegistry->emplace<HealthComponent>(entity,
 					slimeInfo.health,// health

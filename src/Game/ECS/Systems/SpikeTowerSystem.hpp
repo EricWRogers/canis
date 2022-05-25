@@ -9,6 +9,7 @@
 #include "../../../Canis/External/entt.hpp"
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
+#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
 
 #include "../Components/SpikeComponent.hpp"
 #include "../Components/HealthComponent.hpp"
@@ -82,6 +83,9 @@ public:
                             );
                             refRegistry->emplace<ColorComponent>(entity,
                                 glm::vec4(0.337f, 0.258f, 0.082f, 1.0f) // #564215
+                            );
+                            refRegistry->emplace<CubeMeshComponent>(entity,
+                                0u
                             );
                             refRegistry->emplace<HealthComponent>(entity,
                                 0,

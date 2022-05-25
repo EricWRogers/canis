@@ -10,6 +10,7 @@
 
 #include "../Components/TransformComponent.hpp"
 #include "../Components/ColorComponent.hpp"
+#include "../Components/CubeMeshComponent.hpp"
 
 class RenderCubeSystem
 {
@@ -68,9 +69,9 @@ public:
 		// render boxes
 		glBindVertexArray(VAO);
 
-		auto view = registry.view<const TransformComponent, ColorComponent>();
+		auto view = registry.view<const TransformComponent, ColorComponent, CubeMeshComponent>();
 
-		for(auto [entity, transform, color]: view.each())
+		for(auto [entity, transform, color, cube]: view.each())
 		{
 			if(transform.active == true)
 			{

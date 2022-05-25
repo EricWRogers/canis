@@ -7,6 +7,7 @@
 #include "../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../Canis/ECS/Components/RectTransformComponent.hpp"
 #include "../../Canis/ECS/Components/ColorComponent.hpp"
+#include "../../Canis/ECS/Components/CubeMeshComponent.hpp"
 
 #include "TileMap.hpp"
 #include "Wallet.hpp"
@@ -43,6 +44,9 @@ public:
         );
         registry.emplace<ColorComponent>(entityPlacementTool,
             glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)    // color #c82fb5e9
+        );
+        registry.emplace<CubeMeshComponent>(entityPlacementTool,
+            0u
         );
         registry.emplace<PlacementToolComponent>(entityPlacementTool,
             blockType // blockType
