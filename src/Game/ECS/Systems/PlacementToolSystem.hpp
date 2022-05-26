@@ -71,6 +71,7 @@ public:
         int x = roundf(transform.position.x);
         int y = RoundUpFloat(transform.position.y);
         int z = roundf(transform.position.z);
+		titleMap[y][(int)transform.position.z][(int)transform.position.x] = blockType;
         const auto entity = registry.create();
 				switch (blockType) // this looks bad
 				{
