@@ -30,7 +30,7 @@ public:
 
                 if (spike_health.health > 0)
                 {
-                    if (distance < 0.5f)
+                    if (distance < 0.75f)
                     {
                         if (slime_health.health >= spike_health.health)
                         {

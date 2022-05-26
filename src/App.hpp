@@ -21,14 +21,14 @@
 #include "Canis/External/entt.hpp"
 #include "Canis/GameHelper/AStar.hpp"
 
-#include "Canis/ECS/Systems/RenderCubeSystem.hpp"
+#include "Canis/ECS/Systems/RenderMeshSystem.hpp"
 #include "Canis/ECS/Systems/RenderTextSystem.hpp"
 
 #include "Canis/ECS/Components/TransformComponent.hpp"
 #include "Canis/ECS/Components/ColorComponent.hpp"
 #include "Canis/ECS/Components/RectTransformComponent.hpp"
 #include "Canis/ECS/Components/TextComponent.hpp"
-#include "Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "Canis/ECS/Components/MeshComponent.hpp"
 
 #include "Game/ECS/Systems/CastleSystem.hpp"
 #include "Game/ECS/Systems/MoveSlimeSystem.hpp"
@@ -41,7 +41,6 @@
 #include "Game/ECS/Systems/IceTowerSystem.hpp"
 #include "Game/ECS/Systems/SlimeFreezeSystem.hpp"
 #include "Game/ECS/Systems/PlacementToolSystem.hpp"
-#include "Game/ECS/Systems/RenderTowerSystem.hpp"
 
 #include "Game/ECS/Components/CastleComponent.hpp"
 #include "Game/ECS/Components/PortalComponent.hpp"
@@ -54,7 +53,6 @@
 #include "Game/ECS/Components/FireBallComponent.hpp"
 #include "Game/ECS/Components/IceTowerComponent.hpp"
 #include "Game/ECS/Components/PlacementToolComponent.hpp"
-#include "Game/ECS/Components/TowerMeshComponent.hpp"
 
 #include "Game/Scripts/TileMap.hpp"
 #include "Game/Scripts/ScoreSystem.hpp"
@@ -112,18 +110,36 @@ private:
     Canis::Camera camera = Canis::Camera(glm::vec3(0.907444f, 23.242630f, 18.476089f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW-17.499863f,Canis::PITCH-68.600151f);
 
     // move out to external class
-    unsigned int VBO, VAO, EBO, 
+    unsigned int VBO, VAO, EBO,
+        whiteCubeVAO, whiteCubeVBO,
         fireTowerVAO, fireTowerVBO,
         spikeTowerVAO, spikeTowerVBO,
         goldTowerVAO, goldTowerVBO,
         iceTowerVAO, iceTowerVBO,
+        fireCrystalVAO, fireCrystalVBO,
+        rootVAO, rootVBO,
+        treeGroupVAO, treeGroupVBO,
+        castleVAO, castleVBO,
+        portalVAO, portalVBO,
         vertexbuffer, normalbuffer,
         uvbuffer;
+
+    int whiteCubeSize,
+        fireTowerSize,
+        spikeTowerSize,
+        goldTowerSize,
+        iceTowerSize,
+        fireCrystalSize,
+        rootSize,
+        treeGroupSize,
+        castleSize,
+        portalSize;
 
     Canis::GLTexture texture1 = {};
     Canis::GLTexture texture2 = {};
 
-    Canis::GLTexture colorPaletteTexture = {};
+    Canis::GLTexture diffuseColorPaletteTexture = {};
+    Canis::GLTexture specularColorPaletteTexture = {};
 
     float lastXMousePos;
     float lastYMousePos;

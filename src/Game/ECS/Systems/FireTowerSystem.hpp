@@ -11,7 +11,7 @@
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../../Canis/ECS/Components/ColorComponent.hpp"
-#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "../../../Canis/ECS/Components/MeshComponent.hpp"
 
 #include "../Components/FireBallComponent.hpp"
 #include "../Components/FireTowerComponent.hpp"
@@ -20,6 +20,9 @@
 class FireTowerSystem
 {
 public:
+    unsigned int fireCrystalVAO;
+	int fireCrystalSize;
+
     glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest){
         start = glm::normalize(start);
         dest = glm::normalize(dest);
@@ -142,14 +145,15 @@ public:
                         true,                                    // active
                         pos, // position
                         rot,             // rotation
-                        glm::vec3(0.2f, 0.2f, 0.8f)              // scale
+                        glm::vec3(1.0f, 1.0f, 1.0f)              // scale
                     );
                     registry.emplace<ColorComponent>(entity,
                         glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
                     );
-                    registry.emplace<CubeMeshComponent>(entity,
-						0u
-					);
+                    registry.emplace<MeshComponent>(entity,
+                        fireCrystalVAO,
+                        fireCrystalSize
+                    );
                     registry.emplace<FireBallComponent>(entity,
                         tower.damage,
                         tower.fireBallSpeed

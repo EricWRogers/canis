@@ -1,6 +1,7 @@
 #pragma once
 
-struct TowerMeshComponent
+struct MeshComponent
 {
 	unsigned int vao;
+	int size;
 };

@@ -7,7 +7,7 @@
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../../Canis/ECS/Components/ColorComponent.hpp"
-#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "../../../Canis/ECS/Components/MeshComponent.hpp"
 
 #include "../Components/BlockComponent.hpp"
 
@@ -15,7 +15,6 @@
 #include "../../Scripts/Wallet.hpp"
 
 #include "../Components/PlacementToolComponent.hpp"
-#include "../Components/TowerMeshComponent.hpp"
 
 enum ControllerMode {
 	KEYBOARD,
@@ -37,6 +36,13 @@ public:
 	unsigned int spikeTowerVAO;
 	unsigned int goldTowerVAO;
 	unsigned int iceTowerVAO;
+	unsigned int whiteCubeVAO;
+
+	int whiteCubeSize,
+        fireTowerSize,
+        spikeTowerSize,
+        goldTowerSize,
+        iceTowerSize;
 
     float RoundUpFloat(float number)
     {
@@ -78,8 +84,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
-					registry.emplace<CubeMeshComponent>(entity,
-						0u
+					registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
 					);
 					break;
 				case DIRT:
@@ -92,8 +99,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
 					);
-					registry.emplace<CubeMeshComponent>(entity,
-						0u
+					registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
 					);
 					break;
 				case PORTAL:
@@ -106,8 +114,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
 					);
-					registry.emplace<CubeMeshComponent>(entity,
-						0u
+					registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
 					);
 					registry.emplace<PortalComponent>(entity,
 						2.0f,
@@ -124,8 +133,9 @@ public:
 					registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
 					);
-					registry.emplace<CubeMeshComponent>(entity,
-						0u
+					registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
 					);
 					registry.emplace<CastleComponent>(entity,
 						20,
@@ -140,10 +150,11 @@ public:
 						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
 					);
-					registry.emplace<TowerMeshComponent>(entity,
-						spikeTowerVAO
+					registry.emplace<MeshComponent>(entity,
+						spikeTowerVAO,
+						spikeTowerSize
 					);
 					registry.emplace<SpikeTowerComponent>(entity,
 						false, // setup
@@ -160,10 +171,11 @@ public:
 						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
 					);
-					registry.emplace<TowerMeshComponent>(entity,
-						goldTowerVAO
+					registry.emplace<MeshComponent>(entity,
+						goldTowerVAO,
+						goldTowerSize
 					);
 					registry.emplace<GemMineTowerComponent>(entity,
 						20, // gems
@@ -179,10 +191,11 @@ public:
 						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
 					);
-					registry.emplace<TowerMeshComponent>(entity,
-						fireTowerVAO
+					registry.emplace<MeshComponent>(entity,
+						fireTowerVAO,
+						fireTowerSize
 					);
 					registry.emplace<FireTowerComponent>(entity,
 						1, // damage
@@ -200,10 +213,11 @@ public:
 						glm::vec3(1.0f, 1.0f, 1.0f) // scale
 					);
 					registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f)
 					);
-					registry.emplace<TowerMeshComponent>(entity,
-						iceTowerVAO
+					registry.emplace<MeshComponent>(entity,
+						iceTowerVAO,
+						iceTowerSize
 					);
 					registry.emplace<IceTowerComponent>(entity,
 						1, // maxSlimesToFreeze

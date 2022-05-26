@@ -43,7 +43,7 @@ public:
 			{
 				float distance = glm::length(castle_transform.position - slime_transform.position);
 
-				if (distance < 0.5f)
+				if (distance < 0.75f)
 				{
 					// set slime health to zero it will destroy itself
 					slimeHealth.health = 0;

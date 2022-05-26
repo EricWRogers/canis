@@ -4,7 +4,7 @@
 #include "../../../Canis/External/entt.hpp"
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
-#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "../../../Canis/ECS/Components/MeshComponent.hpp"
 
 #include "../Components/PortalComponent.hpp"
 #include "../Components/HealthComponent.hpp"
@@ -21,6 +21,9 @@ private:
 
 public:
 	entt::registry *refRegistry;
+
+	unsigned int whiteCubeVAO;
+	int whiteCubeSize;
 
 	void SlimeKilled()
 	{
@@ -128,15 +131,16 @@ public:
 
 				refRegistry->emplace<TransformComponent>(entity,
 					true, // active
-					transform.position, // position
+					glm::vec3(transform.position.x, transform.position.y + slimeInfo.heightOffset, transform.position.z), // position
 					glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 					slimeInfo.size // scale
 				);
 				refRegistry->emplace<ColorComponent>(entity,
 					slimeInfo.color
 				);
-				refRegistry->emplace<CubeMeshComponent>(entity,
-					0u
+				refRegistry->emplace<MeshComponent>(entity,
+					whiteCubeVAO,
+					whiteCubeSize
 				);
 				refRegistry->emplace<HealthComponent>(entity,
 					slimeInfo.health,// health

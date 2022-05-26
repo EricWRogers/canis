@@ -7,7 +7,7 @@
 #include "../../Canis/ECS/Components/TransformComponent.hpp"
 #include "../../Canis/ECS/Components/RectTransformComponent.hpp"
 #include "../../Canis/ECS/Components/ColorComponent.hpp"
-#include "../../Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "../../Canis/ECS/Components/MeshComponent.hpp"
 
 #include "TileMap.hpp"
 #include "Wallet.hpp"
@@ -33,6 +33,9 @@ public:
     entt::entity iceTowerText;
     entt::entity goldTowerText;
 
+    unsigned int whiteCubeVAO;
+	int whiteCubeSize;
+
     void SpawnPlacementTool(entt::registry &registry, BlockTypes blockType)
     {
         const auto entityPlacementTool = registry.create();
@@ -45,8 +48,9 @@ public:
         registry.emplace<ColorComponent>(entityPlacementTool,
             glm::vec4(1.0f, 0.0f, 0.0f, 1.0f)    // color #c82fb5e9
         );
-        registry.emplace<CubeMeshComponent>(entityPlacementTool,
-            0u
+        registry.emplace<MeshComponent>(entityPlacementTool,
+            whiteCubeVAO,
+            whiteCubeSize
         );
         registry.emplace<PlacementToolComponent>(entityPlacementTool,
             blockType // blockType

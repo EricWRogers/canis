@@ -9,7 +9,7 @@
 #include "../../../Canis/External/entt.hpp"
 
 #include "../../../Canis/ECS/Components/TransformComponent.hpp"
-#include "../../../Canis/ECS/Components/CubeMeshComponent.hpp"
+#include "../../../Canis/ECS/Components/MeshComponent.hpp"
 
 #include "../Components/SpikeComponent.hpp"
 #include "../Components/HealthComponent.hpp"
@@ -29,6 +29,9 @@ public:
     glm::vec3 DOWN = glm::vec3(0,0,-1);
     glm::vec3 LEFT = glm::vec3(-1,0,0);
     glm::vec3 RIGHT = glm::vec3(1,0,0);
+
+    unsigned int rootVAO;
+	int rootSize;
 
 	void UpdateComponents(float delta, entt::registry &registry)
 	{
@@ -77,15 +80,16 @@ public:
 
                             refRegistry->emplace<TransformComponent>(entity,
                                 false, // active
-                                glm::vec3((int)positionToCheck[i].x, (int)positionToCheck[i].y, (int)positionToCheck[i].z), // position
+                                glm::vec3((int)positionToCheck[i].x, 0.5f + (int)positionToCheck[i].y, (int)positionToCheck[i].z), // position
                                 glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-                                glm::vec3(0.2f, 0.2f, 0.2f) // scale
+                                glm::vec3(1.0f, 1.0f, 1.0f) // scale
                             );
                             refRegistry->emplace<ColorComponent>(entity,
                                 glm::vec4(0.337f, 0.258f, 0.082f, 1.0f) // #564215
                             );
-                            refRegistry->emplace<CubeMeshComponent>(entity,
-                                0u
+                            refRegistry->emplace<MeshComponent>(entity,
+                                rootVAO,
+                                rootSize
                             );
                             refRegistry->emplace<HealthComponent>(entity,
                                 0,

@@ -47,7 +47,7 @@ float vertices[] = {
 	-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
 };
 
-RenderCubeSystem renderCubeSystem;
+RenderMeshSystem renderMeshSystem;
 RenderTextSystem renderTextSystem;
 PortalSystem portalSystem;
 CastleSystem castleSystem;
@@ -60,7 +60,6 @@ FireTowerSystem fireTowerSystem;
 IceTowerSystem iceTowerSystem;
 SlimeFreezeSystem slimeFreezeSystem;
 PlacementToolSystem placementToolSystem;
-RenderTowerSystem renderTowerSystem;
 
 
 
@@ -111,10 +110,10 @@ void App::Load()
 	shader.AddAttribute("aTexcoords");
 	shader.Link();
 
-	towerShader.Compile("assets/shaders/tower.vs", "assets/shaders/tower.fs");
-	towerShader.AddAttribute("aPos");
-	towerShader.AddAttribute("aNormal");
-	towerShader.AddAttribute("aTexcoords");
+	towerShader.Compile("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
+	towerShader.AddAttribute("a_pos");
+	towerShader.AddAttribute("a_normal");
+	towerShader.AddAttribute("a_texcoords");
 	towerShader.Link();
 
 	// unsigned int VBO, VAO;
@@ -145,7 +144,8 @@ void App::Load()
 	glBindVertexArray(0);
 
 	// Load color palette
-	colorPaletteTexture = Canis::LoadPNGToGLTexture("assets/textures/gloss-finish-22-32x.png", GL_RGBA, GL_RGBA);
+	diffuseColorPaletteTexture = Canis::LoadPNGToGLTexture("assets/textures/palette/diffuse.png", GL_RGBA, GL_RGBA);
+	specularColorPaletteTexture = Canis::LoadPNGToGLTexture("assets/textures/palette/specular.png", GL_RGBA, GL_RGBA);
 
 	std::vector<glm::vec3> vertices;
 	std::vector<glm::vec2> uvs;
@@ -166,7 +166,7 @@ void App::Load()
 		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
 	}
 
-	renderTowerSystem.size = vecVertex.size();
+	fireTowerSize = vecVertex.size();
 	Canis::Log("s " + std::to_string(vecVertex.size()));
 
 	glGenVertexArrays(1, &fireTowerVAO);
@@ -198,7 +198,7 @@ void App::Load()
 	normals.clear();
 	vecVertex.clear();
 
-	res = Canis::LoadOBJ("assets/models/towers/gold_crystal_tower.obj", vertices, uvs, normals);
+	res = Canis::LoadOBJ("assets/models/towers/gem_mine_tower.obj", vertices, uvs, normals);
 
 	for(int i = 0; i < vertices.size(); i++)
 	{
@@ -211,7 +211,7 @@ void App::Load()
 		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
 	}
 
-	renderTowerSystem.size = vecVertex.size();
+	goldTowerSize = vecVertex.size();
 	Canis::Log("s " + std::to_string(vecVertex.size()));
 
 	glGenVertexArrays(1, &goldTowerVAO);
@@ -256,7 +256,7 @@ void App::Load()
 		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
 	}
 
-	renderTowerSystem.size = vecVertex.size();
+	iceTowerSize = vecVertex.size();
 	Canis::Log("s " + std::to_string(vecVertex.size()));
 
 	glGenVertexArrays(1, &iceTowerVAO);
@@ -288,7 +288,7 @@ void App::Load()
 	normals.clear();
 	vecVertex.clear();
 
-	res = Canis::LoadOBJ("assets/models/towers/spike_crystal_tower.obj", vertices, uvs, normals);
+	res = Canis::LoadOBJ("assets/models/towers/tree_tower.obj", vertices, uvs, normals);
 
 	for(int i = 0; i < vertices.size(); i++)
 	{
@@ -301,7 +301,7 @@ void App::Load()
 		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
 	}
 
-	renderTowerSystem.size = vecVertex.size();
+	spikeTowerSize = vecVertex.size();
 	Canis::Log("s " + std::to_string(vecVertex.size()));
 
 	glGenVertexArrays(1, &spikeTowerVAO);
@@ -327,6 +327,278 @@ void App::Load()
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/blocks/white_block.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	whiteCubeSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &whiteCubeVAO);
+	glGenBuffers(1, &whiteCubeVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(whiteCubeVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, whiteCubeVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/towers/root.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	rootSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &rootVAO);
+	glGenBuffers(1, &rootVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(rootVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, rootVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/towers/fire_crystal.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	fireCrystalSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &fireCrystalVAO);
+	glGenBuffers(1, &fireCrystalVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(fireCrystalVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, fireCrystalVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/tree_group.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	treeGroupSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &treeGroupVAO);
+	glGenBuffers(1, &treeGroupVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(treeGroupVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, treeGroupVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/castle.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	castleSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &castleVAO);
+	glGenBuffers(1, &castleVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(castleVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, castleVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/portal.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	portalSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &portalVAO);
+	glGenBuffers(1, &portalVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(portalVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, portalVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	glBindVertexArray(0);
+
+	
 
 	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
 
@@ -383,8 +655,7 @@ void App::Draw()
 	glDepthFunc(GL_LESS); 
 	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
 
-	renderCubeSystem.UpdateComponents(deltaTime, entity_registry);
-	renderTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	renderMeshSystem.UpdateComponents(deltaTime, entity_registry);
 	renderTextSystem.UpdateComponents(deltaTime, entity_registry);
 }
 void App::LateUpdate() {}
@@ -485,8 +756,9 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
-					entity_registry.emplace<CubeMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
 					);
 					entity_registry.emplace<BlockComponent>(entity,
 						BlockTypes::GRASS
@@ -502,8 +774,27 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
 					);
-					entity_registry.emplace<CubeMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
+					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::DIRT
+					);
+					break;
+				case TREEGROUP0:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y-0.5f, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #e8d282
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						treeGroupVAO,
+						treeGroupSize
 					);
 					entity_registry.emplace<BlockComponent>(entity,
 						BlockTypes::DIRT
@@ -512,15 +803,16 @@ void App::LoadECS()
 				case PORTAL:
 					entity_registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 						glm::vec3(1, 1, 1) // scale
 					);
 					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.21f, 0.77f, 0.96f, 1.0f) // #36c5f4
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #36c5f4
 					);
-					entity_registry.emplace<CubeMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						portalVAO,
+						portalSize
 					);
 					entity_registry.emplace<PortalComponent>(entity,
 						2.0f,
@@ -530,15 +822,16 @@ void App::LoadECS()
 				case CASTLE:
 					entity_registry.emplace<TransformComponent>(entity,
 						true, // active
-						glm::vec3(x, y, z), // position
+						glm::vec3(x, y-0.5f, z), // position
 						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1, 1, 1) // scale
+						glm::vec3(1.2f, 1.2f, 1.2f) // scale
 					);
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
 					);
-					entity_registry.emplace<CubeMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						castleVAO,
+						castleSize
 					);
 					entity_registry.emplace<CastleComponent>(entity,
 						20,
@@ -555,8 +848,9 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
-					entity_registry.emplace<TowerMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						spikeTowerVAO,
+						spikeTowerSize
 					);
 					entity_registry.emplace<SpikeTowerComponent>(entity,
 						false, // setup
@@ -575,8 +869,9 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
 					);
-					entity_registry.emplace<TowerMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						goldTowerVAO,
+						goldTowerSize
 					);
 					entity_registry.emplace<GemMineTowerComponent>(entity,
 						20, // gems
@@ -594,8 +889,9 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
 					);
-					entity_registry.emplace<TowerMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						fireTowerVAO,
+						fireTowerSize
 					);
 					entity_registry.emplace<FireTowerComponent>(entity,
 						1, // damage
@@ -615,8 +911,9 @@ void App::LoadECS()
 					entity_registry.emplace<ColorComponent>(entity,
 						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
 					);
-					entity_registry.emplace<TowerMeshComponent>(entity,
-						0u
+					entity_registry.emplace<MeshComponent>(entity,
+						iceTowerVAO,
+						iceTowerSize
 					);
 					entity_registry.emplace<IceTowerComponent>(entity,
 						1, // maxSlimesToFreeze
@@ -637,12 +934,9 @@ void App::LoadECS()
 	hudManager.inputManager = &inputManager;
 	hudManager.window = &window;
 	hudManager.wallet = &wallet;
+	hudManager.whiteCubeVAO = whiteCubeVAO;
+	hudManager.whiteCubeSize = whiteCubeSize;
 	hudManager.Load(entity_registry);
-
-	renderCubeSystem.VAO = VAO;
-	renderCubeSystem.shader = &shader;
-	renderCubeSystem.camera = &camera;
-	renderCubeSystem.window = &window;
 
 	renderTextSystem.Init();
 	renderTextSystem.camera = &camera;
@@ -660,10 +954,17 @@ void App::LoadECS()
 	scoreSystem.scoreText = hudManager.scoreText;
 
 	portalSystem.refRegistry = &entity_registry;
+	portalSystem.whiteCubeVAO = whiteCubeVAO;
+	portalSystem.whiteCubeSize = whiteCubeSize;
 
 	spikeSystem.refRegistry = &entity_registry;
 
 	spikeTowerSystem.refRegistry = &entity_registry;
+	spikeTowerSystem.rootVAO = rootVAO;
+	spikeTowerSystem.rootSize = rootSize;
+
+	fireTowerSystem.fireCrystalVAO = fireCrystalVAO;
+	fireTowerSystem.fireCrystalSize = fireCrystalSize;
 
 	gemMineTowerSystem.wallet = &wallet;
 
@@ -678,13 +979,20 @@ void App::LoadECS()
 	placementToolSystem.wallet = &wallet;
 	placementToolSystem.camera = &camera;
 	placementToolSystem.window = &window;
+	placementToolSystem.whiteCubeVAO = whiteCubeVAO;
 	placementToolSystem.fireTowerVAO = fireTowerVAO;
 	placementToolSystem.spikeTowerVAO = spikeTowerVAO;
 	placementToolSystem.goldTowerVAO = goldTowerVAO;
 	placementToolSystem.iceTowerVAO = iceTowerVAO;
+	placementToolSystem.whiteCubeSize = whiteCubeSize;
+    placementToolSystem.fireTowerSize = fireTowerSize;
+    placementToolSystem.spikeTowerSize = spikeTowerSize;
+    placementToolSystem.goldTowerSize = goldTowerSize; 
+    placementToolSystem.iceTowerSize = iceTowerSize;
 
-	renderTowerSystem.shader = &towerShader;
-	renderTowerSystem.camera = &camera;
-	renderTowerSystem.window = &window;
-	renderTowerSystem.colorPaletteTexture = &colorPaletteTexture;
+	renderMeshSystem.shader = &towerShader;
+	renderMeshSystem.camera = &camera;
+	renderMeshSystem.window = &window;
+	renderMeshSystem.diffuseColorPaletteTexture = &diffuseColorPaletteTexture;
+	renderMeshSystem.specularColorPaletteTexture = &specularColorPaletteTexture;
 }
