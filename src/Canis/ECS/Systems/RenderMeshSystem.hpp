@@ -83,7 +83,7 @@ public:
 
 		auto view = registry.view<const TransformComponent, ColorComponent, MeshComponent>();
 
-		for(auto [entity, transform, color, mesh]: view.each())
+		for(const auto [entity, transform, color, mesh]: view.each())
 		{
 			if(transform.active == true)
 			{

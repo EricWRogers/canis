@@ -47,20 +47,6 @@ float vertices[] = {
 	-0.5f,  0.5f, -0.5f,  0.0f,  1.0f,  0.0f,  0.0f,  1.0f
 };
 
-RenderMeshSystem renderMeshSystem;
-RenderTextSystem renderTextSystem;
-PortalSystem portalSystem;
-CastleSystem castleSystem;
-MoveSlimeSystem moveSlimeSystem;
-SpikeSystem spikeSystem;
-SpikeTowerSystem spikeTowerSystem;
-GemMineTowerSystem gemMineTowerSystem;
-FireBallSystem fireBallSystem;
-FireTowerSystem fireTowerSystem;
-IceTowerSystem iceTowerSystem;
-SlimeFreezeSystem slimeFreezeSystem;
-PlacementToolSystem placementToolSystem;
-
 
 
 App::App()
@@ -608,11 +594,43 @@ void App::Load()
 	// start timer
 	previousTime = high_resolution_clock::now();
 }
+
+static int ThreadDraw( void* a)
+{
+	glDepthFunc(GL_LESS); 
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
+
+	App *app = static_cast<App*>(a);
+
+	app->castleSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->portalSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->moveSlimeSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->spikeSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->spikeTowerSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->gemMineTowerSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->fireBallSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->fireTowerSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->iceTowerSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	app->slimeFreezeSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+
+	if (!app->mouseLock)
+	{
+		app->hudManager.Update(app->deltaTime,app->entity_registry);
+		app->placementToolSystem.UpdateComponents(app->deltaTime, app->entity_registry);
+	}
+
+	return 0;
+}
+
 void App::Loop()
 {
+	int threadReturnValue;
+
 	while (appState == AppState::ON)
 	{
 		deltaTime = time.startFrame();
+
+		//SDL_Thread* threadID = SDL_CreateThread( ThreadDraw, "DrawThread", this);
 
 		Update();
 		Draw();
@@ -621,6 +639,11 @@ void App::Loop()
 		LateUpdate();
 		FixedUpdate(deltaTime);
 		InputUpdate();
+
+		//SDL_WaitThread(threadID, &threadReturnValue);
+		//SDL_Log("Thread returned value: %d\n", threadReturnValue);
+
+		//window.SwapBuffer();
 
 		float fps = time.endFrame();
 		

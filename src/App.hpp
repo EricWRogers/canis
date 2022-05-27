@@ -82,6 +82,28 @@ public:
 
     void Run();
 
+    RenderMeshSystem renderMeshSystem;
+    RenderTextSystem renderTextSystem;
+    PortalSystem portalSystem;
+    CastleSystem castleSystem;
+    MoveSlimeSystem moveSlimeSystem;
+    SpikeSystem spikeSystem;
+    SpikeTowerSystem spikeTowerSystem;
+    GemMineTowerSystem gemMineTowerSystem;
+    FireBallSystem fireBallSystem;
+    FireTowerSystem fireTowerSystem;
+    IceTowerSystem iceTowerSystem;
+    SlimeFreezeSystem slimeFreezeSystem;
+    PlacementToolSystem placementToolSystem;
+
+    HUDManager hudManager;
+
+    entt::registry entity_registry;
+
+    bool mouseLock = false;
+
+    double deltaTime;
+
 private:
     void Load();
     void Loop();
@@ -94,8 +116,6 @@ private:
     void LoadECS();
 
     AppState appState = AppState::OFF;
-
-    entt::registry entity_registry;
 
     Canis::Window window;
 
@@ -145,13 +165,13 @@ private:
     float lastYMousePos;
     
     bool firstMouseMove = true;
-    bool mouseLock = false;
+    
 
     high_resolution_clock::time_point currentTime;
     high_resolution_clock::time_point previousTime;
-    double deltaTime;
+    
 
-    HUDManager hudManager;
+    //HUDManager hudManager;
     Wallet wallet;
     ScoreSystem scoreSystem;
 
