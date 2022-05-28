@@ -120,6 +120,7 @@ private:
         rootVAO, rootVBO,
         treeGroupVAO, treeGroupVBO,
         castleVAO, castleVBO,
+        slimeVAO, slimeVBO,
         portalVAO, portalVBO,
         vertexbuffer, normalbuffer,
         uvbuffer;
@@ -133,7 +134,8 @@ private:
         rootSize,
         treeGroupSize,
         castleSize,
-        portalSize;
+        portalSize,
+        slimeSize;
 
     Canis::GLTexture texture1 = {};
     Canis::GLTexture texture2 = {};
