@@ -104,18 +104,426 @@ void App::Load()
 	glEnable(GL_ALPHA);
 	//glEnable(GL_CULL_FACE);
 	// build and compile our shader program
-	shader.Compile("assets/shaders/sts.block.vs", "assets/shaders/sts.block.fs");
+	shader.Compile("assets/shaders/shadow_mapping.vs", "assets/shaders/shadow_mapping.fs");
 	shader.AddAttribute("aPos");
 	shader.AddAttribute("aNormal");
 	shader.AddAttribute("aTexcoords");
 	shader.Link();
 
-	towerShader.Compile("assets/shaders/lighting.vs", "assets/shaders/lighting.fs");
-	towerShader.AddAttribute("a_pos");
-	towerShader.AddAttribute("a_normal");
-	towerShader.AddAttribute("a_texcoords");
-	towerShader.Link();
+	simpleDepthShader.Compile("assets/shaders/shadow_mapping_depth.vs", "assets/shaders/shadow_mapping_depth.fs");
+	simpleDepthShader.AddAttribute("aPos");
+	simpleDepthShader.AddAttribute("aNormal");
+	simpleDepthShader.AddAttribute("aTexcoords");
+	simpleDepthShader.Link();
 
+	// Load Models
+	LoadModels();
+
+	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
+
+	// Game Systems
+	LoadECS();
+
+	// start timer
+	previousTime = high_resolution_clock::now();
+}
+void App::Loop()
+{
+	while (appState == AppState::ON)
+	{
+		deltaTime = time.startFrame();
+
+		Update();
+		Draw();
+		// Get SDL to swap our buffer
+		window.SwapBuffer();
+		LateUpdate();
+		FixedUpdate(deltaTime);
+		InputUpdate();
+
+		float fps = time.endFrame();
+		
+		/*Canis::Log(
+			"pos: " + glm::to_string(camera.Position) +
+			" Yaw: "  + std::to_string(camera.Yaw) +
+			" Pitch: "  + std::to_string(camera.Pitch));*/
+		window.SetWindowName("Canis : StopTheSlimes fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime) + " Enitity : " + std::to_string(entity_registry.size()));
+	}
+}
+void App::Update()
+{
+	castleSystem.UpdateComponents(deltaTime, entity_registry);
+	portalSystem.UpdateComponents(deltaTime, entity_registry);
+	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
+	spikeSystem.UpdateComponents(deltaTime, entity_registry);
+	spikeTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	gemMineTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	fireBallSystem.UpdateComponents(deltaTime, entity_registry);
+	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	iceTowerSystem.UpdateComponents(deltaTime, entity_registry);
+	slimeFreezeSystem.UpdateComponents(deltaTime, entity_registry);
+
+	if (!mouseLock)
+	{
+		hudManager.Update(deltaTime, entity_registry);
+		placementToolSystem.UpdateComponents(deltaTime, entity_registry);
+	}
+}
+void App::Draw()
+{
+	glDepthFunc(GL_LESS); 
+	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
+
+	renderMeshSystem.UpdateComponents(deltaTime, entity_registry);
+	renderTextSystem.UpdateComponents(deltaTime, entity_registry);
+}
+void App::LateUpdate() {}
+void App::FixedUpdate(float dt)
+{
+	if (inputManager.isKeyPressed(SDLK_w) && mouseLock)
+	{
+		camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, dt);
+	}
+
+	if (inputManager.isKeyPressed(SDLK_s) && mouseLock)
+	{
+		camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, dt);
+	}
+
+	if (inputManager.isKeyPressed(SDLK_a) && mouseLock)
+	{
+		camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, dt);
+	}
+
+	if (inputManager.isKeyPressed(SDLK_d) && mouseLock)
+	{
+		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
+	}
+
+	if (inputManager.justPressedKey(SDLK_ESCAPE))
+    {
+		mouseLock = !mouseLock;
+
+        window.MouseLock(mouseLock);
+    }
+}
+void App::InputUpdate()
+{
+	inputManager.swapMaps();
+
+	SDL_Event event;
+	while (SDL_PollEvent(&event))
+	{
+		switch (event.type)
+		{
+		case SDL_QUIT:
+			appState = AppState::OFF;
+			break;
+		case SDL_MOUSEMOTION:
+			if (mouseLock)
+			{
+				camera.ProcessMouseMovement(
+					event.motion.xrel,
+					-event.motion.yrel);
+			}
+			else
+			{
+				inputManager.mouse.x = event.motion.x;
+				inputManager.mouse.y = event.motion.y;
+			}
+			break;
+		case SDL_KEYUP:
+			inputManager.releasedKey(event.key.keysym.sym);
+			//Canis::Log("UP" + std::to_string(event.key.keysym.sym));
+			break;
+		case SDL_KEYDOWN:
+			inputManager.pressKey(event.key.keysym.sym);
+			//Canis::Log("DOWN");
+			break;
+		case SDL_MOUSEBUTTONDOWN:
+			if(event.button.button == SDL_BUTTON_LEFT)
+				inputManager.leftClick = true;
+			if(event.button.button == SDL_BUTTON_RIGHT)
+				inputManager.rightClick = true;
+			break;
+		}
+	}
+}
+
+void App::LoadECS()
+{
+	int m = 0;
+	// ECS
+	for (int y = 0; y < 2; y++)
+	{
+		for (int x = 0; x < 23; x++)
+		{
+			for (int z = 0; z < 30; z++)
+			{
+				if (0 == titleMap[y][z][x])
+					continue;
+				
+				const auto entity = entity_registry.create();
+				switch (titleMap[y][z][x]) // this looks bad
+				{
+				case GRASS:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
+					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::GRASS
+					);
+					break;
+				case DIRT:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						whiteCubeVAO,
+						whiteCubeSize
+					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::DIRT
+					);
+					break;
+				case TREEGROUP0:
+					m++;
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y-0.5f, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #e8d282
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						treeGroupVAO,
+						treeGroupSize
+					);
+					entity_registry.emplace<BlockComponent>(entity,
+						BlockTypes::DIRT
+					);
+					break;
+				case PORTAL:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y-0.5f, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1, 1, 1) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #36c5f4
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						portalVAO,
+						portalSize
+					);
+					entity_registry.emplace<PortalComponent>(entity,
+						2.0f,
+						0.1f
+					);
+					break;
+				case CASTLE:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y-0.5f, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(1.2f, 1.2f, 1.2f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						castleVAO,
+						castleSize
+					);
+					entity_registry.emplace<CastleComponent>(entity,
+						20,
+						20
+					);
+					break;
+				case SPIKETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						spikeTowerVAO,
+						spikeTowerSize
+					);
+					entity_registry.emplace<SpikeTowerComponent>(entity,
+						false, // setup
+						0, // numOfSpikes
+						3.0f, // timeToSpawn
+						0.1f // currentTime
+					);
+					break;
+				case GEMMINETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						goldTowerVAO,
+						goldTowerSize
+					);
+					entity_registry.emplace<GemMineTowerComponent>(entity,
+						20, // gems
+						5.0f, // timeToSpawn
+						5.0f // currentTime
+					);
+					break;
+				case FIRETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						fireTowerVAO,
+						fireTowerSize
+					);
+					entity_registry.emplace<FireTowerComponent>(entity,
+						1, // damage
+						20.0f,// speed
+						5.0f, // range
+						2.0f, // timeToSpawn
+						2.0f // currentTime
+					);
+					break;
+				case ICETOWER:
+					entity_registry.emplace<TransformComponent>(entity,
+						true, // active
+						glm::vec3(x, y, z), // position
+						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
+						glm::vec3(0.5f, 0.5f, 0.5f) // scale
+					);
+					entity_registry.emplace<ColorComponent>(entity,
+						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
+					);
+					entity_registry.emplace<MeshComponent>(entity,
+						iceTowerVAO,
+						iceTowerSize
+					);
+					entity_registry.emplace<IceTowerComponent>(entity,
+						1, // maxSlimesToFreeze
+						2, // damageOnBreak
+						0.5f,// freezeTime
+						2.0f, // range
+						4.0f, // timeToSpawn
+						4.0f // currentTime
+					);
+					break;
+				default:
+					break;
+				}
+			}
+		}
+	}
+
+	Canis::Log("mokey : " + std::to_string(m));
+
+	hudManager.inputManager = &inputManager;
+	hudManager.window = &window;
+	hudManager.wallet = &wallet;
+	hudManager.whiteCubeVAO = whiteCubeVAO;
+	hudManager.whiteCubeSize = whiteCubeSize;
+	hudManager.Load(entity_registry);
+
+	renderTextSystem.Init();
+	renderTextSystem.camera = &camera;
+	renderTextSystem.window = &window;
+
+	castleSystem.refRegistry = &entity_registry;
+	castleSystem.healthText = hudManager.healthText;
+	castleSystem.Init();
+
+	wallet.refRegistry = &entity_registry;
+	wallet.walletText = hudManager.walletText;
+	wallet.SetCash(200);
+
+	scoreSystem.refRegistry = &entity_registry;
+	scoreSystem.scoreText = hudManager.scoreText;
+
+	portalSystem.refRegistry = &entity_registry;
+	portalSystem.whiteCubeVAO = slimeVAO;
+	portalSystem.whiteCubeSize = slimeSize;
+
+	spikeSystem.refRegistry = &entity_registry;
+
+	spikeTowerSystem.refRegistry = &entity_registry;
+	spikeTowerSystem.rootVAO = rootVAO;
+	spikeTowerSystem.rootSize = rootSize;
+
+	fireTowerSystem.fireCrystalVAO = fireCrystalVAO;
+	fireTowerSystem.fireCrystalSize = fireCrystalSize;
+
+	gemMineTowerSystem.wallet = &wallet;
+
+	moveSlimeSystem.wallet = &wallet;
+	moveSlimeSystem.scoreSystem = &scoreSystem;
+	moveSlimeSystem.portalSystem = &portalSystem;
+	moveSlimeSystem.aStar = &aStar;
+	moveSlimeSystem.Init();
+
+	placementToolSystem.inputManager = &inputManager;
+	placementToolSystem.aStar = &aStar;
+	placementToolSystem.wallet = &wallet;
+	placementToolSystem.camera = &camera;
+	placementToolSystem.window = &window;
+	placementToolSystem.whiteCubeVAO = whiteCubeVAO;
+	placementToolSystem.fireTowerVAO = fireTowerVAO;
+	placementToolSystem.spikeTowerVAO = spikeTowerVAO;
+	placementToolSystem.goldTowerVAO = goldTowerVAO;
+	placementToolSystem.iceTowerVAO = iceTowerVAO;
+	placementToolSystem.whiteCubeSize = whiteCubeSize;
+    placementToolSystem.fireTowerSize = fireTowerSize;
+    placementToolSystem.spikeTowerSize = spikeTowerSize;
+    placementToolSystem.goldTowerSize = goldTowerSize; 
+    placementToolSystem.iceTowerSize = iceTowerSize;
+
+	renderMeshSystem.shader = &shader;
+	renderMeshSystem.shadowShader = &simpleDepthShader;
+	renderMeshSystem.camera = &camera;
+	renderMeshSystem.window = &window;
+	renderMeshSystem.diffuseColorPaletteTexture = &diffuseColorPaletteTexture;
+	renderMeshSystem.specularColorPaletteTexture = &specularColorPaletteTexture;
+	renderMeshSystem.Init();
+}
+
+void App::LoadModels()
+{
 	// unsigned int VBO, VAO;
 	glGenVertexArrays(1, &VAO);
 	glGenBuffers(1, &VBO);
@@ -643,406 +1051,4 @@ void App::Load()
 	glBindBuffer(GL_ARRAY_BUFFER, 0);
 
 	glBindVertexArray(0);
-
-	
-
-	glPolygonMode(GL_FRONT_AND_BACK, GL_FILL);
-
-	// Game Systems
-	LoadECS();
-
-	// start timer
-	previousTime = high_resolution_clock::now();
-}
-void App::Loop()
-{
-	while (appState == AppState::ON)
-	{
-		deltaTime = time.startFrame();
-
-		Update();
-		Draw();
-		// Get SDL to swap our buffer
-		window.SwapBuffer();
-		LateUpdate();
-		FixedUpdate(deltaTime);
-		InputUpdate();
-
-		float fps = time.endFrame();
-		
-		/*Canis::Log(
-			"pos: " + glm::to_string(camera.Position) +
-			" Yaw: "  + std::to_string(camera.Yaw) +
-			" Pitch: "  + std::to_string(camera.Pitch));*/
-		window.SetWindowName("Canis : StopTheSlimes fps : " + std::to_string(fps) + " deltaTime : " + std::to_string(deltaTime) + " Enitity : " + std::to_string(entity_registry.size()));
-	}
-}
-void App::Update()
-{
-	castleSystem.UpdateComponents(deltaTime, entity_registry);
-	portalSystem.UpdateComponents(deltaTime, entity_registry);
-	moveSlimeSystem.UpdateComponents(deltaTime, entity_registry);
-	spikeSystem.UpdateComponents(deltaTime, entity_registry);
-	spikeTowerSystem.UpdateComponents(deltaTime, entity_registry);
-	gemMineTowerSystem.UpdateComponents(deltaTime, entity_registry);
-	fireBallSystem.UpdateComponents(deltaTime, entity_registry);
-	fireTowerSystem.UpdateComponents(deltaTime, entity_registry);
-	iceTowerSystem.UpdateComponents(deltaTime, entity_registry);
-	slimeFreezeSystem.UpdateComponents(deltaTime, entity_registry);
-
-	if (!mouseLock)
-	{
-		hudManager.Update(deltaTime, entity_registry);
-		placementToolSystem.UpdateComponents(deltaTime, entity_registry);
-	}
-}
-void App::Draw()
-{
-	glDepthFunc(GL_LESS); 
-	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT); // also clear the depth buffer now!
-
-	renderMeshSystem.UpdateComponents(deltaTime, entity_registry);
-	renderTextSystem.UpdateComponents(deltaTime, entity_registry);
-}
-void App::LateUpdate() {}
-void App::FixedUpdate(float dt)
-{
-	if (inputManager.isKeyPressed(SDLK_w) && mouseLock)
-	{
-		camera.ProcessKeyboard(Canis::Camera_Movement::FORWARD, dt);
-	}
-
-	if (inputManager.isKeyPressed(SDLK_s) && mouseLock)
-	{
-		camera.ProcessKeyboard(Canis::Camera_Movement::BACKWARD, dt);
-	}
-
-	if (inputManager.isKeyPressed(SDLK_a) && mouseLock)
-	{
-		camera.ProcessKeyboard(Canis::Camera_Movement::LEFT, dt);
-	}
-
-	if (inputManager.isKeyPressed(SDLK_d) && mouseLock)
-	{
-		camera.ProcessKeyboard(Canis::Camera_Movement::RIGHT, dt);
-	}
-
-	if (inputManager.justPressedKey(SDLK_ESCAPE))
-    {
-		mouseLock = !mouseLock;
-
-        window.MouseLock(mouseLock);
-    }
-}
-void App::InputUpdate()
-{
-	inputManager.swapMaps();
-
-	SDL_Event event;
-	while (SDL_PollEvent(&event))
-	{
-		switch (event.type)
-		{
-		case SDL_QUIT:
-			appState = AppState::OFF;
-			break;
-		case SDL_MOUSEMOTION:
-			if (mouseLock)
-			{
-				camera.ProcessMouseMovement(
-					event.motion.xrel,
-					-event.motion.yrel);
-			}
-			else
-			{
-				inputManager.mouse.x = event.motion.x;
-				inputManager.mouse.y = event.motion.y;
-			}
-			break;
-		case SDL_KEYUP:
-			inputManager.releasedKey(event.key.keysym.sym);
-			//Canis::Log("UP" + std::to_string(event.key.keysym.sym));
-			break;
-		case SDL_KEYDOWN:
-			inputManager.pressKey(event.key.keysym.sym);
-			//Canis::Log("DOWN");
-			break;
-		case SDL_MOUSEBUTTONDOWN:
-			if(event.button.button == SDL_BUTTON_LEFT)
-				inputManager.leftClick = true;
-			if(event.button.button == SDL_BUTTON_RIGHT)
-				inputManager.rightClick = true;
-			break;
-		}
-	}
-}
-
-void App::LoadECS()
-{
-	int m = 0;
-	// ECS
-	for (int y = 0; y < 2; y++)
-	{
-		for (int x = 0; x < 23; x++)
-		{
-			for (int z = 0; z < 30; z++)
-			{
-				if (0 == titleMap[y][z][x])
-					continue;
-				
-				const auto entity = entity_registry.create();
-				switch (titleMap[y][z][x]) // this looks bad
-				{
-				case GRASS:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1, 1, 1) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						whiteCubeVAO,
-						whiteCubeSize
-					);
-					entity_registry.emplace<BlockComponent>(entity,
-						BlockTypes::GRASS
-					);
-					break;
-				case DIRT:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1, 1, 1) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						whiteCubeVAO,
-						whiteCubeSize
-					);
-					entity_registry.emplace<BlockComponent>(entity,
-						BlockTypes::DIRT
-					);
-					break;
-				case TREEGROUP0:
-					m++;
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y-0.5f, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1, 1, 1) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #e8d282
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						treeGroupVAO,
-						treeGroupSize
-					);
-					entity_registry.emplace<BlockComponent>(entity,
-						BlockTypes::DIRT
-					);
-					break;
-				case PORTAL:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y-0.5f, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1, 1, 1) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(1.0f, 1.0f, 1.0f, 1.0f) // #36c5f4
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						portalVAO,
-						portalSize
-					);
-					entity_registry.emplace<PortalComponent>(entity,
-						2.0f,
-						0.1f
-					);
-					break;
-				case CASTLE:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y-0.5f, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(1.2f, 1.2f, 1.2f) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.69f, 0.65f, 0.72f, 1.0f) // #b0a7b8
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						castleVAO,
-						castleSize
-					);
-					entity_registry.emplace<CastleComponent>(entity,
-						20,
-						20
-					);
-					break;
-				case SPIKETOWER:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						spikeTowerVAO,
-						spikeTowerSize
-					);
-					entity_registry.emplace<SpikeTowerComponent>(entity,
-						false, // setup
-						0, // numOfSpikes
-						3.0f, // timeToSpawn
-						0.1f // currentTime
-					);
-					break;
-				case GEMMINETOWER:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.972f, 0.827f, 0.207f, 1.0f) // #f8d335
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						goldTowerVAO,
-						goldTowerSize
-					);
-					entity_registry.emplace<GemMineTowerComponent>(entity,
-						20, // gems
-						5.0f, // timeToSpawn
-						5.0f // currentTime
-					);
-					break;
-				case FIRETOWER:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.909f, 0.007f, 0.007f, 1.0f) // #e80202
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						fireTowerVAO,
-						fireTowerSize
-					);
-					entity_registry.emplace<FireTowerComponent>(entity,
-						1, // damage
-						20.0f,// speed
-						5.0f, // range
-						2.0f, // timeToSpawn
-						2.0f // currentTime
-					);
-					break;
-				case ICETOWER:
-					entity_registry.emplace<TransformComponent>(entity,
-						true, // active
-						glm::vec3(x, y, z), // position
-						glm::vec3(0.0f, 0.0f, 0.0f), // rotation
-						glm::vec3(0.5f, 0.5f, 0.5f) // scale
-					);
-					entity_registry.emplace<ColorComponent>(entity,
-						glm::vec4(0.117f, 0.980f, 0.972f, 1.0f) // #e80202
-					);
-					entity_registry.emplace<MeshComponent>(entity,
-						iceTowerVAO,
-						iceTowerSize
-					);
-					entity_registry.emplace<IceTowerComponent>(entity,
-						1, // maxSlimesToFreeze
-						2, // damageOnBreak
-						0.5f,// freezeTime
-						2.0f, // range
-						4.0f, // timeToSpawn
-						4.0f // currentTime
-					);
-					break;
-				default:
-					break;
-				}
-			}
-		}
-	}
-
-	Canis::Log("mokey : " + std::to_string(m));
-
-	hudManager.inputManager = &inputManager;
-	hudManager.window = &window;
-	hudManager.wallet = &wallet;
-	hudManager.whiteCubeVAO = whiteCubeVAO;
-	hudManager.whiteCubeSize = whiteCubeSize;
-	hudManager.Load(entity_registry);
-
-	renderTextSystem.Init();
-	renderTextSystem.camera = &camera;
-	renderTextSystem.window = &window;
-
-	castleSystem.refRegistry = &entity_registry;
-	castleSystem.healthText = hudManager.healthText;
-	castleSystem.Init();
-
-	wallet.refRegistry = &entity_registry;
-	wallet.walletText = hudManager.walletText;
-	wallet.SetCash(200);
-
-	scoreSystem.refRegistry = &entity_registry;
-	scoreSystem.scoreText = hudManager.scoreText;
-
-	portalSystem.refRegistry = &entity_registry;
-	portalSystem.whiteCubeVAO = slimeVAO;
-	portalSystem.whiteCubeSize = slimeSize;
-
-	spikeSystem.refRegistry = &entity_registry;
-
-	spikeTowerSystem.refRegistry = &entity_registry;
-	spikeTowerSystem.rootVAO = rootVAO;
-	spikeTowerSystem.rootSize = rootSize;
-
-	fireTowerSystem.fireCrystalVAO = fireCrystalVAO;
-	fireTowerSystem.fireCrystalSize = fireCrystalSize;
-
-	gemMineTowerSystem.wallet = &wallet;
-
-	moveSlimeSystem.wallet = &wallet;
-	moveSlimeSystem.scoreSystem = &scoreSystem;
-	moveSlimeSystem.portalSystem = &portalSystem;
-	moveSlimeSystem.aStar = &aStar;
-	moveSlimeSystem.Init();
-
-	placementToolSystem.inputManager = &inputManager;
-	placementToolSystem.aStar = &aStar;
-	placementToolSystem.wallet = &wallet;
-	placementToolSystem.camera = &camera;
-	placementToolSystem.window = &window;
-	placementToolSystem.whiteCubeVAO = whiteCubeVAO;
-	placementToolSystem.fireTowerVAO = fireTowerVAO;
-	placementToolSystem.spikeTowerVAO = spikeTowerVAO;
-	placementToolSystem.goldTowerVAO = goldTowerVAO;
-	placementToolSystem.iceTowerVAO = iceTowerVAO;
-	placementToolSystem.whiteCubeSize = whiteCubeSize;
-    placementToolSystem.fireTowerSize = fireTowerSize;
-    placementToolSystem.spikeTowerSize = spikeTowerSize;
-    placementToolSystem.goldTowerSize = goldTowerSize; 
-    placementToolSystem.iceTowerSize = iceTowerSize;
-
-	renderMeshSystem.shader = &towerShader;
-	renderMeshSystem.camera = &camera;
-	renderMeshSystem.window = &window;
-	renderMeshSystem.diffuseColorPaletteTexture = &diffuseColorPaletteTexture;
-	renderMeshSystem.specularColorPaletteTexture = &specularColorPaletteTexture;
 }

@@ -92,6 +92,7 @@ private:
     void InputUpdate();
 
     void LoadECS();
+    void LoadModels();
 
     AppState appState = AppState::OFF;
 
@@ -101,7 +102,7 @@ private:
 
     Canis::Shader shader;
 
-    Canis::Shader towerShader;
+    Canis::Shader simpleDepthShader;
 
     Canis::Time time;
 
