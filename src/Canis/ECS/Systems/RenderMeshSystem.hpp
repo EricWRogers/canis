@@ -25,7 +25,7 @@ public:
 	Canis::GLTexture *diffuseColorPaletteTexture;
 	Canis::GLTexture *specularColorPaletteTexture;
 
-	const unsigned int SHADOW_WIDTH = 1024, SHADOW_HEIGHT = 1024;
+	const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
 	unsigned int depthMapFBO, depthMap;
 
 	glm::mat4 lightProjection, lightView, lightSpaceMatrix;
@@ -46,6 +46,10 @@ public:
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+		//glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+		//float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+		//glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 		// attach depth texture as FBO's depth buffer
 		glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 		glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
@@ -116,6 +120,13 @@ public:
 
 		shader->SetVec3("viewPos", camera->Position);
         shader->SetVec3("lightPos", lightPos);
+		shader->SetVec3("lightDirection", -glm::vec3(-0.2f, -1.0f, -0.3f));
+
+		// directional light
+        shader->SetVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+        shader->SetVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
+        shader->SetVec3("dirLight.diffuse", 0.8f, 0.8f, 0.8f);
+        shader->SetVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
 
 		// create transformations
 		glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
@@ -133,10 +144,23 @@ public:
 
 		shader->SetInt("diffuseTexture", 0);
 
-		glActiveTexture(GL_TEXTURE1);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+
+		shader->SetInt("material.diffuse", 0);
+
+		glActiveTexture(GL_TEXTURE0 + 1);
+		glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+		shader->SetInt("material.specular", 1);
+
+		shader->SetFloat("material.shininess", 32.0f);
+
+
+		glActiveTexture(GL_TEXTURE0 + 2);
 		glBindTexture(GL_TEXTURE_2D, depthMap);
 
-		shader->SetInt("shadowMap", 1);
+		shader->SetInt("shadowMap", 2);
 
 		//glActiveTexture(GL_TEXTURE1);
 		//glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
@@ -158,7 +182,7 @@ public:
 				model = glm::rotate(model, transform.rotation.z, glm::vec3(0,0,1));
 				model = glm::scale(model, transform.scale);
 				shader->SetMat4("model", model);
-				shader->SetVec4("color", color.color);
+				shader->SetVec4("modelColor", color.color); 
 
 				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
 			}
@@ -171,7 +195,10 @@ public:
 
 	void UpdateComponents(float deltaTime, entt::registry &registry)
 	{
+		//glEnable(GL_CULL_FACE);
+		//glCullFace(GL_FRONT);
 		DrawShadow(deltaTime, registry);
+		//glCullFace(GL_BACK);
 		DrawModels(deltaTime, registry);
 	}
 
