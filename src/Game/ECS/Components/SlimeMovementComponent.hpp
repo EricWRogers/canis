@@ -13,4 +13,5 @@ struct SlimeMovementComponent
 	float beginningDistance;
 	unsigned int status;
 	float chillCountDown;
+	float heightOffset;
 };

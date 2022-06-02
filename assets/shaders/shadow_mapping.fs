@@ -85,7 +85,7 @@ vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
     
     // // calculate shadow
     float shadow = ShadowCalculation(fs_in.FragPosLightSpace);                      
-    return (ambient + (1.0 - shadow) * (diffuse + specular)) * vec3(modelColor);
+    return (ambient + (1.0 - shadow) * (diffuse + specular));// * vec3(modelColor);
 }
 
 void main()

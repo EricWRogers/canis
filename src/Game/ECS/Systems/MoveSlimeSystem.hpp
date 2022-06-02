@@ -178,7 +178,7 @@ public:
 			{
 				transform.position = lerp(
 					transform.position,
-					slimePath[slimeMovement.targetIndex] + glm::vec3(0,1,0),
+					slimePath[slimeMovement.targetIndex] + glm::vec3(0.0f,1.0f,0.0f) + glm::vec3(0.0f,slimeMovement.heightOffset,0.0f),
 					speed * delta
 				);
 			}
@@ -186,12 +186,14 @@ public:
 			{
 				transform.position = lerp(
 					transform.position,
-					slimePath[slimeMovement.targetIndex],
+					slimePath[slimeMovement.targetIndex] + glm::vec3(0.0f,slimeMovement.heightOffset,0.0f),
 					speed * delta
 				);
 			}
 
-			slimeMovement.targetIndex = (distance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
+
+
+			slimeMovement.targetIndex = (flatDistance < 0.1f) ? slimeMovement.targetIndex + 1 : slimeMovement.targetIndex;
 
 			slimeMovement.targetIndex = (slimePath.size() < slimeMovement.targetIndex) ? 0 : slimeMovement.targetIndex;
 		}

@@ -131,7 +131,7 @@ public:
 
 				refRegistry->emplace<TransformComponent>(entity,
 					true, // active
-					glm::vec3(transform.position.x, transform.position.y + slimeInfo.heightOffset, transform.position.z), // position
+					glm::vec3(transform.position.x, 1.0f + slimeInfo.heightOffset, transform.position.z), // position
 					glm::vec3(0.0f, 0.0f, 0.0f), // rotation
 					slimeInfo.size // scale
 				);
@@ -156,7 +156,8 @@ public:
 					0.5f,  // minHeight
 					-1.0f, // beginningDistance
 					0u,     // status
-					0.0f   // chillCountDown
+					0.0f,   // chillCountDown
+					slimeInfo.heightOffset
 				);
 			}
 		}
