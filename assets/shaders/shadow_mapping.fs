@@ -72,7 +72,7 @@ float ShadowCalculation(vec4 fragPosLightSpace)
 // calculates the color when using a directional light.
 vec3 CalcDirLight(DirLight light, vec3 normal, vec3 viewDir)
 {
-    vec3 lightDir = normalize(-light.direction);
+    vec3 lightDir = light.direction;
     // diffuse shading
     float diff = max(dot(normal, lightDir), 0.0);
     // specular shading

@@ -277,8 +277,8 @@ void App::LoadECS()
 						glm::vec4(0.15f, 0.52f, 0.30f, 1.0f) // #26854c
 					);
 					entity_registry.emplace<MeshComponent>(entity,
-						whiteCubeVAO,
-						whiteCubeSize
+						groundVAO,
+						groundSize
 					);
 					entity_registry.emplace<BlockComponent>(entity,
 						BlockTypes::GRASS
@@ -295,8 +295,8 @@ void App::LoadECS()
 						glm::vec4(0.91f, 0.82f, 0.51f, 1.0f) // #e8d282
 					);
 					entity_registry.emplace<MeshComponent>(entity,
-						whiteCubeVAO,
-						whiteCubeSize
+						groundVAO,
+						groundSize
 					);
 					entity_registry.emplace<BlockComponent>(entity,
 						BlockTypes::DIRT
@@ -1035,6 +1035,49 @@ void App::LoadModels()
 	glBindVertexArray(slimeVAO);
 
 	glBindBuffer(GL_ARRAY_BUFFER, slimeVBO);
+	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
+
+	// position attribute
+	glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+	glEnableVertexAttribArray(0);
+	// normal attribute
+	glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+	glEnableVertexAttribArray(1);
+	// texture coords
+	glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+	glEnableVertexAttribArray(2);
+
+	// note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+	glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+	vertices.clear();
+	uvs.clear();
+	normals.clear();
+	vecVertex.clear();
+
+	res = Canis::LoadOBJ("assets/models/white_ground.obj", vertices, uvs, normals);
+
+	for(int i = 0; i < vertices.size(); i++)
+	{
+		Canis::Vertex v = {};
+		v.Position = vertices[i];
+		v.Normal = normals[i];
+		v.TexCoords = uvs[i];
+		vecVertex.push_back(v);
+
+		//Canis::Log("v : " + glm::to_string(v.Position) + " n : " + glm::to_string(v.Normal) + " t : " + glm::to_string(v.TexCoords));
+	}
+
+	groundSize = vecVertex.size();
+	Canis::Log("s " + std::to_string(vecVertex.size()));
+
+	glGenVertexArrays(1, &groundVAO);
+	glGenBuffers(1, &groundVBO);
+
+	// bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+	glBindVertexArray(groundVAO);
+
+	glBindBuffer(GL_ARRAY_BUFFER, groundVBO);
 	glBufferData(GL_ARRAY_BUFFER, vecVertex.size() * sizeof(Canis::Vertex), &vecVertex[0], GL_STATIC_DRAW);
 
 	// position attribute

@@ -31,10 +31,13 @@ public:
 	glm::mat4 lightProjection, lightView, lightSpaceMatrix;
     float near_plane = 1.0f, far_plane = 100.0f;
 
-	glm::vec3 lightPos = glm::vec3(-2.0f, 4.0f, -1.0f);
+	glm::vec3 lightDir = glm::normalize(glm::vec3(0.5f, 0.5f, 0.5f));
+	glm::vec3 lightPos;// = (lightDir * 20.0f) + camera->Position;
+	
 
 	void Init()
 	{
+		lightDir = camera->Position + glm::vec3(10.0f,0.0f,0.0f);
 		// configure depth map FBO
 		// -----------------------
 		glGenFramebuffers(1, &depthMapFBO);
@@ -57,7 +60,7 @@ public:
 		glReadBuffer(GL_NONE);
 		glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-        lightProjection = glm::ortho(-50.0f, 50.0f, -50.0f, 50.0f, near_plane, far_plane);
+        lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane);
         lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0f, 1.0f, 0.0f));
         lightSpaceMatrix = lightProjection * lightView;
 	}
@@ -120,10 +123,10 @@ public:
 
 		shader->SetVec3("viewPos", camera->Position);
         shader->SetVec3("lightPos", lightPos);
-		shader->SetVec3("lightDirection", -glm::vec3(-0.2f, -1.0f, -0.3f));
+		shader->SetVec3("lightDirection", glm::normalize(lightDir));
 
 		// directional light
-        shader->SetVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
+        shader->SetVec3("dirLight.direction", glm::normalize(lightDir));
         shader->SetVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
         shader->SetVec3("dirLight.diffuse", 0.9f, 0.9f, 0.9f);
         shader->SetVec3("dirLight.specular", 0.5f, 0.5f, 0.5f); 
@@ -190,10 +193,11 @@ public:
 
 	void UpdateComponents(float deltaTime, entt::registry &registry)
 	{
-		//glEnable(GL_CULL_FACE);
-		//glCullFace(GL_FRONT);
+		glEnable(GL_CULL_FACE);
+		glFrontFace(GL_CCW);  
+		glCullFace(GL_FRONT);
 		DrawShadow(deltaTime, registry);
-		//glCullFace(GL_BACK);
+		glCullFace(GL_BACK);
 		DrawModels(deltaTime, registry);
 	}
 

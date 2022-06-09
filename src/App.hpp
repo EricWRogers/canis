@@ -123,6 +123,7 @@ private:
         castleVAO, castleVBO,
         slimeVAO, slimeVBO,
         portalVAO, portalVBO,
+        groundVAO, groundVBO,
         vertexbuffer, normalbuffer,
         uvbuffer;
 
@@ -136,6 +137,7 @@ private:
         treeGroupSize,
         castleSize,
         portalSize,
+        groundSize,
         slimeSize;
 
     Canis::GLTexture texture1 = {};

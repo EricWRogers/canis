@@ -120,7 +120,7 @@ SlimeInfo const GreenSlimeInfo = {
     3,                                      // health
     glm::vec3(0.6f, 0.6f, 0.6f),            // size
     glm::vec4(0.23f, 0.78f, 0.01f, 1.0f),   // color #c83dc705 // alpha 0.78f
-    -0.2f // -2.0f
+    1.15f // -2.0f
 };
 
 SlimeInfo const BlueSlimeInfo = {
@@ -128,7 +128,7 @@ SlimeInfo const BlueSlimeInfo = {
     1,                                      // health
     glm::vec3(0.4f, 0.4f, 0.4f),            // size
     glm::vec4(0.18f, 0.70f, 0.91f, 1.0f),   // color #c82fb5e9
-    -0.3f // -3.0f
+    -0.2f // -3.0f
 };
 
 SlimeInfo const PurpleSlimeInfo = {
