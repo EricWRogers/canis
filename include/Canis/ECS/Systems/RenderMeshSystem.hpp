@@ -62,7 +62,7 @@ public:
 		// create transformations
 		glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 		glm::mat4 projection = glm::mat4(1.0f);
-		projection = glm::perspective(glm::radians(30.0f), (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
+		projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
 		//projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 		cameraView = camera->GetViewMatrix();
 		// pass transformation matrices to the shader
