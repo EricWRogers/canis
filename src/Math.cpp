@@ -38,4 +38,27 @@ namespace Canis
         float discriminant = b*b - 4*a*c;
         return (discriminant>0);
     }
+
+    void UpdateModelMatrix(TransformComponent &transform)
+	{
+		const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+		const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+		const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+
+		// Y * X * Z
+		const glm::mat4 roationMatrix = transformY * transformX * transformZ;
+
+		transform.isDirty = false;
+
+		// translation * rotation * scale (also know as TRS matrix)
+		transform.modelMatrix = glm::translate(glm::mat4(1.0f), transform.position) * roationMatrix * glm::scale(glm::mat4(1.0f), transform.scale);
+	}
+
+    glm::mat4 GetModelMatrix(TransformComponent &transform)
+	{
+		if (transform.isDirty)
+			UpdateModelMatrix(transform);
+
+		return transform.modelMatrix;
+	}
 }

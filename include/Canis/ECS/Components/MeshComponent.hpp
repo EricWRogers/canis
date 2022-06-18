@@ -1,7 +1,10 @@
 #pragma once
 
-struct MeshComponent
+namespace Canis
 {
-	unsigned int vao;
-	int size;
-};
+	struct MeshComponent
+	{
+		unsigned int vao;
+		int size;
+	};
+} // end of Canis namespace

@@ -1,10 +1,13 @@
 #pragma once
 #include <glm/glm.hpp>
 
-struct RectTransformComponent
+namespace Canis
 {
-	bool active;
-	glm::vec2 position;
-	glm::vec2 rotation;
-	float scale;
-};
+	struct RectTransformComponent
+	{
+		bool active;
+		glm::vec2 position;
+		glm::vec2 rotation;
+		float scale;
+	};
+} // end of Canis namespace

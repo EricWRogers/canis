@@ -1,7 +1,10 @@
 #pragma once
 #include <glm/glm.hpp>
 
-struct ColorComponent
+namespace Canis
 {
-	glm::vec4 color;
-};
+	struct ColorComponent
+	{
+		glm::vec4 color;
+	};
+} // end of Canis namespace
