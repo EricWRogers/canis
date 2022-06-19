@@ -61,4 +61,38 @@ namespace Canis
 
 		return transform.modelMatrix;
 	}
+
+    void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset)
+    {
+        transform.modelMatrix = glm::translate(transform.modelMatrix,offset);
+
+        transform.position = glm::vec3(transform.modelMatrix[3]);
+    }
+
+    void SetTransformPosition(TransformComponent &transform, glm::vec3 position)
+    {
+        transform.position = position;
+
+        transform.isDirty = true;
+
+        UpdateModelMatrix(transform);
+    }
+
+    void RotateTransformRotation(TransformComponent &transform, glm::vec3 rotate)
+    {
+        transform.rotation += rotate;
+
+        transform.isDirty = true;
+
+        UpdateModelMatrix(transform);
+    }
+
+    void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation)
+    {
+        transform.rotation = rotation;
+
+        transform.isDirty = true;
+
+        UpdateModelMatrix(transform);
+    }
 }

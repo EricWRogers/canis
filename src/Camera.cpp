@@ -23,7 +23,10 @@ namespace Canis
 
     glm::mat4 Camera::GetViewMatrix()
     {
-        return glm::lookAt(Position, Position + Front, Up);
+        if(override_camera)
+            return modelMatrix;
+        else
+            return glm::lookAt(Position, Position + Front, Up);
     }
 
     void Camera::ProcessKeyboard(Camera_Movement direction, float deltaTime)
@@ -55,6 +58,15 @@ namespace Canis
             if (Pitch < -89.0f)
                 Pitch = -89.0f;
         }
+
+        // update Front, Right and Up Vectors using the updated Euler angles
+        updateCameraVectors();
+    }
+
+    void Camera::Rotate(float yaw, float pitch)
+    {
+        Yaw = yaw;
+        Pitch = pitch;
 
         // update Front, Right and Up Vectors using the updated Euler angles
         updateCameraVectors();

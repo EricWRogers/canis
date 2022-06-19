@@ -23,4 +23,14 @@ namespace Canis
     void UpdateModelMatrix(TransformComponent &transform);
 
 	glm::mat4 GetModelMatrix(TransformComponent &transform);
+
+    void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset);
+
+    void SetTransformPosition(TransformComponent &transform, glm::vec3 position);
+
+    void RotateTransformRotation(TransformComponent &transform, glm::vec3 rotate);
+
+    void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation);
+
+
 } 

@@ -99,28 +99,13 @@ namespace Canis
 			// SphereColliderComponent globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
 			SphereColliderComponent globalSphere(globalCenter, sphere.radius * (maxScale * 0.5f));
 
-			if (!isOnOrForwardPlan(camFrustum.leftFace, globalSphere))
-				return false;
-			if (!isOnOrForwardPlan(camFrustum.rightFace, globalSphere))
-				return false;
-			if (!isOnOrForwardPlan(camFrustum.farFace, globalSphere))
-				return false;
-			if (!isOnOrForwardPlan(camFrustum.nearFace, globalSphere))
-				return false;
-			if (!isOnOrForwardPlan(camFrustum.topFace, globalSphere))
-				return false;
-			if (!isOnOrForwardPlan(camFrustum.bottomFace, globalSphere))
-				return false;
-
-			return true;
-
 			// Check Firstly the result that have the most chance to faillure to avoid to call all functions.
-			// return (isOnOrForwardPlan(camFrustum.leftFace, globalSphere) &&
-			//	isOnOrForwardPlan(camFrustum.rightFace, globalSphere) &&
-			//	isOnOrForwardPlan(camFrustum.farFace, globalSphere) &&
-			//	isOnOrForwardPlan(camFrustum.nearFace, globalSphere) &&
-			//	isOnOrForwardPlan(camFrustum.topFace, globalSphere) &&
-			//	isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
+			return (isOnOrForwardPlan(camFrustum.leftFace, globalSphere) &&
+				isOnOrForwardPlan(camFrustum.rightFace, globalSphere) &&
+				isOnOrForwardPlan(camFrustum.farFace, globalSphere) &&
+				isOnOrForwardPlan(camFrustum.nearFace, globalSphere) &&
+				isOnOrForwardPlan(camFrustum.topFace, globalSphere) &&
+				isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
 		};
 
 		void UpdateComponents(float deltaTime, entt::registry &registry)
@@ -162,7 +147,7 @@ namespace Canis
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 			glm::mat4 projection = glm::mat4(1.0f);
-			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
+			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
 			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 			cameraView = camera->GetViewMatrix();
 			// pass transformation matrices to the shader
