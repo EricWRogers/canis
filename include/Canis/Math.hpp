@@ -1,6 +1,12 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/string_cast.hpp>
+#include <glm/ext.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include "Camera.hpp"
 #include "Window.hpp"
@@ -19,6 +25,8 @@ namespace Canis
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
 
     bool HitSphere(glm::vec3 center, float radius, Ray ray);
+
+    glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest);
 
     void UpdateModelMatrix(TransformComponent &transform);
 

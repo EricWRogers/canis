@@ -39,8 +39,44 @@ namespace Canis
         return (discriminant>0);
     }
 
+    glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest){
+        start = glm::normalize(start);
+        dest = glm::normalize(dest);
+
+        float cosTheta = glm::dot(start, dest);
+        glm::vec3 rotationAxis;
+
+        if (cosTheta < -1 + 0.001f)
+        {
+            rotationAxis = glm::cross(glm::vec3(0.0f, 0.0f, 1.0f), start);
+            float normalLength2 = glm::length2(glm::normalize(rotationAxis));
+
+            if (normalLength2 < 0.01 ) // parallel
+            {
+                rotationAxis = glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), start);
+            }
+
+            rotationAxis = glm::normalize(rotationAxis);
+            return glm::angleAxis(glm::radians(180.0f), rotationAxis);
+        }
+
+        rotationAxis = glm::cross(start, dest);
+
+        float s = sqrt( (1+cosTheta)*2 );
+        float invs = 1 / s;
+
+        return glm::quat(
+            s * 0.5f, 
+            rotationAxis.x * invs,
+            rotationAxis.y * invs,
+            rotationAxis.z * invs
+        );
+
+    }
+
     void UpdateModelMatrix(TransformComponent &transform)
 	{
+        // TODO : this may be bad
 		const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
 		const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
 		const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
@@ -52,6 +88,13 @@ namespace Canis
 
 		// translation * rotation * scale (also know as TRS matrix)
 		transform.modelMatrix = glm::translate(glm::mat4(1.0f), transform.position) * roationMatrix * glm::scale(glm::mat4(1.0f), transform.scale);
+
+        /*glm::mat4 new_transform = glm::mat4(1);
+        new_transform = glm::translate(new_transform, transform.position);
+        new_transform = glm::rotate(new_transform, transform.rotation.x, glm::vec3(1, 0, 0));
+        new_transform = glm::rotate(new_transform, transform.rotation.y, glm::vec3(0, 1, 0));
+        new_transform = glm::rotate(new_transform, transform.rotation.z, glm::vec3(0, 0, 1));
+        transform.modelMatrix = glm::scale(new_transform, transform.scale);*/
 	}
 
     glm::mat4 GetModelMatrix(TransformComponent &transform)
