@@ -97,7 +97,9 @@ namespace Canis
 
 			// Max scale is assuming for the diameter. So, we need the half to apply it to our radius
 			// SphereColliderComponent globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
-			SphereColliderComponent globalSphere(globalCenter, sphere.radius * (maxScale * 0.5f));
+			SphereColliderComponent globalSphere = {};
+			globalSphere.center = globalCenter;
+			globalSphere.radius = sphere.radius * (maxScale * 0.5f);
 
 			// Check Firstly the result that have the most chance to faillure to avoid to call all functions.
 			return (isOnOrForwardPlan(camFrustum.leftFace, globalSphere) &&
