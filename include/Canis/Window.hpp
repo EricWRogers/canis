@@ -28,6 +28,8 @@ namespace Canis
         int GetScreenWidth() { return screenWidth; }
         int GetScreenHeight() { return screenHeight; }
 
+        float fps;
+
     private:
         SDL_Window *sdlWindow;
         int screenWidth, screenHeight;
