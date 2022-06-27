@@ -1,5 +1,10 @@
 #include <Canis/Window.hpp>
 
+PFNGLBINDVERTEXARRAYPROC bindVertexArrayOES;
+PFNGLDELETEVERTEXARRAYSPROC deleteVertexArraysOES;
+PFNGLGENVERTEXARRAYSPROC genVertexArraysOES;
+PFNGLISVERTEXARRAYPROC isVertexArrayOES;
+
 namespace Canis
 {
     Window::Window()
@@ -18,6 +23,8 @@ namespace Canis
 
         screenWidth = _screenWidth;
         screenHeight = _screenHeight;
+
+        #ifdef GLAD
         
         if (_currentFlags & WindowFlags::FULLSCREEN)
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
@@ -39,17 +46,42 @@ namespace Canis
         {
             FatalError("SDL_GL context could not be created!");
         }
+        #endif 
 
-        // Load OpenGL
-        GLenum error = glewInit();
+        #ifdef __ANDROID__
+        SDL_GLContext glContext;
+        sdlWindow = {SDL_CreateWindow(
+            "A Simple Triangle",
+            SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED,
+            screenWidth, screenHeight,
+            SDL_WINDOW_RESIZABLE | SDL_WINDOW_OPENGL | SDL_WINDOW_ALLOW_HIGHDPI)};
+        glContext = {SDL_GL_CreateContext(sdlWindow)};
+        //SDL_GL_GetDrawableSize(sdlWindow, &screenWidth, &screenHeight);
+        #endif
 
-        if (error != GLEW_OK) // Check for an error loading OpenGL
-        {
-            FatalError("Could not init GLEW");
-        }
+        #ifdef __ANDROID__
+            void *libhandle = dlopen("libGLESv3.so", RTLD_LAZY);
 
-        std::string openglVersion = (const char*)glGetString(GL_VERSION);
-        Log("*** OpenGL Version: " + openglVersion + " ***");
+            bindVertexArrayOES = (PFNGLBINDVERTEXARRAYPROC) dlsym(libhandle,
+                                                                    "glBindVertexArray");
+            deleteVertexArraysOES = (PFNGLDELETEVERTEXARRAYSPROC) dlsym(libhandle,
+                                                                        "glDeleteVertexArrays");
+            genVertexArraysOES = (PFNGLGENVERTEXARRAYSPROC)dlsym(libhandle,
+                                                                    "glGenVertexArrays");
+            isVertexArrayOES = (PFNGLISVERTEXARRAYPROC)dlsym(libhandle,
+                                                                "glIsVertexArray");
+        #endif
+        #ifdef GLAD
+            if (!gladLoadGLLoader(SDL_GL_GetProcAddress))
+            {
+                FatalError("Could not init load glad");
+            } 
+        #endif 
+
+        //std::string openglVersion = (const char*)glGetString(GL_VERSION);
+        //Log("*** OpenGL Version: " + openglVersion + " ***");
+
+        Log("Help");
 
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels

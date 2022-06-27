@@ -1,5 +1,18 @@
 #pragma once
-#include <GL/glew.h>
+
+#if __ANDROID__
+#define GLES
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
+#elif __EMSCRIPTEN__
+#define GLES
+#include <emscripten.h>
+#include <GLES3/gl3.h>
+#else
+#define GLAD
+#include <glad/glad.h>
+#endif
+
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
@@ -63,8 +76,10 @@ namespace Canis
 
         void Rotate(float xoffset, float yoffset);
 
+        void UpdateCameraVectors();
+
     private:
         // calculates the front vector from the Camera's (updated) Euler Angles
-        void updateCameraVectors();
+        //void updateCameraVectors();
     };
 } // end of Canis namespace

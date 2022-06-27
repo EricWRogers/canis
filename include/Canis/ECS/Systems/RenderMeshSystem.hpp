@@ -182,7 +182,11 @@ namespace Canis
 				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
 					continue;
 
+				#ifdef __ANDROID__
+				bindVertexArrayOES(mesh.vao);
+				#else
 				glBindVertexArray(mesh.vao);
+				#endif
 
 				shader->SetMat4("model", modelMatrix);
 				shader->SetVec4("color", color.color);
@@ -192,7 +196,11 @@ namespace Canis
 				entities_rendered++;
 			}
 
-			glBindVertexArray(0);
+			#ifdef __ANDROID__
+            bindVertexArrayOES(0);
+            #else
+            glBindVertexArray(0);
+            #endif
 
 			shader->UnUse();
 		}

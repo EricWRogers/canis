@@ -3,7 +3,18 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <GL/glew.h>
+#if __ANDROID__
+#define GLES
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
+#elif __EMSCRIPTEN__
+#define GLES
+#include <emscripten.h>
+#include <GLES3/gl3.h>
+#else
+#define GLAD
+#include <glad/glad.h>
+#endif
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
@@ -45,6 +56,12 @@ namespace Canis
 
         RenderTextSystem()
         {
+        }
+
+        ~RenderTextSystem()
+        {
+            glDeleteVertexArrays(1, &VAO);
+            glDeleteBuffers(1, &VBO);
         }
 
         void Init()
@@ -116,15 +133,28 @@ namespace Canis
 
             // configure VAO/VBO for texture quads
             // -----------------------------------
+            #ifdef __ANDROID__
+            genVertexArraysOES(1,&VAO);
+            #else
             glGenVertexArrays(1, &VAO);
+            #endif
             glGenBuffers(1, &VBO);
+
+            #ifdef __ANDROID__
+            bindVertexArrayOES(VAO);
+            #else
             glBindVertexArray(VAO);
+            #endif
             glBindBuffer(GL_ARRAY_BUFFER, VBO);
             glBufferData(GL_ARRAY_BUFFER, sizeof(float) * 6 * 4, NULL, GL_DYNAMIC_DRAW);
             glEnableVertexAttribArray(0);
             glVertexAttribPointer(0, 4, GL_FLOAT, GL_FALSE, 4 * sizeof(float), 0);
             glBindBuffer(GL_ARRAY_BUFFER, 0);
+            #ifdef __ANDROID__
+            bindVertexArrayOES(0);
+            #else
             glBindVertexArray(0);
+            #endif
         }
 
         void RenderText(Canis::Shader &shader, std::string t, float x, float y, float scale, glm::vec3 color)
@@ -133,7 +163,11 @@ namespace Canis
             shader.Use();
             glUniform3f(glGetUniformLocation(shader.GetProgramID(), "textColor"), color.x, color.y, color.z);
             glActiveTexture(GL_TEXTURE0);
+            #ifdef __ANDROID__
+            bindVertexArrayOES(VAO);
+            #else
             glBindVertexArray(VAO);
+            #endif
 
             // iterate through all characters
             std::string::const_iterator c;
@@ -167,7 +201,11 @@ namespace Canis
                 // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
                 x += (ch.Advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
             }
+            #ifdef __ANDROID__
+            bindVertexArrayOES(0);
+            #else
             glBindVertexArray(0);
+            #endif
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 

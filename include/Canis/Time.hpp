@@ -6,11 +6,15 @@
 #include "Debug.hpp"
 
 #ifdef __linux__
+#if __ANDROID__
+using namespace std::chrono;
+#else
 using namespace std::chrono::_V2;
+#endif
 #elif _WIN32
 using namespace std::chrono;
 #else
-
+using namespace std::chrono;
 #endif
 
 namespace Canis
