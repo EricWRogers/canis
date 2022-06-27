@@ -30,43 +30,95 @@ namespace Canis
 		return true;
 	}
 
-	GLTexture LoadPNGToGLTexture(std::string filePath, GLint sourceFormat, GLint format)
+	GLTexture LoadImageToGLTexture(std::string filePath, GLint sourceFormat, GLint format)
 	{
 		GLTexture texture;
-
-		std::vector<unsigned char> in;
-		std::vector<unsigned char> out;
-
-		unsigned long width, height;
-
-		if (ReadFileToBuffer(filePath, in) == false)
-			FatalError("Failed to loadPNG file to buffer");
-
-		int errorCode = decodePNG(out, width, height, &(in[0]), in.size());
-		if (errorCode != 0)
-			FatalError("decodePNG failed with error: " + std::to_string(errorCode));
+		int nrChannels;
 
 		glGenTextures(1, &texture.id);
-		Log(std::to_string(texture.id));
-
 		glBindTexture(GL_TEXTURE_2D, texture.id);
-		//to give it a frame
-		//glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 1, GL_RGBA, GL_UNSIGNED_BYTE, &(out[0]));
-		glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, &(out[0]));
 
+		stbi_set_flip_vertically_on_load(false);
+		SDL_RWops *file = SDL_RWFromFile(filePath.c_str(), "rb");
+
+		if (file != NULL)
+		{
+			int imageDataLength {static_cast<int>(SDL_RWsize(file))};
+			void* imageData{SDL_LoadFile_RW(file, nullptr, 1)};
+
+			// convert to stbi thing
+			stbi_uc* data = stbi_load_from_memory(static_cast<stbi_uc*>(imageData), imageDataLength, &texture.width, &texture.height, &nrChannels, 4);
+			if (data) {
+				glTexImage2D(GL_TEXTURE_2D, 0, sourceFormat, texture.width, texture.height, 0, format, GL_UNSIGNED_BYTE, data);
+			} else {
+				std::cout << "Failed to load texture" << std::endl;
+			}
+			stbi_image_free(data);
+			//SDL_RWclose(file);
+			//SDL_free(imageData);
+		}
+		else
+		{
+			Canis::Error("Failed to open file");
+		}
+
+		
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR_MIPMAP_LINEAR);
 
 		glGenerateMipmap(GL_TEXTURE_2D);
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 
-		texture.width = width;
-		texture.height = height;
+		stbi_set_flip_vertically_on_load(true);
 
 		return texture;
+	}
+
+	// loads a cubemap texture from 6 individual texture faces
+	// order:
+	// +X (right)
+	// -X (left)
+	// +Y (top)
+	// -Y (bottom)
+	// +Z (front) 
+	// -Z (back)
+	extern unsigned int LoadImageToCubemap(std::vector<std::string> faces, GLint sourceFormat)
+	{
+		stbi_set_flip_vertically_on_load(false);
+
+		unsigned int textureID;
+		glGenTextures(1, &textureID);
+		glBindTexture(GL_TEXTURE_CUBE_MAP, textureID);
+
+		int width, height, nrChannels;
+
+		for (unsigned int i = 0; i < faces.size(); i++)
+		{
+			unsigned char *data = stbi_load(faces[i].c_str(), &width, &height, &nrChannels, 0);
+			if (data)
+			{
+				glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X + i, 0, sourceFormat, width, height, 0, GL_RGB, GL_UNSIGNED_BYTE, data);
+				stbi_image_free(data);
+			}
+			else
+			{
+				std::cout << "Cubemap texture failed to load at path: " << faces[i] << std::endl;
+				stbi_image_free(data);
+			}
+		}
+
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+		glTexParameteri(GL_TEXTURE_CUBE_MAP, GL_TEXTURE_WRAP_R, GL_CLAMP_TO_EDGE);
+
+		stbi_set_flip_vertically_on_load(true);
+
+		return textureID;
 	}
 
 	bool LoadOBJ(

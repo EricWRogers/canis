@@ -27,6 +27,7 @@ namespace Canis
 
             Window *window;
             InputManager *inputManager;
+            unsigned int *sceneManager;
             Time *time;
 
             Camera *camera;

@@ -148,20 +148,12 @@ namespace Canis
     {
         program_id = glCreateProgram();
 
-        std::ifstream vertexFile(filePath);
-        if (vertexFile.fail())
-            Log("Failed to open " + filePath);
+        SDL_RWops* vertexFile {SDL_RWFromFile(filePath.c_str(), "r")};
+        size_t vertexFileLength {static_cast<size_t>(SDL_RWsize(vertexFile))};
+        void* vertexData{SDL_LoadFile_RW(vertexFile, nullptr, 1)};
+        std::string vertexCode{static_cast<char*>(vertexData), vertexFileLength};
 
-        std::string fileContents = "";
-        std::string line;
-
-        while (std::getline(vertexFile, line))
-            fileContents += line + "\n";
-
-        vertexFile.close();
-        Log("File Close: " + filePath);
-
-        const char *contentsPtr = fileContents.c_str();
+        const char *contentsPtr = vertexCode.c_str();
         glShaderSource(id, 1, &contentsPtr, nullptr);
 
         glCompileShader(id);

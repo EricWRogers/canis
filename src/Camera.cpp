@@ -9,7 +9,7 @@ namespace Canis
         WorldUp = up;
         Yaw = yaw;
         Pitch = pitch;
-        updateCameraVectors();
+        UpdateCameraVectors();
     }
 
     Camera::Camera(float posX, float posY, float posZ, float upX, float upY, float upZ, float yaw, float pitch) : Front(glm::vec3(0.0f, 0.0f, -1.0f)), MovementSpeed(SPEED), MouseSensitivity(SENSITIVITY), Zoom(ZOOM)
@@ -18,7 +18,7 @@ namespace Canis
         WorldUp = glm::vec3(upX, upY, upZ);
         Yaw = yaw;
         Pitch = pitch;
-        updateCameraVectors();
+        UpdateCameraVectors();
     }
 
     glm::mat4 Camera::GetViewMatrix()
@@ -60,7 +60,7 @@ namespace Canis
         }
 
         // update Front, Right and Up Vectors using the updated Euler angles
-        updateCameraVectors();
+        UpdateCameraVectors();
     }
 
     void Camera::Rotate(float yaw, float pitch)
@@ -69,7 +69,7 @@ namespace Canis
         Pitch = pitch;
 
         // update Front, Right and Up Vectors using the updated Euler angles
-        updateCameraVectors();
+        UpdateCameraVectors();
     }
 
     void Camera::ProcessMouseScroll(float yoffset)
@@ -81,7 +81,7 @@ namespace Canis
             Zoom = 45.0f;
     }
 
-    void Camera::updateCameraVectors()
+    void Camera::UpdateCameraVectors()
     {
         // calculate the new Front vector
         glm::vec3 front;

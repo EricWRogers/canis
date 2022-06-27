@@ -5,6 +5,8 @@
 #include <cstring>
 #include <string>
 #include <glm/glm.hpp>
+#include <SDL.h>
+#include <stb_image.h>
 
 #include "Data/GLTexture.hpp"
 #include "External/picoPNG.h"
@@ -15,7 +17,9 @@ namespace Canis
 {
 	extern bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer);
 
-	extern GLTexture LoadPNGToGLTexture(std::string filePath, GLint sourceFormat, GLint format);
+	extern GLTexture LoadImageToGLTexture(std::string filePath, GLint sourceFormat, GLint format);
+
+	extern unsigned int LoadImageToCubemap(std::vector<std::string> faces, GLint sourceFormat);
 
 	extern bool LoadOBJ(const char * path,
 		std::vector < glm::vec3 > & out_vertices,

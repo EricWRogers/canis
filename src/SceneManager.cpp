@@ -28,8 +28,6 @@ namespace Canis
         Camera *_camera
     )
     {
-        Canis::Log("Q SceneManager PreLoad Start");
-
         window = _window;
         inputManager = _inputManager;
         time = _time;
@@ -37,15 +35,14 @@ namespace Canis
 
         for(int i = 0; i < scenes.size(); i++)
         {
-            Canis::Log("Q SceneManager PreLoad " + std::to_string(i));
             scenes[i]->window = _window;
             scenes[i]->inputManager = _inputManager;
+            scenes[i]->sceneManager = (unsigned int *)this;
             scenes[i]->time = _time;
             scenes[i]->camera = _camera;
             
             scenes[i]->PreLoad();
         }
-        Canis::Log("Q SceneManager PreLoad End");
     }
 
     void SceneManager::Load(int _index)
