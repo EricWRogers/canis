@@ -62,9 +62,8 @@ namespace Canis
         void ProcessMouseScroll(float yoffset);
 
         void Rotate(float xoffset, float yoffset);
-
-    private:
+        
         // calculates the front vector from the Camera's (updated) Euler Angles
-        void updateCameraVectors();
+        void UpdateCameraVectors();
     };
 } // end of Canis namespace
