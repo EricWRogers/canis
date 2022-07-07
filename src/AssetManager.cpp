@@ -14,7 +14,7 @@ namespace Canis
         }
 
         // create texture
-        Asset* texture = new Texture();
+        Asset* texture = new TextureAsset();
         texture->Load(path);
         int id = m_nextId;
 
@@ -42,7 +42,7 @@ namespace Canis
         }
 
         // create skybox
-        Asset* skybox = new Skybox();
+        Asset* skybox = new SkyboxAsset();
         skybox->Load(path);
         int id = m_nextId;
 
@@ -70,7 +70,7 @@ namespace Canis
         }
 
         // create model
-        Asset* model = new Model();
+        Asset* model = new ModelAsset();
         model->Load(path);
         int id = m_nextId;
 
@@ -79,6 +79,34 @@ namespace Canis
 
         // cache id
         m_assetPath[path] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
+
+    int AssetManager::LoadText(std::string path, unsigned int fontSize)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(path + std::to_string(fontSize));
+
+        // check if text already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create text
+        Asset* text = new TextAsset(fontSize);
+        text->Load(path);
+        int id = m_nextId;
+
+        // cache text
+        m_assets[id] = text;
+
+        // cache id
+        m_assetPath[path + std::to_string(fontSize)] = id;
 
         // increment id
         m_nextId++;

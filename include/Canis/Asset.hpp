@@ -1,9 +1,20 @@
 #pragma once
 #include <string>
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+
+#include <GL/glew.h>
+
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
+#include <map>
 
 #include <Canis/Debug.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/IOManager.hpp>
+#include <Canis/Data/Character.hpp>
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
 
@@ -23,7 +34,7 @@ namespace Canis
         virtual bool Free() = 0;
     };
 
-    class Texture : public Asset
+    class TextureAsset : public Asset
     {
     private:
         GLTexture m_texture;
@@ -33,7 +44,7 @@ namespace Canis
         GLTexture GetTexture() { return m_texture; }
     };
 
-    class Skybox : public Asset
+    class SkyboxAsset : public Asset
     {
     private:
         Canis::Shader *skyboxShader;
@@ -47,7 +58,7 @@ namespace Canis
         Canis::Shader* GetShader() { return skyboxShader; }
     };
 
-    class Model : public Asset
+    class ModelAsset : public Asset
     {
     private:
         std::vector<Canis::Vertex> m_vertices;
@@ -60,5 +71,19 @@ namespace Canis
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
         int GetSize() { return m_size; }
+    };
+
+    class TextAsset : public Asset
+    {
+    private:
+        unsigned int m_vao, m_vbo, m_font_size;
+    public:
+        TextAsset(unsigned int _font_size) { m_font_size = _font_size; }
+        std::map<GLchar, Character> Characters;
+        bool Load(std::string path) override;
+        bool Free() override;
+        unsigned int GetVAO() { return m_vao; }
+        unsigned int GetVBO() { return m_vbo; }
+        unsigned int GetFontSize() { return m_font_size; }
     };
 } // end of Canis namespace
