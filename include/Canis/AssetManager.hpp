@@ -18,7 +18,9 @@ namespace Canis
             return instance;
         }
 
+        int LoadTexture(std::string path);
         int LoadSkybox(std::string path);
+        int LoadModel(std::string path);
         int GetIdByPath(std::string path);
 
         template <typename T>

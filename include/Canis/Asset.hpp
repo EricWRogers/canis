@@ -4,6 +4,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/IOManager.hpp>
+#include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
 
 
@@ -22,6 +23,16 @@ namespace Canis
         virtual bool Free() = 0;
     };
 
+    class Texture : public Asset
+    {
+    private:
+        GLTexture m_texture;
+    public:
+        bool Load(std::string path) override;
+        bool Free() override;
+        GLTexture GetTexture() { return m_texture; }
+    };
+
     class Skybox : public Asset
     {
     private:
@@ -34,5 +45,20 @@ namespace Canis
         unsigned int GetVAO() { return skyboxVAO; }
         unsigned int GetTexture() { return cubemapTexture; }
         Canis::Shader* GetShader() { return skyboxShader; }
+    };
+
+    class Model : public Asset
+    {
+    private:
+        std::vector<Canis::Vertex> m_vertices;
+        unsigned int m_vao;
+        unsigned int m_vbo;
+        int m_size;
+    public:
+        bool Load(std::string path) override;
+        bool Free() override;
+        unsigned int GetVAO() { return m_vao; }
+        unsigned int GetVBO() { return m_vbo; }
+        int GetSize() { return m_size; }
     };
 } // end of Canis namespace
