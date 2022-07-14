@@ -122,12 +122,12 @@ namespace Canis
 	}
 
 	bool LoadOBJ(
-		const char * path, 
+		std::string path, 
 		std::vector<glm::vec3> & out_vertices, 
 		std::vector<glm::vec2> & out_uvs,
 		std::vector<glm::vec3> & out_normals
 	){
-		printf("Loading OBJ file %s...\n", path);
+		Canis::Log("Loading OBJ file " + path);
 
 		std::vector<unsigned int> vertexIndices, uvIndices, normalIndices;
 		std::vector<glm::vec3> temp_vertices; 
@@ -135,7 +135,7 @@ namespace Canis
 		std::vector<glm::vec3> temp_normals;
 
 
-		FILE * file = fopen(path, "r");
+		FILE * file = fopen(path.c_str(), "r");
 		if( file == NULL ){
 			printf("Impossible to open the file ! Are you in the right path ? See Tutorial 1 for details\n");
 			getchar();

@@ -57,7 +57,7 @@ namespace Canis
         std::vector<glm::vec2> uvs;
         std::vector<glm::vec3> normals;
         
-        Canis::LoadOBJ(path.c_str(), vertices, uvs, normals);
+        Canis::LoadOBJ(path, vertices, uvs, normals);
 
         for(int i = 0; i < vertices.size(); i++)
         {

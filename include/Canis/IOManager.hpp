@@ -21,7 +21,7 @@ namespace Canis
 
 	extern unsigned int LoadImageToCubemap(std::vector<std::string> faces, GLint sourceFormat);
 
-	extern bool LoadOBJ(const char * path,
+	extern bool LoadOBJ(std::string path,
 		std::vector < glm::vec3 > & out_vertices,
 		std::vector < glm::vec2 > & out_uvs,
 		std::vector < glm::vec3 > & out_normals
