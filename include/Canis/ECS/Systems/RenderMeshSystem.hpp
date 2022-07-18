@@ -22,13 +22,42 @@ namespace Canis
 	class RenderMeshSystem
 	{
 	public:
-		Canis::Shader *shader;
+		Canis::Shader *shadow_mapping_depth_shader;
+		Canis::Shader *shadow_mapping_shader;
 		Canis::Camera *camera;
 		Canis::Window *window;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 
 		int entities_rendered = 0;
+		glm::vec3 lightPos = glm::vec3(-5.0f, 10.0f, -5.0f);
+		const unsigned int SHADOW_WIDTH = 1024*2, SHADOW_HEIGHT = 1024*2;
+		unsigned int depthMapFBO;
+		unsigned int depthMap;
+		glm::mat4 lightProjection, lightView;
+		glm::mat4 lightSpaceMatrix;
+
+		RenderMeshSystem() {
+			// configure depth map FBO
+			// -----------------------
+			glGenFramebuffers(1, &depthMapFBO);
+			// create depth texture
+			glGenTextures(1, &depthMap);
+			glBindTexture(GL_TEXTURE_2D, depthMap);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+			float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+			// attach depth texture as FBO's depth buffer
+			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+			glDrawBuffer(GL_NONE);
+			glReadBuffer(GL_NONE);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
 
 		struct Plan
 		{
@@ -110,8 +139,144 @@ namespace Canis
 				isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
 		};
 
+		void ShadowDepthPass(float deltaTime, entt::registry &registry)
+		{
+			glCullFace(GL_FRONT);
+			// render
+        	// ------
+        	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			shadow_mapping_depth_shader->Use();
+
+			shadow_mapping_depth_shader->SetInt("depthMap", 0);
+
+			// 1. render depth of scene to texture (from light's perspective)
+			// --------------------------------------------------------------
+			float near_plane = 1.0f, far_plane = 30.0f;
+			//lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
+			lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane);
+			lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+			lightSpaceMatrix = lightProjection * lightView;
+			// render scene from light's point of view
+			shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+			glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glActiveTexture(GL_TEXTURE0);
+			
+			// render scene
+			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
+
+			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
+
+			for (auto [entity, transform, color, mesh, sphere] : view.each())
+			{
+				if (!transform.active)
+					continue;
+				
+				if (!mesh.castShadow)
+					continue;
+
+				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
+
+				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
+					continue;
+
+				glBindVertexArray(mesh.vao);
+
+				shadow_mapping_depth_shader->SetMat4("model", modelMatrix);
+
+				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// reset viewport
+			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			shadow_mapping_depth_shader->UnUse();
+			glCullFace(GL_BACK);
+		}
+
+		void DrawMesh(float deltaTime, entt::registry &registry)
+		{
+			// reset viewport
+			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			entities_rendered = 0;
+			// activate shader
+			shadow_mapping_shader->Use();
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, depthMap);
+
+			shadow_mapping_shader->SetInt("diffuseTexture", 0);
+    		shadow_mapping_shader->SetInt("shadowMap", 1);
+
+			shadow_mapping_shader->SetVec3("viewPos", camera->Position);
+			shadow_mapping_shader->SetVec3("lightPos", lightPos);
+
+			// create transformations
+			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+			glm::mat4 projection = glm::mat4(1.0f);
+			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
+			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
+			cameraView = camera->GetViewMatrix();
+			// pass transformation matrices to the shader
+			shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
+			shadow_mapping_shader->SetMat4("view", cameraView);
+
+			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
+
+			shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
+
+			for (auto [entity, transform, color, mesh, sphere] : view.each())
+			{
+				if (!transform.active)
+					continue;
+
+				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
+
+				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
+					continue;
+
+				glBindVertexArray(mesh.vao);
+
+				shadow_mapping_shader->SetMat4("model", modelMatrix);
+				//shadow_mapping_shader->SetVec4("color", color.color);
+
+				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+
+				entities_rendered++;
+			}
+
+			glBindVertexArray(0);
+
+			shadow_mapping_shader->UnUse();
+		}		
+		
 		void UpdateComponents(float deltaTime, entt::registry &registry)
 		{
+			ShadowDepthPass(deltaTime, registry);
+			DrawMesh(deltaTime, registry);
+		}
+
+	private:
+	};
+} // end of Canis namespace
+
+
+/*
+
 			entities_rendered = 0;
 			// activate shader
 			shader->Use();
@@ -195,8 +360,5 @@ namespace Canis
 			glBindVertexArray(0);
 
 			shader->UnUse();
-		}
 
-	private:
-	};
-} // end of Canis namespace
+*/

@@ -7,5 +7,6 @@ namespace Canis
 		int id;
 		unsigned int vao;
 		int size;
+		bool castShadow;
 	};
 } // end of Canis namespace
