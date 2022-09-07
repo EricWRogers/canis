@@ -62,9 +62,9 @@ namespace Canis
         for(int i = 0; i < vertices.size(); i++)
         {
             Canis::Vertex v = {};
-            v.Position = vertices[i];
-            v.Normal = normals[i];
-            v.TexCoords = uvs[i];
+            v.position = vertices[i];
+            v.normal = normals[i];
+            v.texCoords = uvs[i];
             m_vertices.push_back(v);
         }
 
