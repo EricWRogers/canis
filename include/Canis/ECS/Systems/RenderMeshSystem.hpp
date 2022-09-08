@@ -16,48 +16,22 @@
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
+#include "../Components/SpotLightComponent.hpp"
+#include "../Components/PointLightComponent.hpp"
+#include "../Components/DirectionalLightComponent.hpp"
 
 namespace Canis
 {
 	class RenderMeshSystem
 	{
 	public:
-		Canis::Shader *shadow_mapping_depth_shader;
-		Canis::Shader *shadow_mapping_shader;
+		Canis::Shader *shader;
 		Canis::Camera *camera;
 		Canis::Window *window;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 
 		int entities_rendered = 0;
-		glm::vec3 lightPos = glm::vec3(-5.0f, 10.0f, -5.0f);
-		const unsigned int SHADOW_WIDTH = 1024*2, SHADOW_HEIGHT = 1024*2;
-		unsigned int depthMapFBO;
-		unsigned int depthMap;
-		glm::mat4 lightProjection, lightView;
-		glm::mat4 lightSpaceMatrix;
-
-		RenderMeshSystem() {
-			// configure depth map FBO
-			// -----------------------
-			glGenFramebuffers(1, &depthMapFBO);
-			// create depth texture
-			glGenTextures(1, &depthMap);
-			glBindTexture(GL_TEXTURE_2D, depthMap);
-			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-			float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
-			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-			// attach depth texture as FBO's depth buffer
-			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-			glDrawBuffer(GL_NONE);
-			glReadBuffer(GL_NONE);
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-		}
 
 		struct Plan
 		{
@@ -139,177 +113,88 @@ namespace Canis
 				isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
 		};
 
-		void ShadowDepthPass(float deltaTime, entt::registry &registry)
-		{
-			glCullFace(GL_FRONT);
-			// render
-        	// ------
-        	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			shadow_mapping_depth_shader->Use();
-
-			shadow_mapping_depth_shader->SetInt("depthMap", 0);
-
-			// 1. render depth of scene to texture (from light's perspective)
-			// --------------------------------------------------------------
-			float near_plane = 1.0f, far_plane = 30.0f;
-			//lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
-			lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane);
-			lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
-			lightSpaceMatrix = lightProjection * lightView;
-			// render scene from light's point of view
-			shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-			glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
-			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-			glClear(GL_DEPTH_BUFFER_BIT);
-			glActiveTexture(GL_TEXTURE0);
-			
-			// render scene
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
-
-			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
-
-			for (auto [entity, transform, color, mesh, sphere] : view.each())
-			{
-				if (!transform.active)
-					continue;
-				
-				if (!mesh.castShadow)
-					continue;
-
-				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
-
-				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
-					continue;
-
-				glBindVertexArray(mesh.vao);
-
-				shadow_mapping_depth_shader->SetMat4("model", modelMatrix);
-
-				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
-			}
-
-			glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-			// reset viewport
-			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			shadow_mapping_depth_shader->UnUse();
-			glCullFace(GL_BACK);
-		}
-
-		void DrawMesh(float deltaTime, entt::registry &registry)
-		{
-			// reset viewport
-			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-
-			entities_rendered = 0;
-			// activate shader
-			shadow_mapping_shader->Use();
-
-			glActiveTexture(GL_TEXTURE0);
-			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
-
-			glActiveTexture(GL_TEXTURE1);
-			glBindTexture(GL_TEXTURE_2D, depthMap);
-
-			shadow_mapping_shader->SetInt("diffuseTexture", 0);
-    		shadow_mapping_shader->SetInt("shadowMap", 1);
-
-			shadow_mapping_shader->SetVec3("viewPos", camera->Position);
-			shadow_mapping_shader->SetVec3("lightPos", lightPos);
-
-			// create transformations
-			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
-			glm::mat4 projection = glm::mat4(1.0f);
-			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
-			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
-			cameraView = camera->GetViewMatrix();
-			// pass transformation matrices to the shader
-			shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
-			shadow_mapping_shader->SetMat4("view", cameraView);
-
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
-
-			shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
-
-			for (auto [entity, transform, color, mesh, sphere] : view.each())
-			{
-				if (!transform.active)
-					continue;
-
-				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
-
-				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
-					continue;
-
-				glBindVertexArray(mesh.vao);
-
-				shadow_mapping_shader->SetMat4("model", modelMatrix);
-				//shadow_mapping_shader->SetVec4("color", color.color);
-
-				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
-
-				entities_rendered++;
-			}
-
-			glBindVertexArray(0);
-
-			shadow_mapping_shader->UnUse();
-		}		
-		
 		void UpdateComponents(float deltaTime, entt::registry &registry)
 		{
-			ShadowDepthPass(deltaTime, registry);
-			DrawMesh(deltaTime, registry);
-		}
-
-	private:
-	};
-} // end of Canis namespace
-
-
-/*
-
 			entities_rendered = 0;
 			// activate shader
 			shader->Use();
 
 			shader->SetVec3("viewPos", camera->Position);
-			shader->SetInt("numDirLights", 1);
-			shader->SetInt("numPointLights", 0);
-			shader->SetInt("numSpotLights", 0);
 
 			// directional light
-			shader->SetVec3("dirLight.direction", -0.2f, -1.0f, -0.3f);
-			shader->SetVec3("dirLight.ambient", 0.05f, 0.05f, 0.05f);
-			shader->SetVec3("dirLight.diffuse", 0.8f, 0.8f, 0.8f);
-			shader->SetVec3("dirLight.specular", 0.5f, 0.5f, 0.5f);
+			int numDirLights = 0;
+
+			auto viewDirLight = registry.view<Canis::TransformComponent, Canis::DirectionalLightComponent>();
+
+			for (auto [entity, transform, directionalLight] : viewDirLight.each())
+			{
+				if (transform.active)
+				{
+					numDirLights++;
+					shader->SetVec3("dirLight.direction", transform.rotation);
+					shader->SetVec3("dirLight.ambient", directionalLight.ambient);
+					shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
+					shader->SetVec3("dirLight.specular", directionalLight.specular);
+				}
+				break;
+			}
+
+			shader->SetInt("numDirLights", numDirLights);
+
 			// point light 1
-			shader->SetVec3("pointLights[0].position", glm::vec3(0.0f, 0.0f, 0.0f));
-			shader->SetVec3("pointLights[0].ambient", 0.05f, 0.05f, 0.05f);
-			shader->SetVec3("pointLights[0].diffuse", 0.8f, 0.8f, 0.8f);
-			shader->SetVec3("pointLights[0].specular", 1.0f, 1.0f, 1.0f);
-			shader->SetFloat("pointLights[0].constant", 1.0f);
-			shader->SetFloat("pointLights[0].linear", 0.09f);
-			shader->SetFloat("pointLights[0].quadratic", 0.032f);
+			int numPointLights = 0;
+			int maxPointLights = 4;
+			
+			auto viewPointLight = registry.view<Canis::TransformComponent, Canis::PointLightComponent>();
+
+			for (auto [entity, transform, pointLight] : viewPointLight.each())
+			{
+				if (numPointLights > maxPointLights)
+					break;
+				
+				if (transform.active)
+				{
+					shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].position", transform.position);
+					shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].ambient", pointLight.ambient);
+					shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].diffuse", pointLight.diffuse);
+					shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].specular", pointLight.specular);
+					shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].constant", pointLight.constant);
+					shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].linear", pointLight.linear);
+					shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].quadratic", pointLight.quadratic);
+					numPointLights++;
+				}
+			}
+
+			shader->SetInt("numPointLights", numPointLights);
 			// spotLight
-			shader->SetVec3("spotLight.position", camera->Position);
-			shader->SetVec3("spotLight.direction", camera->Front);
-			shader->SetVec3("spotLight.ambient", 0.0f, 0.0f, 0.0f);
-			shader->SetVec3("spotLight.diffuse", 1.0f, 1.0f, 1.0f);
-			shader->SetVec3("spotLight.specular", 1.0f, 1.0f, 1.0f);
-			shader->SetFloat("spotLight.constant", 1.0f);
-			shader->SetFloat("spotLight.linear", 0.09f);
-			shader->SetFloat("spotLight.quadratic", 0.032f);
-			shader->SetFloat("spotLight.cutOff", glm::cos(glm::radians(12.5f)));
-			shader->SetFloat("spotLight.outerCutOff", glm::cos(glm::radians(15.0f)));
+			int numSpotLights = 0;
+			int maxSpotLights = 4;
+
+			auto viewSpotLight = registry.view<Canis::TransformComponent, Canis::SpotLightComponent>();
+			
+			for (auto [entity, transform, spotLight] : viewSpotLight.each())
+			{
+				if (numSpotLights > maxSpotLights)
+					break;
+				
+				if (transform.active)
+				{
+					shader->SetVec3("spotLight["+std::to_string(numSpotLights)+"].position", transform.position);
+					shader->SetVec3("spotLight["+std::to_string(numSpotLights)+"].direction", transform.rotation);
+					shader->SetFloat("spotLight["+std::to_string(numSpotLights)+"].cutOff", spotLight.cutOff);
+					shader->SetFloat("spotLight["+std::to_string(numSpotLights)+"].outerCutOff", spotLight.outerCutOff);
+					shader->SetFloat("spotLight["+std::to_string(numSpotLights)+"].constant", spotLight.constant);
+					shader->SetFloat("spotLight["+std::to_string(numSpotLights)+"].linear", spotLight.linear);
+					shader->SetFloat("spotLight["+std::to_string(numSpotLights)+"].quadratic", spotLight.quadratic);
+					shader->SetVec3("spotLight["+std::to_string(numSpotLights)+"].ambient", spotLight.ambient);
+					shader->SetVec3("spotLight["+std::to_string(numSpotLights)+"].diffuse", spotLight.diffuse);
+					shader->SetVec3("spotLight["+std::to_string(numSpotLights)+"].specular", spotLight.specular);
+					
+					numSpotLights++;
+				}
+			}
+
+			shader->SetInt("numSpotLights", numSpotLights);
 
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
@@ -360,5 +245,8 @@ namespace Canis
 			glBindVertexArray(0);
 
 			shader->UnUse();
+		}
 
-*/
+	private:
+	};
+} // end of Canis namespace
