@@ -59,7 +59,7 @@ namespace Canis
 		}
 		else
 		{
-			Canis::Error("Failed to open file");
+			Canis::Error("Failed to open file at path : " + filePath);
 		}
 
 		
