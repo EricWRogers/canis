@@ -37,7 +37,7 @@ namespace Canis
     private:
         GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
         std::vector<Glyph *> glyphs;
-        std::vector<RenderBatch> renderBatch;
+        std::vector<RenderBatch> spriteRenderBatch;
         Shader *spriteShader;
 
         unsigned int vbo = 0;
@@ -75,7 +75,7 @@ namespace Canis
 
             int offset = 0;
             int cv = 0; // current vertex
-            renderBatch.emplace_back(offset, 6, glyphs[0]->textureId);
+            spriteRenderBatch.emplace_back(offset, 6, glyphs[0]->textureId);
 
             
             vertices[cv++] = glyphs[0]->topLeft;
@@ -93,11 +93,11 @@ namespace Canis
             {
                 if (glyphs[cg]->textureId != glyphs[cg - 1]->textureId)
                 {
-                    renderBatch.emplace_back(offset, 6, glyphs[cg]->textureId);
+                    spriteRenderBatch.emplace_back(offset, 6, glyphs[cg]->textureId);
                 }
                 else
                 {
-                    renderBatch.back().numVertices += 6;
+                    spriteRenderBatch.back().numVertices += 6;
                 }
                 
                 vertices[cv++] = glyphs[cg]->topLeft;
@@ -118,7 +118,7 @@ namespace Canis
 
         void Begin(GlyphSortType sortType) {
             glyphSortType = sortType;
-            renderBatch.clear();
+            spriteRenderBatch.clear();
 
             for (int i = 0; i < glyphs.size(); i++)
                 delete glyphs[i];
@@ -157,7 +157,7 @@ namespace Canis
             glyphs.push_back(newGlyph);
         }
 
-        void RenderBatch()
+        void SpriteRenderBatch()
         {
             spriteShader->Use();
             glBindVertexArray(vao);
@@ -165,11 +165,11 @@ namespace Canis
             projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
             spriteShader->SetMat4("P", projection);
 
-            for (int i = 0; i < renderBatch.size(); i++)
+            for (int i = 0; i < spriteRenderBatch.size(); i++)
             {
-                glBindTexture(GL_TEXTURE_2D, renderBatch[i].texture);
+                glBindTexture(GL_TEXTURE_2D, spriteRenderBatch[i].texture);
 
-                glDrawArrays(GL_TRIANGLES, renderBatch[i].offset, renderBatch[i].numVertices);
+                glDrawArrays(GL_TRIANGLES, spriteRenderBatch[i].offset, spriteRenderBatch[i].numVertices);
             }
 
             glBindVertexArray(0);
@@ -231,7 +231,7 @@ namespace Canis
             }
 
             End();
-            RenderBatch();
+            SpriteRenderBatch();
         }
     };
 } // end of Canis namespace
