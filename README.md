@@ -1,5 +1,12 @@
 # canis
 
+## naming convention
+
+- Class name noun PascalCase
+- Public class var camelCase
+- Private class var m_camelCase
+- Function/Method PascalCase 
+
 ## requirements
 
 ### linux
