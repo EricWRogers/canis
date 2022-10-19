@@ -141,7 +141,8 @@ namespace Canis
 
 		void ShadowDepthPass(float deltaTime, entt::registry &registry)
 		{
-			glCullFace(GL_FRONT);
+			glDisable(GL_CULL_FACE); 
+			
 			// render
         	// ------
         	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
@@ -155,7 +156,7 @@ namespace Canis
 			// --------------------------------------------------------------
 			float near_plane = 1.0f, far_plane = 30.0f;
 			//lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
-			lightProjection = glm::ortho(-20.0f, 20.0f, -20.0f, 20.0f, near_plane, far_plane);
+			lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
 			lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
 			lightSpaceMatrix = lightProjection * lightView;
 			// render scene from light's point of view
@@ -198,6 +199,7 @@ namespace Canis
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->UnUse();
+			glEnable(GL_CULL_FACE);
 			glCullFace(GL_BACK);
 		}
 
