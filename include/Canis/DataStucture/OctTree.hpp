@@ -6,29 +6,29 @@ namespace Canis
 {
 struct OctNode
 {
-    OctNode *m_top0 = nullptr;
-    OctNode *m_top1 = nullptr;
-    OctNode *m_top2 = nullptr;
-    OctNode *m_top3 = nullptr;
-    OctNode *m_bottom0 = nullptr;
-    OctNode *m_bottom1 = nullptr;
-    OctNode *m_bottom2 = nullptr;
-    OctNode *m_bottom3 = nullptr;
-    glm::vec3 m_center = glm::vec3(0.0f);
-    float m_size;
-    glm::vec3 m_points[10] = {};
-    int m_pointsCapacity = 10;
-    int m_numOfPoints = 0;
+    OctNode *top0 = nullptr;
+    OctNode *top1 = nullptr;
+    OctNode *top2 = nullptr;
+    OctNode *top3 = nullptr;
+    OctNode *bottom0 = nullptr;
+    OctNode *bottom1 = nullptr;
+    OctNode *bottom2 = nullptr;
+    OctNode *bottom3 = nullptr;
+    glm::vec3 center = glm::vec3(0.0f);
+    float size;
+    glm::vec3 points[10] = {};
+    int pointsCapacity = 10;
+    int numOfPoints = 0;
 
     ~OctNode() {
-        delete m_top0;
-        delete m_top1;
-        delete m_top2;
-        delete m_top3;
-        delete m_bottom0;
-        delete m_bottom1;
-        delete m_bottom2;
-        delete m_bottom3;
+        delete top0;
+        delete top1;
+        delete top2;
+        delete top3;
+        delete bottom0;
+        delete bottom1;
+        delete bottom2;
+        delete bottom3;
     }
 };
 
@@ -39,158 +39,158 @@ private:
 
     void PointsQuery(glm::vec3 center, float radius, OctNode *node, std::vector<glm::vec3> &results) {
         if (OctNodeBoundsContains(center,node)) {
-            if (node->m_top0 == nullptr) {
-                for(int i = 0; i < node->m_numOfPoints; i++) {
-                    results.push_back(node->m_points[i]);
+            if (node->top0 == nullptr) {
+                for(int i = 0; i < node->numOfPoints; i++) {
+                    results.push_back(node->points[i]);
                 }
                 return;
             }
-            if (OctNodeBoundsContains(center,node->m_top0)) {
-                PointsQuery(center, radius, node->m_top0, results);
+            if (OctNodeBoundsContains(center,node->top0)) {
+                PointsQuery(center, radius, node->top0, results);
             }
-            if (OctNodeBoundsContains(center,node->m_top1)) {
-                PointsQuery(center, radius, node->m_top1, results);
+            if (OctNodeBoundsContains(center,node->top1)) {
+                PointsQuery(center, radius, node->top1, results);
             }
-            if (OctNodeBoundsContains(center,node->m_top2)) {
-                PointsQuery(center, radius, node->m_top2, results);
+            if (OctNodeBoundsContains(center,node->top2)) {
+                PointsQuery(center, radius, node->top2, results);
             }
-            if (OctNodeBoundsContains(center,node->m_top3)) {
-                PointsQuery(center, radius, node->m_top3, results);
+            if (OctNodeBoundsContains(center,node->top3)) {
+                PointsQuery(center, radius, node->top3, results);
             }
-            if (OctNodeBoundsContains(center,node->m_bottom0)) {
-                PointsQuery(center, radius, node->m_bottom0, results);
+            if (OctNodeBoundsContains(center,node->bottom0)) {
+                PointsQuery(center, radius, node->bottom0, results);
             }
-            if (OctNodeBoundsContains(center,node->m_bottom1)) {
-                PointsQuery(center, radius, node->m_bottom1, results);
+            if (OctNodeBoundsContains(center,node->bottom1)) {
+                PointsQuery(center, radius, node->bottom1, results);
             }
-            if (OctNodeBoundsContains(center,node->m_bottom2)) {
-                PointsQuery(center, radius, node->m_bottom2, results);
+            if (OctNodeBoundsContains(center,node->bottom2)) {
+                PointsQuery(center, radius, node->bottom2, results);
             }
-            if (OctNodeBoundsContains(center,node->m_bottom3)) {
-                PointsQuery(center, radius, node->m_bottom3, results);
+            if (OctNodeBoundsContains(center,node->bottom3)) {
+                PointsQuery(center, radius, node->bottom3, results);
             }
         }
     }
 
     bool OctNodeBoundsContains(glm::vec3 &point, OctNode *node) {
-        if (point.x > node->m_center.x - (node->m_size/2.0f) && point.x < node->m_center.x + (node->m_size/2.0f) &&
-            point.y > node->m_center.y - (node->m_size/2.0f) && point.y < node->m_center.y + (node->m_size/2.0f) &&
-            point.z > node->m_center.z - (node->m_size/2.0f) && point.z < node->m_center.z + (node->m_size/2.0f) ) {
+        if (point.x > node->center.x - (node->size/2.0f) && point.x < node->center.x + (node->size/2.0f) &&
+            point.y > node->center.y - (node->size/2.0f) && point.y < node->center.y + (node->size/2.0f) &&
+            point.z > node->center.z - (node->size/2.0f) && point.z < node->center.z + (node->size/2.0f) ) {
             return true;
         }
         return false;
     }
 
     void AddPoint(glm::vec3 point, OctNode *node) {
-        if (node->m_top0 == nullptr) {
-            if (node->m_pointsCapacity > node->m_numOfPoints) {
-                node->m_points[node->m_numOfPoints] = point;
-                node->m_numOfPoints++;
+        if (node->top0 == nullptr) {
+            if (node->pointsCapacity > node->numOfPoints) {
+                node->points[node->numOfPoints] = point;
+                node->numOfPoints++;
                 return;
             }
             
             // create octnodes
-            node->m_top0 = new OctNode();
-            node->m_top0->m_size = node->m_size/2.0f;
-            node->m_top0->m_center = node->m_center;
-            node->m_top0->m_center.x -= node->m_size/4.0f;
-            node->m_top0->m_center.y += node->m_size/4.0f;
-            node->m_top0->m_center.z += node->m_size/4.0f;
+            node->top0 = new OctNode();
+            node->top0->size = node->size/2.0f;
+            node->top0->center = node->center;
+            node->top0->center.x -= node->size/4.0f;
+            node->top0->center.y += node->size/4.0f;
+            node->top0->center.z += node->size/4.0f;
 
-            node->m_top1 = new OctNode();
-            node->m_top1->m_size = node->m_size/2.0f;
-            node->m_top1->m_center = node->m_center;
-            node->m_top1->m_center.x += node->m_size/4.0f;
-            node->m_top1->m_center.y += node->m_size/4.0f;
-            node->m_top1->m_center.z += node->m_size/4.0f;
+            node->top1 = new OctNode();
+            node->top1->size = node->size/2.0f;
+            node->top1->center = node->center;
+            node->top1->center.x += node->size/4.0f;
+            node->top1->center.y += node->size/4.0f;
+            node->top1->center.z += node->size/4.0f;
 
-            node->m_top2 = new OctNode();
-            node->m_top2->m_size = node->m_size/2.0f;
-            node->m_top2->m_center = node->m_center;
-            node->m_top2->m_center.x += node->m_size/4.0f;
-            node->m_top2->m_center.y += node->m_size/4.0f;
-            node->m_top2->m_center.z -= node->m_size/4.0f;
+            node->top2 = new OctNode();
+            node->top2->size = node->size/2.0f;
+            node->top2->center = node->center;
+            node->top2->center.x += node->size/4.0f;
+            node->top2->center.y += node->size/4.0f;
+            node->top2->center.z -= node->size/4.0f;
 
-            node->m_top3 = new OctNode();
-            node->m_top3->m_size = node->m_size/2.0f;
-            node->m_top3->m_center = node->m_center;
-            node->m_top3->m_center.x -= node->m_size/4.0f;
-            node->m_top3->m_center.y += node->m_size/4.0f;
-            node->m_top3->m_center.z -= node->m_size/4.0f;
+            node->top3 = new OctNode();
+            node->top3->size = node->size/2.0f;
+            node->top3->center = node->center;
+            node->top3->center.x -= node->size/4.0f;
+            node->top3->center.y += node->size/4.0f;
+            node->top3->center.z -= node->size/4.0f;
 
-            node->m_bottom0 = new OctNode();
-            node->m_bottom0->m_size = node->m_size/2.0f;
-            node->m_bottom0->m_center = node->m_center;
-            node->m_bottom0->m_center.x -= node->m_size/4.0f;
-            node->m_bottom0->m_center.y -= node->m_size/4.0f;
-            node->m_bottom0->m_center.z += node->m_size/4.0f;
+            node->bottom0 = new OctNode();
+            node->bottom0->size = node->size/2.0f;
+            node->bottom0->center = node->center;
+            node->bottom0->center.x -= node->size/4.0f;
+            node->bottom0->center.y -= node->size/4.0f;
+            node->bottom0->center.z += node->size/4.0f;
 
-            node->m_bottom1 = new OctNode();
-            node->m_bottom1->m_size = node->m_size/2.0f;
-            node->m_bottom1->m_center = node->m_center;
-            node->m_bottom1->m_center.x += node->m_size/4.0f;
-            node->m_bottom1->m_center.y -= node->m_size/4.0f;
-            node->m_bottom1->m_center.z += node->m_size/4.0f;
+            node->bottom1 = new OctNode();
+            node->bottom1->size = node->size/2.0f;
+            node->bottom1->center = node->center;
+            node->bottom1->center.x += node->size/4.0f;
+            node->bottom1->center.y -= node->size/4.0f;
+            node->bottom1->center.z += node->size/4.0f;
 
-            node->m_bottom2 = new OctNode();
-            node->m_bottom2->m_size = node->m_size/2.0f;
-            node->m_bottom2->m_center = node->m_center;
-            node->m_bottom2->m_center.x += node->m_size/4.0f;
-            node->m_bottom2->m_center.y -= node->m_size/4.0f;
-            node->m_bottom2->m_center.z -= node->m_size/4.0f;
+            node->bottom2 = new OctNode();
+            node->bottom2->size = node->size/2.0f;
+            node->bottom2->center = node->center;
+            node->bottom2->center.x += node->size/4.0f;
+            node->bottom2->center.y -= node->size/4.0f;
+            node->bottom2->center.z -= node->size/4.0f;
 
-            node->m_bottom3 = new OctNode();
-            node->m_bottom3->m_size = node->m_size/2.0f;
-            node->m_bottom3->m_center = node->m_center;
-            node->m_bottom3->m_center.x -= node->m_size/4.0f;
-            node->m_bottom3->m_center.y -= node->m_size/4.0f;
-            node->m_bottom3->m_center.z -= node->m_size/4.0f;
+            node->bottom3 = new OctNode();
+            node->bottom3->size = node->size/2.0f;
+            node->bottom3->center = node->center;
+            node->bottom3->center.x -= node->size/4.0f;
+            node->bottom3->center.y -= node->size/4.0f;
+            node->bottom3->center.z -= node->size/4.0f;
 
             // load points into child node
-            for(int i = 0; i < node->m_numOfPoints; i++) {
-                if (OctNodeBoundsContains(point, node->m_top0)) {
-                    AddPoint(point, node->m_top0);
-                } else if (OctNodeBoundsContains(point, node->m_top1)) {
-                    AddPoint(point, node->m_top1);
-                } else if (OctNodeBoundsContains(point, node->m_top2)) {
-                    AddPoint(point, node->m_top2);
-                } else if (OctNodeBoundsContains(point, node->m_top3)) {
-                    AddPoint(point, node->m_top3);
-                } else if (OctNodeBoundsContains(point, node->m_bottom0)) {
-                    AddPoint(point, node->m_bottom0);
-                } else if (OctNodeBoundsContains(point, node->m_bottom1)) {
-                    AddPoint(point, node->m_bottom1);
-                } else if (OctNodeBoundsContains(point, node->m_bottom2)) {
-                    AddPoint(point, node->m_bottom2);
-                } else if (OctNodeBoundsContains(point, node->m_bottom3)) {
-                    AddPoint(point, node->m_bottom3);
+            for(int i = 0; i < node->numOfPoints; i++) {
+                if (OctNodeBoundsContains(point, node->top0)) {
+                    AddPoint(point, node->top0);
+                } else if (OctNodeBoundsContains(point, node->top1)) {
+                    AddPoint(point, node->top1);
+                } else if (OctNodeBoundsContains(point, node->top2)) {
+                    AddPoint(point, node->top2);
+                } else if (OctNodeBoundsContains(point, node->top3)) {
+                    AddPoint(point, node->top3);
+                } else if (OctNodeBoundsContains(point, node->bottom0)) {
+                    AddPoint(point, node->bottom0);
+                } else if (OctNodeBoundsContains(point, node->bottom1)) {
+                    AddPoint(point, node->bottom1);
+                } else if (OctNodeBoundsContains(point, node->bottom2)) {
+                    AddPoint(point, node->bottom2);
+                } else if (OctNodeBoundsContains(point, node->bottom3)) {
+                    AddPoint(point, node->bottom3);
                 }
             }
         }
 
-        if (OctNodeBoundsContains(point, node->m_top0)) {
-            AddPoint(point, node->m_top0);
+        if (OctNodeBoundsContains(point, node->top0)) {
+            AddPoint(point, node->top0);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_top1)) {
-            AddPoint(point, node->m_top1);
+        } else if (OctNodeBoundsContains(point, node->top1)) {
+            AddPoint(point, node->top1);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_top2)) {
-            AddPoint(point, node->m_top2);
+        } else if (OctNodeBoundsContains(point, node->top2)) {
+            AddPoint(point, node->top2);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_top3)) {
-            AddPoint(point, node->m_top3);
+        } else if (OctNodeBoundsContains(point, node->top3)) {
+            AddPoint(point, node->top3);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_bottom0)) {
-            AddPoint(point, node->m_bottom0);
+        } else if (OctNodeBoundsContains(point, node->bottom0)) {
+            AddPoint(point, node->bottom0);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_bottom1)) {
-            AddPoint(point, node->m_bottom1);
+        } else if (OctNodeBoundsContains(point, node->bottom1)) {
+            AddPoint(point, node->bottom1);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_bottom2)) {
-            AddPoint(point, node->m_bottom2);
+        } else if (OctNodeBoundsContains(point, node->bottom2)) {
+            AddPoint(point, node->bottom2);
             return;
-        } else if (OctNodeBoundsContains(point, node->m_bottom3)) {
-            AddPoint(point, node->m_bottom3);
+        } else if (OctNodeBoundsContains(point, node->bottom3)) {
+            AddPoint(point, node->bottom3);
             return;
         }
     }
@@ -198,8 +198,8 @@ private:
 public:
     OctTree(glm::vec3 center, float size) {
         OctNode *node = new OctNode();
-        node->m_size = size;
-        node->m_center = center;
+        node->size = size;
+        node->center = center;
 
         m_root = node;
     }
@@ -215,36 +215,36 @@ public:
     bool PointsQuery(glm::vec3 center, float radius, std::vector<glm::vec3> &results) {
         if (OctNodeBoundsContains(center,m_root)) {
             //Canis::Log("true");
-            if (m_root->m_top0 == nullptr) {
-                for(int i = 0; i < m_root->m_numOfPoints; i++) {
-                    results.push_back(m_root->m_points[i]);
+            if (m_root->top0 == nullptr) {
+                for(int i = 0; i < m_root->numOfPoints; i++) {
+                    results.push_back(m_root->points[i]);
                 }
             }
             else
             {
-                if (OctNodeBoundsContains(center,m_root->m_top0)) {
-                    PointsQuery(center, radius, m_root->m_top0, results);
+                if (OctNodeBoundsContains(center,m_root->top0)) {
+                    PointsQuery(center, radius, m_root->top0, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_top1)) {
-                    PointsQuery(center, radius, m_root->m_top1, results);
+                if (OctNodeBoundsContains(center,m_root->top1)) {
+                    PointsQuery(center, radius, m_root->top1, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_top2)) {
-                    PointsQuery(center, radius, m_root->m_top2, results);
+                if (OctNodeBoundsContains(center,m_root->top2)) {
+                    PointsQuery(center, radius, m_root->top2, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_top3)) {
-                    PointsQuery(center, radius, m_root->m_top3, results);
+                if (OctNodeBoundsContains(center,m_root->top3)) {
+                    PointsQuery(center, radius, m_root->top3, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_bottom0)) {
-                    PointsQuery(center, radius, m_root->m_bottom0, results);
+                if (OctNodeBoundsContains(center,m_root->bottom0)) {
+                    PointsQuery(center, radius, m_root->bottom0, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_bottom1)) {
-                    PointsQuery(center, radius, m_root->m_bottom1, results);
+                if (OctNodeBoundsContains(center,m_root->bottom1)) {
+                    PointsQuery(center, radius, m_root->bottom1, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_bottom2)) {
-                    PointsQuery(center, radius, m_root->m_bottom2, results);
+                if (OctNodeBoundsContains(center,m_root->bottom2)) {
+                    PointsQuery(center, radius, m_root->bottom2, results);
                 }
-                if (OctNodeBoundsContains(center,m_root->m_bottom3)) {
-                    PointsQuery(center, radius, m_root->m_bottom3, results);
+                if (OctNodeBoundsContains(center,m_root->bottom3)) {
+                    PointsQuery(center, radius, m_root->bottom3, results);
                 }
             }
             return true;
