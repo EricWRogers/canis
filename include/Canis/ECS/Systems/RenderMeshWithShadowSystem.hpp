@@ -213,6 +213,31 @@ namespace Canis
 			// activate shader
 			shadow_mapping_shader->Use();
 
+			// directional light
+			int numDirLights = 0;
+
+			auto viewDirLight = registry.view<Canis::TransformComponent, Canis::DirectionalLightComponent>();
+
+			for (auto [entity, transform, directionalLight] : viewDirLight.each())
+			{
+				if (transform.active)
+				{
+					numDirLights++;
+					shadow_mapping_shader->SetVec3("dirLight.direction", transform.rotation);
+					shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
+					shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
+					shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
+				}
+				break;
+			}
+
+			shadow_mapping_shader->SetInt("numDirLights", numDirLights);
+
+			// material
+			shadow_mapping_shader->SetInt("material.diffuse", 0);
+			shadow_mapping_shader->SetInt("material.specular", 1);
+			shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
+
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
 
@@ -254,7 +279,7 @@ namespace Canis
 				glBindVertexArray(mesh.vao);
 
 				shadow_mapping_shader->SetMat4("model", modelMatrix);
-				//shadow_mapping_shader->SetVec4("color", color.color);
+				shadow_mapping_shader->SetVec4("color", color.color);
 
 				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
 
