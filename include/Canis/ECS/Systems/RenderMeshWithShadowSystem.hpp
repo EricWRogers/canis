@@ -30,10 +30,14 @@ namespace Canis
 		Canis::GLTexture *specularColorPaletteTexture;
 
 		int entities_rendered = 0;
-		glm::vec3 lightPos = glm::vec3(-5.0f, 10.0f, -5.0f);
-		const unsigned int SHADOW_WIDTH = 1024*2, SHADOW_HEIGHT = 1024*2;
+		glm::vec3 lightPos = glm::vec3(0.0f, 20.0f, 0.0f);
+		glm::vec3 lightLookAt = glm::vec3(12.0f,0.0f,15.0f);
+		float nearPlane = 1.0f;
+		float farPlane = 40.0f;
+		const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
 		unsigned int depthMapFBO;
 		unsigned int depthMap;
+		float lightProjectionSize = 20.0f;
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
 
@@ -154,10 +158,10 @@ namespace Canis
 
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
-			float near_plane = 1.0f, far_plane = 30.0f;
+			
 			//lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
-			lightProjection = glm::ortho(-10.0f, 10.0f, -10.0f, 10.0f, near_plane, far_plane);
-			lightView = glm::lookAt(lightPos, glm::vec3(0.0f), glm::vec3(0.0, 1.0, 0.0));
+			lightProjection = glm::ortho(-lightProjectionSize, lightProjectionSize, -lightProjectionSize, lightProjectionSize, nearPlane, farPlane);
+			lightView = glm::lookAt(lightPos, lightLookAt, glm::vec3(0.0, 1.0, 0.0));
 			lightSpaceMatrix = lightProjection * lightView;
 			// render scene from light's point of view
 			shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
