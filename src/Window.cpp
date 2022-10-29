@@ -18,6 +18,10 @@ namespace Canis
 
         screenWidth = _screenWidth;
         screenHeight = _screenHeight;
+
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         
         if (_currentFlags & WindowFlags::FULLSCREEN)
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
