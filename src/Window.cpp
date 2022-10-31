@@ -10,9 +10,20 @@ namespace Canis
     {
     }
 
+    int Window::CreateFullScreen(std::string _windowName) {
+
+        SDL_DisplayMode DM;
+        SDL_GetCurrentDisplayMode(0, &DM);
+
+        unsigned int windowFlags = 0;
+	    windowFlags |= WindowFlags::FULLSCREEN;
+
+        return Create(_windowName, DM.w, DM.h, windowFlags);
+    }
+
     int Window::Create(std::string _windowName, int _screenWidth, int _screenHeight, unsigned int _currentFlags)
     {
-        // if you wanted you application to suport multiple rendering apis 
+        // if you wanted you application to support multiple rendering apis 
         // you would not want to hard code it here
         Uint32 flags = SDL_WINDOW_OPENGL;
 
