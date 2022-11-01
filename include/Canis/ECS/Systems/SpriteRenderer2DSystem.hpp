@@ -169,7 +169,7 @@ namespace Canis
             glyphs.push_back(newGlyph);
         }
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, float angle)
+        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, float angle, glm::vec2 origin)
         {
             Glyph *newGlyph = new Glyph;
 
@@ -191,10 +191,10 @@ namespace Canis
             bottomRight = RotatePoint(bottomRight, angle) + halfDims;
             topRight = RotatePoint(topRight, angle) + halfDims;*/
 
-            glm::vec2 topLeft(-halfDims.x, halfDims.y);
-            glm::vec2 bottomLeft(-halfDims.x, -halfDims.y);
-            glm::vec2 bottomRight(halfDims.x, -halfDims.y);
-            glm::vec2 topRight(halfDims.x, halfDims.y);
+            glm::vec2 topLeft(-halfDims.x+origin.x, halfDims.y+origin.y);
+            glm::vec2 bottomLeft(-halfDims.x+origin.x, -halfDims.y+origin.y);
+            glm::vec2 bottomRight(halfDims.x+origin.x, -halfDims.y+origin.y);
+            glm::vec2 topRight(halfDims.x+origin.x, halfDims.y+origin.y);
             topLeft = RotatePoint(topLeft, angle);
             bottomLeft = RotatePoint(bottomLeft, angle);
             bottomRight = RotatePoint(bottomRight, angle);
@@ -301,7 +301,6 @@ namespace Canis
                 camera2D.SetScale(camera.scale);
                 camera2D.Update();
                 camFound = true;
-                Canis::Log("hey");
                 continue;
             }
 
@@ -314,22 +313,14 @@ namespace Canis
             auto view = registry.view<RectTransformComponent, ColorComponent, Sprite2DComponent>();
             for (auto [entity, rect_transform, color, sprite] : view.each())
 			{
-                Canis::Log(std::to_string(rect_transform.rotation));
-                /*Draw(
-                    glm::vec4(rect_transform.position.x+rect_transform.originOffset.x,rect_transform.position.y+rect_transform.originOffset.y,rect_transform.size.x,rect_transform.size.y),
-                    sprite.uv,
-                    sprite.texture,
-                    rect_transform.depth,
-                    color,
-                    rect_transform.rotation
-                );*/
                 Draw(
                     glm::vec4(rect_transform.position.x,rect_transform.position.y,rect_transform.size.x,rect_transform.size.y),
                     sprite.uv,
                     sprite.texture,
                     rect_transform.depth,
                     color,
-                    rect_transform.rotation
+                    rect_transform.rotation,
+                    rect_transform.originOffset
                 );
             }
 
