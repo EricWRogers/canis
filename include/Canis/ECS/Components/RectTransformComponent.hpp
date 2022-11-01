@@ -8,7 +8,8 @@ namespace Canis
 		bool active;
 		glm::vec2 position;
 		glm::vec2 size;
-		glm::vec2 rotation;
+		glm::vec2 originOffset;
+		float rotation;
 		float scale;
 		float depth;
 	};

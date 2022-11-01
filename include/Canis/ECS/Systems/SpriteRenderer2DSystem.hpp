@@ -180,32 +180,41 @@ namespace Canis
             glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
 
             // center points
+            /*glm::vec2 topLeft(-halfDims.x, halfDims.y);
+            glm::vec2 bottomLeft(-halfDims.x, -halfDims.y);
+            glm::vec2 bottomRight(halfDims.x, -halfDims.y);
+            glm::vec2 topRight(halfDims.x, halfDims.y);*/
+
+            // rotate points
+            /*topLeft = RotatePoint(topLeft, angle) + halfDims;
+            bottomLeft = RotatePoint(bottomLeft, angle) + halfDims;
+            bottomRight = RotatePoint(bottomRight, angle) + halfDims;
+            topRight = RotatePoint(topRight, angle) + halfDims;*/
+
             glm::vec2 topLeft(-halfDims.x, halfDims.y);
             glm::vec2 bottomLeft(-halfDims.x, -halfDims.y);
             glm::vec2 bottomRight(halfDims.x, -halfDims.y);
             glm::vec2 topRight(halfDims.x, halfDims.y);
-
-            // rotate points
-            topLeft = RotatePoint(topLeft, angle) + halfDims;
-            bottomLeft = RotatePoint(bottomLeft, angle) + halfDims;
-            bottomRight = RotatePoint(bottomRight, angle) + halfDims;
-            topRight = RotatePoint(topRight, angle) + halfDims;
+            topLeft = RotatePoint(topLeft, angle);
+            bottomLeft = RotatePoint(bottomLeft, angle);
+            bottomRight = RotatePoint(bottomRight, angle);
+            topRight = RotatePoint(topRight, angle);
 
             // Glyph
 
-            newGlyph->topLeft.position = glm::vec3(destRect.x, destRect.y + destRect.w, depth);
+            newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
             newGlyph->topLeft.color = color.color;
             newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
 
-            newGlyph->bottomLeft.position = glm::vec3(destRect.x, destRect.y, depth);
+            newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
             newGlyph->bottomLeft.color = color.color;
             newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
 
-            newGlyph->bottomRight.position = glm::vec3(destRect.x + destRect.z, destRect.y, depth);
+            newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
             newGlyph->bottomRight.color = color.color;
             newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
 
-            newGlyph->topRight.position = glm::vec3(destRect.x + destRect.z, destRect.y + destRect.w, depth);
+            newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
             newGlyph->topRight.color = color.color;
             newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
 
@@ -305,12 +314,22 @@ namespace Canis
             auto view = registry.view<RectTransformComponent, ColorComponent, Sprite2DComponent>();
             for (auto [entity, rect_transform, color, sprite] : view.each())
 			{
+                Canis::Log(std::to_string(rect_transform.rotation));
+                /*Draw(
+                    glm::vec4(rect_transform.position.x+rect_transform.originOffset.x,rect_transform.position.y+rect_transform.originOffset.y,rect_transform.size.x,rect_transform.size.y),
+                    sprite.uv,
+                    sprite.texture,
+                    rect_transform.depth,
+                    color,
+                    rect_transform.rotation
+                );*/
                 Draw(
                     glm::vec4(rect_transform.position.x,rect_transform.position.y,rect_transform.size.x,rect_transform.size.y),
                     sprite.uv,
                     sprite.texture,
                     rect_transform.depth,
-                    color
+                    color,
+                    rect_transform.rotation
                 );
             }
 
