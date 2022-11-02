@@ -3,7 +3,7 @@ project(canis)
 set(CMAKE_CXX_STANDARD 20)
 
 #find_package(OpenGL REQUIRED)
-find_package(Python REQUIRED)
+#find_package(Python REQUIRED)
 
 add_subdirectory(external/GL)
 #add_subdirectory(external/glad)
