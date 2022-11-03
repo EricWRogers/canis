@@ -87,6 +87,7 @@ namespace Canis
 
         void UpdateComponents(float deltaTime, entt::registry &registry)
         {
+            glDepthFunc(GL_ALWAYS);
             // render text
             textShader.Use();
             glm::mat4 projection = glm::mat4(1.0f);

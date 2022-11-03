@@ -294,6 +294,7 @@ namespace Canis
 
         void UpdateComponents(float deltaTime, entt::registry &registry)
         {
+            glDepthFunc(GL_ALWAYS);
             bool camFound = false;
             auto cam = registry.view<Camera2DComponent>();
             for(auto[entity, camera] : cam.each()) {
