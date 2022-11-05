@@ -25,8 +25,9 @@ namespace Canis
             auto view = registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
             for (auto [entity, rect_transform, color, button] : view.each())
 			{
-                if (inputManager->mouse.x > button.x && inputManager->mouse.x < button.x + button.w &&
-                inputManager->mouse.y < button.y && inputManager->mouse.y > button.y + button.h) {
+                if (inputManager->mouse.x > rect_transform.position.x &&
+                inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x &&
+                inputManager->mouse.y > rect_transform.position.y && inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y) {
                     color.color = button.hoverColor;
                     if(inputManager->leftClick)
                         button.func(button.instance);

@@ -5,10 +5,6 @@ namespace Canis
 {
     struct ButtonComponent
     {
-        float x;
-        float y;
-        float w;
-        float h;
         void (*func)(void*);
         void *instance;
         glm::vec4 baseColor;
