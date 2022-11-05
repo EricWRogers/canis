@@ -212,6 +212,7 @@ namespace Canis
 			// reset viewport
 			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glDepthFunc(GL_LESS);
 
 			entities_rendered = 0;
 			// activate shader
