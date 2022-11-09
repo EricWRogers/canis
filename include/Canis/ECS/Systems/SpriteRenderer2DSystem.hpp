@@ -44,10 +44,19 @@ namespace Canis
 
         unsigned int vbo = 0;
         unsigned int vao = 0;
+        unsigned int glyphsCurrentIndex = 0;
+        unsigned int glyphsMaxIndex = 0;
 
         static bool CompareFrontToBack(Glyph *a, Glyph *b) { return (a->depth < b->depth); }
         static bool CompareBackToFront(Glyph *a, Glyph *b) { return (a->depth > b->depth); }
         static bool CompareTexture(Glyph *a, Glyph *b) { return (a->textureId < b->textureId); }
+
+        ~SpriteRenderer2DSystem() {
+            for (int i = 0; i < glyphs.size(); i++)
+                delete glyphs[i];
+
+            glyphs.clear();
+        }
 
         void SortGlyphs()
         {
@@ -121,14 +130,26 @@ namespace Canis
         void Begin(GlyphSortType sortType) {
             glyphSortType = sortType;
             spriteRenderBatch.clear();
+            glyphsCurrentIndex = 0;
 
-            for (int i = 0; i < glyphs.size(); i++)
-                delete glyphs[i];
+            //for (int i = 0; i < glyphs.size(); i++)
+            //    delete glyphs[i];
 
-            glyphs.clear();
+            //glyphs.clear();
         }
 
         void End() {
+            if (glyphsCurrentIndex < glyphs.size())
+            {
+                for (int i = glyphsCurrentIndex; i < glyphs.size(); i++)
+                    delete glyphs[i];
+                
+                glyphs.resize(glyphsCurrentIndex);
+            }
+            
+            
+
+
             SortGlyphs();
             CreateRenderBatches();
         }
@@ -144,7 +165,17 @@ namespace Canis
         }
 
         void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color) {
-            Glyph *newGlyph = new Glyph;
+            
+            
+            Glyph *newGlyph;
+            
+            if (glyphsCurrentIndex < glyphs.size()) {
+                newGlyph = glyphs[glyphsCurrentIndex];
+            } else {
+                newGlyph = new Glyph;
+                glyphs.push_back(newGlyph);
+            }
+            
 
             newGlyph->textureId = texture.id;
             newGlyph->depth = depth;
@@ -166,12 +197,19 @@ namespace Canis
             newGlyph->topRight.color = color.color;
             newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
 
-            glyphs.push_back(newGlyph);
+            glyphsCurrentIndex++;
         }
 
         void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, float angle, glm::vec2 origin)
         {
-            Glyph *newGlyph = new Glyph;
+            Glyph *newGlyph;
+            
+            if (glyphsCurrentIndex < glyphs.size()) {
+                newGlyph = glyphs[glyphsCurrentIndex];
+            } else {
+                newGlyph = new Glyph;
+                glyphs.push_back(newGlyph);
+            }
 
             newGlyph->textureId = texture.id;
             newGlyph->depth = depth;
@@ -218,7 +256,7 @@ namespace Canis
             newGlyph->topRight.color = color.color;
             newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
 
-            glyphs.push_back(newGlyph);
+            glyphsCurrentIndex++;
         }
 
         /*void SpriteBatch::draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const Color &color, glm::vec2 direction)
@@ -296,7 +334,7 @@ namespace Canis
         {
             glDepthFunc(GL_ALWAYS);
             bool camFound = false;
-            auto cam = registry.view<Camera2DComponent>();
+            auto cam = registry.view<const Camera2DComponent>();
             for(auto[entity, camera] : cam.each()) {
                 camera2D.SetPosition(camera.position);
                 camera2D.SetScale(camera.scale);
@@ -311,7 +349,7 @@ namespace Canis
             Begin(glyphSortType);
 
             // Draw
-            auto view = registry.view<RectTransformComponent, ColorComponent, Sprite2DComponent>();
+            auto view = registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
             for (auto [entity, rect_transform, color, sprite] : view.each())
 			{
                 Draw(
