@@ -24,8 +24,8 @@ struct QuadNode
     QuadNode *bottom1 = nullptr;
     glm::vec2 center = glm::vec2(0.0f);
     float size;
-    QuadPoint points[10] = {};
-    int pointsCapacity = 10;
+    QuadPoint points[20] = {};
+    int pointsCapacity = 20;
     int numOfPoints = 0;
 
     QuadNode() {
@@ -210,3 +210,4 @@ public:
     }
 };
 } // end of Canis namespace
+
