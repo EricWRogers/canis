@@ -46,7 +46,7 @@ private:
     QuadNode *root;
     unsigned int totalPoints = 0;
 
-    void PointsQuery(glm::vec2 center, float radius, QuadNode *node, std::vector<QuadPoint> &results) {
+    void PointsQuery(const glm::vec2 &center, float radius, QuadNode *node, std::vector<QuadPoint> &results) {
         if (node->top0 == nullptr) {
             for(int i = 0; i < node->numOfPoints; i++) {
                 results.push_back(node->points[i]);
@@ -67,26 +67,14 @@ private:
         }
     }
 
-    bool QuadtreeOverlap(glm::vec2 &point, float radius, QuadNode *node) {
-        //float size = node->size/2.0f;
-        //if ((node->size*0.6f)>radius)
-        //float distance = 0.0f;
-        //distance += radius*2;
-        radius += (node->size*1.4);
-        //Canis::Log("size : " + std::to_string(radius));
-        
-        if (glm::distance( point, node->center) < radius)
+    bool QuadtreeOverlap(const glm::vec2 &point, const float &radius, QuadNode *node) {        
+        if (glm::distance( point, node->center) < radius + (node->size*1.4f))
             return true;
-        
-        //float size = node->size/2.0f;
-        //if (point.x > node->center.x - size && point.x < node->center.x + size &&
-        //    point.y > node->center.y - size && point.y < node->center.y + size)
-        //    return true;
         
         return false;
     }
 
-    bool OctNodeBoundsContains(glm::vec2 &point, QuadNode *node) {
+    bool OctNodeBoundsContains(const glm::vec2 &point, QuadNode *node) {
         float size = node->size/2.0f;
         if (point.x > node->center.x - size && point.x < node->center.x + size &&
             point.y > node->center.y - size && point.y < node->center.y + size)
@@ -95,7 +83,7 @@ private:
         return false;
     }
 
-    void AddPoint(glm::vec2 point, entt::entity entity, QuadNode *node) {
+    void AddPoint(const glm::vec2 &point, const entt::entity &entity, QuadNode *node) {
         if (node->top0 == nullptr) {
             if (node->pointsCapacity > node->numOfPoints) {
                 node->points[node->numOfPoints].position = point;
@@ -106,29 +94,31 @@ private:
             }
             
             // create octnodes
+            float size = node->size/2.0f;
+            float halfSize = size/2.0f;
             node->top0 = new QuadNode();
-            node->top0->size = node->size/2.0f;
+            node->top0->size = size;
             node->top0->center = node->center;
-            node->top0->center.x -= node->size/4.0f;
-            node->top0->center.y += node->size/4.0f;
+            node->top0->center.x -= halfSize;
+            node->top0->center.y += halfSize;
 
             node->top1 = new QuadNode();
-            node->top1->size = node->size/2.0f;
+            node->top1->size = size;
             node->top1->center = node->center;
-            node->top1->center.x += node->size/4.0f;
-            node->top1->center.y += node->size/4.0f;
+            node->top1->center.x += halfSize;
+            node->top1->center.y += halfSize;
 
             node->bottom0 = new QuadNode();
-            node->bottom0->size = node->size/2.0f;
+            node->bottom0->size = size;
             node->bottom0->center = node->center;
-            node->bottom0->center.x -= node->size/4.0f;
-            node->bottom0->center.y -= node->size/4.0f;
+            node->bottom0->center.x -= halfSize;
+            node->bottom0->center.y -= halfSize;
 
             node->bottom1 = new QuadNode();
-            node->bottom1->size = node->size/2.0f;
+            node->bottom1->size = size;
             node->bottom1->center = node->center;
-            node->bottom1->center.x += node->size/4.0f;
-            node->bottom1->center.y -= node->size/4.0f;
+            node->bottom1->center.x += halfSize;
+            node->bottom1->center.y -= halfSize;
 
             // load points into child node
             for(int i = 0; i < node->numOfPoints; i++) {
@@ -180,7 +170,7 @@ public:
         AddPoint(point, entity, root);
     }
 
-    bool PointsQuery(glm::vec2 center, float radius, std::vector<QuadPoint> &results) {
+    bool PointsQuery(const glm::vec2 &center, float radius, std::vector<QuadPoint> &results) {
         if (QuadtreeOverlap(center, radius, root)) {
             //Canis::Log("true");
             if (root->top0 == nullptr) {
