@@ -9,6 +9,7 @@ namespace Canis
 struct QuadPoint {
     glm::vec2 position;
     entt::entity entity;
+    glm::vec2 velocity; 
 };
 
 struct QuadNode
@@ -19,15 +20,15 @@ struct QuadNode
     unsigned short bottom1 = 0;
     glm::vec2 center = glm::vec2(0.0f);
     float size;
-    QuadPoint points[20] = {};
-    int pointsCapacity = 20;
-    int numOfPoints = 0;
+    QuadPoint points[100] = {};
+    unsigned short pointsCapacity = 100;
+    unsigned short numOfPoints = 0;
 };
 
 class QuadTree
 {
 private:
-    std::vector<QuadNode> quadNodes = {};
+    std::vector<QuadNode> quadNodes = std::vector<QuadNode>(30000);
     QuadNode quadNodeDefault = {};
     unsigned int rootIndex = 0;
     unsigned int totalPoints = 0;
@@ -71,11 +72,12 @@ private:
         return false;
     }
 
-    void AddPoint(const glm::vec2 &point, const entt::entity &entity, unsigned short nodeIndex) {
+    void AddPoint(const glm::vec2 &point, const entt::entity &entity, const glm::vec2 &vel, unsigned short nodeIndex) {
         if (quadNodes[nodeIndex].top0 == 0) {
             if (quadNodes[nodeIndex].pointsCapacity > quadNodes[nodeIndex].numOfPoints) {
                 quadNodes[nodeIndex].points[quadNodes[nodeIndex].numOfPoints].position = point;
                 quadNodes[nodeIndex].points[quadNodes[nodeIndex].numOfPoints].entity = entity;
+                quadNodes[nodeIndex].points[quadNodes[nodeIndex].numOfPoints].velocity = vel;
                 quadNodes[nodeIndex].numOfPoints++;
                 totalPoints++;
                 return;
@@ -148,28 +150,28 @@ private:
             // load points into child node
             for(int i = 0; i < quadNodes[nodeIndex].numOfPoints; i++) {
                 if (OctNodeBoundsContains(point, quadNodes[nodeIndex].top0)) {
-                    AddPoint(point, entity, quadNodes[nodeIndex].top0);
+                    AddPoint(point, entity, vel, quadNodes[nodeIndex].top0);
                 } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].top1)) {
-                    AddPoint(point, entity, quadNodes[nodeIndex].top1);
+                    AddPoint(point, entity, vel, quadNodes[nodeIndex].top1);
                 } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].bottom0)) {
-                    AddPoint(point, entity, quadNodes[nodeIndex].bottom0);
+                    AddPoint(point, entity, vel, quadNodes[nodeIndex].bottom0);
                 } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].bottom1)) {
-                    AddPoint(point, entity, quadNodes[nodeIndex].bottom1);
+                    AddPoint(point, entity, vel, quadNodes[nodeIndex].bottom1);
                 }
             }
         }
 
         if (OctNodeBoundsContains(point, quadNodes[nodeIndex].top0)) {
-            AddPoint(point, entity, quadNodes[nodeIndex].top0);
+            AddPoint(point, entity, vel, quadNodes[nodeIndex].top0);
             return;
         } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].top1)) {
-            AddPoint(point, entity, quadNodes[nodeIndex].top1);
+            AddPoint(point, entity, vel, quadNodes[nodeIndex].top1);
             return;
         } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].bottom0)) {
-            AddPoint(point, entity, quadNodes[nodeIndex].bottom0);
+            AddPoint(point, entity, vel, quadNodes[nodeIndex].bottom0);
             return;
         } else if (OctNodeBoundsContains(point, quadNodes[nodeIndex].bottom1)) {
-            AddPoint(point, entity, quadNodes[nodeIndex].bottom1);
+            AddPoint(point, entity, vel, quadNodes[nodeIndex].bottom1);
             return;
         }
     }
@@ -178,7 +180,6 @@ public:
     QuadTree(glm::vec2 center, float size) {
         rootIndex = 0;
         totalNodes = 0;
-        quadNodes.push_back(quadNodeDefault);
         quadNodes[rootIndex].size = size;
         quadNodes[rootIndex].center = center;
     }
@@ -200,12 +201,12 @@ public:
         quadNodes[rootIndex].numOfPoints = 0;
     }
 
-    void PrintTotalPoints() {
-        Canis::Log("total points : " + std::to_string(totalPoints));
+    void Print() {
+        Canis::Log("quad nodes : " + std::to_string(quadNodes.size()));
     }
 
-    void AddPoint(glm::vec2 point, entt::entity entity) {
-        AddPoint(point, entity, rootIndex);
+    void AddPoint(glm::vec2 point, entt::entity entity, glm::vec2 vel) {
+        AddPoint(point, entity, vel, rootIndex);
     }
 
     bool PointsQuery(const glm::vec2 &center, float radius, std::vector<QuadPoint> &results) {
