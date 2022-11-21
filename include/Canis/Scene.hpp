@@ -5,6 +5,8 @@
 #include <Canis/Camera.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/AssetManager.hpp>
+#include <Canis/ECS/Systems/System.hpp>
 
 namespace Canis
 {
@@ -23,13 +25,15 @@ namespace Canis
 
             bool IsPreLoaded();
 
+            void ReadySystem(System *_system);
+
             std::string name;
 
             Window *window;
             InputManager *inputManager;
             unsigned int *sceneManager;
             Time *time;
-
+            AssetManager *assetManager;
             Camera *camera;
 
             double deltaTime;

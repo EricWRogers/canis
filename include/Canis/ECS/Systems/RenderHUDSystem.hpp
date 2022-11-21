@@ -8,6 +8,7 @@
 #include <Canis/Data/Glyph.hpp>
 #include <Canis/External/entt.hpp>
 
+#include <Canis/ECS/Systems/System.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
@@ -17,13 +18,11 @@
 
 namespace Canis
 {
-class RenderHUDSystem {
+class RenderHUDSystem : public System {
 private:
     SpriteRenderer2DSystem spriteRenderer;
     GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
 public:
-    Window *window;
-
     RenderHUDSystem() {}
 
     void Init(GlyphSortType sortType,Shader *shader)

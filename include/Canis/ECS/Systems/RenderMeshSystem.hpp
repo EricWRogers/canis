@@ -12,6 +12,8 @@
 #include "../../IOManager.hpp"
 #include "../../External/entt.hpp"
 
+#include <Canis/ECS/Systems/System.hpp>
+
 #include "../Components/TransformComponent.hpp"
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
@@ -22,12 +24,10 @@
 
 namespace Canis
 {
-	class RenderMeshSystem
+	class RenderMeshSystem : public System
 	{
 	public:
 		Canis::Shader *shader;
-		Canis::Camera *camera;
-		Canis::Window *window;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 

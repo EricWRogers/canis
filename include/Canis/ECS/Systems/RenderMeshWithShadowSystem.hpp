@@ -12,6 +12,8 @@
 #include "../../IOManager.hpp"
 #include "../../External/entt.hpp"
 
+#include <Canis/ECS/Systems/System.hpp>
+
 #include "../Components/TransformComponent.hpp"
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
@@ -19,13 +21,11 @@
 
 namespace Canis
 {
-	class RenderMeshWithShadowSystem
+	class RenderMeshWithShadowSystem : public System
 	{
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
 		Canis::Shader *shadow_mapping_shader;
-		Canis::Camera *camera;
-		Canis::Window *window;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 

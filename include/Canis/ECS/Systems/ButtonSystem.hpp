@@ -4,6 +4,7 @@
 
 #include <Canis/InputManager.hpp>
 #include <Canis/External/entt.hpp>
+#include <Canis/ECS/Systems/System.hpp>
 
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
@@ -12,7 +13,7 @@
 
 namespace Canis
 {
-    class ButtonSystem
+    class ButtonSystem : public System
     {
     private:
         InputManager *inputManager;

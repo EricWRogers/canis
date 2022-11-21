@@ -7,6 +7,7 @@
 #include <Canis/Camera.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/AssetManager.hpp>
 
 namespace Canis
 {
@@ -22,7 +23,10 @@ namespace Canis
 
             int Add(Scene *s);
             void PreLoad(Window *_window,
-                    InputManager *_inputManager, Time *_time, Camera *_camera);
+                            InputManager *_inputManager,
+                            Time *_time,
+                            Camera *_camera,
+                            AssetManager *_assetManager);
 
             void Load(int _index);
             void Load(std::string _name);
@@ -39,7 +43,7 @@ namespace Canis
             Window *window;
             InputManager *inputManager;
             Time *time;
-
+            AssetManager *assetManager;
             Camera *camera;
     };
 } // end of Canis namespace

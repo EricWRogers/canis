@@ -1,13 +1,13 @@
 #pragma once
 
 #include <glm/glm.hpp>
-
+#include <Canis/ECS/Systems/System.hpp>
 #include <Canis/ECS/Systems/RenderMeshSystem.hpp>
 #include <Canis/ECS/Systems/RenderSkyboxSystem.hpp>
 
 namespace Canis
 {
-    class RenderHDRSystem
+    class RenderHDRSystem : public System
     {
     private:
         unsigned int hdrFBO;
@@ -18,7 +18,6 @@ namespace Canis
     public:
         RenderMeshSystem *renderMeshSystem;
         RenderSkyboxSystem *renderSkyboxSystem;
-        Canis::Window *window;
         float exposure = 1.0f;
 
         RenderHDRSystem(Canis::Window *w) {

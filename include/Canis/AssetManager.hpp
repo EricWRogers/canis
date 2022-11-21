@@ -10,13 +10,7 @@ namespace Canis
     {
     public:
         // this forces refence instead of 
-        AssetManager(const AssetManager&) = delete;
-
-        static AssetManager& GetInstance()
-        {
-            static AssetManager instance;
-            return instance;
-        }
+        AssetManager() {};
 
         int LoadTexture(std::string path);
         int LoadSkybox(std::string path);
@@ -31,8 +25,6 @@ namespace Canis
         }
 
     private:
-        AssetManager() {}
-
         int m_nextId{ 0 };
         std::map<int, Asset*> m_assets{};
         std::map<std::string, int> m_assetPath{};

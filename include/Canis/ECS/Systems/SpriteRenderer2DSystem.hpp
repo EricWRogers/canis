@@ -8,6 +8,8 @@
 #include <Canis/Data/Glyph.hpp>
 #include <Canis/External/entt.hpp>
 
+#include <Canis/ECS/Systems/System.hpp>
+
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
@@ -33,7 +35,7 @@ namespace Canis
         GLuint texture;
     };
 
-    class SpriteRenderer2DSystem
+    class SpriteRenderer2DSystem : public System
     {
     public:
         GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;

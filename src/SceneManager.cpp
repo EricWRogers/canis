@@ -25,13 +25,15 @@ namespace Canis
         Window *_window,
         InputManager *_inputManager,
         Time *_time,
-        Camera *_camera
+        Camera *_camera,
+        AssetManager *_assetManager
     )
     {
         window = _window;
         inputManager = _inputManager;
         time = _time;
         camera = _camera;
+        assetManager = _assetManager;
 
         for(int i = 0; i < scenes.size(); i++)
         {
@@ -40,6 +42,7 @@ namespace Canis
             scenes[i]->sceneManager = (unsigned int *)this;
             scenes[i]->time = _time;
             scenes[i]->camera = _camera;
+            scenes[i]->assetManager = _assetManager;
             
             scenes[i]->PreLoad();
         }

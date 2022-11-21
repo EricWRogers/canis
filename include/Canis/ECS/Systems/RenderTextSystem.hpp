@@ -21,14 +21,14 @@
 #include "../Components/ColorComponent.hpp"
 #include "../Components/TextComponent.hpp"
 
+#include <Canis/ECS/Systems/System.hpp>
+
 namespace Canis
 {
-    class RenderTextSystem
+    class RenderTextSystem : public System
     {
     public:
         Canis::Shader textShader;
-        Canis::Camera *camera;
-        Canis::Window *window;
 
         RenderTextSystem()
         {
@@ -47,13 +47,13 @@ namespace Canis
             shader.Use();
             glUniform3f(glGetUniformLocation(shader.GetProgramID(), "textColor"), color.x, color.y, color.z);
             glActiveTexture(GL_TEXTURE0);
-            glBindVertexArray(AssetManager::GetInstance().Get<TextAsset>(fontId)->GetVAO());
+            glBindVertexArray(assetManager->Get<TextAsset>(fontId)->GetVAO());
 
             // iterate through all characters
             std::string::const_iterator c;
             for (c = t.begin(); c != t.end(); c++)
             {
-                Character ch = AssetManager::GetInstance().Get<TextAsset>(fontId)->Characters[*c];
+                Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
 
                 float xpos = x + ch.bearing.x * scale;
                 float ypos = y - (ch.size.y - ch.bearing.y) * scale;
@@ -72,7 +72,7 @@ namespace Canis
                 // render glyph texture over quad
                 glBindTexture(GL_TEXTURE_2D, ch.textureID);
                 // update content of VBO memory
-                glBindBuffer(GL_ARRAY_BUFFER, AssetManager::GetInstance().Get<TextAsset>(fontId)->GetVBO());
+                glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
                 glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
 
                 glBindBuffer(GL_ARRAY_BUFFER, 0);
