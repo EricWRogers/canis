@@ -320,8 +320,6 @@ namespace Canis
             glBindVertexArray(0);
         }
 
-        Canis::Window *window;
-
         SpriteRenderer2DSystem() {}
 
         void Init(GlyphSortType sortType,Shader *shader)
