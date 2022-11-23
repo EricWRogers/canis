@@ -56,6 +56,17 @@ namespace Canis
         if (scene != nullptr)
         {
             scene->UnLoad();
+            {
+                scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto& scriptComponent)
+                {
+                    if (scriptComponent.Instance)
+                    {
+                        scriptComponent.Instance->OnDestroy();
+                        delete scriptComponent.Instance;
+                    }
+                });
+            }
+            scene->entityRegistry.clear();
         }
 
         scene = scenes[_index];
@@ -93,6 +104,20 @@ namespace Canis
             FatalError("A scene has not been loaded.");
         
         scene->Update();
+
+        // update scripts
+        {
+            scene->entityRegistry.view<Canis::ScriptComponent>().each([=, this](auto entity, auto& scriptComponent)
+            {
+                if (!scriptComponent.Instance) {
+                    scriptComponent.Instance = scriptComponent.InstantiateScript();
+                    scriptComponent.Instance->m_Entity = Entity { entity,  this->scene };
+                    scriptComponent.Instance->OnCreate();
+                }
+
+                scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
+            });
+        }
     }
 
     void SceneManager::LateUpdate()

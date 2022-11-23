@@ -4,6 +4,7 @@
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/AssetManager.hpp>
+#include <Canis/External/entt.hpp>
 
 
 namespace Canis
@@ -17,5 +18,8 @@ public:
     Time *time = nullptr;
     AssetManager *assetManager = nullptr;
     Camera *camera = nullptr;
+
+    //virtual void Init() {}
+    //virtual void UpdateComponent() {}
 };
 } // end of Canis namespace

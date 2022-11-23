@@ -9,6 +9,8 @@
 #include <Canis/InputManager.hpp>
 #include <Canis/AssetManager.hpp>
 
+#include <Canis/ECS/Components/ScriptComponent.hpp>
+
 namespace Canis
 {
     class SceneManager {

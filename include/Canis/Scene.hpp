@@ -12,6 +12,7 @@ namespace Canis
 {
     class Scene {
         public:
+            //Scene() {}
             Scene(std::string _name);
             ~Scene();
 
@@ -35,6 +36,8 @@ namespace Canis
             Time *time;
             AssetManager *assetManager;
             Camera *camera;
+
+            entt::registry entityRegistry;
 
             double deltaTime;
 
