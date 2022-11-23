@@ -6,7 +6,7 @@ namespace Canis
 {
     struct UIImageComponent
     {
-        glm::vec4 uv;
+        glm::vec4 uv = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
         GLTexture texture;
     };
 } // end of Canis namespace

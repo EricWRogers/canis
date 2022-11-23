@@ -4,7 +4,7 @@ namespace Canis
 {
 struct TextComponent
 {
-	int assetId;
-	std::string *text;
+	int assetId = 0;
+	std::string *text = nullptr;
 };
 } // end of Canis namespace
