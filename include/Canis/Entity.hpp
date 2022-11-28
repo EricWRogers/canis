@@ -4,6 +4,8 @@
 #include <Canis/Scene.hpp>
 #include <Canis/External/entt.hpp>
 
+#include <Canis/ECS/Components/TagComponent.hpp>
+
 namespace Canis
 {
 class Entity
@@ -35,6 +37,37 @@ public:
         return component;
     }*/
 
+    std::vector<Entity> GetEntityWithTag(char tag[20])
+    {
+        std::vector<Entity> entities = {};
+
+        auto view = scene->entityRegistry.view<const TagComponent>();
+
+		for(auto [entity, tagComponent] : view.each())
+        {
+            if(tagComponent.tag == tag)
+            {
+                entities.push_back(Entity(entity, scene));
+                break;
+            }
+        }
+
+        return entities;
+    }
+
+    std::vector<Entity> GetEntitiesWithTag(char tag[20])
+    {
+        std::vector<Entity> entities = {};
+
+        auto view = scene->entityRegistry.view<const TagComponent>();
+
+		for(auto [entity, tagComponent] : view.each())
+            if(tagComponent.tag == tag)
+                entities.push_back(Entity(entity, scene));
+
+        return entities;
+    }
+
     template<typename T>
     bool HasComponent()
     {
@@ -57,6 +90,8 @@ public:
         scene->entityRegistry.remove<T>(entityHandle);
     }
 
+    
+
     operator bool() const { return entityHandle != entt::null; }
     operator entt::entity() const { return entityHandle; }
     operator uint32_t() const { return (uint32_t)entityHandle; }
@@ -64,7 +99,7 @@ public:
     //UUID GetUUID() { return GetComponent<IDComponent>().ID; }
     //const std::string& GetName() { return GetComponent<TagComponent>().Tag; }
 
-    /*bool operator==(const Entity& other) const
+    bool operator==(const Entity& other) const
     {
         return entityHandle == other.entityHandle && scene == other.scene;
     }
@@ -72,6 +107,6 @@ public:
     bool operator!=(const Entity& other) const
     {
         return !(*this == other);
-    }*/
+    }
 };
 } // end of Canis namespace
