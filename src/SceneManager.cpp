@@ -57,12 +57,21 @@ namespace Canis
         {
             scene->UnLoad();
             {
+                // Clean up ScriptableEntity pointer
                 scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto& scriptComponent)
                 {
                     if (scriptComponent.Instance)
                     {
                         scriptComponent.Instance->OnDestroy();
-                        delete scriptComponent.Instance;
+                    }
+                });
+
+                // Clean up TextComponent pointer
+                scene->entityRegistry.view<TextComponent>().each([](auto entity, auto& textComponent)
+                {
+                    if (textComponent.text != nullptr)
+                    {
+                        delete textComponent.text;
                     }
                 });
             }
@@ -98,25 +107,45 @@ namespace Canis
         FatalError("Scene not found with name " + _name);
     }
 
+    void SceneManager::PatientLoad(std::string _name)
+    {
+        for(int i = 0; i < scenes.size(); i++)
+        {
+            if(scenes[i]->name == _name)
+            {
+                patientLoadIndex = i;
+                return;
+            }
+        }
+    }
+
     void SceneManager::Update()
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
+        if (patientLoadIndex != -1)
+        {
+            Load(patientLoadIndex);
+            patientLoadIndex = -1;
+        }
+        
         scene->Update();
 
         // update scripts
         {
-            scene->entityRegistry.view<Canis::ScriptComponent>().each([=, this](auto entity, auto& scriptComponent)
+            auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
+
+            for(auto [_entity, _scriptComponent] : view.each())
             {
-                if (!scriptComponent.Instance) {
-                    scriptComponent.Instance = scriptComponent.InstantiateScript();
-                    scriptComponent.Instance->m_Entity = Entity { entity,  this->scene };
-                    scriptComponent.Instance->OnCreate();
+                if (!_scriptComponent.Instance) {
+                    _scriptComponent.Instance = _scriptComponent.InstantiateScript();
+                    _scriptComponent.Instance->m_Entity = Entity { _entity,  this->scene };
+                    _scriptComponent.Instance->OnCreate();
                 }
 
-                scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
-            });
+                _scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
+            }
         }
     }
 
@@ -124,6 +153,12 @@ namespace Canis
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
+        
+        if (patientLoadIndex != -1)
+        {
+            Load(patientLoadIndex);
+            patientLoadIndex = -1;
+        }
 
         scene->LateUpdate();
     }
@@ -133,6 +168,12 @@ namespace Canis
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
+        if (patientLoadIndex != -1)
+        {
+            Load(patientLoadIndex);
+            patientLoadIndex = -1;
+        }
+        
         scene->Draw();
     }
 
@@ -140,6 +181,12 @@ namespace Canis
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
+        
+        if (patientLoadIndex != -1)
+        {
+            Load(patientLoadIndex);
+            patientLoadIndex = -1;
+        }
         
         scene->InputUpdate();
     }

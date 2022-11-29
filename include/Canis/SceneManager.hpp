@@ -10,12 +10,14 @@
 #include <Canis/AssetManager.hpp>
 
 #include <Canis/ECS/Components/ScriptComponent.hpp>
+#include <Canis/ECS/Components/TextComponent.hpp>
 
 namespace Canis
 {
     class SceneManager {
         private:
             int index = -1;
+            int patientLoadIndex = -1;
             Scene *scene = nullptr;
             std::vector<Scene *> scenes;
 
@@ -32,6 +34,7 @@ namespace Canis
 
             void Load(int _index);
             void Load(std::string _name);
+            void PatientLoad(std::string _name); // use this function when looping threw entities or in a update loop
 
             void Update();
             void LateUpdate();

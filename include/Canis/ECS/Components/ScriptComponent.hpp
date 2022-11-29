@@ -13,7 +13,10 @@ namespace Canis
         template<typename T>
         void Bind()
         {
-            InstantiateScript = []() { return static_cast<ScriptableEntity*>(new T()); };
+            InstantiateScript = []() {
+                T *t = new T();
+                return static_cast<ScriptableEntity*>(t);
+            };
             DestroyScript = [](ScriptComponent* scriptComponent) { delete scriptComponent->Instance; scriptComponent->Instance = nullptr; };
         }
     };

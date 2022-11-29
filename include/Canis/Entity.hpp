@@ -9,7 +9,20 @@
 namespace Canis
 {
 class Entity
-{    
+{
+private:
+    bool CharEquals(const char a[20], const char b[20])
+    {
+        int i = 0;
+        while(i < 20)
+        {
+            if ((int)a[i] - (int)b[i] != 0)
+                return false;
+            
+            i++;
+        }
+        return true;
+    }
 public:
     entt::entity entityHandle{ entt::null };
     Canis::Scene *scene = nullptr;
@@ -37,37 +50,6 @@ public:
         return component;
     }*/
 
-    std::vector<Entity> GetEntityWithTag(char tag[20])
-    {
-        std::vector<Entity> entities = {};
-
-        auto view = scene->entityRegistry.view<const TagComponent>();
-
-		for(auto [entity, tagComponent] : view.each())
-        {
-            if(tagComponent.tag == tag)
-            {
-                entities.push_back(Entity(entity, scene));
-                break;
-            }
-        }
-
-        return entities;
-    }
-
-    std::vector<Entity> GetEntitiesWithTag(char tag[20])
-    {
-        std::vector<Entity> entities = {};
-
-        auto view = scene->entityRegistry.view<const TagComponent>();
-
-		for(auto [entity, tagComponent] : view.each())
-            if(tagComponent.tag == tag)
-                entities.push_back(Entity(entity, scene));
-
-        return entities;
-    }
-
     template<typename T>
     bool HasComponent()
     {
@@ -88,6 +70,55 @@ public:
         if(!HasComponent<T>())
             FatalError("Entity does not have component!");
         scene->entityRegistry.remove<T>(entityHandle);
+    }
+
+    std::vector<Entity> GetEntityWithTag(std::string _tag)
+    {
+        std::vector<Entity> entities = {};
+        char tag[20] = "";
+
+        int i = 0;
+        while(i < 20-1 && i < _tag.size())
+        {
+            tag[i] = _tag[i];
+            i++;
+        }
+        tag[i] = '\0';
+
+        auto view = scene->entityRegistry.view<TagComponent>();
+
+		for(auto [entity, tagComponent] : view.each())
+        {
+            if(CharEquals(tagComponent.tag, tag))
+            {
+                entities.push_back(Entity(entity, scene));
+                break;
+            }
+        }
+
+        return entities;
+    }
+
+    std::vector<Entity> GetEntitiesWithTag(std::string _tag)
+    {
+        std::vector<Entity> entities = {};
+        char tag[20] = "";
+
+        int i = 0;
+        while(i < 20-1 && i < _tag.size())
+        {
+            tag[i] = _tag[i];
+            i++;
+        }
+        tag[i] = '\0';
+
+        auto view = scene->entityRegistry.view<const TagComponent>();
+
+		for(auto [entity, tagComponent] : view.each())
+            if(CharEquals(tagComponent.tag, tag))
+                entities.push_back(Entity(entity, scene));
+
+        return entities;
     }
 
     
