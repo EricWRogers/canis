@@ -11,6 +11,6 @@ namespace Canis
 		glm::vec2 originOffset = glm::vec2(0.0f);
 		float rotation = 0.0f;
 		float scale = 1.0f;
-		float depth = 0.0f;
+		float depth = 1.0f;
 	};
 } // end of Canis namespace

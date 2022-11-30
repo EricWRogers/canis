@@ -121,6 +121,7 @@ namespace Canis
 
     void SceneManager::Update()
     {
+        m_updateStart = high_resolution_clock::now();
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
@@ -147,6 +148,9 @@ namespace Canis
                 _scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
             }
         }
+
+        m_updateEnd = high_resolution_clock::now();
+        updateTime = std::chrono::duration_cast<std::chrono::nanoseconds>(m_updateEnd - m_updateStart).count() / 1000000000.0f;
     }
 
     void SceneManager::LateUpdate()
@@ -165,6 +169,8 @@ namespace Canis
 
     void SceneManager::Draw()
     {
+        m_drawStart = high_resolution_clock::now();
+
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
@@ -175,6 +181,9 @@ namespace Canis
         }
         
         scene->Draw();
+
+        m_drawEnd = high_resolution_clock::now();
+        drawTime = std::chrono::duration_cast<std::chrono::nanoseconds>(m_drawEnd - m_drawStart).count() / 1000000000.0f;
     }
 
     void SceneManager::InputUpdate()

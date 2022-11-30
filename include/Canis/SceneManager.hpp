@@ -20,6 +20,10 @@ namespace Canis
             int patientLoadIndex = -1;
             Scene *scene = nullptr;
             std::vector<Scene *> scenes;
+            high_resolution_clock::time_point m_updateStart;
+            high_resolution_clock::time_point m_updateEnd;
+            high_resolution_clock::time_point m_drawStart;
+            high_resolution_clock::time_point m_drawEnd;
 
         public:
             SceneManager();
@@ -50,5 +54,8 @@ namespace Canis
             Time *time;
             AssetManager *assetManager;
             Camera *camera;
+
+            float updateTime = 0.0f;
+            float drawTime = 0.0f;
     };
 } // end of Canis namespace
