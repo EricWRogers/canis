@@ -41,7 +41,7 @@ namespace Canis
             textShader.Link();
         }
 
-        void RenderText(Canis::Shader &shader, std::string t, float x, float y, float scale, glm::vec3 color, int fontId)
+        void RenderText(Canis::Shader &shader, std::string t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align)
         {
             // activate corresponding render state
             shader.Use();
@@ -49,38 +49,82 @@ namespace Canis
             glActiveTexture(GL_TEXTURE0);
             glBindVertexArray(assetManager->Get<TextAsset>(fontId)->GetVAO());
 
-            // iterate through all characters
-            std::string::const_iterator c;
-            for (c = t.begin(); c != t.end(); c++)
+            if (align == 0)
             {
-                Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
+                std::string::const_iterator c;
+                for (c = t.begin(); c != t.end(); c++)
+                {
+                    Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
 
-                float xpos = x + ch.bearing.x * scale;
-                float ypos = y - (ch.size.y - ch.bearing.y) * scale;
+                    float xpos = x + ch.bearing.x * scale;
+                    float ypos = y - (ch.size.y - ch.bearing.y) * scale;
 
-                float w = ch.size.x * scale;
-                float h = ch.size.y * scale;
-                // update VBO for each character
-                float vertices[6][4] = {
-                    {xpos, ypos + h, 0.0f, 0.0f},
-                    {xpos, ypos, 0.0f, 1.0f},
-                    {xpos + w, ypos, 1.0f, 1.0f},
+                    float w = ch.size.x * scale;
+                    float h = ch.size.y * scale;
+                    // update VBO for each character
+                    float vertices[6][4] = {
+                        {xpos, ypos + h, 0.0f, 0.0f},
+                        {xpos, ypos, 0.0f, 1.0f},
+                        {xpos + w, ypos, 1.0f, 1.0f},
 
-                    {xpos, ypos + h, 0.0f, 0.0f},
-                    {xpos + w, ypos, 1.0f, 1.0f},
-                    {xpos + w, ypos + h, 1.0f, 0.0f}};
-                // render glyph texture over quad
-                glBindTexture(GL_TEXTURE_2D, ch.textureID);
-                // update content of VBO memory
-                glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
-                glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
+                        {xpos, ypos + h, 0.0f, 0.0f},
+                        {xpos + w, ypos, 1.0f, 1.0f},
+                        {xpos + w, ypos + h, 1.0f, 0.0f}};
+                    // render glyph texture over quad
+                    glBindTexture(GL_TEXTURE_2D, ch.textureID);
+                    // update content of VBO memory
+                    glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
 
-                glBindBuffer(GL_ARRAY_BUFFER, 0);
-                // render quad
-                glDrawArrays(GL_TRIANGLES, 0, 6);
-                // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
-                x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+                    glBindBuffer(GL_ARRAY_BUFFER, 0);
+                    // render quad
+                    glDrawArrays(GL_TRIANGLES, 0, 6);
+                    // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+                    x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+                }
             }
+
+            if (align == 1)
+            {
+                std::string::const_iterator c;
+                c = t.end();
+                c--;
+                for ( ; true; c--)
+                {
+                    Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
+
+                    float xpos = x + ch.bearing.x * scale;
+                    float ypos = y - (ch.size.y - ch.bearing.y) * scale;
+
+                    float w = ch.size.x * scale;
+                    float h = ch.size.y * scale;
+                    // update VBO for each character
+                    float vertices[6][4] = {
+                        {xpos - w, ypos + h, 0.0f, 0.0f},
+                        {xpos - w, ypos, 0.0f, 1.0f},
+                        {xpos, ypos, 1.0f, 1.0f},
+                        {xpos - w, ypos + h, 0.0f, 0.0f},
+                        {xpos, ypos, 1.0f, 1.0f},
+                        {xpos, ypos + h, 1.0f, 0.0f}};
+                    // render glyph texture over quad
+                    glBindTexture(GL_TEXTURE_2D, ch.textureID);
+                    // update content of VBO memory
+                    glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
+
+                    glBindBuffer(GL_ARRAY_BUFFER, 0);
+                    // render quad
+                    glDrawArrays(GL_TRIANGLES, 0, 6);
+                    // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+                    x -= (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+
+                    if (c == t.begin())
+                        break;
+                }
+            }
+
+            // iterate through all characters
+            /**/
             glBindVertexArray(0);
             glBindTexture(GL_TEXTURE_2D, 0);
         }
@@ -100,7 +144,7 @@ namespace Canis
             {
                 if (transform.active == true)
                 {
-                    RenderText(textShader, *text.text, transform.position.x, transform.position.y, transform.scale, color.color, text.assetId);
+                    RenderText(textShader, *text.text, transform.position.x, transform.position.y, transform.scale, color.color, text.assetId, text.align);
                 }
             }
 
@@ -110,3 +154,48 @@ namespace Canis
     private:
     };
 } // end of Canis namespace
+
+
+/*
+int i = 0;
+                float lastX = 0.0f;
+                std::string::const_iterator c;
+                c = t.end();
+                c--;
+                float totalXMovement = 0.0f;
+                for ( ; true; c--)
+                {
+                    Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
+
+                    float xpos = x + ch.bearing.x * scale;
+                    float ypos = y - (ch.size.y - ch.bearing.y) * scale;
+
+                    float w = ch.size.x * scale;
+                    float h = ch.size.y * scale;
+                    // update VBO for each character
+                    float vertices[6][4] = {
+                        {totalXMovement + xpos - w, ypos + h, 0.0f, 0.0f},
+                        {totalXMovement + xpos - w, ypos, 0.0f, 1.0f},
+                        {totalXMovement + xpos, ypos, 1.0f, 1.0f},
+                        {totalXMovement + xpos - w, ypos + h, 0.0f, 0.0f},
+                        {totalXMovement + xpos, ypos, 1.0f, 1.0f},
+                        {totalXMovement + xpos, ypos + h, 1.0f, 0.0f}};
+                    // render glyph texture over quad
+                    glBindTexture(GL_TEXTURE_2D, ch.textureID);
+                    // update content of VBO memory
+                    glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
+                    glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
+
+                    glBindBuffer(GL_ARRAY_BUFFER, 0);
+                    // render quad
+                    glDrawArrays(GL_TRIANGLES, 0, 6);
+                    // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
+                    x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+
+                    totalXMovement = lastX - xpos;
+                    lastX = xpos;
+                    i++;
+                    if (c == t.begin())
+                        break;
+                }
+*/
