@@ -14,7 +14,8 @@ namespace Canis
 
     bool TextureAsset::Free()
     {
-        return false;
+        glDeleteTextures(1, &m_texture.id);
+        return true;
     }
 
     bool SkyboxAsset::Load(std::string path)
@@ -48,7 +49,11 @@ namespace Canis
 
     bool SkyboxAsset::Free()
     {
-        return false;
+        delete skyboxShader;
+        glDeleteTextures(1, &cubemapTexture);
+        glDeleteBuffers(1, &skyboxVBO);
+        glDeleteVertexArrays(1, &skyboxVAO);
+        return true;
     }
 
     bool ModelAsset::Load(std::string path)
@@ -100,7 +105,9 @@ namespace Canis
 
     bool ModelAsset::Free()
     {
-        return false;
+        glDeleteBuffers(1, &m_vbo);
+        glDeleteVertexArrays(1, &m_vao);
+        return true;
     }
 
     bool TextAsset::Load(std::string path)
@@ -185,6 +192,8 @@ namespace Canis
 
     bool TextAsset::Free()
     {
-        return false;
+        glDeleteBuffers(1, &m_vbo);
+        glDeleteVertexArrays(1, &m_vao);
+        return true;
     }
 } // end of Canis namespace

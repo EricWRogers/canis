@@ -71,7 +71,17 @@ namespace Canis
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
         int GetSize() { return m_size; }
+        std::vector<Canis::Vertex> GetVertices() { return m_vertices; }
     };
+
+    /*class MeshAsset : public Asset
+    {
+    private:
+        std::string m_pathToBaseMesh = "";
+    public:
+        bool Load(std::string path) override;
+        bool Free() override;
+    };*/
 
     class TextAsset : public Asset
     {
