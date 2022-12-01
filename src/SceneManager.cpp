@@ -93,7 +93,7 @@ namespace Canis
         scene->Load();
     }
 
-    void SceneManager::Load(std::string _name)
+    void SceneManager::ForceLoad(std::string _name)
     {
         for(int i = 0; i < scenes.size(); i++)
         {
@@ -107,7 +107,7 @@ namespace Canis
         FatalError("Scene not found with name " + _name);
     }
 
-    void SceneManager::PatientLoad(std::string _name)
+    void SceneManager::Load(std::string _name)
     {
         for(int i = 0; i < scenes.size(); i++)
         {

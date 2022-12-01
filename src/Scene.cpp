@@ -1,4 +1,5 @@
 #include <Canis/Scene.hpp>
+#include <Canis/Entity.hpp>
 
 namespace Canis
 {
@@ -59,5 +60,37 @@ namespace Canis
         _system->time = time;
         _system->assetManager = assetManager;
         _system->camera = camera;
+    }
+
+    Entity Scene::CreateEntity()
+    {
+        return Entity(
+            entityRegistry.create(),
+            this
+        );
+    }
+
+    Entity Scene::CreateEntity(const std::string &_tag)
+    {
+        Entity e = Entity(
+            entityRegistry.create(),
+            this
+        );
+
+        char tag[20] = "";
+
+        int i = 0;
+        while(i < 20-1 && i < _tag.size())
+        {
+            tag[i] = _tag[i];
+            i++;
+        }
+        tag[i] = '\0';
+
+        TagComponent tagComponent = {};
+        strcpy(tagComponent.tag, tag);
+        e.AddComponent<TagComponent>(tagComponent);
+
+        return e;
     }
 } // end of Canis namespace

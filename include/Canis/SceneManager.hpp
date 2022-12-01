@@ -25,6 +25,8 @@ namespace Canis
             high_resolution_clock::time_point m_drawStart;
             high_resolution_clock::time_point m_drawEnd;
 
+            void Load(int _index);
+
         public:
             SceneManager();
             ~SceneManager();
@@ -36,9 +38,9 @@ namespace Canis
                             Camera *_camera,
                             AssetManager *_assetManager);
 
-            void Load(int _index);
+            
+            void ForceLoad(std::string _name);
             void Load(std::string _name);
-            void PatientLoad(std::string _name); // use this function when looping threw entities or in a update loop
 
             void Update();
             void LateUpdate();

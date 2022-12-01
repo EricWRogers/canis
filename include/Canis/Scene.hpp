@@ -7,10 +7,16 @@
 #include <Canis/InputManager.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/ECS/Systems/System.hpp>
+#include <Canis/ECS/Components/TagComponent.hpp>
 
 namespace Canis
 {
+    class Entity;
+
     class Scene {
+        private:
+            friend class Entity;
+        
         public:
             //Scene() {}
             Scene(std::string _name);
@@ -27,6 +33,9 @@ namespace Canis
             bool IsPreLoaded();
 
             void ReadySystem(System *_system);
+
+            Entity CreateEntity();
+            Entity CreateEntity(const std::string &_tag);
 
             std::string name;
 

@@ -1,17 +1,19 @@
 #pragma once
 
 #include <Canis/Debug.hpp>
-#include <Canis/Scene.hpp>
 #include <Canis/External/entt.hpp>
-
 #include <Canis/ECS/Components/TagComponent.hpp>
 
 namespace Canis
 {
+class Scene;
+
 class Entity
 {
 private:
-    bool CharEquals(const char a[20], const char b[20])
+    friend class Scene;
+
+    bool TagEquals(const char a[20], const char b[20])
     {
         int i = 0;
         while(i < 20)
@@ -31,14 +33,14 @@ public:
     Entity(entt::entity _handle, Scene* _scene) : entityHandle(_handle), scene(_scene) {};
     Entity(const Entity& _other) = default;
 
-    /*template<typename T, typename... Args>
+    template<typename T, typename... Args>
     T& AddComponent(Args&&... args)
     {
         if(HasComponent<T>())
             FatalError("Entity already has component!");
         
         T& component = scene->entityRegistry.emplace<T>(entityHandle, std::forward<Args>(args)...);
-        scene->OnComponentAdded<T>(*this, component);
+        //scene->OnComponentAdded<T>(*this, component);
         return component;
     }
 
@@ -46,9 +48,9 @@ public:
     T& AddOrReplaceComponent(Args&&... args)
     {
         T& component = scene->entityRegistry.emplace_or_replace<T>(entityHandle, std::forward<Args>(args)...);
-        scene->OnComponentAdded<T>(*this, component);
+        //scene->OnComponentAdded<T>(*this, component);
         return component;
-    }*/
+    }
 
     template<typename T>
     bool HasComponent()
@@ -89,7 +91,7 @@ public:
 
 		for(auto [entity, tagComponent] : view.each())
         {
-            if(CharEquals(tagComponent.tag, tag))
+            if(TagEquals(tagComponent.tag, tag))
             {
                 entities.push_back(Entity(entity, scene));
                 break;
@@ -115,7 +117,7 @@ public:
         auto view = scene->entityRegistry.view<const TagComponent>();
 
 		for(auto [entity, tagComponent] : view.each())
-            if(CharEquals(tagComponent.tag, tag))
+            if(TagEquals(tagComponent.tag, tag))
                 entities.push_back(Entity(entity, scene));
 
         return entities;
