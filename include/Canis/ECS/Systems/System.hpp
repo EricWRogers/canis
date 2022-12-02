@@ -6,13 +6,15 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/External/entt.hpp>
 
-
 namespace Canis
 {
+class Scene;
+
 class System
 {
 private:
 public:
+    Scene *scene = nullptr;
     Window *window = nullptr;
     InputManager *inputManager = nullptr;
     Time *time = nullptr;

@@ -55,6 +55,7 @@ namespace Canis
 
     void Scene::ReadySystem(System *_system)
     {
+        _system->scene = this;
         _system->window = window;
         _system->inputManager = inputManager;
         _system->time = time;
