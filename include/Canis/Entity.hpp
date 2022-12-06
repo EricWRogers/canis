@@ -74,9 +74,11 @@ public:
         scene->entityRegistry.remove<T>(entityHandle);
     }
 
-    std::vector<Entity> GetEntityWithTag(std::string _tag)
+    Entity GetEntityWithTag(std::string _tag)
     {
-        std::vector<Entity> entities = {};
+        Entity e = {};
+        e.scene = scene;
+
         char tag[20] = "";
 
         int i = 0;
@@ -93,12 +95,12 @@ public:
         {
             if(TagEquals(tagComponent.tag, tag))
             {
-                entities.push_back(Entity(entity, scene));
+                e.entityHandle = entity;
                 break;
             }
         }
 
-        return entities;
+        return e;
     }
 
     std::vector<Entity> GetEntitiesWithTag(std::string _tag)
