@@ -241,6 +241,20 @@ namespace Canis
         {
             CalculateMask(Mask01,Layer01);
             CalculateMask(Mask02,Layer02);
+            CalculateMask(Mask03,Layer03);
+            CalculateMask(Mask04,Layer04);
+            CalculateMask(Mask05,Layer05);
+            CalculateMask(Mask06,Layer06);
+            CalculateMask(Mask07,Layer07);
+            CalculateMask(Mask08,Layer08);
+            CalculateMask(Mask09,Layer09);
+            CalculateMask(Mask10,Layer10);
+            CalculateMask(Mask11,Layer11);
+            CalculateMask(Mask12,Layer12);
+            CalculateMask(Mask13,Layer13);
+            CalculateMask(Mask14,Layer14);
+            CalculateMask(Mask15,Layer15);
+            CalculateMask(Mask16,Layer16);
         }
 
     public:
