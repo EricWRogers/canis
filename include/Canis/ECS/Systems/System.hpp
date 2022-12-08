@@ -14,6 +14,11 @@ class System
 {
 private:
 public:
+    std::string name = "";
+    
+    System() = default;
+    System(std::string _name) {name = _name;}
+
     Scene *scene = nullptr;
     Window *window = nullptr;
     InputManager *inputManager = nullptr;

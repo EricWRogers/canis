@@ -61,6 +61,7 @@ namespace Canis
         _system->time = time;
         _system->assetManager = assetManager;
         _system->camera = camera;
+        systems.push_back(_system);
     }
 
     Entity Scene::CreateEntity()

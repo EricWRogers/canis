@@ -46,6 +46,8 @@ namespace Canis
             AssetManager *assetManager;
             Camera *camera;
 
+            std::vector<System*> systems = {};
+
             entt::registry entityRegistry;
 
             double deltaTime;
