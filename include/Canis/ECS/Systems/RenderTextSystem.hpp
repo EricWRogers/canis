@@ -30,15 +30,8 @@ namespace Canis
     public:
         Canis::Shader textShader;
 
-        RenderTextSystem()
+        RenderTextSystem(std::string _name) : System(_name)
         {
-        }
-
-        void Init()
-        {
-            textShader.Compile("assets/shaders/text.vs", "assets/shaders/text.fs");
-            textShader.AddAttribute("vertex");
-            textShader.Link();
         }
 
         void RenderText(Canis::Shader &shader, std::string t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align)
@@ -129,7 +122,19 @@ namespace Canis
             glBindTexture(GL_TEXTURE_2D, 0);
         }
 
-        void UpdateComponents(float deltaTime, entt::registry &registry)
+        void Create()
+        {
+            textShader.Compile("assets/shaders/text.vs", "assets/shaders/text.fs");
+            textShader.AddAttribute("vertex");
+            textShader.Link();
+        }
+
+        void Ready()
+        {
+
+        }
+
+        void Update(entt::registry &_registry, float _deltaTime)
         {
             glDepthFunc(GL_ALWAYS);
             // render text
@@ -138,7 +143,7 @@ namespace Canis
             projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
             glUniformMatrix4fv(glGetUniformLocation(textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-            auto view = registry.view<const RectTransformComponent, ColorComponent, TextComponent>();
+            auto view = _registry.view<const RectTransformComponent, ColorComponent, TextComponent>();
 
             for (auto [entity, transform, color, text] : view.each())
             {

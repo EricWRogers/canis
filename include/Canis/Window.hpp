@@ -25,6 +25,7 @@ namespace Canis
 
         void SwapBuffer();
         void MouseLock(bool _isLocked);
+        bool GetMouseLock() { return mouseLock; }
 
         int GetScreenWidth() { return screenWidth; }
         int GetScreenHeight() { return screenHeight; }
@@ -34,5 +35,6 @@ namespace Canis
     private:
         SDL_Window *sdlWindow;
         int screenWidth, screenHeight;
+        bool mouseLock = false;
     };
 } // end of Canis namespace

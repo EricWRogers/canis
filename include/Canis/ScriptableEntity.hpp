@@ -11,6 +11,7 @@ public:
     Entity m_Entity;
 
     virtual void OnCreate() {}
+    virtual void OnReady() {}
     virtual void OnDestroy() {}
     virtual void OnUpdate(float _dt) {}
 

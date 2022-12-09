@@ -23,20 +23,25 @@ private:
     SpriteRenderer2DSystem spriteRenderer;
     GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
 public:
-    RenderHUDSystem() {}
+    RenderHUDSystem(std::string _name) : System(_name) {}
 
     void Init(GlyphSortType sortType,Shader *shader)
     {
         glyphSortType = sortType;
         spriteRenderer.window = window;
         spriteRenderer.Init(sortType,shader);
+        spriteRenderer.Create();
+        spriteRenderer.Ready();
     }
 
-    void UpdateComponents(float deltaTime, entt::registry &registry) {
+    void Create() {}
+    void Ready() {}
+    void Update(entt::registry &_registry, float _deltaTime)
+    {
         spriteRenderer.Begin(glyphSortType);
 
         // Draw
-        auto view = registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
+        auto view = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
         for (auto [entity, rect_transform, color, image] : view.each())
         {
             spriteRenderer.Draw(

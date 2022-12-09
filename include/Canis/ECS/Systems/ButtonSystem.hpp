@@ -16,14 +16,17 @@ namespace Canis
     class ButtonSystem : public System
     {
     private:
-        InputManager *inputManager;
 
     public:
-        ButtonSystem(InputManager *im) { inputManager = im; }
+        ButtonSystem(std::string _name) : System(_name) {}
 
-        void UpdateComponents(float deltaTime, entt::registry &registry)
+        void Create() {}
+
+        void Ready() {}
+
+        void Update(entt::registry &_registry, float _deltaTime)
         {
-            auto view = registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
+            auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
             for (auto [entity, rect_transform, color, button] : view.each())
 			{
                 if (inputManager->mouse.x > rect_transform.position.x &&

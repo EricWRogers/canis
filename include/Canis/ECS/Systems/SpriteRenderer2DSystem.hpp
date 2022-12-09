@@ -53,6 +53,8 @@ namespace Canis
         static bool CompareBackToFront(Glyph *a, Glyph *b) { return (a->depth > b->depth); }
         static bool CompareTexture(Glyph *a, Glyph *b) { return (a->textureId < b->textureId); }
 
+        SpriteRenderer2DSystem(std::string _name) : System(_name) {}
+        
         ~SpriteRenderer2DSystem() {
             for (int i = 0; i < glyphs.size(); i++)
                 delete glyphs[i];
@@ -326,15 +328,21 @@ namespace Canis
         {
             glyphSortType = sortType;
             spriteShader = shader;
+        }
+
+        void Create()
+        {
             camera2D.Init((int)window->GetScreenWidth(),(int)window->GetScreenHeight());
             CreateVertexArray();
         }
 
-        void UpdateComponents(float deltaTime, entt::registry &registry)
+        void Ready() {}
+
+        void Update(entt::registry &_registry, float _deltaTime)
         {
             glDepthFunc(GL_ALWAYS);
             bool camFound = false;
-            auto cam = registry.view<const Camera2DComponent>();
+            auto cam = _registry.view<const Camera2DComponent>();
             for(auto[entity, camera] : cam.each()) {
                 camera2D.SetPosition(camera.position);
                 camera2D.SetScale(camera.scale);
@@ -349,7 +357,7 @@ namespace Canis
             Begin(glyphSortType);
 
             // Draw
-            auto view = registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
+            auto view = _registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
             for (auto [entity, rect_transform, color, sprite] : view.each())
 			{
                 Draw(

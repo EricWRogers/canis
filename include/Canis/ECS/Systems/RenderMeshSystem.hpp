@@ -31,6 +31,8 @@ namespace Canis
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 
+		RenderMeshSystem(std::string _name) : System(_name) {}
+
 		int entities_rendered = 0;
 
 		struct Plan
@@ -113,7 +115,17 @@ namespace Canis
 				isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
 		};
 
-		void UpdateComponents(float deltaTime, entt::registry &registry)
+		void Create()
+		{
+
+		}
+
+    	void Ready()
+		{
+
+		}
+
+    	void Update(entt::registry &_registry, float _deltaTime)
 		{
 			entities_rendered = 0;
 			// activate shader
@@ -124,7 +136,7 @@ namespace Canis
 			// directional light
 			int numDirLights = 0;
 
-			auto viewDirLight = registry.view<const Canis::TransformComponent, Canis::DirectionalLightComponent>();
+			auto viewDirLight = _registry.view<const Canis::TransformComponent, Canis::DirectionalLightComponent>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
@@ -145,7 +157,7 @@ namespace Canis
 			int numPointLights = 0;
 			int maxPointLights = 4;
 			
-			auto viewPointLight = registry.view<const Canis::TransformComponent, Canis::PointLightComponent>();
+			auto viewPointLight = _registry.view<const Canis::TransformComponent, Canis::PointLightComponent>();
 
 			for (auto [entity, transform, pointLight] : viewPointLight.each())
 			{
@@ -170,7 +182,7 @@ namespace Canis
 			int numSpotLights = 0;
 			int maxSpotLights = 4;
 
-			auto viewSpotLight = registry.view<const Canis::TransformComponent, Canis::SpotLightComponent>();
+			auto viewSpotLight = _registry.view<const Canis::TransformComponent, Canis::SpotLightComponent>();
 			
 			for (auto [entity, transform, spotLight] : viewSpotLight.each())
 			{
@@ -220,7 +232,7 @@ namespace Canis
 
 			shader->SetFloat("material.shininess", 32.0f);
 
-			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
+			auto view = _registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
 
 			for (auto [entity, transform, color, mesh, sphere] : view.each())
 			{

@@ -41,7 +41,7 @@ namespace Canis
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
 
-		RenderMeshWithShadowSystem() {
+		RenderMeshWithShadowSystem(std::string _name) : System(_name) {
 			// configure depth map FBO
 			// -----------------------
 			glGenFramebuffers(1, &depthMapFBO);
@@ -296,10 +296,12 @@ namespace Canis
 			shadow_mapping_shader->UnUse();
 		}		
 		
-		void UpdateComponents(float deltaTime, entt::registry &registry)
+		void Create() {}
+    	void Ready() {}
+    	void Update(entt::registry &_registry, float _deltaTime)
 		{
-			ShadowDepthPass(deltaTime, registry);
-			DrawMesh(deltaTime, registry);
+			ShadowDepthPass(_deltaTime, _registry);
+			DrawMesh(_deltaTime, _registry);
 		}
 
 	private:

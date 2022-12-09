@@ -19,6 +19,10 @@ public:
     System() = default;
     System(std::string _name) {name = _name;}
 
+    virtual void Create() {}
+    virtual void Ready() {}
+    virtual void Update(entt::registry &_registry, float _deltaTime) {}
+
     Scene *scene = nullptr;
     Window *window = nullptr;
     InputManager *inputManager = nullptr;

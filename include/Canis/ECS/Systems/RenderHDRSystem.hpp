@@ -20,8 +20,7 @@ namespace Canis
         RenderSkyboxSystem *renderSkyboxSystem;
         float exposure = 1.0f;
 
-        RenderHDRSystem(Canis::Window *w) {
-            window = w;
+        RenderHDRSystem(std::string _name) : System(_name) {
             glGenFramebuffers(1, &hdrFBO);
             // create floating point color buffer
             glGenTextures(1, &colorBuffer);
@@ -57,14 +56,23 @@ namespace Canis
 
         }
 
-        void UpdateComponents(float deltaTime, entt::registry &registry) {
-            
+        void Create()
+        {
 
+        }
+
+        void Ready()
+        {
+
+        }
+
+        void Update(entt::registry &_registry, float _deltaTime)
+        {         
             glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            renderSkyboxSystem->UpdateComponents(deltaTime, registry);
-            renderMeshSystem->UpdateComponents(deltaTime, registry);
+            renderSkyboxSystem->Update(_registry, _deltaTime);
+            renderMeshSystem->Update(_registry, _deltaTime);
 
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 

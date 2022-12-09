@@ -24,13 +24,19 @@ namespace Canis
     private:
         int skyboxAssetId = 0;
     public:
-
-        void Init()
+        RenderSkyboxSystem(std::string _name) : System(_name) {}
+        
+        void Create()
         {
             skyboxAssetId = assetManager->LoadSkybox("assets/textures/space-nebulas-skybox/");
         }
 
-        void UpdateComponents(float deltaTime, entt::registry &registry)
+        void Ready()
+        {
+
+        }
+
+        void Update(entt::registry &_registry, float _deltaTime)
         {
             // draw skybox as last
             glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content

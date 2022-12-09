@@ -1,4 +1,5 @@
 #include <Canis/SceneManager.hpp>
+#include <Canis/Entity.hpp>
 
 namespace Canis
 {
@@ -91,6 +92,16 @@ namespace Canis
         }
 
         scene->Load();
+
+        for(int i = 0; i < scene->systems.size(); i++)
+        {
+            scene->systems[i]->Create();
+        }
+
+        for(int i = 0; i < scene->systems.size(); i++)
+        {
+            scene->systems[i]->Ready();
+        }
     }
 
     void SceneManager::ForceLoad(std::string _name)
@@ -133,20 +144,19 @@ namespace Canis
         
         scene->Update();
 
-        // update scripts
+
+        auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
+
+        for(auto [_entity, _scriptComponent] : view.each())
         {
-            auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
-
-            for(auto [_entity, _scriptComponent] : view.each())
-            {
-                if (!_scriptComponent.Instance) {
-                    _scriptComponent.Instance = _scriptComponent.InstantiateScript();
-                    _scriptComponent.Instance->m_Entity = Entity { _entity,  this->scene };
-                    _scriptComponent.Instance->OnCreate();
-                }
-
-                _scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
+            if (!_scriptComponent.Instance) {
+                _scriptComponent.Instance = _scriptComponent.InstantiateScript();
+                _scriptComponent.Instance->m_Entity = Entity { _entity,  this->scene };
+                _scriptComponent.Instance->OnCreate();
+                _scriptComponent.Instance->OnReady();
             }
+
+            _scriptComponent.Instance->OnUpdate(this->scene->deltaTime);
         }
 
         m_updateEnd = high_resolution_clock::now();

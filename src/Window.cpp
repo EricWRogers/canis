@@ -125,6 +125,7 @@ namespace Canis
 
     void Window::MouseLock(bool _isLocked)
     {
+        mouseLock = _isLocked;
         if (_isLocked)
         {
             SDL_CaptureMouse(SDL_TRUE);

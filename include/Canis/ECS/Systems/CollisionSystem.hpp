@@ -261,11 +261,21 @@ namespace Canis
         CollisionSystem() = default;
         CollisionSystem(std::string _name) : System(_name) {}
 
-        void UpdateComponents(float _deltaTime, entt::registry &registry)
+        void Create()
+        {
+
+        }
+
+        void Ready()
+        {
+
+        }
+
+        void Update(entt::registry &_registry, float _deltaTime)
         {
             Clear();
 
-            LoadLayers(registry);
+            LoadLayers(_registry);
 
             CalculateOverlap();
         }
