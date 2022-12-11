@@ -36,6 +36,7 @@ namespace Canis
 
             Entity CreateEntity();
             Entity CreateEntity(const std::string &_tag);
+            System* GetSystem(std::string _name);
 
             std::string name;
 
