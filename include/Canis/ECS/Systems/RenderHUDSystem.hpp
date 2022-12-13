@@ -18,47 +18,50 @@
 
 namespace Canis
 {
-class RenderHUDSystem : public System {
-private:
-    SpriteRenderer2DSystem spriteRenderer;
-    GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
-public:
-    RenderHUDSystem(std::string _name) : System(_name) {}
-
-    void Init(GlyphSortType sortType,Shader *shader)
+    class RenderHUDSystem : public System
     {
-        glyphSortType = sortType;
-        spriteRenderer.window = window;
-        spriteRenderer.Init(sortType,shader);
-        spriteRenderer.Create();
-        spriteRenderer.Ready();
-    }
+    private:
+        SpriteRenderer2DSystem spriteRenderer;
+        GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
 
-    void Create() {}
-    void Ready() {}
-    void Update(entt::registry &_registry, float _deltaTime)
-    {
-        spriteRenderer.Begin(glyphSortType);
+    public:
+        RenderHUDSystem(std::string _name) : System(_name) {}
 
-        // Draw
-        auto view = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
-        for (auto [entity, rect_transform, color, image] : view.each())
+        void Init(GlyphSortType sortType, Shader *shader)
         {
-            spriteRenderer.Draw(
-                glm::vec4(rect_transform.position.x,rect_transform.position.y,rect_transform.size.x,rect_transform.size.y),
-                image.uv,
-                image.texture,
-                rect_transform.depth,
-                color
-            );
-
-            //Canis::Log("Texture ID : " + std::to_string(image.texture.id));
+            glyphSortType = sortType;
+            spriteRenderer.window = window;
+            spriteRenderer.Init(sortType, shader);
+            spriteRenderer.Create();
+            spriteRenderer.Ready();
         }
 
-        //Canis::FatalError("Stop");
+        void Create() {}
+        void Ready() {}
+        void Update(entt::registry &_registry, float _deltaTime)
+        {
+            spriteRenderer.Begin(glyphSortType);
 
-        spriteRenderer.End();
-        spriteRenderer.SpriteRenderBatch(false);
-    }
-};
+            // Draw
+            auto view = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
+            for (auto [entity, rect_transform, color, image] : view.each())
+            {
+                if (rect_transform.active)
+                {
+                    spriteRenderer.Draw(
+                        glm::vec4(rect_transform.position.x, rect_transform.position.y, rect_transform.size.x, rect_transform.size.y),
+                        image.uv,
+                        image.texture,
+                        rect_transform.depth,
+                        color);
+                }
+                // Canis::Log("Texture ID : " + std::to_string(image.texture.id));
+            }
+
+            // Canis::FatalError("Stop");
+
+            spriteRenderer.End();
+            spriteRenderer.SpriteRenderBatch(false);
+        }
+    };
 } // end of Canis namespace

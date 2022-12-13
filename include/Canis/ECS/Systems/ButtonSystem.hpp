@@ -16,7 +16,6 @@ namespace Canis
     class ButtonSystem : public System
     {
     private:
-
     public:
         ButtonSystem(std::string _name) : System(_name) {}
 
@@ -28,16 +27,21 @@ namespace Canis
         {
             auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
             for (auto [entity, rect_transform, color, button] : view.each())
-			{
-                if (inputManager->mouse.x > rect_transform.position.x &&
-                inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x &&
-                inputManager->mouse.y > rect_transform.position.y && inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y) {
-                    color.color = button.hoverColor;
-                    if(inputManager->leftClick)
-                        button.func(button.instance);
-                }
-                else {
-                    color.color = button.baseColor;
+            {
+                if (rect_transform.active)
+                {
+                    if (inputManager->mouse.x > rect_transform.position.x &&
+                        inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x &&
+                        inputManager->mouse.y > rect_transform.position.y && inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y)
+                    {
+                        color.color = button.hoverColor;
+                        if (inputManager->leftClick)
+                            button.func(button.instance);
+                    }
+                    else
+                    {
+                        color.color = button.baseColor;
+                    }
                 }
             }
         }
