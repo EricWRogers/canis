@@ -46,6 +46,7 @@ namespace Canis
             Time *time;
             AssetManager *assetManager;
             Camera *camera;
+            unsigned int seed;
 
             std::vector<System*> systems = {};
 

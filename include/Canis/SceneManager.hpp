@@ -36,7 +36,8 @@ namespace Canis
                             InputManager *_inputManager,
                             Time *_time,
                             Camera *_camera,
-                            AssetManager *_assetManager);
+                            AssetManager *_assetManager,
+                            unsigned int _seed);
 
             
             void ForceLoad(std::string _name);
@@ -59,5 +60,7 @@ namespace Canis
 
             float updateTime = 0.0f;
             float drawTime = 0.0f;
+
+            unsigned int seed = 0;
     };
 } // end of Canis namespace
