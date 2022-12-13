@@ -6,13 +6,13 @@ namespace Canis
     {
         glm::vec4 lRayStart_NDC(
             ((float)inputManager.mouse.x/(float)window.GetScreenWidth()  - 0.5f) * 2.0f,
-            -((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
             -1.0, // The near plane maps to Z=-1 in Normalized Device Coordinates
             1.0f
         );
         glm::vec4 lRayEnd_NDC(
             ((float)inputManager.mouse.x/(float)window.GetScreenWidth()  - 0.5f) * 2.0f,
-            -((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
             0.0,
             1.0f
         );
