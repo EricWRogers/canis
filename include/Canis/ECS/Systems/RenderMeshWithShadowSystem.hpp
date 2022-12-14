@@ -23,6 +23,8 @@ namespace Canis
 {
 	class RenderMeshWithShadowSystem : public System
 	{
+	private:
+		std::vector<entt::entity> entities = {};
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
 		Canis::Shader *shadow_mapping_shader;
@@ -172,26 +174,16 @@ namespace Canis
 			glActiveTexture(GL_TEXTURE0);
 			
 			// render scene
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
+			std::string modelKey = "model";
 
-			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
-
-			for (auto [entity, transform, color, mesh, sphere] : view.each())
+			for (entt::entity entity : entities)
 			{
-				if (!transform.active)
-					continue;
-				
-				if (!mesh.castShadow)
-					continue;
-
-				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
-
-				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
-					continue;
+				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
+				const MeshComponent& mesh = registry.get<const MeshComponent>(entity);
 
 				glBindVertexArray(mesh.vao);
 
-				shadow_mapping_depth_shader->SetMat4("model", modelMatrix);
+				shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 
 				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
 			}
@@ -210,8 +202,6 @@ namespace Canis
 		void DrawMesh(float deltaTime, entt::registry &registry)
 		{
 			// reset viewport
-			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glDepthFunc(GL_LESS);
 
 			entities_rendered = 0;
@@ -221,7 +211,7 @@ namespace Canis
 			// directional light
 			int numDirLights = 0;
 
-			auto viewDirLight = registry.view<Canis::TransformComponent, Canis::DirectionalLightComponent>();
+			auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
@@ -265,26 +255,21 @@ namespace Canis
 			shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
 			shadow_mapping_shader->SetMat4("view", cameraView);
 
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
-
 			shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+			
+			std::string modelKey = "model";
+			std::string colorKey = "color";
 
-			auto view = registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
-
-			for (auto [entity, transform, color, mesh, sphere] : view.each())
+			for (entt::entity entity : entities)
 			{
-				if (!transform.active)
-					continue;
-
-				glm::mat4 modelMatrix = Canis::GetModelMatrix(transform);
-
-				if (!isOnFrustum(camFrustum, transform, modelMatrix, sphere))
-					continue;
+				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
+				const ColorComponent& color = registry.get<const ColorComponent>(entity);
+				const MeshComponent& mesh = registry.get<const MeshComponent>(entity);
 
 				glBindVertexArray(mesh.vao);
 
-				shadow_mapping_shader->SetMat4("model", modelMatrix);
-				shadow_mapping_shader->SetVec4("color", color.color);
+				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
+				shadow_mapping_shader->SetVec4(colorKey, color.color);
 
 				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
 
@@ -300,8 +285,29 @@ namespace Canis
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
 		{
+			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
+
+			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
+
+			for (auto [entity, transform, mesh, sphere] : view.each())
+			{
+				if (!transform.active)
+					continue;
+
+				glm::mat4 m = Canis::GetModelMatrix(transform);
+
+				if (!isOnFrustum(camFrustum, transform, m, sphere))
+					continue;
+
+				entt::entity e = entity;
+
+				entities.push_back(e);
+			}
+
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);
+
+			entities.clear();
 		}
 
 	private:
