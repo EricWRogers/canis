@@ -178,8 +178,12 @@ namespace Canis
 
 			for (entt::entity entity : entities)
 			{
-				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
 				const MeshComponent& mesh = registry.get<const MeshComponent>(entity);
+
+				if (!mesh.castShadow)
+					continue;
+				
+				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
 
 				glBindVertexArray(mesh.vao);
 
