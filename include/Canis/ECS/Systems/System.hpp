@@ -13,8 +13,10 @@ class Scene;
 class System
 {
 private:
+    
 public:
     std::string name = "";
+    bool m_isCreated = false;
     
     System() = default;
     System(std::string _name) {name = _name;}
@@ -22,6 +24,8 @@ public:
     virtual void Create() {}
     virtual void Ready() {}
     virtual void Update(entt::registry &_registry, float _deltaTime) {}
+
+    bool IsCreated() { return m_isCreated; }
 
     Scene *scene = nullptr;
     Window *window = nullptr;

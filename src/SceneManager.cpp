@@ -79,7 +79,14 @@ namespace Canis
                     }
                 });
             }
-            scene->entityRegistry.clear();
+
+
+            /*scene->entityRegistry.each([&](auto entityID) {
+                Canis::Log("HI");
+                scene->entityRegistry.destroy(entityID);
+            });*/
+
+            scene->entityRegistry = entt::registry();
         }
 
         scene = scenes[_index];
@@ -98,7 +105,11 @@ namespace Canis
 
         for(int i = 0; i < scene->systems.size(); i++)
         {
-            scene->systems[i]->Create();
+            if(!scene->systems[i]->IsCreated())
+            {
+                scene->systems[i]->Create();
+                scene->systems[i]->m_isCreated = true;
+            }
         }
 
         for(int i = 0; i < scene->systems.size(); i++)
