@@ -140,4 +140,18 @@ namespace Canis
 
         UpdateModelMatrix(transform);
     }
+
+    float RandomFloat(float min, float max)
+    {
+        if (max > min) {
+            float random = ((float) rand()) / (float) RAND_MAX;
+            float range = max - min;  
+            return (random*range) + min;
+        }
+
+        if (min == max)
+            return min;
+        
+        return RandomFloat(max, min);        
+    }
 }

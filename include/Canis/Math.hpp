@@ -40,5 +40,5 @@ namespace Canis
 
     void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation);
 
-
+    float RandomFloat(float min, float max);
 } 
