@@ -1,4 +1,5 @@
 #pragma once
+#include <algorithm>
 #include <string>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -21,10 +22,21 @@
 
 namespace Canis
 {
+	struct RenderEnttRapper {
+		entt::entity e;
+		float distance;
+	};
+
+	bool static CompareRenderDistance(RenderEnttRapper &a, RenderEnttRapper &b) {
+		return (a.distance >= b.distance);
+	}
+
 	class RenderMeshWithShadowSystem : public System
 	{
 	private:
 		std::vector<entt::entity> entities = {};
+		std::vector<RenderEnttRapper> sortingEntities = {};
+
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
 		Canis::Shader *shadow_mapping_shader;
@@ -303,15 +315,24 @@ namespace Canis
 				if (!isOnFrustum(camFrustum, transform, m, sphere))
 					continue;
 
-				entt::entity e = entity;
+				RenderEnttRapper rer = {};
+				rer.e = entity;
+				rer.distance = glm::distance(transform.position, camera->Position);
 
-				entities.push_back(e);
+				sortingEntities.push_back(rer);
+			}
+
+			std::sort(sortingEntities.begin(), sortingEntities.end(), CompareRenderDistance);
+
+			for(RenderEnttRapper rer : sortingEntities) {
+				entities.push_back(rer.e);
 			}
 
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);
 
 			entities.clear();
+			sortingEntities.clear();
 		}
 
 	private:
