@@ -27,6 +27,7 @@ namespace Canis
 {
     class RenderTextSystem : public System
     {
+    private:
     public:
         Canis::Shader textShader;
 
@@ -144,12 +145,16 @@ namespace Canis
             glUniformMatrix4fv(glGetUniformLocation(textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
             auto view = _registry.view<const RectTransformComponent, ColorComponent, TextComponent>();
+            glm::vec2 positionAnchor = glm::vec2(0.0f);
 
             for (auto [entity, transform, color, text] : view.each())
             {
                 if (transform.active == true)
                 {
-                    RenderText(textShader, *text.text, transform.position.x, transform.position.y, transform.scale, color.color, text.assetId, text.align);
+                    positionAnchor = GetAnchor((Canis::RectAnchor)transform.anchor,
+                        (float)window->GetScreenWidth(),
+                        (float)window->GetScreenHeight());
+                    RenderText(textShader, *text.text, transform.position.x + positionAnchor.x, transform.position.y + positionAnchor.y, transform.scale, color.color, text.assetId, text.align);
                 }
             }
 

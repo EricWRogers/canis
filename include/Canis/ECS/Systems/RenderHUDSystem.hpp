@@ -44,12 +44,18 @@ namespace Canis
 
             // Draw
             auto view = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
+            glm::vec2 positionAnchor = glm::vec2(0.0f);
+
             for (auto [entity, rect_transform, color, image] : view.each())
             {
                 if (rect_transform.active)
                 {
+                    positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
+                        (float)window->GetScreenWidth(),
+                        (float)window->GetScreenHeight());
+                    
                     spriteRenderer.Draw(
-                        glm::vec4(rect_transform.position.x, rect_transform.position.y, rect_transform.size.x, rect_transform.size.y),
+                        glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
                         image.uv,
                         image.texture,
                         rect_transform.depth,

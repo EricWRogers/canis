@@ -54,8 +54,9 @@ namespace Canis
         static bool CompareTexture(Glyph *a, Glyph *b) { return (a->textureId < b->textureId); }
 
         SpriteRenderer2DSystem(std::string _name) : System(_name) {}
-        
-        ~SpriteRenderer2DSystem() {
+
+        ~SpriteRenderer2DSystem()
+        {
             for (int i = 0; i < glyphs.size(); i++)
                 delete glyphs[i];
 
@@ -92,15 +93,12 @@ namespace Canis
             int cv = 0; // current vertex
             spriteRenderBatch.emplace_back(offset, 6, glyphs[0]->textureId);
 
-            
             vertices[cv++] = glyphs[0]->topLeft;
             vertices[cv++] = glyphs[0]->bottomLeft;
             vertices[cv++] = glyphs[0]->bottomRight;
             vertices[cv++] = glyphs[0]->bottomRight;
             vertices[cv++] = glyphs[0]->topRight;
-            vertices[cv++] = glyphs[0]->topLeft;          
-            
-            
+            vertices[cv++] = glyphs[0]->topLeft;
 
             offset += 6;
 
@@ -114,7 +112,7 @@ namespace Canis
                 {
                     spriteRenderBatch.back().numVertices += 6;
                 }
-                
+
                 vertices[cv++] = glyphs[cg]->topLeft;
                 vertices[cv++] = glyphs[cg]->bottomLeft;
                 vertices[cv++] = glyphs[cg]->bottomRight;
@@ -131,28 +129,27 @@ namespace Canis
             glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
 
-        void Begin(GlyphSortType sortType) {
+        void Begin(GlyphSortType sortType)
+        {
             glyphSortType = sortType;
             spriteRenderBatch.clear();
             glyphsCurrentIndex = 0;
 
-            //for (int i = 0; i < glyphs.size(); i++)
-            //    delete glyphs[i];
+            // for (int i = 0; i < glyphs.size(); i++)
+            //     delete glyphs[i];
 
-            //glyphs.clear();
+            // glyphs.clear();
         }
 
-        void End() {
+        void End()
+        {
             if (glyphsCurrentIndex < glyphs.size())
             {
                 for (int i = glyphsCurrentIndex; i < glyphs.size(); i++)
                     delete glyphs[i];
-                
+
                 glyphs.resize(glyphsCurrentIndex);
             }
-            
-            
-
 
             SortGlyphs();
             CreateRenderBatches();
@@ -168,18 +165,20 @@ namespace Canis
             return pos;
         }
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color) {
-            
-            
+        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color)
+        {
+
             Glyph *newGlyph;
-            
-            if (glyphsCurrentIndex < glyphs.size()) {
+
+            if (glyphsCurrentIndex < glyphs.size())
+            {
                 newGlyph = glyphs[glyphsCurrentIndex];
-            } else {
+            }
+            else
+            {
                 newGlyph = new Glyph;
                 glyphs.push_back(newGlyph);
             }
-            
 
             newGlyph->textureId = texture.id;
             newGlyph->depth = depth;
@@ -207,10 +206,13 @@ namespace Canis
         void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, float angle, glm::vec2 origin)
         {
             Glyph *newGlyph;
-            
-            if (glyphsCurrentIndex < glyphs.size()) {
+
+            if (glyphsCurrentIndex < glyphs.size())
+            {
                 newGlyph = glyphs[glyphsCurrentIndex];
-            } else {
+            }
+            else
+            {
                 newGlyph = new Glyph;
                 glyphs.push_back(newGlyph);
             }
@@ -233,10 +235,10 @@ namespace Canis
             bottomRight = RotatePoint(bottomRight, angle) + halfDims;
             topRight = RotatePoint(topRight, angle) + halfDims;*/
 
-            glm::vec2 topLeft(-halfDims.x+origin.x, halfDims.y+origin.y);
-            glm::vec2 bottomLeft(-halfDims.x+origin.x, -halfDims.y+origin.y);
-            glm::vec2 bottomRight(halfDims.x+origin.x, -halfDims.y+origin.y);
-            glm::vec2 topRight(halfDims.x+origin.x, halfDims.y+origin.y);
+            glm::vec2 topLeft(-halfDims.x + origin.x, halfDims.y + origin.y);
+            glm::vec2 bottomLeft(-halfDims.x + origin.x, -halfDims.y + origin.y);
+            glm::vec2 bottomRight(halfDims.x + origin.x, -halfDims.y + origin.y);
+            glm::vec2 topRight(halfDims.x + origin.x, halfDims.y + origin.y);
             topLeft = RotatePoint(topLeft, angle);
             bottomLeft = RotatePoint(bottomLeft, angle);
             bottomRight = RotatePoint(bottomRight, angle);
@@ -283,7 +285,7 @@ namespace Canis
                 projection = camera2D.GetCameraMatrix();
             else
                 projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
-            
+
             spriteShader->SetMat4("P", projection);
 
             for (int i = 0; i < spriteRenderBatch.size(); i++)
@@ -313,10 +315,10 @@ namespace Canis
             glEnableVertexAttribArray(1);
             glEnableVertexAttribArray(2);
 
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex), (void*)0);
-            //color
-            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex), (void*)(3 * sizeof(float)));
-            //uv
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex), (void *)0);
+            // color
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex), (void *)(3 * sizeof(float)));
+            // uv
             glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(SpriteVertex), (void *)(7 * sizeof(float)));
 
             glBindVertexArray(0);
@@ -324,7 +326,7 @@ namespace Canis
 
         SpriteRenderer2DSystem() {}
 
-        void Init(GlyphSortType sortType,Shader *shader)
+        void Init(GlyphSortType sortType, Shader *shader)
         {
             glyphSortType = sortType;
             spriteShader = shader;
@@ -332,7 +334,7 @@ namespace Canis
 
         void Create()
         {
-            camera2D.Init((int)window->GetScreenWidth(),(int)window->GetScreenHeight());
+            camera2D.Init((int)window->GetScreenWidth(), (int)window->GetScreenHeight());
             CreateVertexArray();
         }
 
@@ -343,7 +345,8 @@ namespace Canis
             glDepthFunc(GL_ALWAYS);
             bool camFound = false;
             auto cam = _registry.view<const Camera2DComponent>();
-            for(auto[entity, camera] : cam.each()) {
+            for (auto [entity, camera] : cam.each())
+            {
                 camera2D.SetPosition(camera.position);
                 camera2D.SetScale(camera.scale);
                 camera2D.Update();
@@ -351,24 +354,29 @@ namespace Canis
                 continue;
             }
 
-            if(!camFound)
+            if (!camFound)
                 return;
 
             Begin(glyphSortType);
 
             // Draw
             auto view = _registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
+            glm::vec2 positionAnchor = glm::vec2(0.0f);
+
             for (auto [entity, rect_transform, color, sprite] : view.each())
-			{
+            {
+                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
+                                           (float)window->GetScreenWidth(),
+                                           (float)window->GetScreenHeight());
+
                 Draw(
-                    glm::vec4(rect_transform.position.x,rect_transform.position.y,rect_transform.size.x,rect_transform.size.y),
+                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
                     sprite.uv,
                     sprite.texture,
                     rect_transform.depth,
                     color,
                     rect_transform.rotation,
-                    rect_transform.originOffset
-                );
+                    rect_transform.originOffset);
             }
 
             End();

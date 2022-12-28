@@ -26,13 +26,19 @@ namespace Canis
         void Update(entt::registry &_registry, float _deltaTime)
         {
             auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
+            glm::vec2 positionAnchor = glm::vec2(0.0f);
             for (auto [entity, rect_transform, color, button] : view.each())
             {
                 if (rect_transform.active)
                 {
-                    if (inputManager->mouse.x > rect_transform.position.x &&
-                        inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x &&
-                        inputManager->mouse.y > rect_transform.position.y && inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y)
+                    positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
+                        (float)window->GetScreenWidth(),
+                        (float)window->GetScreenHeight());
+                    
+                    if (inputManager->mouse.x > rect_transform.position.x + positionAnchor.x &&
+                        inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x + positionAnchor.x &&
+                        inputManager->mouse.y > rect_transform.position.y + positionAnchor.y &&
+                        inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y + positionAnchor.y)
                     {
                         color.color = button.hoverColor;
                         if (inputManager->leftClick)
