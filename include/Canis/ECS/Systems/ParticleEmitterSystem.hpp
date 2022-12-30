@@ -75,7 +75,9 @@ public:
                         ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
                         c.color = emitter.colorStart;
-
+                        float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
+                        t.scale = transform.scale*scaleMul;
+                        t.isDirty = true;
                         t.active = true;
                         p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
                         p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);
@@ -84,7 +86,7 @@ public:
                         p.velocity = glm::normalize(p.velocity)*emitter.speed;
                         
                         p.acceleration = glm::vec3(0.0f);
-                        p.time = 0.5f;
+                        p.time = emitter.particleLifeTime;
                     }
                 }
             }
@@ -113,6 +115,11 @@ public:
                             c.color = emitter.colorStart;
 
                             t.active = true;
+                            t.rotation.x = RandomFloat(emitter.minRotation.x,emitter.maxRotation.x);
+                            t.rotation.y = RandomFloat(emitter.minRotation.y,emitter.maxRotation.y);
+                            t.rotation.z = RandomFloat(emitter.minRotation.z,emitter.maxRotation.z);
+                            float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
+                            t.scale = transform.scale*scaleMul;
                             t.isDirty = true;
                             p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
                             p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);

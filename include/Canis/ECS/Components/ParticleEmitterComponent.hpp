@@ -24,6 +24,8 @@ namespace Canis
         float time = 2.0f;
         float gravity = -9.8f;
         float speed = 2.0f;
+        float minScalePercentage = 0.9f;
+        float maxScalePercentage = 1.1f;
         glm::vec3 minVelocity = glm::vec3(-0.5f,1.0f,-0.5f);
         glm::vec3 maxVelocity = glm::vec3(0.5f,1.0f,0.5f);
         glm::vec3 minRotation = glm::vec3(0.0f);
