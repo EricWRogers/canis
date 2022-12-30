@@ -9,7 +9,8 @@ namespace Canis
         NONE      = 0,
         LOOPING   = 1,
         BURST     = 2,
-        GRAVITY   = 3
+        GRAVITY   = 4,
+        PAUSED    = 8
     };
 
     struct ParticleEmitterComponent
@@ -30,5 +31,8 @@ namespace Canis
         glm::vec4 colorStart = glm::vec4(1.0f);
         unsigned int modelID = 0;
         bool castShadow = false;
+        float timeTillSpawn = 0.1f;
+        float spawnCountDown = 0.0f;
+        int numToSpawn = 5;
     };
 } // end of Canis namespace
