@@ -27,10 +27,6 @@ namespace Canis
 		float distance;
 	};
 
-	bool static CompareRenderDistance(RenderEnttRapper &a, RenderEnttRapper &b) {
-		return (a.distance >= b.distance);
-	}
-
 	class RenderMeshWithShadowSystem : public System
 	{
 	private:
@@ -188,14 +184,14 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
-			for (entt::entity entity : entities)
+			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const MeshComponent& mesh = registry.get<const MeshComponent>(entity);
+				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
 
 				if (!mesh.castShadow)
 					continue;
 				
-				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 
 				glBindVertexArray(mesh.vao);
 
@@ -276,11 +272,11 @@ namespace Canis
 			std::string modelKey = "model";
 			std::string colorKey = "color";
 
-			for (entt::entity entity : entities)
+			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const TransformComponent& transform = registry.get<const TransformComponent>(entity);
-				const ColorComponent& color = registry.get<const ColorComponent>(entity);
-				const MeshComponent& mesh = registry.get<const MeshComponent>(entity);
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
+				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
 
 				glBindVertexArray(mesh.vao);
 
@@ -301,6 +297,9 @@ namespace Canis
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
 		{
+			entities.clear();
+			sortingEntities.clear();
+
 			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
 
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
@@ -322,17 +321,14 @@ namespace Canis
 				sortingEntities.push_back(rer);
 			}
 
-			std::sort(sortingEntities.begin(), sortingEntities.end(), CompareRenderDistance);
+			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
 
-			for(RenderEnttRapper rer : sortingEntities) {
+			/*for(RenderEnttRapper rer : sortingEntities) {
 				entities.push_back(rer.e);
-			}
+			}*/
 
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);
-
-			entities.clear();
-			sortingEntities.clear();
 		}
 
 	private:
