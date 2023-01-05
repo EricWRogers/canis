@@ -9,7 +9,7 @@ namespace Canis
 	{
 		glm::vec3 center{0.0f, 0.0f, 0.0f};
 		float radius{1.0f};
-		unsigned int layer{BIT::ZERO};
-		unsigned int mask{BIT::ZERO};
+		unsigned int layer{(unsigned int)BIT::ZERO};
+		unsigned int mask{(unsigned int)BIT::ZERO};
 	};
 } // end of Canis namespace
