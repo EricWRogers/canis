@@ -151,19 +151,21 @@ namespace Canis
 				break; // EOF = End Of File. Quit the loop.
 
 			// else : parse lineHeader
+
+			int warningHolder = 0;
 			
 			if ( strcmp( lineHeader, "v" ) == 0 ){
 				glm::vec3 vertex;
-				fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z );
+				warningHolder = fscanf(file, "%f %f %f\n", &vertex.x, &vertex.y, &vertex.z );
 				temp_vertices.push_back(vertex);
 			}else if ( strcmp( lineHeader, "vt" ) == 0 ){
 				glm::vec2 uv;
-				fscanf(file, "%f %f\n", &uv.x, &uv.y );
+				warningHolder = fscanf(file, "%f %f\n", &uv.x, &uv.y );
 				uv.y = -uv.y; // Invert V coordinate since we will only use DDS texture, which are inverted. Remove if you want to use TGA or BMP loaders.
 				temp_uvs.push_back(uv);
 			}else if ( strcmp( lineHeader, "vn" ) == 0 ){
 				glm::vec3 normal;
-				fscanf(file, "%f %f %f\n", &normal.x, &normal.y, &normal.z );
+				warningHolder = fscanf(file, "%f %f %f\n", &normal.x, &normal.y, &normal.z );
 				temp_normals.push_back(normal);
 			}else if ( strcmp( lineHeader, "f" ) == 0 ){
 				std::string vertex1, vertex2, vertex3;
@@ -186,7 +188,8 @@ namespace Canis
 			}else{
 				// Probably a comment, eat up the rest of the line
 				char stupidBuffer[1000];
-				fgets(stupidBuffer, 1000, file);
+				char* realStupidBuffer;
+				realStupidBuffer = fgets(stupidBuffer, 1000, file);
 			}
 
 		}
