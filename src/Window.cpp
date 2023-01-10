@@ -63,13 +63,13 @@ namespace Canis
             0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff,
             0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff,
         };
-        surface = SDL_CreateRGBSurfaceFrom(pixels,16,16,16,16*2,0x0f00,0x00f0,0x000f,0xf000);
+        surface = SDL_CreateSurfaceFrom(pixels,16,16,16*2,SDL_PIXELFORMAT_ABGR4444);
 
         // The icon is attached to the window pointer
         SDL_SetWindowIcon(sdlWindow, surface);
 
         // ...and the surface containing the icon pixel data is no longer required.
-        SDL_FreeSurface(surface);
+        SDL_DestroySurface(surface);
 
         if (sdlWindow == nullptr) // Check for an error when creating a window
         {

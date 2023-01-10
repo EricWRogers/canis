@@ -5,7 +5,7 @@
 #include <cstring>
 #include <string>
 #include <glm/glm.hpp>
-#include <SDL.h>
+#include <SDL3/SDL.h>
 #include <stb_image.h>
 
 #include "Data/GLTexture.hpp"

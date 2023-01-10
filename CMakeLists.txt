@@ -35,8 +35,7 @@ target_link_libraries(${PROJECT_NAME}
     stb
     libglew_static
     freetype
-    SDL2main
-    SDL2-static
+    SDL3-static
     PRIVATE
         ${CMAKE_CURRENT_SOURCE_DIR}/src
 )
@@ -48,8 +47,7 @@ target_include_directories(${PROJECT_NAME}
         glm
         stb
         freetype
-        SDL2main
-        SDL2-static
+        SDL3-static
         "${PROJECT_SOURCE_DIR}/include"
 )
 
