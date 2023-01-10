@@ -7,6 +7,38 @@ add_definitions(
 
 set(CMAKE_CXX_STANDARD 20)
 
+message(STATUS "HERE")
+
+set(SDL3_mixer::SDL3_mixer_FOUND                TRUE)
+set(SDL3_mixer::SDL3MIXER_VENDORED              FALSE)
+set(SDL3_mixer::SDL3MIXER_CMD                   FALSE)
+set(SDL3_mixer::SDL3MIXER_FLAC_LIBFLAC          FALSE)
+set(SDL3_mixer::SDL3MIXER_FLAC_DRFLAC           TRUE)
+set(SDL3_mixer::SDL3MIXER_GME                   FALSE)
+set(SDL3_mixer::SDL3MIXER_MOD                   TRUE)
+set(SDL3_mixer::SDL3MIXER_MOD_MODPLUG           TRUE)
+set(SDL3_mixer::SDL3MIXER_MOD_XMP               FALSE)
+set(SDL3_mixer::SDL3MIXER_MOD_XMP_LITE          FALSE)
+set(SDL3_mixer::SDL3MIXER_MOD_XMP_SHARED        FALSE)
+set(SDL3_mixer::SDL3MIXER_MP3                   TRUE)
+set(SDL3_mixer::SDL3MIXER_MP3_DRMP3             TRUE)
+set(SDL3_mixer::SDL3MIXER_MP3_MPG123            FALSE)
+set(SDL3_mixer::SDL3MIXER_MIDI                  TRUE)
+set(SDL3_mixer::SDL3MIXER_MIDI_FLUIDSYNTH       FALSE)
+set(SDL3_mixer::SDL3MIXER_MIDI_NATIVE           TRUE)
+set(SDL3_mixer::SDL3MIXER_MIDI_TIMIDITY         TRUE)
+set(SDL3_mixer::SDL3MIXER_OPUS                  TRUE)
+set(SDL3_mixer::SDL3MIXER_VORBIS                STB)
+set(SDL3_mixer::SDL3MIXER_VORBIS_STB            TRUE)
+set(SDL3_mixer::SDL3MIXER_VORBIS_TREMOR         FALSE)
+set(SDL3_mixer::SDL3MIXER_VORBIS_VORBISFILE     FALSE)
+set(SDL3_mixer::SDL3MIXER_WAVE                  TRUE)
+
+set(SDL3_mixer::SDL3_SHARED FALSE)
+set(SDL3::INTERFACE_SDL3_SHARED FALSE)
+set(SDL3_mixer::SDL3MIXER_BUILD_SHARED_LIBS FALSE)
+set(SDL3MIXER_BUILD_SHARED_LIBS FALSE)
+
 #find_package(OpenGL REQUIRED)
 #find_package(Python REQUIRED)
 
@@ -21,29 +53,6 @@ add_subdirectory(external/freetype2)
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype2/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
-set(SDL3_mixer::SDL3_mixer_FOUND                TRUE)
-set(SDL3_mixer::SDL3MIXER_VENDORED              FALSE)
-set(SDL3_mixer::SDL3MIXER_CMD                   FALSE)
-set(SDL3_mixer::SDL3MIXER_FLAC_LIBFLAC          FALSE)
-set(SDL3_mixer::SDL3MIXER_FLAC_DRFLAC           TRUE)
-set(SDL3_mixer::SDL3MIXER_GME                   FALSE)
-set(SDL3_mixer::SDL3MIXER_MOD                   TRUE)
-set(SDL3_mixer::SDL3MIXER_MOD_MODPLUG           TRUE)
-set(SDL3_mixer::SDL3MIXER_MOD_XMP               FALSE)
-set(SDL3_mixer::SDL3MIXER_MOD_XMP_LITE          FALSE)
-set(SDL3_mixer::SDL3MIXER_MP3                   TRUE)
-set(SDL3_mixer::SDL3MIXER_MP3_DRMP3             TRUE)
-set(SDL3_mixer::SDL3MIXER_MP3_MPG123            FALSE)
-set(SDL3_mixer::SDL3MIXER_MIDI                  TRUE)
-set(SDL3_mixer::SDL3MIXER_MIDI_FLUIDSYNTH       FALSE)
-set(SDL3_mixer::SDL3MIXER_MIDI_NATIVE           TRUE)
-set(SDL3_mixer::SDL3MIXER_MIDI_TIMIDITY         TRUE)
-set(SDL3_mixer::SDL3MIXER_OPUS                  TRUE)
-set(SDL3_mixer::SDL3MIXER_VORBIS                STB)
-set(SDL3_mixer::SDL3MIXER_VORBIS_STB            TRUE)
-set(SDL3_mixer::SDL3MIXER_VORBIS_TREMOR         FALSE)
-set(SDL3_mixer::SDL3MIXER_VORBIS_VORBISFILE     FALSE)
-set(SDL3_mixer::SDL3MIXER_WAVE                  TRUE)
 #set(SDL3_mixer::INTERFACE_SDL3_SHARED FALSE)
 #set(SDL3::INTERFACE_SDL3_SHARED FALSE)
 #set(SDL3_mixer::SDL3MIXER_BUILD_SHARED_LIBS FALSE)
@@ -84,7 +93,6 @@ target_include_directories(${PROJECT_NAME}
         freetype
         SDL3_mixer
         SDL3
-        
         "${PROJECT_SOURCE_DIR}/include"
 )
 
