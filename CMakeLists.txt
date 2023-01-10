@@ -7,58 +7,26 @@ add_definitions(
 
 set(CMAKE_CXX_STANDARD 20)
 
-message(STATUS "HERE")
-
-set(SDL3_mixer::SDL3_mixer_FOUND                TRUE)
-set(SDL3_mixer::SDL3MIXER_VENDORED              FALSE)
-set(SDL3_mixer::SDL3MIXER_CMD                   FALSE)
-set(SDL3_mixer::SDL3MIXER_FLAC_LIBFLAC          FALSE)
-set(SDL3_mixer::SDL3MIXER_FLAC_DRFLAC           TRUE)
-set(SDL3_mixer::SDL3MIXER_GME                   FALSE)
-set(SDL3_mixer::SDL3MIXER_MOD                   TRUE)
-set(SDL3_mixer::SDL3MIXER_MOD_MODPLUG           TRUE)
-set(SDL3_mixer::SDL3MIXER_MOD_XMP               FALSE)
-set(SDL3_mixer::SDL3MIXER_MOD_XMP_LITE          FALSE)
-set(SDL3_mixer::SDL3MIXER_MOD_XMP_SHARED        FALSE)
-set(SDL3_mixer::SDL3MIXER_MP3                   TRUE)
-set(SDL3_mixer::SDL3MIXER_MP3_DRMP3             TRUE)
-set(SDL3_mixer::SDL3MIXER_MP3_MPG123            FALSE)
-set(SDL3_mixer::SDL3MIXER_MIDI                  TRUE)
-set(SDL3_mixer::SDL3MIXER_MIDI_FLUIDSYNTH       FALSE)
-set(SDL3_mixer::SDL3MIXER_MIDI_NATIVE           TRUE)
-set(SDL3_mixer::SDL3MIXER_MIDI_TIMIDITY         TRUE)
-set(SDL3_mixer::SDL3MIXER_OPUS                  TRUE)
-set(SDL3_mixer::SDL3MIXER_VORBIS                STB)
-set(SDL3_mixer::SDL3MIXER_VORBIS_STB            TRUE)
-set(SDL3_mixer::SDL3MIXER_VORBIS_TREMOR         FALSE)
-set(SDL3_mixer::SDL3MIXER_VORBIS_VORBISFILE     FALSE)
-set(SDL3_mixer::SDL3MIXER_WAVE                  TRUE)
-
-set(SDL3_mixer::SDL3_SHARED FALSE)
-set(SDL3::INTERFACE_SDL3_SHARED FALSE)
-set(SDL3_mixer::SDL3MIXER_BUILD_SHARED_LIBS FALSE)
-set(SDL3MIXER_BUILD_SHARED_LIBS FALSE)
-
-#find_package(OpenGL REQUIRED)
-#find_package(Python REQUIRED)
-
 add_subdirectory(external/GL)
-#add_subdirectory(external/glad)
-#add_subdirectory(external/glfw)
 add_subdirectory(external/glm)
 add_subdirectory(external/SDL)
-add_subdirectory(external/SDL_mixer)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype2)
+
+set(BUILD_SHARED_LIBS           FALSE)
+
+set(SDL2MIXER_VENDORED          TRUE)
+set(SDL2MIXER_WAVE              TRUE)
+set(SDL2MIXER_OPUS              FALSE)
+set(SDL2MIXER_FLAC_LIBFLAC      FALSE)
+set(SDL2MIXER_MOD_XMP           FALSE)
+set(SDL2MIXER_MOD               FALSE)
+set(SDL2MIXER_MIDI_FLUIDSYNTH   FALSE)
+
+add_subdirectory(external/SDL_mixer)
+
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype2/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
-
-#set(SDL3_mixer::INTERFACE_SDL3_SHARED FALSE)
-#set(SDL3::INTERFACE_SDL3_SHARED FALSE)
-#set(SDL3_mixer::SDL3MIXER_BUILD_SHARED_LIBS FALSE)
-#set(SDL3MIXER_BUILD_SHARED_LIBS FALSE)
-#option(SDL3_mixer::SDL3MIXER_BUILD_SHARED_LIBS FALSE)
-#option(SDL3_mixer::BUILD_SHARED_LIBS FALSE)
 
 file(GLOB_RECURSE SRC_SOURCES src/*.c*)
 file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
@@ -79,9 +47,9 @@ target_link_libraries(${PROJECT_NAME}
     stb
     libglew_static
     freetype
-    SDL3_mixer
-    SDL3
-    
+    SDL2-static
+    SDL2main
+    SDL2_mixer
 )
 #PRIVATE
 #glfw
@@ -91,8 +59,9 @@ target_include_directories(${PROJECT_NAME}
         glm
         stb
         freetype
-        SDL3_mixer
-        SDL3
+        SDL2-static
+        SDL2main
+        SDL2_mixer
         "${PROJECT_SOURCE_DIR}/include"
 )
 

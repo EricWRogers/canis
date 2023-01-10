@@ -4,7 +4,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <SDL3/SDL_mixer.h>
+#include <SDL_mixer.h>
 
 #include <GL/glew.h>
 
