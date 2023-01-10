@@ -15,6 +15,7 @@ namespace Canis
         int LoadTexture(std::string path);
         int LoadSkybox(std::string path);
         int LoadModel(std::string path);
+        int LoadSound(std::string path);
         int LoadText(std::string path, unsigned int fontSize);
         int GetIdByPath(std::string path);
 

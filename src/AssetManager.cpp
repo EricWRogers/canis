@@ -86,6 +86,34 @@ namespace Canis
         return id;
     }
 
+    int AssetManager::LoadSound(std::string path)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(path);
+
+        // check if model already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create model
+        Asset* sound = new SoundAsset();
+        sound->Load(path);
+        int id = m_nextId;
+
+        // cache model
+        m_assets[id] = sound;
+
+        // cache id
+        m_assetPath[path] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
+
     int AssetManager::LoadText(std::string path, unsigned int fontSize)
     {
         std::map<std::string, int>::iterator it;

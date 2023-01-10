@@ -196,4 +196,18 @@ namespace Canis
         glDeleteVertexArrays(1, &m_vao);
         return true;
     }
+
+    bool SoundAsset::Load(std::string path)
+    {
+        chuck = Mix_LoadWAV(path.c_str());
+
+        return chuck != nullptr;
+    }
+
+    bool SoundAsset::Free()
+    {
+        Mix_FreeChunk(chuck);
+        chuck = nullptr;
+        return true;
+    }
 } // end of Canis namespace

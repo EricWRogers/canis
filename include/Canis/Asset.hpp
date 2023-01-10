@@ -4,6 +4,8 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <SDL3/SDL_mixer.h>
+
 #include <GL/glew.h>
 
 #include <ft2build.h>
@@ -95,5 +97,15 @@ namespace Canis
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
         unsigned int GetFontSize() { return m_font_size; }
+    };
+
+    class SoundAsset : public Asset
+    {
+    private:
+        Mix_Chunk *chuck;
+    public:
+        bool Load(std::string path) override;
+        bool Free() override;
+        Mix_Chunk* GetChuck() { return chuck; }
     };
 } // end of Canis namespace
