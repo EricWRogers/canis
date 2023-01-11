@@ -17,6 +17,7 @@ set(BUILD_SHARED_LIBS           FALSE)
 
 set(SDL2MIXER_VENDORED          TRUE)
 set(SDL2MIXER_WAVE              TRUE)
+set(SDL2MIXER_OGG               TRUE)
 set(SDL2MIXER_OPUS              FALSE)
 set(SDL2MIXER_FLAC_LIBFLAC      FALSE)
 set(SDL2MIXER_MOD_XMP           FALSE)
