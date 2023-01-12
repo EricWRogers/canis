@@ -95,6 +95,14 @@ namespace Canis
         std::string openglVersion = (const char*)glGetString(GL_VERSION);
         Log("*** OpenGL Version: " + openglVersion + " ***");
 
+        //Initialize SDL_mixer
+        if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
+        {
+            printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
+        }
+
+        Mix_VolumeMusic(20);
+
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels
         // in that buffer
