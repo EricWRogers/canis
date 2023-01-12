@@ -199,15 +199,43 @@ namespace Canis
 
     bool SoundAsset::Load(std::string path)
     {
-        chuck = Mix_LoadWAV(path.c_str());
+        chunk = Mix_LoadWAV(path.c_str());
 
-        return chuck != nullptr;
+        return chunk != nullptr;
     }
 
     bool SoundAsset::Free()
     {
-        Mix_FreeChunk(chuck);
-        chuck = nullptr;
+        Mix_FreeChunk(chunk);
+        chunk = nullptr;
         return true;
+    }
+
+    void SoundAsset::Play()
+    {
+        Mix_PlayChannel( -1, chunk, 0 );
+    }
+
+    bool MusicAsset::Load(std::string path)
+    {
+        music = Mix_LoadMUS(path.c_str());
+        return music != nullptr;
+    }
+
+    bool MusicAsset::Free()
+    {
+        Mix_FreeMusic(music);
+        music = nullptr;
+        return true;
+    }
+
+    void MusicAsset::Play(int loops)
+    {
+        Mix_PlayMusic(music, loops);
+    }
+
+    void MusicAsset::Stop()
+    {
+        Mix_HaltMusic();
     }
 } // end of Canis namespace

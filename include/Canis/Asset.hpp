@@ -102,10 +102,23 @@ namespace Canis
     class SoundAsset : public Asset
     {
     private:
-        Mix_Chunk *chuck;
+        Mix_Chunk *chunk;
     public:
         bool Load(std::string path) override;
         bool Free() override;
-        Mix_Chunk* GetChuck() { return chuck; }
+        
+        void Play();
+    };
+
+    class MusicAsset : public Asset
+    {
+    private:
+        Mix_Music *music = nullptr;
+    public:
+        bool Load(std::string path) override;
+        bool Free() override;
+        
+        void Play(int loops);
+        void Stop();
     };
 } // end of Canis namespace
