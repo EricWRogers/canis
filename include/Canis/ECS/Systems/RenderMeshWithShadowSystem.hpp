@@ -51,7 +51,7 @@ namespace Canis
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
 
-		RenderMeshWithShadowSystem(std::string _name) : System(_name) {
+		RenderMeshWithShadowSystem() : System() {
 			// configure depth map FBO
 			// -----------------------
 			glGenFramebuffers(1, &depthMapFBO);

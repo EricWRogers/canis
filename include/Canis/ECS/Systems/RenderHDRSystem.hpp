@@ -20,7 +20,7 @@ namespace Canis
         RenderSkyboxSystem *renderSkyboxSystem;
         float exposure = 1.0f;
 
-        RenderHDRSystem(std::string _name) : System(_name) {
+        RenderHDRSystem() : System() {
             glGenFramebuffers(1, &hdrFBO);
             // create floating point color buffer
             glGenTextures(1, &colorBuffer);

@@ -31,7 +31,7 @@ namespace Canis
     public:
         Canis::Shader textShader;
 
-        RenderTextSystem(std::string _name) : System(_name)
+        RenderTextSystem() : System()
         {
         }
 

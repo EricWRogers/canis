@@ -53,7 +53,7 @@ namespace Canis
         static bool CompareBackToFront(Glyph *a, Glyph *b) { return (a->depth > b->depth); }
         static bool CompareTexture(Glyph *a, Glyph *b) { return (a->textureId < b->textureId); }
 
-        SpriteRenderer2DSystem(std::string _name) : System(_name) {}
+        SpriteRenderer2DSystem() : System() {}
 
         ~SpriteRenderer2DSystem()
         {
@@ -323,8 +323,6 @@ namespace Canis
 
             glBindVertexArray(0);
         }
-
-        SpriteRenderer2DSystem() {}
 
         void Init(GlyphSortType sortType, Shader *shader)
         {

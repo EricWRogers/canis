@@ -19,7 +19,7 @@ class ParticleEmitterSystem : public System
 {
 private:
 public:
-    ParticleEmitterSystem() : System("ParticleEmitterSystem") {}
+    ParticleEmitterSystem() : System() {}
 
     void Create() override {}
 

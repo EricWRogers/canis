@@ -17,7 +17,7 @@ namespace Canis
     {
     private:
     public:
-        ButtonSystem(std::string _name) : System(_name) {}
+        ButtonSystem() : System() {}
 
         void Create() {}
 

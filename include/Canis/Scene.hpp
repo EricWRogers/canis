@@ -36,7 +36,6 @@ namespace Canis
 
             Entity CreateEntity();
             Entity CreateEntity(const std::string &_tag);
-            System* GetSystem(std::string _name);
 
             template<typename T>
             T* GetSystem() {

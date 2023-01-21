@@ -31,7 +31,7 @@ namespace Canis
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 
-		RenderMeshSystem(std::string _name) : System(_name) {}
+		RenderMeshSystem() : System() {}
 
 		int entities_rendered = 0;
 

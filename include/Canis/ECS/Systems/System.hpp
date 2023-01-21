@@ -15,11 +15,9 @@ class System
 private:
     
 public:
-    std::string name = "";
     bool m_isCreated = false;
     
-    System() = default;
-    System(std::string _name) {name = _name;}
+    System() {};
 
     virtual void Create() {}
     virtual void Ready() {}

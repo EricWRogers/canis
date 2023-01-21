@@ -95,17 +95,4 @@ namespace Canis
 
         return e;
     }
-
-    System* Scene::GetSystem(std::string _name)
-    {
-        System *system = nullptr;
-
-        for(System *s : systems)
-        {
-            if (s->name == _name)
-                return s;
-        }
-
-        return system;
-    }
 } // end of Canis namespace

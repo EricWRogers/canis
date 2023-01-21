@@ -258,8 +258,7 @@ namespace Canis
         }
 
     public:
-        CollisionSystem() = default;
-        CollisionSystem(std::string _name) : System(_name) {}
+        CollisionSystem() : System() {}
 
         void Create()
         {

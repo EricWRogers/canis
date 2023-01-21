@@ -24,7 +24,7 @@ namespace Canis
     private:
         int skyboxAssetId = 0;
     public:
-        RenderSkyboxSystem(std::string _name) : System(_name) {}
+        RenderSkyboxSystem() : System() {}
         
         void Create()
         {

@@ -25,7 +25,7 @@ namespace Canis
         GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
 
     public:
-        RenderHUDSystem(std::string _name) : System(_name) {}
+        RenderHUDSystem() : System() {}
 
         void Init(GlyphSortType sortType, Shader *shader)
         {
