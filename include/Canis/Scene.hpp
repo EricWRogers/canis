@@ -38,6 +38,17 @@ namespace Canis
             Entity CreateEntity(const std::string &_tag);
             System* GetSystem(std::string _name);
 
+            template<typename T>
+            T* GetSystem() {
+                T* castedSystem = nullptr;
+
+                for(System* s : systems)
+                    if ((castedSystem = dynamic_cast<T*>(s)) != nullptr)
+                        return castedSystem;
+
+                return nullptr;
+            }
+
             std::string name;
 
             Window *window;

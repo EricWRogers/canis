@@ -1,13 +1,11 @@
 #pragma once
-
+#include <Canis/Scene.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/External/entt.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
 
 namespace Canis
 {
-class Scene;
-
 class Entity
 {
 private:
