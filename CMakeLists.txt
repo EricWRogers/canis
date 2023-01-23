@@ -21,6 +21,7 @@ set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
 
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
+add_subdirectory(external/yaml-cpp)
 add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype2)
@@ -48,6 +49,7 @@ target_link_libraries(${PROJECT_NAME}
     stb
     libglew_static
     freetype
+    yaml-cpp
     SDL2-static
     SDL2main
     SDL2_mixer
@@ -60,6 +62,7 @@ target_include_directories(${PROJECT_NAME}
         glm
         stb
         freetype
+        yaml-cpp
         SDL2-static
         SDL2main
         SDL2_mixer
