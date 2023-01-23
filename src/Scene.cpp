@@ -10,7 +10,8 @@ namespace Canis
 
     Scene::~Scene()
     {
-
+        for(System* s : systems)
+            delete s;
     }
 
     void Scene::PreLoad()
