@@ -106,7 +106,7 @@ namespace Canis
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels
         // in that buffer
-        glClearColor(0.37f, 0.36f, 0.55f, 1.0f);
+        glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
 
         // VSYNC 0 off 1 on
         SDL_GL_SetSwapInterval(0);

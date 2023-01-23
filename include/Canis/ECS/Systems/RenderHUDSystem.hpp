@@ -69,7 +69,6 @@ namespace Canis
                         rect_transform.depth,
                         color);
                 }
-                // Canis::Log("Texture ID : " + std::to_string(image.texture.id));
             }
 
             // Canis::FatalError("Stop");

@@ -16,7 +16,9 @@ namespace Canis
     class Scene {
         private:
             friend class Entity;
-        
+
+            std::vector<System*> m_updateSystems = {};
+            std::vector<System*> m_renderSystems = {};
         public:
             //Scene() {}
             Scene(std::string _name);
@@ -46,6 +48,22 @@ namespace Canis
                         return castedSystem;
 
                 return nullptr;
+            }
+
+            template<typename T>
+            void CreateSystem() {
+                System* s = new T();
+                
+                m_updateSystems.push_back(s);
+                ReadySystem(s);
+            }
+
+            template<typename T>
+            void CreateRenderSystem() {
+                System* s = new T();
+
+                m_renderSystems.push_back(s);
+                ReadySystem(s);
             }
 
             std::string name;

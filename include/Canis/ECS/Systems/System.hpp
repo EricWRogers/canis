@@ -22,6 +22,7 @@ public:
     virtual void Create() {}
     virtual void Ready() {}
     virtual void Update(entt::registry &_registry, float _deltaTime) {}
+    virtual void Draw(entt::registry &_registry, float _deltaTime) {}
 
     bool IsCreated() { return m_isCreated; }
 

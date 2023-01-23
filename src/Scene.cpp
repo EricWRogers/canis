@@ -31,7 +31,8 @@ namespace Canis
 
     void Scene::Update()
     {
-
+        for(System* s : m_updateSystems)
+            s->Update(entityRegistry, deltaTime);
     }
 
     void Scene::LateUpdate()
@@ -41,7 +42,10 @@ namespace Canis
 
     void Scene::Draw()
     {
-
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        
+        for(System* s : m_renderSystems)
+            s->Update(entityRegistry, deltaTime);
     }
 
     void Scene::InputUpdate()

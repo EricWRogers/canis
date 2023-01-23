@@ -294,10 +294,38 @@ namespace Canis
 			shadow_mapping_shader->UnUse();
 		}		
 		
-		void Create() {}
+		void Create() {
+			int id = assetManager->LoadShader("assets/shaders/shadow_mapping_depth");
+            shadow_mapping_depth_shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!shadow_mapping_depth_shader->IsLinked())
+            {
+                shadow_mapping_depth_shader->Link();
+            }
+
+			id = assetManager->LoadShader("assets/shaders/shadow_mapping");
+            shadow_mapping_shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!shadow_mapping_shader->IsLinked())
+            {
+                shadow_mapping_shader->AddAttribute("aPos");
+                shadow_mapping_shader->AddAttribute("aNormal");
+                shadow_mapping_shader->AddAttribute("aTexcoords");
+
+                shadow_mapping_shader->Link();
+            }
+
+			diffuseColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/diffuse.png"))->GetPointerToTexture();
+			
+			specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(
+                                                      assetManager->LoadTexture("assets/textures/palette/specular.png"))
+                                          ->GetPointerToTexture();
+		}
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
 		{
+			glDepthFunc(GL_LESS);
+			
 			entities.clear();
 			sortingEntities.clear();
 
