@@ -238,4 +238,20 @@ namespace Canis
     {
         Mix_HaltMusic();
     }
+
+    bool ShaderAsset::Load(std::string _path)
+    {
+        m_shader->Compile(
+            _path+".vs",
+            _path+".fs"
+        );
+
+        return true;
+    }
+
+    bool ShaderAsset::Free()
+    {
+        delete m_shader;
+        return true;
+    }
 } // end of Canis namespace

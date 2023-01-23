@@ -28,6 +28,7 @@ namespace Canis
 
     void Shader::Link()
     {
+        m_isLinked = true;
         glAttachShader(program_id, vertex_shader_id);
         glAttachShader(program_id, fragment_shader_id);
 

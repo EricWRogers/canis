@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <memory>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -32,7 +33,7 @@ namespace Canis
         Asset(const Asset&) = delete;
         Asset& operator= (const Asset&) = delete;
 
-        virtual bool Load(std::string path) = 0;
+        virtual bool Load(std::string _path) = 0;
         virtual bool Free() = 0;
     };
 
@@ -41,7 +42,7 @@ namespace Canis
     private:
         GLTexture m_texture;
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         GLTexture GetTexture() { return m_texture; }
     };
@@ -53,7 +54,7 @@ namespace Canis
         unsigned int skyboxVAO, skyboxVBO;
         unsigned int cubemapTexture;
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         unsigned int GetVAO() { return skyboxVAO; }
         unsigned int GetTexture() { return cubemapTexture; }
@@ -68,7 +69,7 @@ namespace Canis
         unsigned int m_vbo;
         int m_size;
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
@@ -81,7 +82,7 @@ namespace Canis
     private:
         std::string m_pathToBaseMesh = "";
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
     };*/
 
@@ -92,7 +93,7 @@ namespace Canis
     public:
         TextAsset(unsigned int _font_size) { m_font_size = _font_size; }
         std::map<GLchar, Character> Characters;
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
@@ -104,7 +105,7 @@ namespace Canis
     private:
         Mix_Chunk *chunk;
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         
         void Play();
@@ -115,10 +116,23 @@ namespace Canis
     private:
         Mix_Music *music = nullptr;
     public:
-        bool Load(std::string path) override;
+        bool Load(std::string _path) override;
         bool Free() override;
         
         void Play(int loops);
         void Stop();
+    };
+
+    class ShaderAsset : public Asset
+    {
+    private:
+        Canis::Shader *m_shader;
+    public:
+        ShaderAsset() { m_shader = new Canis::Shader(); }
+
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        Canis::Shader* GetShader() { return m_shader; }
     };
 } // end of Canis namespace

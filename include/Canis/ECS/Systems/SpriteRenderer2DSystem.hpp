@@ -324,14 +324,27 @@ namespace Canis
             glBindVertexArray(0);
         }
 
-        void Init(GlyphSortType sortType, Shader *shader)
+        void SetSort(GlyphSortType _sortType)
         {
-            glyphSortType = sortType;
-            spriteShader = shader;
+            glyphSortType = _sortType;
         }
 
         void Create()
         {
+            int id = assetManager->LoadShader("assets/shaders/sprite");
+            Canis::Shader* shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!shader->IsLinked())
+            {
+                shader->AddAttribute("vertexPosition");
+                shader->AddAttribute("vertexColor");
+                shader->AddAttribute("vertexUV");
+
+                shader->Link();
+            }
+
+            spriteShader = shader;
+
             camera2D.Init((int)window->GetScreenWidth(), (int)window->GetScreenHeight());
             CreateVertexArray();
         }

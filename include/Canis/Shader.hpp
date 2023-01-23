@@ -36,10 +36,12 @@ namespace Canis
         void SetMat3(const std::string &name, const glm::mat3 &mat) const;
         void SetMat4(const std::string &name, const glm::mat4 &mat) const;
 
+        bool IsLinked() { return m_isLinked; }
         GLint GetUniformLocation(const std::string &uniformName);
         GLint GetProgramID() { return program_id; }
 
     private:
+        bool m_isLinked = false;
         GLuint program_id = 0;
         GLuint vertex_shader_id = 0;
         GLuint fragment_shader_id = 0;

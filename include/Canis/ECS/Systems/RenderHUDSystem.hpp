@@ -21,26 +21,34 @@ namespace Canis
     class RenderHUDSystem : public System
     {
     private:
-        SpriteRenderer2DSystem spriteRenderer;
-        GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
+        SpriteRenderer2DSystem m_spriteRenderer;
+        GlyphSortType m_glyphSortType = GlyphSortType::FRONT_TO_BACK;
 
     public:
         RenderHUDSystem() : System() {}
 
-        void Init(GlyphSortType sortType, Shader *shader)
+        void SetSort(GlyphSortType _sortType)
         {
-            glyphSortType = sortType;
-            spriteRenderer.window = window;
-            spriteRenderer.Init(sortType, shader);
-            spriteRenderer.Create();
-            spriteRenderer.Ready();
+            m_glyphSortType = _sortType;
+            m_spriteRenderer.SetSort(m_glyphSortType);
         }
 
-        void Create() {}
+        void Create() {
+            m_spriteRenderer.m_isCreated = true;
+            m_spriteRenderer.scene = scene;
+            m_spriteRenderer.inputManager = inputManager;
+            m_spriteRenderer.time = time;
+            m_spriteRenderer.camera = camera;
+            m_spriteRenderer.assetManager = assetManager;
+            m_spriteRenderer.window = window;
+            m_spriteRenderer.SetSort(m_glyphSortType);
+            m_spriteRenderer.Create();
+            m_spriteRenderer.Ready();
+        }
         void Ready() {}
         void Update(entt::registry &_registry, float _deltaTime)
         {
-            spriteRenderer.Begin(glyphSortType);
+            m_spriteRenderer.Begin(m_glyphSortType);
 
             // Draw
             auto view = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
@@ -54,7 +62,7 @@ namespace Canis
                         (float)window->GetScreenWidth(),
                         (float)window->GetScreenHeight());
                     
-                    spriteRenderer.Draw(
+                    m_spriteRenderer.Draw(
                         glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
                         image.uv,
                         image.texture,
@@ -66,8 +74,8 @@ namespace Canis
 
             // Canis::FatalError("Stop");
 
-            spriteRenderer.End();
-            spriteRenderer.SpriteRenderBatch(false);
+            m_spriteRenderer.End();
+            m_spriteRenderer.SpriteRenderBatch(false);
         }
     };
 } // end of Canis namespace

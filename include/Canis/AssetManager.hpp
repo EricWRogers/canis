@@ -9,16 +9,16 @@ namespace Canis
     class AssetManager
     {
     public:
-        // this forces refence instead of 
         AssetManager() {};
 
-        int LoadTexture(std::string path);
-        int LoadSkybox(std::string path);
-        int LoadModel(std::string path);
-        int LoadSound(std::string path);
-        int LoadMusic(std::string path);
-        int LoadText(std::string path, unsigned int fontSize);
-        int GetIdByPath(std::string path);
+        int LoadTexture(const std::string &_path);
+        int LoadSkybox(const std::string &_path);
+        int LoadModel(const std::string &_path);
+        int LoadSound(const std::string &_path);
+        int LoadMusic(const std::string &_path);
+        int LoadText(const std::string &_path, unsigned int fontSize);
+        int LoadShader(const std::string &_pathWithOutExtension);
+        int GetIdByPath(const std::string &_path);
 
         template <typename T>
         T* Get(int id)
