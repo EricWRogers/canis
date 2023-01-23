@@ -19,6 +19,7 @@
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
+#include "../Components/DirectionalLightComponent.hpp"
 
 namespace Canis
 {
