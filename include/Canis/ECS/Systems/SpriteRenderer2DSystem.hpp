@@ -381,7 +381,7 @@ namespace Canis
                                            (float)window->GetScreenHeight());
 
                 Draw(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
+                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x*sprite.texture.width, rect_transform.size.y*sprite.texture.height),
                     sprite.uv,
                     sprite.texture,
                     rect_transform.depth,

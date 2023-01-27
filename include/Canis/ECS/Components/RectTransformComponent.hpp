@@ -1,20 +1,22 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <string>
 
 namespace Canis
 {
 	enum RectAnchor
 	{
-		TOPLEFT,
-		TOPCENTER,
-		TOPRIGHT,
-		CENTERLEFT,
-		CENTER,
-		CENTERRIGHT,
-		BOTTOMLEFT,
-		BOTTOMCENTER,
-		BOTTOMRIGHT
+		TOPLEFT = 0,
+		TOPCENTER = 1,
+		TOPRIGHT = 2,
+		CENTERLEFT = 3,
+		CENTER = 4,
+		CENTERRIGHT = 5,
+		BOTTOMLEFT = 6,
+		BOTTOMCENTER = 7,
+		BOTTOMRIGHT = 8
 	};
+
 	glm::vec2 static GetAnchor(const RectAnchor &_anchor, const float &_windowWidth, const float &_windowHeight)
 	{
 		switch (_anchor)
