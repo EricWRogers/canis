@@ -22,6 +22,7 @@ namespace Canis
         public:
             //Scene() {}
             Scene(std::string _name);
+            Scene(std::string _name, std::string _path);
             ~Scene();
 
             virtual void PreLoad();
@@ -66,7 +67,8 @@ namespace Canis
                 ReadySystem(s);
             }
 
-            std::string name;
+            std::string name = "";
+            std::string path = "";
 
             Window *window;
             InputManager *inputManager;

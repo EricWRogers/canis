@@ -1,6 +1,13 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/Entity.hpp>
 
+#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/TextComponent.hpp>
+#include <Canis/ECS/Components/Sprite2DComponent.hpp>
+#include <Canis/ECS/Components/UIImageComponent.hpp>
+#include <Canis/ECS/Components/Camera2DComponent.hpp>
+
 namespace Canis
 {
     SceneManager::SceneManager(){}
@@ -47,6 +54,32 @@ namespace Canis
             scenes[i]->camera = _camera;
             scenes[i]->assetManager = _assetManager;
             scenes[i]->seed = _seed;
+
+            if (scenes[i]->path != "") {
+                YAML::Node root = YAML::LoadFile(scenes[i]->path);
+
+                scenes[i]->name = root["Scene"].as<std::string>();
+
+                // serialize systems
+                if(YAML::Node systems = root["Systems"]) {
+                    for(int s = 0;  s < systems.size(); s++) {
+                        for(int d = 0;  d < decodeSystem.size(); d++) {
+                            if (decodeSystem[d](systems, s, scenes[i]))
+                                continue;
+                        }
+                    }
+                }
+
+                // serialize render systems
+                if(YAML::Node renderSystems = root["RenderSystems"]) {
+                    for(int r = 0;  r < renderSystems.size(); r++) {
+                        for(int d = 0;  d < decodeRenderSystem.size(); d++) {
+                            if (decodeRenderSystem[d](renderSystems, r, scenes[i]))
+                                continue;
+                        }
+                    }
+                }
+            }
             
             scenes[i]->PreLoad();
         }
@@ -102,6 +135,87 @@ namespace Canis
         }
 
         scene->Load();
+
+        if(scene->path != "")
+        {
+            YAML::Node root = YAML::LoadFile(scene->path);
+
+            auto entities = root["Entities"];
+
+            if(entities)
+            {
+                for(auto e : entities)
+                {
+                    Canis::Entity entity = scene->CreateEntity();
+
+                    auto camera2dComponent = e["Canis::Camera2DComponent"];
+                    if (camera2dComponent)
+                    {
+                        auto& c2dc = entity.AddComponent<Canis::Camera2DComponent>();
+                        c2dc.position = camera2dComponent["position"].as<glm::vec2>();
+                        c2dc.scale = camera2dComponent["scale"].as<float>();
+                    }
+
+                    auto rectTransform = e["Canis::RectTransformComponent"];
+                    if (rectTransform)
+                    {
+                        auto& rt = entity.AddComponent<Canis::RectTransformComponent>();
+                        rt.active = rectTransform["active"].as<bool>();
+                        rt.anchor = (Canis::RectAnchor)rectTransform["anchor"].as<int>();
+                        rt.position = rectTransform["position"].as<glm::vec2>();
+                        rt.size = rectTransform["size"].as<glm::vec2>();
+                        rt.originOffset = rectTransform["originOffset"].as<glm::vec2>();
+                        rt.rotation = rectTransform["rotation"].as<float>();
+                        rt.scale = rectTransform["scale"].as<float>();
+                        rt.depth = rectTransform["depth"].as<float>();
+                    }
+
+                    auto colorComponent = e["Canis::ColorComponent"];
+                    if (colorComponent)
+                    {
+                        auto& cc = entity.AddComponent<Canis::ColorComponent>();
+                        cc.color = colorComponent["color"].as<glm::vec4>();
+                    }
+
+                    auto textComponent = e["Canis::TextComponent"];
+                    if (textComponent)
+                    {
+                        auto& tc = entity.AddComponent<Canis::TextComponent>();
+                        auto asset = textComponent["assetId"];
+                        if (asset)
+                        {
+                            tc.assetId = assetManager->LoadText(
+                                asset["path"].as<std::string>(),
+                                asset["size"].as<unsigned int>()
+                            );
+                        }
+                        tc.text = new std::string;
+                        (*tc.text) = textComponent["text"].as<std::string>();
+                        tc.align = textComponent["align"].as<unsigned int>();
+                    }
+
+                    auto sprite2DComponent = e["Canis::Sprite2DComponent"];
+                    if (sprite2DComponent)
+                    {
+                        auto& s2dc = entity.AddComponent<Canis::Sprite2DComponent>();
+                        s2dc.uv = sprite2DComponent["uv"].as<glm::vec4>();
+                        s2dc.texture = assetManager->Get<Canis::TextureAsset>(
+                            assetManager->LoadTexture(
+                                sprite2DComponent["texture"].as<std::string>()
+                            )
+                        )->GetTexture();
+                    }
+
+                    auto scriptComponent = e["Canis::ScriptComponent"];
+                    if (scriptComponent)
+                    {
+                        for(int d = 0;  d < decodeScriptableEntity.size(); d++)
+                            if (decodeScriptableEntity[d](scriptComponent.as<std::string>(),entity))
+                                continue;
+                    }
+                }
+            }
+        }
 
         for(int i = 0; i < scene->systems.size(); i++)
         {

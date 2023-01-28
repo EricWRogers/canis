@@ -8,6 +8,12 @@ namespace Canis
         name = _name;
     }
 
+    Scene::Scene(std::string _name, std::string _path)
+    {
+        name = _name;
+        path = _path;
+    }
+
     Scene::~Scene()
     {
         for(System* s : systems)

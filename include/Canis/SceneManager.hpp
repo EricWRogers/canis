@@ -11,7 +11,6 @@
 #include <Canis/Yaml.hpp>
 
 #include <Canis/ECS/Components/ScriptComponent.hpp>
-#include <Canis/ECS/Components/TextComponent.hpp>
 
 namespace Canis
 {
@@ -56,6 +55,7 @@ public:
     std::vector<std::function<bool(YAML::Node _n, int _index, Canis::Scene *scene)>> decodeSystem = {};
     std::vector<std::function<bool(YAML::Node, int _index, Canis::Scene *scene)>> decodeRenderSystem = {};
     std::vector<std::function<bool(YAML::Node)>> decodeEntity = {};
+    std::vector<std::function<bool(const std::string &_name, Canis::Entity &_entity)>> decodeScriptableEntity = {};
 
     Window *window;
     InputManager *inputManager;
