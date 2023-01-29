@@ -7,6 +7,7 @@
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
+#include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
 namespace Canis
 {
@@ -212,6 +213,16 @@ namespace Canis
                         for(int d = 0;  d < decodeScriptableEntity.size(); d++)
                             if (decodeScriptableEntity[d](scriptComponent.as<std::string>(),entity))
                                 continue;
+                    }
+
+                    auto circleColliderComponent = e["Canis::CircleColliderComponent"];
+                    if (circleColliderComponent)
+                    {
+                        auto& ccc = entity.AddComponent<Canis::CircleColliderComponent>();
+                        ccc.center = circleColliderComponent["center"].as<glm::vec2>();
+                        ccc.radius = circleColliderComponent["radius"].as<float>();
+                        ccc.layer = (Canis::BIT)circleColliderComponent["layer"].as<unsigned int>();
+                        ccc.mask = (Canis::BIT)circleColliderComponent["mask"].as<unsigned int>();
                     }
                 }
             }
