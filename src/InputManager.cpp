@@ -12,53 +12,53 @@ namespace Canis
 
     }
 
-    void InputManager::pressKey(unsigned int keyID)
+    void InputManager::PressKey(unsigned int _keyID)
     {
-        _keyVec.push_back(InputData { keyID , true});
+        m_keyVec.push_back(InputData { _keyID , true});
     }
 
-    void InputManager::releasedKey(unsigned int keyID)
+    void InputManager::ReleasedKey(unsigned int _keyID)
     {
-        _keyVec.push_back(InputData { keyID , false});
+        m_keyVec.push_back(InputData { _keyID , false});
     }
 
-    void InputManager::swapMaps()
+    void InputManager::SwapMaps()
     {
         leftClick = false;
         rightClick = false;
 
         int index;
-        for (int i = 0; i < _keyVec.size(); i++)
+        for (int i = 0; i < m_keyVec.size(); i++)
         {
-            index = isInLastKnown(_keyVec[i].key);
+            index = IsInLastKnown(m_keyVec[i].key);
             if (index != -1)
             {
-                lastKnown[index].value = _keyVec[i].value;
+                m_lastKnown[index].value = m_keyVec[i].value;
             }
             else
             {
-                lastKnown.push_back(_keyVec[i]);
+                m_lastKnown.push_back(m_keyVec[i]);
             }
         }
 
-        _keyVec.clear();
+        m_keyVec.clear();
     }
 
-    bool InputManager::isKeyPressed(unsigned int keyID)
+    bool InputManager::IsKeyPressed(unsigned int _keyID)
     {
-        return isKeyDownInVec(&_keyVec, keyID);
+        return IsKeyDownInVec(&m_keyVec, _keyID);
     }
 
-    bool InputManager::justPressedKey(unsigned int keyID)
+    bool InputManager::JustPressedKey(unsigned int _keyID)
     {
-        bool currentValue = isKeyDownInVec(&_keyVec, keyID);
+        bool currentValue = IsKeyDownInVec(&m_keyVec, _keyID);
 
         bool lastKnownValue = false;
 
-        int index = isInLastKnown(keyID);
+        int index = IsInLastKnown(_keyID);
         if (index != -1)
         {
-            lastKnownValue = lastKnown[index].value;
+            lastKnownValue = m_lastKnown[index].value;
         }
 
         if (currentValue && !lastKnownValue)
@@ -67,50 +67,50 @@ namespace Canis
         return false;       
     }
 
-    bool InputManager::justReleasedKey(unsigned int keyID)
+    bool InputManager::JustReleasedKey(unsigned int _keyID)
     {
-        return isKeyUpInVec(&_keyVec, keyID);
+        return IsKeyUpInVec(&m_keyVec, _keyID);
     }
 
-    bool InputManager::isKeyUpInVec(std::vector<InputData> *arr, unsigned int value)
+    bool InputManager::IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _value)
     {
-        for (int i = 0; i < arr->size(); i++)
+        for (int i = 0; i < _arr->size(); i++)
         {
-            if ((*arr)[i].key == value)
-                return !(*arr)[i].value;
+            if ((*_arr)[i].key == _value)
+                return !(*_arr)[i].value;
         }
         
         return false;
     }
 
-    bool InputManager::isKeyDownInVec(std::vector<InputData> *arr, unsigned int value)
+    bool InputManager::IsKeyDownInVec(std::vector<InputData> *_arr, unsigned int _value)
     {
-        for (int i = 0; i < arr->size(); i++)
+        for (int i = 0; i < _arr->size(); i++)
         {
-            if ((*arr)[i].key == value)
-                return (*arr)[i].value;
+            if ((*_arr)[i].key == _value)
+                return (*_arr)[i].value;
         }
         
         return false;
     }
 
-    int InputManager::isInLastKnown(unsigned int value)
+    int InputManager::IsInLastKnown(unsigned int _value)
     {
-        for (int i = 0; i < lastKnown.size(); i++)
+        for (int i = 0; i < m_lastKnown.size(); i++)
         {
-            if (lastKnown[i].key == value)
+            if (m_lastKnown[i].key == _value)
                 return i;
         }
 
         return -1;
     }
     
-    bool InputManager::isKeyDownInLastKnowVec(unsigned int value)
+    bool InputManager::IsKeyDownInLastKnowVec(unsigned int _value)
     {
-        for (int i = 0; i < lastKnown.size(); i++)
+        for (int i = 0; i < m_lastKnown.size(); i++)
         {
-            if (lastKnown[i].key == value)
-                return lastKnown[i].value;
+            if (m_lastKnown[i].key == _value)
+                return m_lastKnown[i].value;
         }
         
         return false;

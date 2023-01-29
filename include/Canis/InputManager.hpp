@@ -16,27 +16,27 @@ namespace Canis
         InputManager();
         ~InputManager();
 
-        void pressKey(unsigned int keyID);
-        void releasedKey(unsigned int keyID);
-        void swapMaps();
+        void PressKey(unsigned int _keyID);
+        void ReleasedKey(unsigned int _keyID);
+        void SwapMaps();
 
-        bool isKeyPressed(unsigned int keyID);
-        bool justPressedKey(unsigned int keyID);
-        bool justReleasedKey(unsigned int keyID);
+        bool IsKeyPressed(unsigned int _keyID);
+        bool JustPressedKey(unsigned int _keyID);
+        bool JustReleasedKey(unsigned int _keyID);
 
         glm::vec2 mouse = glm::vec2(0,0);
         bool leftClick = false;
         bool rightClick = false;
     private:
-        bool isKeyUpInVec(std::vector<InputData> *arr, unsigned int key);
-        bool isKeyDownInVec(std::vector<InputData> *arr, unsigned int value);
-        int isInLastKnown(unsigned int value);
-        bool isKeyDownInLastKnowVec(unsigned int value);
+        bool IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _key);
+        bool IsKeyDownInVec(std::vector<InputData> *_arr, unsigned int _value);
+        int IsInLastKnown(unsigned int _value);
+        bool IsKeyDownInLastKnowVec(unsigned int _value);
 
-        std::vector<InputData> _keyVec;
+        std::vector<InputData> m_keyVec;
 
-        std::vector<InputData> lastKnown;
+        std::vector<InputData> m_lastKnown;
 
-        bool keyVecIsOne = true;
+        bool m_keyVecIsOne = true;
     };
 } // end of Canis namespace
