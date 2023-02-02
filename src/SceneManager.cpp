@@ -149,6 +149,24 @@ namespace Canis
                 {
                     Canis::Entity entity = scene->CreateEntity();
 
+                    auto tagComponent = e["Canis::TagComponent"];
+                    if (tagComponent)
+                    {
+                        auto& tc = entity.AddComponent<Canis::TagComponent>();
+                        std::string fileTag = tagComponent.as<std::string>();
+                        char tag[20] = "";
+
+                        int i = 0;
+                        while(i < 20-1 && i < fileTag.size())
+                        {
+                            tag[i] = fileTag[i];
+                            i++;
+                        }
+                        tag[i] = '\0';
+                        
+                        strcpy(tc.tag, tag);
+                    }
+
                     auto camera2dComponent = e["Canis::Camera2DComponent"];
                     if (camera2dComponent)
                     {
