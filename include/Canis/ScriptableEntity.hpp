@@ -9,6 +9,7 @@ class ScriptableEntity
 public:
     virtual ~ScriptableEntity() {}
     Entity m_Entity;
+    bool isOnReadyCalled = false;
 
     virtual void OnCreate() {}
     virtual void OnReady() {}

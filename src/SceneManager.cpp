@@ -149,98 +149,15 @@ namespace Canis
                 {
                     Canis::Entity entity = scene->CreateEntity();
 
-                    auto tagComponent = e["Canis::TagComponent"];
-                    if (tagComponent)
-                    {
-                        auto& tc = entity.AddComponent<Canis::TagComponent>();
-                        std::string fileTag = tagComponent.as<std::string>();
-                        char tag[20] = "";
-
-                        int i = 0;
-                        while(i < 20-1 && i < fileTag.size())
-                        {
-                            tag[i] = fileTag[i];
-                            i++;
-                        }
-                        tag[i] = '\0';
-                        
-                        strcpy(tc.tag, tag);
+                    for(int d = 0;  d < decodeEntity.size(); d++) {
+                        decodeEntity[d](e, entity, this);
                     }
 
-                    auto camera2dComponent = e["Canis::Camera2DComponent"];
-                    if (camera2dComponent)
+                    if (auto scriptComponent = e["Canis::ScriptComponent"])
                     {
-                        auto& c2dc = entity.AddComponent<Canis::Camera2DComponent>();
-                        c2dc.position = camera2dComponent["position"].as<glm::vec2>();
-                        c2dc.scale = camera2dComponent["scale"].as<float>();
-                    }
-
-                    auto rectTransform = e["Canis::RectTransformComponent"];
-                    if (rectTransform)
-                    {
-                        auto& rt = entity.AddComponent<Canis::RectTransformComponent>();
-                        rt.active = rectTransform["active"].as<bool>();
-                        rt.anchor = (Canis::RectAnchor)rectTransform["anchor"].as<int>();
-                        rt.position = rectTransform["position"].as<glm::vec2>();
-                        rt.size = rectTransform["size"].as<glm::vec2>();
-                        rt.originOffset = rectTransform["originOffset"].as<glm::vec2>();
-                        rt.rotation = rectTransform["rotation"].as<float>();
-                        rt.scale = rectTransform["scale"].as<float>();
-                        rt.depth = rectTransform["depth"].as<float>();
-                    }
-
-                    auto colorComponent = e["Canis::ColorComponent"];
-                    if (colorComponent)
-                    {
-                        auto& cc = entity.AddComponent<Canis::ColorComponent>();
-                        cc.color = colorComponent["color"].as<glm::vec4>();
-                    }
-
-                    auto textComponent = e["Canis::TextComponent"];
-                    if (textComponent)
-                    {
-                        auto& tc = entity.AddComponent<Canis::TextComponent>();
-                        auto asset = textComponent["assetId"];
-                        if (asset)
-                        {
-                            tc.assetId = assetManager->LoadText(
-                                asset["path"].as<std::string>(),
-                                asset["size"].as<unsigned int>()
-                            );
-                        }
-                        tc.text = new std::string;
-                        (*tc.text) = textComponent["text"].as<std::string>();
-                        tc.align = textComponent["align"].as<unsigned int>();
-                    }
-
-                    auto sprite2DComponent = e["Canis::Sprite2DComponent"];
-                    if (sprite2DComponent)
-                    {
-                        auto& s2dc = entity.AddComponent<Canis::Sprite2DComponent>();
-                        s2dc.uv = sprite2DComponent["uv"].as<glm::vec4>();
-                        s2dc.texture = assetManager->Get<Canis::TextureAsset>(
-                            assetManager->LoadTexture(
-                                sprite2DComponent["texture"].as<std::string>()
-                            )
-                        )->GetTexture();
-                    }
-
-                    auto scriptComponent = e["Canis::ScriptComponent"];
-                    if (scriptComponent)
-                    {
-                        for(int d = 0;  d < decodeScriptableEntity.size(); d++)
-                            if (decodeScriptableEntity[d](scriptComponent.as<std::string>(),entity))
+                        for (int d = 0; d < decodeScriptableEntity.size(); d++)
+                            if (decodeScriptableEntity[d](scriptComponent.as<std::string>(), entity))
                                 continue;
-                    }
-
-                    auto circleColliderComponent = e["Canis::CircleColliderComponent"];
-                    if (circleColliderComponent)
-                    {
-                        auto& ccc = entity.AddComponent<Canis::CircleColliderComponent>();
-                        ccc.center = circleColliderComponent["center"].as<glm::vec2>();
-                        ccc.radius = circleColliderComponent["radius"].as<float>();
-                        ccc.layer = (Canis::BIT)circleColliderComponent["layer"].as<unsigned int>();
-                        ccc.mask = (Canis::BIT)circleColliderComponent["mask"].as<unsigned int>();
                     }
                 }
             }
@@ -310,6 +227,13 @@ namespace Canis
                 _scriptComponent.Instance = _scriptComponent.InstantiateScript();
                 _scriptComponent.Instance->m_Entity = Entity { _entity,  this->scene };
                 _scriptComponent.Instance->OnCreate();
+            }
+        }
+
+        for(auto [_entity, _scriptComponent] : view.each())
+        {
+            if (!_scriptComponent.Instance->isOnReadyCalled) {
+                _scriptComponent.Instance->isOnReadyCalled = true;
                 _scriptComponent.Instance->OnReady();
             }
 
