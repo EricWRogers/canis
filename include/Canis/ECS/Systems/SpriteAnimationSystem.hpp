@@ -39,8 +39,6 @@ namespace Canis
                         spriteAnimationAsset = assetManager->Get<SpriteAnimationAsset>(spriteAnimationId);
                     }
 
-                    Canis::Log("number of frames " + std::to_string(spriteAnimationAsset->frames.size()));
-
                     if (animation.index >= spriteAnimationAsset->frames.size())
                         animation.index = 0;
                     
