@@ -10,6 +10,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
 
+#include <functional>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
 
 namespace Canis
@@ -42,6 +43,8 @@ public:
 
     void ForceLoad(std::string _name);
     void Load(std::string _name);
+    
+    std::vector<Canis::Entity> Instantiate(const std::string &_path);
 
     void Update();
     void LateUpdate();

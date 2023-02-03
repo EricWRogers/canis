@@ -4,6 +4,7 @@
 
 namespace Canis
 {
+
 class ScriptableEntity
 {    
 public:

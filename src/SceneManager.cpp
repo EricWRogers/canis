@@ -298,4 +298,34 @@ namespace Canis
         
         scene->deltaTime = _deltaTime;
     }
+
+    std::vector<Canis::Entity> SceneManager::Instantiate(const std::string &_path)
+    {
+        std::vector<Canis::Entity> entitiesReturn = {};
+        YAML::Node root = YAML::LoadFile(_path);
+
+        auto entities = root["Entities"];
+
+        if(entities)
+        {
+            for(auto e : entities)
+            {
+                Canis::Entity entity = scene->CreateEntity();
+                entitiesReturn.push_back(entity);
+
+                for(int d = 0;  d < decodeEntity.size(); d++) {
+                    decodeEntity[d](e, entity, this);
+                }
+
+                if (auto scriptComponent = e["Canis::ScriptComponent"])
+                {
+                    for (int d = 0; d < decodeScriptableEntity.size(); d++)
+                        if (decodeScriptableEntity[d](scriptComponent.as<std::string>(), entity))
+                            continue;
+                }
+            }
+        }
+
+        return entitiesReturn;
+    }
 } // end of Canis namespace
