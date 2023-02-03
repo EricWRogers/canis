@@ -5,6 +5,7 @@
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
+#include <Canis/ECS/Components/SpriteAnimationComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
@@ -95,6 +96,21 @@ namespace Canis
                                            _sceneManager->assetManager->LoadTexture(
                                                sprite2DComponent["texture"].as<std::string>()))
                                ->GetTexture();
+        }
+    }
+
+    void DecodeSpriteAnimationComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto spriteAnimationComponent = _n["Canis::SpriteAnimationComponent"])
+        {
+            auto &sac = _entity.AddComponent<Canis::SpriteAnimationComponent>();
+            sac.animationId = _sceneManager->assetManager->LoadSpriteAnimation(
+                spriteAnimationComponent["animationId"].as<std::string>());
+            sac.countDown = spriteAnimationComponent["countDown"].as<float>();
+            sac.index = spriteAnimationComponent["index"].as<unsigned short int>();
+            sac.flipX = spriteAnimationComponent["flipX"].as<bool>();
+            sac.flipY = spriteAnimationComponent["flipY"].as<bool>();
+            sac.speed = spriteAnimationComponent["speed"].as<float>();
         }
     }
 

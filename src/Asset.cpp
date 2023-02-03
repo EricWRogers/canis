@@ -8,7 +8,7 @@ namespace Canis
 
     bool TextureAsset::Load(std::string path)
     {
-        m_texture = LoadImageToGLTexture(path,GL_RGBA,GL_RGBA);
+        m_texture = LoadImageToGLTexture(path, GL_RGBA, GL_RGBA);
         return true;
     }
 
@@ -42,8 +42,8 @@ namespace Canis
         glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
         glBufferData(GL_ARRAY_BUFFER, skyboxVertices.size() * sizeof(float), &skyboxVertices[0], GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void*)0);
-        
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+
         return true;
     }
 
@@ -61,10 +61,10 @@ namespace Canis
         std::vector<glm::vec3> vertices;
         std::vector<glm::vec2> uvs;
         std::vector<glm::vec3> normals;
-        
+
         Canis::LoadOBJ(path, vertices, uvs, normals);
 
-        for(int i = 0; i < vertices.size(); i++)
+        for (int i = 0; i < vertices.size(); i++)
         {
             Canis::Vertex v = {};
             v.position = vertices[i];
@@ -86,13 +86,13 @@ namespace Canis
         glBufferData(GL_ARRAY_BUFFER, m_vertices.size() * sizeof(Canis::Vertex), &m_vertices[0], GL_STATIC_DRAW);
 
         // position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
         glEnableVertexAttribArray(0);
         // normal attribute
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(3 * sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         // texture coords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void*)(6 * sizeof(float)));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
         glEnableVertexAttribArray(2);
 
         // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
@@ -213,7 +213,7 @@ namespace Canis
 
     void SoundAsset::Play()
     {
-        Mix_PlayChannel( -1, chunk, 0 );
+        Mix_PlayChannel(-1, chunk, 0);
     }
 
     bool MusicAsset::Load(std::string path)
@@ -242,9 +242,8 @@ namespace Canis
     bool ShaderAsset::Load(std::string _path)
     {
         m_shader->Compile(
-            _path+".vs",
-            _path+".fs"
-        );
+            _path + ".vs",
+            _path + ".fs");
 
         return true;
     }
@@ -252,6 +251,16 @@ namespace Canis
     bool ShaderAsset::Free()
     {
         delete m_shader;
+        return true;
+    }
+
+    bool SpriteAnimationAsset::Load(std::string _path)
+    {
+        return true;
+    }
+
+    bool SpriteAnimationAsset::Free()
+    {
         return true;
     }
 } // end of Canis namespace

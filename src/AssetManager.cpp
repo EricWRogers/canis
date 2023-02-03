@@ -1,4 +1,5 @@
 #include <Canis/AssetManager.hpp>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -197,4 +198,57 @@ namespace Canis
 
         return id;
     }
+
+    int AssetManager::LoadSpriteAnimation(const std::string &_path)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(_path);
+
+        // check if animation already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create animation
+        Asset* anim = new SpriteAnimationAsset();
+        anim->Load(_path);
+
+        YAML::Node root = YAML::LoadFile(_path);
+
+        if (YAML::Node animation = root["Animation"])
+        {
+            for(auto animationFrame : animation)
+            {
+                SpriteFrame frame = {};
+                frame.timeOnFrame = animationFrame["timeOnFrame"].as<float>();
+                frame.textureId = LoadTexture(animationFrame["textureAssetId"].as<std::string>());
+                glm::vec2 offset = animationFrame["offset"].as<glm::vec2>();
+                frame.offsetX = offset.x;
+                frame.offsetY = offset.y;
+                glm::vec2 index = animationFrame["index"].as<glm::vec2>();
+                frame.row = index.x;
+                frame.col = index.y;
+                glm::vec2 size = animationFrame["size"].as<glm::vec2>();
+                frame.width = size.x;
+                frame.height = size.y;
+                ((SpriteAnimationAsset*)anim)->frames.push_back(frame);
+            }
+        }
+
+        int id = m_nextId;
+
+        // cache animation
+        m_assets[id] = anim;
+
+        // cache id
+        m_assetPath[_path] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
+    
+
 } // end of Canis namespace

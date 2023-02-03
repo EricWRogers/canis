@@ -136,4 +136,28 @@ namespace Canis
 
         Canis::Shader* GetShader() { return m_shader; }
     };
+
+    struct SpriteFrame
+    {
+        float timeOnFrame = 0.0f;
+        unsigned int textureId = 0u;
+        unsigned short int offsetX = 0u;
+        unsigned short int offsetY = 0u;
+        unsigned short int row = 0u;
+        unsigned short int col = 0u;
+        unsigned short int width = 0u;
+        unsigned short int height = 0u;
+    };
+
+    class SpriteAnimationAsset : public Asset
+    {
+    private:
+    public:
+        SpriteAnimationAsset() {}
+
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        std::vector<SpriteFrame> frames = {};
+    };
 } // end of Canis namespace

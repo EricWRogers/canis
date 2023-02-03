@@ -51,7 +51,7 @@ namespace Canis
 			if (data) {
 				glTexImage2D(GL_TEXTURE_2D, 0, sourceFormat, texture.width, texture.height, 0, format, GL_UNSIGNED_BYTE, data);
 			} else {
-				std::cout << "Failed to load texture" << std::endl;
+				std::cout << "Failed to load texture " << filePath << std::endl;
 			}
 			stbi_image_free(data);
 			//SDL_RWclose(file);
