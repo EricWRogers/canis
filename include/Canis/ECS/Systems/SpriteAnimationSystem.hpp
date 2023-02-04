@@ -32,6 +32,7 @@ namespace Canis
                 if (animation.countDown < 0.0f)
                 {
                     animation.index++;
+                    animation.redraw = false;
 
                     if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
                     {
@@ -43,6 +44,31 @@ namespace Canis
                         animation.index = 0;
                     
                     animation.countDown = spriteAnimationAsset->frames[animation.index].timeOnFrame;
+                    sprite.texture = assetManager->Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
+
+                    GetSpriteFromTextureAtlas(
+                        sprite,
+                        spriteAnimationAsset->frames[animation.index].offsetX,
+                        spriteAnimationAsset->frames[animation.index].offsetY,
+                        spriteAnimationAsset->frames[animation.index].row,
+                        spriteAnimationAsset->frames[animation.index].col,
+                        spriteAnimationAsset->frames[animation.index].width,
+                        spriteAnimationAsset->frames[animation.index].height,
+                        animation.flipX,
+                        animation.flipY
+                    );
+                }
+
+                if (animation.redraw)
+                {
+                    animation.redraw = false;
+
+                    if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
+                    {
+                        spriteAnimationId = animation.animationId;
+                        spriteAnimationAsset = assetManager->Get<SpriteAnimationAsset>(spriteAnimationId);
+                    }
+                    
                     sprite.texture = assetManager->Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
 
                     GetSpriteFromTextureAtlas(

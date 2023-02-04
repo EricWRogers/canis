@@ -9,6 +9,7 @@ namespace Canis
         unsigned short int index;
         bool flipX = false;
         bool flipY = false;
+        bool redraw = true;
         float speed = 1.0f;
     };
 } // end of Canis namespace
