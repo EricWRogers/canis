@@ -204,6 +204,12 @@ namespace Canis
         }
     }
 
+    void SceneManager::HotReload()
+    {
+        if(scene == nullptr)
+        Load(scene->name);
+    }
+
     void SceneManager::Update()
     {
         m_updateStart = high_resolution_clock::now();

@@ -43,6 +43,7 @@ public:
 
     void ForceLoad(std::string _name);
     void Load(std::string _name);
+    void HotReload();
     
     std::vector<Canis::Entity> Instantiate(const std::string &_path);
 
