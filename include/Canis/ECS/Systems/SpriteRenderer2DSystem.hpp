@@ -373,21 +373,29 @@ namespace Canis
             // Draw
             auto view = _registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
             glm::vec2 positionAnchor = glm::vec2(0.0f);
+            float halfWidth = window->GetScreenWidth()/2;
+            float halfHeight = window->GetScreenHeight()/2;
 
             for (auto [entity, rect_transform, color, sprite] : view.each())
             {
                 positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
                                            (float)window->GetScreenWidth(),
                                            (float)window->GetScreenHeight());
-
-                Draw(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
-                    sprite.uv,
-                    sprite.texture,
-                    rect_transform.depth,
-                    color,
-                    rect_transform.rotation,
-                    rect_transform.originOffset);
+                
+                if (rect_transform.position.x + positionAnchor.x > camera2D.GetPosition().x - rect_transform.size.x - halfWidth &&
+                    rect_transform.position.x + positionAnchor.x < camera2D.GetPosition().x + rect_transform.size.x + halfWidth &&
+                    rect_transform.position.y + positionAnchor.y > camera2D.GetPosition().y - rect_transform.size.y - halfHeight &&
+                    rect_transform.position.y + positionAnchor.y < camera2D.GetPosition().y + rect_transform.size.y + halfHeight )
+                {
+                    Draw(
+                        glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
+                        sprite.uv,
+                        sprite.texture,
+                        rect_transform.depth,
+                        color,
+                        rect_transform.rotation,
+                        rect_transform.originOffset);
+                }
             }
 
             End();
