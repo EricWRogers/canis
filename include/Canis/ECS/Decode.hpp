@@ -99,6 +99,19 @@ namespace Canis
         }
     }
 
+    void DecodeUIImageComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto uiImageComponent = _n["Canis::UIImageComponent"])
+        {
+            auto &uiic = _entity.AddComponent<Canis::UIImageComponent>();
+            uiic.uv = uiImageComponent["uv"].as<glm::vec4>();
+            uiic.texture = _sceneManager->assetManager->Get<Canis::TextureAsset>(
+                                           _sceneManager->assetManager->LoadTexture(
+                                               uiImageComponent["texture"].as<std::string>()))
+                               ->GetTexture();
+        }
+    }
+
     void DecodeSpriteAnimationComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto spriteAnimationComponent = _n["Canis::SpriteAnimationComponent"])
