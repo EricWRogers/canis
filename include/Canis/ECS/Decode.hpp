@@ -7,6 +7,7 @@
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/SpriteAnimationComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
+#include <Canis/ECS/Components/UISliderComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
@@ -109,6 +110,18 @@ namespace Canis
                                            _sceneManager->assetManager->LoadTexture(
                                                uiImageComponent["texture"].as<std::string>()))
                                ->GetTexture();
+        }
+    }
+
+    void DecodeUISliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto uiSliderComponent = _n["Canis::UISliderComponent"])
+        {
+            auto &uisc = _entity.AddComponent<Canis::UISliderComponent>();
+            uisc.maxWidth = uiSliderComponent["maxWidth"].as<float>();
+            uisc.minUVX = uiSliderComponent["minUVX"].as<float>();
+            uisc.maxUVX = uiSliderComponent["maxUVX"].as<float>();
+            uisc.value = uiSliderComponent["value"].as<float>();
         }
     }
 
