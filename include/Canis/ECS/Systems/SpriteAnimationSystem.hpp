@@ -27,6 +27,9 @@ namespace Canis
             int spriteAnimationId = 0;
             for (auto [entity, sprite, animation] : view.each())
             {
+                if (entity == entt::tombstone && !scene->entityRegistry.valid(entity))
+                    continue;
+                
                 animation.countDown -= _deltaTime*animation.speed;
 
                 if (animation.countDown < 0.0f)
