@@ -203,7 +203,7 @@ namespace Canis
             glyphsCurrentIndex++;
         }
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, float angle, glm::vec2 origin)
+        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float& depth, const ColorComponent &color, const float& angle, const glm::vec2& origin)
         {
             Glyph *newGlyph;
 
@@ -371,7 +371,7 @@ namespace Canis
             Begin(glyphSortType);
 
             // Draw
-            auto view = _registry.view<const RectTransformComponent, ColorComponent, Sprite2DComponent>();
+            auto view = _registry.view<const RectTransformComponent, const ColorComponent, const Sprite2DComponent>();
             glm::vec2 positionAnchor = glm::vec2(0.0f);
             float halfWidth = window->GetScreenWidth()/2;
             float halfHeight = window->GetScreenHeight()/2;
