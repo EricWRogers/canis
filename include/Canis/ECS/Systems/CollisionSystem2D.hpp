@@ -192,7 +192,7 @@ namespace Canis
 
         void LoadLayers(entt::registry &registry)
         {
-            auto view = registry.view<RectTransformComponent, CircleColliderComponent>();
+            auto view = registry.view<const RectTransformComponent, CircleColliderComponent>();
             for (auto [entity, transform, circle] : view.each())
 			{
                 Add(transform.position, circle.layer, circle.mask, entity, circle.radius);
