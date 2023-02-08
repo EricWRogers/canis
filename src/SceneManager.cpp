@@ -302,7 +302,8 @@ namespace Canis
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
-        scene->deltaTime = _deltaTime;
+        scene->deltaTime       = _deltaTime * scene->timeScale;
+        scene->unscaledDeltaTime = _deltaTime;
     }
 
     std::vector<Canis::Entity> SceneManager::Instantiate(const std::string &_path)

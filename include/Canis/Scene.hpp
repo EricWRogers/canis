@@ -37,6 +37,8 @@ namespace Canis
 
             void ReadySystem(System *_system);
 
+            void SetTimeScale(double _timeScale) { timeScale = _timeScale; }
+
             Entity CreateEntity();
             Entity CreateEntity(const std::string &_tag);
 
@@ -82,7 +84,9 @@ namespace Canis
 
             entt::registry entityRegistry;
 
-            double deltaTime;
+            double deltaTime = 1.0;
+            double unscaledDeltaTime = 1.0;
+            double timeScale = 1.0;
 
             bool preLoaded = false;
     };

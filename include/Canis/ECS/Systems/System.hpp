@@ -9,6 +9,7 @@
 namespace Canis
 {
 class Scene;
+class Entity;
 
 class System
 {
@@ -25,6 +26,11 @@ public:
     virtual void Draw(entt::registry &_registry, float _deltaTime) {}
 
     bool IsCreated() { return m_isCreated; }
+
+    Scene& GetScene() { return *scene; }
+    AssetManager& GetAssetManager() { return *assetManager; }
+    Window& GetWindow() { return *window; }
+    InputManager& GetInputManager() { return *inputManager; }
 
     Scene *scene = nullptr;
     Window *window = nullptr;
