@@ -385,7 +385,8 @@ namespace Canis
                 if (rect_transform.position.x + positionAnchor.x > camera2D.GetPosition().x - rect_transform.size.x - halfWidth &&
                     rect_transform.position.x + positionAnchor.x < camera2D.GetPosition().x + rect_transform.size.x + halfWidth &&
                     rect_transform.position.y + positionAnchor.y > camera2D.GetPosition().y - rect_transform.size.y - halfHeight &&
-                    rect_transform.position.y + positionAnchor.y < camera2D.GetPosition().y + rect_transform.size.y + halfHeight )
+                    rect_transform.position.y + positionAnchor.y < camera2D.GetPosition().y + rect_transform.size.y + halfHeight &&
+                    rect_transform.active)
                 {
                     Draw(
                         glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
