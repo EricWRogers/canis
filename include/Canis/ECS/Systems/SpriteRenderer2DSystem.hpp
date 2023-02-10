@@ -40,6 +40,7 @@ namespace Canis
     public:
         GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
         std::vector<Glyph *> glyphs;
+        std::vector<SpriteVertex> vertices = {};
         std::vector<RenderBatch> spriteRenderBatch;
         Shader *spriteShader;
         Camera2D camera2D;
@@ -83,8 +84,10 @@ namespace Canis
 
         void CreateRenderBatches()
         {
-            std::vector<SpriteVertex> vertices;
-            vertices.resize(glyphs.size() * 6);
+            //vertices.clear();
+
+            if (vertices.size() < glyphs.size() * 6)
+                vertices.resize(glyphs.size() * 6);
 
             if (glyphs.empty())
                 return;
@@ -123,8 +126,8 @@ namespace Canis
             }
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, vertices.size() * sizeof(SpriteVertex), vertices.data());
+            glBufferData(GL_ARRAY_BUFFER, glyphs.size() * 6 * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, glyphs.size() * 6 * sizeof(SpriteVertex), vertices.data());
 
             glBindBuffer(GL_ARRAY_BUFFER, 0);
         }
