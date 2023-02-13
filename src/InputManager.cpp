@@ -270,7 +270,6 @@ namespace Canis
         }
     }
     
-    
     void InputManager::OnGameControllerDisconnect(void *_device)
     {
         SDL_ControllerDeviceEvent& device = (*(SDL_ControllerDeviceEvent*)(_device));

@@ -257,6 +257,64 @@ namespace Canis
             CalculateMask(Mask16,Layer16);
         }
 
+        glm::vec2 RotatePoint(glm::vec2 point, float angle)
+        {
+            glm::vec2 pos;
+
+            pos.x = point.x * cos(angle) - point.y * sin(angle);
+            pos.y = point.x * sin(angle) + point.y * cos(angle);
+
+            return pos;
+        }
+        
+        void BoxCast(const glm::vec2 &_position, const glm::vec2 &_size,
+                                            const glm::vec2 &_origin, const float &_radians,
+                                            const std::vector<CollisionSystem2DPoint> &_layer,
+                                            std::vector<entt::entity> &_result)
+        {
+            glm::vec2 halfDims(_size.x / 2.0f, _size.y / 2.0f);
+
+            glm::vec2 topLeft(-halfDims.x + _origin.x, halfDims.y + _origin.y);
+            glm::vec2 bottomLeft(-halfDims.x + _origin.x, -halfDims.y + _origin.y);
+            glm::vec2 bottomRight(halfDims.x + _origin.x, -halfDims.y + _origin.y);
+            glm::vec2 topRight(halfDims.x + _origin.x, halfDims.y + _origin.y);
+            topLeft = RotatePoint(topLeft, _radians);
+            bottomLeft = RotatePoint(bottomLeft, _radians);
+            bottomRight = RotatePoint(bottomRight, _radians);
+            topRight = RotatePoint(topRight, _radians);
+            topLeft += _position;
+            bottomLeft += _position;
+            bottomRight += _position;
+            topRight += _position;
+
+            for(CollisionSystem2DPoint cs2dp : _layer)
+            {
+                if(glm::distance(cs2dp.position, topLeft) < cs2dp.radius)
+                {
+                    _result.push_back(cs2dp.entity);
+                    continue;
+                }
+                    
+                if(glm::distance(cs2dp.position, bottomLeft) < cs2dp.radius)
+                {
+                    _result.push_back(cs2dp.entity);
+                    continue;
+                }
+
+                if(glm::distance(cs2dp.position, bottomRight) < cs2dp.radius)
+                {
+                    _result.push_back(cs2dp.entity);
+                    continue;
+                }
+
+                if(glm::distance(cs2dp.position, topRight) < cs2dp.radius)
+                {
+                    _result.push_back(cs2dp.entity);
+                    continue;
+                }
+            }
+        }
+    
     public:
         CollisionSystem2D() : System() {}
 
@@ -287,6 +345,48 @@ namespace Canis
             }
 
             return std::vector<entt::entity> {};
+        }
+
+        std::vector<entt::entity> BoxCast(const glm::vec2 &_position, const glm::vec2 &_size,
+                                            const glm::vec2 &_origin, const float &_radians,
+                                            const unsigned int &_layers)
+        {
+            std::vector<entt::entity> entities = {};
+
+            if (_layers & BIT::ONE)
+                BoxCast(_position, _size, _origin, _radians, Layer01, entities);
+            if (_layers & BIT::TWO)
+                BoxCast(_position, _size, _origin, _radians, Layer02, entities);
+            if (_layers & BIT::THREE)
+                BoxCast(_position, _size, _origin, _radians, Layer03, entities);
+            if (_layers & BIT::FOUR)
+                BoxCast(_position, _size, _origin, _radians, Layer04, entities);
+            if (_layers & BIT::FIVE)
+                BoxCast(_position, _size, _origin, _radians, Layer05, entities);
+            if (_layers & BIT::SIX)
+                BoxCast(_position, _size, _origin, _radians, Layer06, entities);
+            if (_layers & BIT::SEVEN)
+                BoxCast(_position, _size, _origin, _radians, Layer07, entities);
+            if (_layers & BIT::EIGHT)
+                BoxCast(_position, _size, _origin, _radians, Layer08, entities);
+            if (_layers & BIT::NINE)
+                BoxCast(_position, _size, _origin, _radians, Layer09, entities);
+            if (_layers & BIT::TEN)
+                BoxCast(_position, _size, _origin, _radians, Layer10, entities);
+            if (_layers & BIT::ELEVEN)
+                BoxCast(_position, _size, _origin, _radians, Layer11, entities);
+            if (_layers & BIT::TWELVE)
+                BoxCast(_position, _size, _origin, _radians, Layer12, entities);
+            if (_layers & BIT::THIRTEEN)
+                BoxCast(_position, _size, _origin, _radians, Layer13, entities);
+            if (_layers & BIT::FOURTEEN)
+                BoxCast(_position, _size, _origin, _radians, Layer14, entities);
+            if (_layers & BIT::FIFTEEN)
+                BoxCast(_position, _size, _origin, _radians, Layer15, entities);
+            if (_layers & BIT::SIXTEEN)
+                BoxCast(_position, _size, _origin, _radians, Layer16, entities);
+
+            return entities;
         }
     };
 } // end of Canis namespace
