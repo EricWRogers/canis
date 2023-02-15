@@ -276,21 +276,6 @@ namespace Canis
         {
             glm::vec2 halfDims(_size.x / 2.0f, _size.y / 2.0f);
 
-            /*glm::vec2 topLeft(-halfDims.x + _origin.x, halfDims.y + _origin.y);
-            glm::vec2 bottomLeft(-halfDims.x + _origin.x, -halfDims.y + _origin.y);
-            glm::vec2 bottomRight(halfDims.x + _origin.x, -halfDims.y + _origin.y);
-            glm::vec2 topRight(halfDims.x + _origin.x, halfDims.y + _origin.y);
-            topLeft = RotatePoint(topLeft, _radians);
-            bottomLeft = RotatePoint(bottomLeft, _radians);
-            bottomRight = RotatePoint(bottomRight, _radians);
-            topRight = RotatePoint(topRight, _radians);
-            topLeft += _position;
-            bottomLeft += _position;
-            bottomRight += _position;
-            topRight += _position;*/
-
-            glm::vec2 center = _position;
-
             for(CollisionSystem2DPoint cs2dp : _layer)
             {
                 // check if a circle is within the box
@@ -300,8 +285,8 @@ namespace Canis
                 ccib = RotatePoint(ccib, -_radians);
 
                 // check if inside unrotated box
-                if (ccib.x > -halfDims.x - cs2dp.radius && ccib.x < halfDims.x + cs2dp.radius &&
-                    ccib.y > -halfDims.y - cs2dp.radius && ccib.y < halfDims.y + cs2dp.radius)
+                if (ccib.x > -halfDims.x - cs2dp.radius + _origin.x && ccib.x < halfDims.x + cs2dp.radius + _origin.x &&
+                    ccib.y > -halfDims.y - cs2dp.radius + _origin.y && ccib.y < halfDims.y + cs2dp.radius + _origin.y)
                 {
                     _result.push_back(cs2dp.entity);
                     continue;
