@@ -266,6 +266,8 @@ namespace Canis
 
             return pos;
         }
+
+
         
         void BoxCast(const glm::vec2 &_position, const glm::vec2 &_size,
                                             const glm::vec2 &_origin, const float &_radians,
@@ -274,7 +276,7 @@ namespace Canis
         {
             glm::vec2 halfDims(_size.x / 2.0f, _size.y / 2.0f);
 
-            glm::vec2 topLeft(-halfDims.x + _origin.x, halfDims.y + _origin.y);
+            /*glm::vec2 topLeft(-halfDims.x + _origin.x, halfDims.y + _origin.y);
             glm::vec2 bottomLeft(-halfDims.x + _origin.x, -halfDims.y + _origin.y);
             glm::vec2 bottomRight(halfDims.x + _origin.x, -halfDims.y + _origin.y);
             glm::vec2 topRight(halfDims.x + _origin.x, halfDims.y + _origin.y);
@@ -285,29 +287,21 @@ namespace Canis
             topLeft += _position;
             bottomLeft += _position;
             bottomRight += _position;
-            topRight += _position;
+            topRight += _position;*/
+
+            glm::vec2 center = _position;
 
             for(CollisionSystem2DPoint cs2dp : _layer)
             {
-                if(glm::distance(cs2dp.position, topLeft) < cs2dp.radius)
-                {
-                    _result.push_back(cs2dp.entity);
-                    continue;
-                }
-                    
-                if(glm::distance(cs2dp.position, bottomLeft) < cs2dp.radius)
-                {
-                    _result.push_back(cs2dp.entity);
-                    continue;
-                }
+                // check if a circle is within the box
+                glm::vec2 ccib = cs2dp.position - _position;
 
-                if(glm::distance(cs2dp.position, bottomRight) < cs2dp.radius)
-                {
-                    _result.push_back(cs2dp.entity);
-                    continue;
-                }
+                // rotate oposite of box
+                ccib = RotatePoint(ccib, -_radians);
 
-                if(glm::distance(cs2dp.position, topRight) < cs2dp.radius)
+                // check if inside unrotated box
+                if (ccib.x > -halfDims.x - cs2dp.radius && ccib.x < halfDims.x + cs2dp.radius &&
+                    ccib.y > -halfDims.y - cs2dp.radius && ccib.y < halfDims.y + cs2dp.radius)
                 {
                     _result.push_back(cs2dp.entity);
                     continue;
