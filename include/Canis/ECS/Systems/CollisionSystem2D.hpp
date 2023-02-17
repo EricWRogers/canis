@@ -320,6 +320,14 @@ namespace Canis
         {
             if (hits.contains(_entity))
             {
+                // really should have delete funcution that lives in scene that everyone call to delete entts the it calls a list of delegate
+                std::vector<entt::entity> &e = hits[_entity];
+                for (int i = 0; i < e.size(); i++)
+                {
+                    if (e[i] == entt::tombstone || !GetScene().entityRegistry.valid(e[i])) {
+                        e.erase(e.begin() + i);
+                    }
+                }
                 return hits[_entity];
             }
 
