@@ -10,70 +10,70 @@ namespace Canis
     {
     }
 
-    void Shader::Compile(const std::string &vertexShaderFilePath, const std::string &fragmentShaderFilePath)
+    void Shader::Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
     {
         //Getting vertex shaderID
-        vertex_shader_id = glCreateShader(GL_VERTEX_SHADER);
-        if (vertex_shader_id == 0)
+        m_vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
+        if (m_vertexShaderId == 0)
             FatalError("Vertex shader failed to be created!");
 
         //Getting fragment shaderID
-        fragment_shader_id = glCreateShader(GL_FRAGMENT_SHADER);
-        if (fragment_shader_id == 0)
+        m_fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
+        if (m_fragmentShaderId == 0)
             FatalError("Fragment shader failed to be created!");
 
-        compile(vertexShaderFilePath, vertex_shader_id);
-        compile(fragmentShaderFilePath, fragment_shader_id);
+        CompileShaderFile(_vertexShaderFilePath, m_vertexShaderId);
+        CompileShaderFile(_fragmentShaderFilePath, m_fragmentShaderId);
     }
 
     void Shader::Link()
     {
         m_isLinked = true;
-        glAttachShader(program_id, vertex_shader_id);
-        glAttachShader(program_id, fragment_shader_id);
+        glAttachShader(m_programId, m_vertexShaderId);
+        glAttachShader(m_programId, m_fragmentShaderId);
 
-        glLinkProgram(program_id);
+        glLinkProgram(m_programId);
 
         GLuint isLinked = 0;
-        glGetProgramiv(program_id, GL_LINK_STATUS, (int *)&isLinked);
+        glGetProgramiv(m_programId, GL_LINK_STATUS, (int *)&isLinked);
         if (isLinked == GL_FALSE)
         {
             GLint maxLength = 0;
-            glGetProgramiv(program_id, GL_INFO_LOG_LENGTH, &maxLength);
+            glGetProgramiv(m_programId, GL_INFO_LOG_LENGTH, &maxLength);
 
             std::vector<GLchar> infoLog(maxLength);
-            glGetProgramInfoLog(program_id, maxLength, &maxLength, &infoLog[0]);
+            glGetProgramInfoLog(m_programId, maxLength, &maxLength, &infoLog[0]);
 
-            glDeleteProgram(program_id);
+            glDeleteProgram(m_programId);
 
             std::printf("%s\n", &(infoLog[0]));
             FatalError("Shaders failed to link!");
         }
 
-        glDetachShader(program_id, vertex_shader_id);
-        glDetachShader(program_id, fragment_shader_id);
-        glDeleteShader(vertex_shader_id);
-        glDeleteShader(fragment_shader_id);
+        glDetachShader(m_programId, m_vertexShaderId);
+        glDetachShader(m_programId, m_fragmentShaderId);
+        glDeleteShader(m_vertexShaderId);
+        glDeleteShader(m_fragmentShaderId);
     }
 
-    void Shader::AddAttribute(const std::string &attributeName)
+    void Shader::AddAttribute(const std::string &_attributeName)
     {
-        glBindAttribLocation(program_id, number_of_attributes++, attributeName.c_str());
+        glBindAttribLocation(m_programId, m_numberOfAttributes++, _attributeName.c_str());
     }
 
-    GLint Shader::GetUniformLocation(const std::string &uniformName)
+    GLint Shader::GetUniformLocation(const std::string &_uniformName)
     {
-        GLint location = glGetUniformLocation(program_id, uniformName.c_str());
+        GLint location = glGetUniformLocation(m_programId, _uniformName.c_str());
         if (location == GL_INVALID_INDEX)
-            FatalError("Uniform " + uniformName + " not found in shader!");
+            FatalError("Uniform " + _uniformName + " not found in shader!");
 
         return location;
     }
 
     void Shader::Use()
     {
-        glUseProgram(program_id);
-        for (int i = 0; i < number_of_attributes; i++)
+        glUseProgram(m_programId);
+        for (int i = 0; i < m_numberOfAttributes; i++)
         {
             glEnableVertexAttribArray(i);
         }
@@ -84,99 +84,101 @@ namespace Canis
         glUseProgram(0);
     }
 
-        void Shader::SetBool(const std::string &name, bool value) const
+    void Shader::SetBool(const std::string &_name, bool _value) const
     {         
-        glUniform1i(glGetUniformLocation(program_id, name.c_str()), (int)value); 
+        glUniform1i(glGetUniformLocation(m_programId, _name.c_str()), (int)_value); 
     }
     
-    void Shader::SetInt(const std::string &name, int value) const
+    void Shader::SetInt(const std::string &_name, int _value) const
     { 
-        glUniform1i(glGetUniformLocation(program_id, name.c_str()), value); 
+        glUniform1i(glGetUniformLocation(m_programId, _name.c_str()), _value); 
     }
     
-    void Shader::SetFloat(const std::string &name, float value) const
+    void Shader::SetFloat(const std::string &_name, float _value) const
     { 
-        glUniform1f(glGetUniformLocation(program_id, name.c_str()), value); 
+        glUniform1f(glGetUniformLocation(m_programId, _name.c_str()), _value); 
     }
     
-    void Shader::SetVec2(const std::string &name, const glm::vec2 &value) const
+    void Shader::SetVec2(const std::string &_name, const glm::vec2 &_value) const
     { 
-        glUniform2fv(glGetUniformLocation(program_id, name.c_str()), 1, &value[0]); 
+        glUniform2fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
     }
 
-    void Shader::SetVec2(const std::string &name, float x, float y) const
+    void Shader::SetVec2(const std::string &_name, float _x, float _y) const
     { 
-        glUniform2f(glGetUniformLocation(program_id, name.c_str()), x, y); 
+        glUniform2f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y); 
     }
     
-    void Shader::SetVec3(const std::string &name, const glm::vec3 &value) const
+    void Shader::SetVec3(const std::string &_name, const glm::vec3 &_value) const
     { 
-        glUniform3fv(glGetUniformLocation(program_id, name.c_str()), 1, &value[0]); 
+        glUniform3fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
     }
 
-    void Shader::SetVec3(const std::string &name, float x, float y, float z) const
+    void Shader::SetVec3(const std::string &_name, float _x, float _y, float _z) const
     { 
-        glUniform3f(glGetUniformLocation(program_id, name.c_str()), x, y, z); 
+        glUniform3f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y, _z); 
     }
     
-    void Shader::SetVec4(const std::string &name, const glm::vec4 &value) const
+    void Shader::SetVec4(const std::string &_name, const glm::vec4 &_value) const
     { 
-        glUniform4fv(glGetUniformLocation(program_id, name.c_str()), 1, &value[0]); 
+        glUniform4fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
     }
 
-    void Shader::SetVec4(const std::string &name, float x, float y, float z, float w) 
+    void Shader::SetVec4(const std::string &_name, float _x, float _y, float _z, float _w) 
     { 
-        glUniform4f(glGetUniformLocation(program_id, name.c_str()), x, y, z, w); 
+        glUniform4f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y, _z, _w); 
     }
     
-    void Shader::SetMat2(const std::string &name, const glm::mat2 &mat) const
+    void Shader::SetMat2(const std::string &_name, const glm::mat2 &_mat) const
     {
-        glUniformMatrix2fv(glGetUniformLocation(program_id, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+        glUniformMatrix2fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
     }
     
-    void Shader::SetMat3(const std::string &name, const glm::mat3 &mat) const
+    void Shader::SetMat3(const std::string &_name, const glm::mat3 &_mat) const
     {
-        glUniformMatrix3fv(glGetUniformLocation(program_id, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+        glUniformMatrix3fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
     }
     
-    void Shader::SetMat4(const std::string &name, const glm::mat4 &mat) const
+    void Shader::SetMat4(const std::string &_name, const glm::mat4 &_mat) const
     {
-        glUniformMatrix4fv(glGetUniformLocation(program_id, name.c_str()), 1, GL_FALSE, &mat[0][0]);
+        glUniformMatrix4fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
     }
 
 
-    void Shader::compile(const std::string &filePath, GLuint &id)
+    void Shader::CompileShaderFile(const std::string &_filePath, GLuint &_id)
     {
-        program_id = glCreateProgram();
+        m_programId = glCreateProgram();
 
-        SDL_RWops* vertexFile {SDL_RWFromFile(filePath.c_str(), "r")};
-        size_t vertexFileLength {static_cast<size_t>(SDL_RWsize(vertexFile))};
-        void* vertexData{SDL_LoadFile_RW(vertexFile, nullptr, 1)};
-        std::string vertexCode{static_cast<char*>(vertexData), vertexFileLength};
+        SDL_RWops* shaderFile = SDL_RWFromFile(_filePath.c_str(), "r");
+        size_t shaderFileLength = static_cast<size_t>(SDL_RWsize(shaderFile));
+        void* shaderFileData = SDL_LoadFile_RW(shaderFile, nullptr, 1);
+        std::string shaderFileCode(static_cast<char*>(shaderFileData), shaderFileLength);
 
-        const char *contentsPtr = vertexCode.c_str();
-        glShaderSource(id, 1, &contentsPtr, nullptr);
+        const char *contentsPtr = shaderFileCode.c_str();
+        glShaderSource(_id, 1, &contentsPtr, nullptr);
 
-        glCompileShader(id);
+        glCompileShader(_id);
 
-        GLint success = 0;
-        glGetShaderiv(id, GL_COMPILE_STATUS, &success);
+        int success = 0;
+        glGetShaderiv(_id, GL_COMPILE_STATUS, &success);
+
+        if (shaderFileData != nullptr)
+            SDL_free(shaderFileData);
+        
+        //if (shaderFile != nullptr)
+        //    SDL_RWclose(shaderFile);
 
         if (success == GL_FALSE)
         {
-            GLint maxLength = 0;
-            glGetShaderiv(id, GL_INFO_LOG_LENGTH, &maxLength);
+            int maxLength = 0;
+            glGetShaderiv(_id, GL_INFO_LOG_LENGTH, &maxLength);
 
             std::vector<char> errorLog(maxLength);
-            glGetShaderInfoLog(id, maxLength, &maxLength, &errorLog[0]);
+            glGetShaderInfoLog(_id, maxLength, &maxLength, &errorLog[0]);
 
-            glDeleteShader(id);
+            glDeleteShader(_id);
 
-            Log(" ");
-            std::printf("%s\n", &(errorLog[0]));
-            //Log(std::to_string(eLog);
-            FatalError("Shader " + filePath + " failed to compile");
-
+            FatalError("Shader " + _filePath + " failed to compile\nOpengl Error: " + std::string(errorLog[0], maxLength));
             return;
         }
     }
