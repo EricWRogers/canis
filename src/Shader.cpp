@@ -1,4 +1,11 @@
 #include <Canis/Shader.hpp>
+#include <Canis/Debug.hpp>
+
+#include <GL/glew.h>
+#include <SDL.h>
+
+#include <vector>
+#include <fstream>
 
 namespace Canis
 {
@@ -8,6 +15,10 @@ namespace Canis
 
     Shader::~Shader()
     {
+        if (m_fragmentShaderId != 0)
+            glDeleteShader(m_fragmentShaderId);
+        if (m_vertexShaderId != 0)
+            glDeleteShader(m_vertexShaderId);
     }
 
     void Shader::Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
@@ -28,6 +39,7 @@ namespace Canis
 
     void Shader::Link()
     {
+        m_programId = glCreateProgram();
         m_isLinked = true;
         glAttachShader(m_programId, m_vertexShaderId);
         glAttachShader(m_programId, m_fragmentShaderId);
@@ -145,13 +157,15 @@ namespace Canis
     }
 
 
-    void Shader::CompileShaderFile(const std::string &_filePath, GLuint &_id)
+    void Shader::CompileShaderFile(const std::string &_filePath, unsigned int &_id)
     {
-        m_programId = glCreateProgram();
-
         SDL_RWops* shaderFile = SDL_RWFromFile(_filePath.c_str(), "r");
-        size_t shaderFileLength = static_cast<size_t>(SDL_RWsize(shaderFile));
-        void* shaderFileData = SDL_LoadFile_RW(shaderFile, nullptr, 1);
+
+        if (shaderFile == nullptr)
+            FatalError("Unable to open file \"" + _filePath + "\"");
+        
+        size_t shaderFileLength;// = static_cast<size_t>(SDL_RWsize(shaderFile));
+        void* shaderFileData = SDL_LoadFile_RW(shaderFile, &shaderFileLength, true);
         std::string shaderFileCode(static_cast<char*>(shaderFileData), shaderFileLength);
 
         const char *contentsPtr = shaderFileCode.c_str();
@@ -164,9 +178,6 @@ namespace Canis
 
         if (shaderFileData != nullptr)
             SDL_free(shaderFileData);
-        
-        //if (shaderFile != nullptr)
-        //    SDL_RWclose(shaderFile);
 
         if (success == GL_FALSE)
         {

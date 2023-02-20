@@ -1,14 +1,6 @@
 #pragma once
-#include <SDL.h>
 #include <string>
-#include <GL/glew.h>
-#include <vector>
-#include <fstream>
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-#include "Debug.hpp"
 
 namespace Canis
 {
@@ -37,18 +29,19 @@ namespace Canis
         void SetMat4(const std::string &_name, const glm::mat4 &_mat) const;
 
         bool IsLinked() { return m_isLinked; }
-        GLint GetUniformLocation(const std::string &uniformName);
-        GLint GetProgramID() { return m_programId; }
+        int GetUniformLocation(const std::string &uniformName);
+        int GetProgramID() { return m_programId; }
 
     private:
         bool m_isLinked = false;
-        GLuint m_programId = 0;
-        GLuint m_vertexShaderId = 0;
-        GLuint m_fragmentShaderId = 0;
+
+        unsigned int m_programId = 0;
+        unsigned int m_vertexShaderId = 0;
+        unsigned int m_fragmentShaderId = 0;
 
         int m_numberOfAttributes = 0;
 
-        void CompileShaderFile(const std::string &_filePath, GLuint &_id);
+        void CompileShaderFile(const std::string &_filePath, unsigned int &_id);
     };
 
 } // end of Canis namespace
