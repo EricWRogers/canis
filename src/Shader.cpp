@@ -39,8 +39,11 @@ namespace Canis
 
     void Shader::Link()
     {
+        if (m_isLinked)
+            return;
+        
         m_programId = glCreateProgram();
-        m_isLinked = true;
+        
         glAttachShader(m_programId, m_vertexShaderId);
         glAttachShader(m_programId, m_fragmentShaderId);
 
@@ -58,8 +61,9 @@ namespace Canis
 
             glDeleteProgram(m_programId);
 
-            std::printf("%s\n", &(infoLog[0]));
-            FatalError("Shaders failed to link!");
+            FatalError("Shader failed to link!\nOpengl Error: " + std::string(infoLog[0], maxLength));
+        } else {
+            m_isLinked = true;
         }
 
         glDetachShader(m_programId, m_vertexShaderId);
