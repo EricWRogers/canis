@@ -1,4 +1,5 @@
 #include <Canis/Time.hpp>
+#include <SDL.h>
 
 namespace Canis
 {

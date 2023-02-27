@@ -1,4 +1,5 @@
 #include <Canis/Camera.hpp>
+#include <GL/glew.h>
 
 namespace Canis
 {
@@ -42,7 +43,7 @@ namespace Canis
             Position += Right * velocity;
     }
 
-    void Camera::ProcessMouseMovement(float xoffset, float yoffset, GLboolean constrainPitch)
+    void Camera::ProcessMouseMovement(float xoffset, float yoffset, bool constrainPitch)
     {
         xoffset *= MouseSensitivity;
         yoffset *= MouseSensitivity;

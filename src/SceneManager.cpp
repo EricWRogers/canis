@@ -1,13 +1,7 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/Entity.hpp>
 
-#include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
-#include <Canis/ECS/Components/Sprite2DComponent.hpp>
-#include <Canis/ECS/Components/UIImageComponent.hpp>
-#include <Canis/ECS/Components/Camera2DComponent.hpp>
-#include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
 namespace Canis
 {

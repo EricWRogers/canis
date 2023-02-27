@@ -1,4 +1,16 @@
 #include <Canis/Math.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/string_cast.hpp>
+#include <glm/ext.hpp>
+#include <glm/gtx/quaternion.hpp>
+
+#include <Canis/Camera.hpp>
+#include <Canis/Window.hpp>
+#include <Canis/InputManager.hpp>
+
+#include <Canis/ECS/Components/TransformComponent.hpp>
 
 namespace Canis
 {

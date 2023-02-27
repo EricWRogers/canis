@@ -1,22 +1,14 @@
 #pragma once
 #include <string>
-#include <memory>
-#include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-
-#include <SDL_mixer.h>
-
-#include <GL/glew.h>
 
 #include <ft2build.h>
 #include FT_FREETYPE_H
 
 #include <map>
 
-#include <Canis/Debug.hpp>
+
 #include <Canis/Shader.hpp>
-#include <Canis/IOManager.hpp>
+#include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
@@ -104,7 +96,7 @@ namespace Canis
     class SoundAsset : public Asset
     {
     private:
-        Mix_Chunk *chunk;
+        void *chunk;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
@@ -115,7 +107,7 @@ namespace Canis
     class MusicAsset : public Asset
     {
     private:
-        Mix_Music *music = nullptr;
+        void *music = nullptr;
     public:
         bool Load(std::string _path) override;
         bool Free() override;

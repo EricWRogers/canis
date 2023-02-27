@@ -1,4 +1,10 @@
 #include <Canis/Asset.hpp>
+#include <Canis/Debug.hpp>
+#include <Canis/IOManager.hpp>
+#include <memory>
+#include <glm/glm.hpp>
+#include <SDL_mixer.h>
+#include <GL/glew.h>
 
 namespace Canis
 {
@@ -206,14 +212,14 @@ namespace Canis
 
     bool SoundAsset::Free()
     {
-        Mix_FreeChunk(chunk);
+        Mix_FreeChunk((Mix_Chunk*)chunk);
         chunk = nullptr;
         return true;
     }
 
     void SoundAsset::Play()
     {
-        Mix_PlayChannel(-1, chunk, 0);
+        Mix_PlayChannel(-1, (Mix_Chunk*)chunk, 0);
     }
 
     bool MusicAsset::Load(std::string path)
@@ -224,14 +230,14 @@ namespace Canis
 
     bool MusicAsset::Free()
     {
-        Mix_FreeMusic(music);
+        Mix_FreeMusic((Mix_Music*)music);
         music = nullptr;
         return true;
     }
 
     void MusicAsset::Play(int loops)
     {
-        Mix_PlayMusic(music, loops);
+        Mix_PlayMusic((Mix_Music*)music, loops);
     }
 
     void MusicAsset::Stop()

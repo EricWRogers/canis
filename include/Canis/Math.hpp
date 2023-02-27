@@ -1,21 +1,13 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include <glm/gtc/matrix_transform.hpp>
-#include <glm/gtc/type_ptr.hpp>
-#include <glm/gtc/quaternion.hpp>
-#include <glm/gtx/string_cast.hpp>
-#include <glm/ext.hpp>
-#include <glm/gtx/quaternion.hpp>
-
-#include "Camera.hpp"
-#include "Window.hpp"
-#include "InputManager.hpp"
-
-#include "ECS/Components/TransformComponent.hpp"
 
 namespace Canis
 {
+    class Camera;
+    class Window;
+    class InputManager;
+    class TransformComponent;
     struct Ray
     {
         glm::vec3 origin;

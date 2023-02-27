@@ -1,4 +1,7 @@
 #include <Canis/Window.hpp>
+#include <SDL.h>
+#include <SDL_mixer.h>
+#include <GL/glew.h>
 
 namespace Canis
 {
@@ -66,18 +69,18 @@ namespace Canis
         surface = SDL_CreateRGBSurfaceFrom(pixels,16,16,16,16*2,0x0f00,0x00f0,0x000f,0xf000);
 
         // The icon is attached to the window pointer
-        SDL_SetWindowIcon(sdlWindow, surface);
+        SDL_SetWindowIcon((SDL_Window*)sdlWindow, surface);
 
         // ...and the surface containing the icon pixel data is no longer required.
         SDL_FreeSurface(surface);
 
-        if (sdlWindow == nullptr) // Check for an error when creating a window
+        if ((SDL_Window*)sdlWindow == nullptr) // Check for an error when creating a window
         {
             FatalError("SDL Window could not be created");
         }
 
         // Create OpenGL Context
-        SDL_GLContext glContext = SDL_GL_CreateContext(sdlWindow);
+        SDL_GLContext glContext = SDL_GL_CreateContext((SDL_Window*)sdlWindow);
 
         if (glContext == nullptr) // Check for an error when creating the OpenGL Context
         {
@@ -120,7 +123,7 @@ namespace Canis
 
     void Window::SetWindowName(std::string _windowName)
     {
-        SDL_SetWindowTitle(sdlWindow,_windowName.c_str());
+        SDL_SetWindowTitle((SDL_Window*)sdlWindow,_windowName.c_str());
     }
 
     void Window::SwapBuffer()
@@ -128,7 +131,7 @@ namespace Canis
         // After we draw our sprite and models to a window buffer
         // We want to display the one we were drawing to and
         // get the old buffer to start drawing our next frame to
-        SDL_GL_SwapWindow(sdlWindow);
+        SDL_GL_SwapWindow((SDL_Window*)sdlWindow);
     }
 
     void Window::MouseLock(bool _isLocked)

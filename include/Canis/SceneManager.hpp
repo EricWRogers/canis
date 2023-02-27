@@ -1,13 +1,7 @@
 #pragma once
 #include <vector>
 
-#include <Canis/Time.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/Debug.hpp>
-#include <Canis/Camera.hpp>
-#include <Canis/Window.hpp>
-#include <Canis/InputManager.hpp>
-#include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
 
 #include <functional>

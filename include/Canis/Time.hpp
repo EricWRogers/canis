@@ -1,7 +1,6 @@
 #pragma once
-#include <SDL.h>
+
 #include <chrono>
-#include <thread>
 
 #include "Debug.hpp"
 

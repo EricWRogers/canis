@@ -1,7 +1,4 @@
 #pragma once
-#include <SDL.h>
-#include <SDL_mixer.h>
-#include <GL/glew.h>
 #include <string>
 
 #include "Debug.hpp"
@@ -34,7 +31,7 @@ namespace Canis
         float fps;
 
     private:
-        SDL_Window *sdlWindow;
+        void *sdlWindow;
         int screenWidth, screenHeight;
         bool mouseLock = false;
     };
