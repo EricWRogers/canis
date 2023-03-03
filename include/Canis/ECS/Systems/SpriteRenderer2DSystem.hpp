@@ -383,26 +383,40 @@ namespace Canis
             Begin(glyphSortType);
 
             // Draw
-            auto view = _registry.view<const RectTransformComponent, const ColorComponent, const Sprite2DComponent>();
+            auto view = _registry.view<const RectTransformComponent, const Sprite2DComponent>();
             glm::vec2 positionAnchor = glm::vec2(0.0f);
             float halfWidth = window->GetScreenWidth()/2;
             float halfHeight = window->GetScreenHeight()/2;
             glm::vec2 camPos = camera2D.GetPosition();
+            glm::vec2 anchorTable[] = {
+                GetAnchor(Canis::RectAnchor::TOPLEFT,       (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::TOPCENTER,     (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::TOPRIGHT,      (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTERLEFT,    (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTER,        (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTERRIGHT,   (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMLEFT,    (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMCENTER,  (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMRIGHT,   (float)window->GetScreenWidth(), (float)window->GetScreenHeight())
+            };
+            ColorComponent color;
+            glm::vec2 p;
+            glm::vec2 s;
 
-            for (auto [entity, rect_transform, color, sprite] : view.each())
+            for (auto [entity, rect_transform, sprite] : view.each())
             {
-                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                           (float)window->GetScreenWidth(),
-                                           (float)window->GetScreenHeight());
-                
-                if (rect_transform.position.x + positionAnchor.x > camPos.x - rect_transform.size.x - halfWidth &&
-                    rect_transform.position.x + positionAnchor.x < camPos.x + rect_transform.size.x + halfWidth &&
-                    rect_transform.position.y + positionAnchor.y > camPos.y - rect_transform.size.y - halfHeight &&
-                    rect_transform.position.y + positionAnchor.y < camPos.y + rect_transform.size.y + halfHeight &&
+                p = rect_transform.position + anchorTable[rect_transform.anchor];
+                s.x = rect_transform.size.x + halfWidth;
+                s.y = rect_transform.size.y + halfHeight;
+                if (p.x > camPos.x - s.x &&
+                    p.x < camPos.x + s.x &&
+                    p.y > camPos.y - s.y &&
+                    p.y < camPos.y + s.y &&
                     rect_transform.active)
                 {
+                    color = _registry.get<const ColorComponent>(entity);
                     Draw(
-                        glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, rect_transform.size.x, rect_transform.size.y),
+                        glm::vec4(rect_transform.position.x + anchorTable[rect_transform.anchor].x, rect_transform.position.y + anchorTable[rect_transform.anchor].y, rect_transform.size.x, rect_transform.size.y),
                         sprite.uv,
                         sprite.texture,
                         rect_transform.depth,

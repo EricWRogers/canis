@@ -22,18 +22,19 @@ namespace Canis
 
         void Update(entt::registry &_registry, float _deltaTime)
         {
-            auto view = _registry.view<Sprite2DComponent, SpriteAnimationComponent>();
+            auto view = _registry.view<SpriteAnimationComponent>();
             SpriteAnimationAsset *spriteAnimationAsset = nullptr;
             int spriteAnimationId = 0;
-            for (auto [entity, sprite, animation] : view.each())
+            for (auto [entity, animation] : view.each())
             {
-                if (entity == entt::tombstone && !scene->entityRegistry.valid(entity))
+                if (entity == entt::tombstone && !_registry.valid(entity))
                     continue;
                 
                 animation.countDown -= _deltaTime*animation.speed;
 
                 if (animation.countDown < 0.0f)
                 {
+                    Sprite2DComponent& sprite = _registry.get<Sprite2DComponent>(entity);
                     animation.index++;
                     animation.redraw = false;
 
@@ -64,6 +65,7 @@ namespace Canis
 
                 if (animation.redraw)
                 {
+                    Sprite2DComponent& sprite = _registry.get<Sprite2DComponent>(entity);
                     animation.redraw = false;
 
                     if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
