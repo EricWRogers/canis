@@ -158,14 +158,10 @@ namespace Canis
             CreateRenderBatches();
         }
 
-        glm::vec2 RotatePoint(glm::vec2 point, float angle)
+        inline void RotatePoint(glm::vec2 &point, const float &cAngle, const float &sAngle)
         {
-            glm::vec2 pos;
-
-            pos.x = point.x * cos(angle) - point.y * sin(angle);
-            pos.y = point.x * sin(angle) + point.y * cos(angle);
-
-            return pos;
+            point.x = point.x * cAngle - point.y * sAngle;
+            point.y = point.x * sAngle + point.y * cAngle;
         }
 
         void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color)
@@ -226,44 +222,57 @@ namespace Canis
 
             glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
 
-            // center points
-            /*glm::vec2 topLeft(-halfDims.x, halfDims.y);
-            glm::vec2 bottomLeft(-halfDims.x, -halfDims.y);
-            glm::vec2 bottomRight(halfDims.x, -halfDims.y);
-            glm::vec2 topRight(halfDims.x, halfDims.y);*/
-
-            // rotate points
-            /*topLeft = RotatePoint(topLeft, angle) + halfDims;
-            bottomLeft = RotatePoint(bottomLeft, angle) + halfDims;
-            bottomRight = RotatePoint(bottomRight, angle) + halfDims;
-            topRight = RotatePoint(topRight, angle) + halfDims;*/
-
             glm::vec2 topLeft(-halfDims.x + origin.x, halfDims.y + origin.y);
             glm::vec2 bottomLeft(-halfDims.x + origin.x, -halfDims.y + origin.y);
             glm::vec2 bottomRight(halfDims.x + origin.x, -halfDims.y + origin.y);
             glm::vec2 topRight(halfDims.x + origin.x, halfDims.y + origin.y);
-            topLeft = RotatePoint(topLeft, angle);
-            bottomLeft = RotatePoint(bottomLeft, angle);
-            bottomRight = RotatePoint(bottomRight, angle);
-            topRight = RotatePoint(topRight, angle);
+
+            if (angle != 0.0f)
+            {
+                float cAngle = cos(angle);
+                float sAngle = sin(angle);
+                RotatePoint(topLeft, cAngle, sAngle);
+                RotatePoint(bottomLeft, cAngle, sAngle);
+                RotatePoint(bottomRight, cAngle, sAngle);
+                RotatePoint(topRight, cAngle, sAngle);
+            }
 
             // Glyph
 
-            newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
+            //newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
+            newGlyph->topLeft.position.x = topLeft.x + destRect.x;
+            newGlyph->topLeft.position.y = topLeft.y + destRect.y;
+            newGlyph->topLeft.position.z = depth;
             newGlyph->topLeft.color = color.color;
-            newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
+            newGlyph->topLeft.uv.x = uvRect.x;
+            newGlyph->topLeft.uv.y = uvRect.y + uvRect.w;
 
-            newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
+            //newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
+            newGlyph->bottomLeft.position.x = bottomLeft.x + destRect.x;
+            newGlyph->bottomLeft.position.y = bottomLeft.y + destRect.y;
+            newGlyph->bottomLeft.position.z = depth;
             newGlyph->bottomLeft.color = color.color;
-            newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+            //newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+            newGlyph->bottomLeft.uv.x = uvRect.x;
+            newGlyph->bottomLeft.uv.y = uvRect.y;
 
-            newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
+            //newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
+            newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
+            newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
+            newGlyph->bottomRight.position.z = depth;
             newGlyph->bottomRight.color = color.color;
-            newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+            //newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+            newGlyph->bottomRight.uv.x = uvRect.x + uvRect.z;
+            newGlyph->bottomRight.uv.y = uvRect.y;
 
-            newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
+            //newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
+            newGlyph->topRight.position.x = topRight.x + destRect.x;
+            newGlyph->topRight.position.y = topRight.y + destRect.y;
+            newGlyph->topRight.position.z = depth;
             newGlyph->topRight.color = color.color;
-            newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+            //newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+            newGlyph->topRight.uv.x = uvRect.x + uvRect.z;
+            newGlyph->topRight.uv.y = uvRect.y + uvRect.w;
 
             glyphsCurrentIndex++;
         }
@@ -378,6 +387,7 @@ namespace Canis
             glm::vec2 positionAnchor = glm::vec2(0.0f);
             float halfWidth = window->GetScreenWidth()/2;
             float halfHeight = window->GetScreenHeight()/2;
+            glm::vec2 camPos = camera2D.GetPosition();
 
             for (auto [entity, rect_transform, color, sprite] : view.each())
             {
@@ -385,10 +395,10 @@ namespace Canis
                                            (float)window->GetScreenWidth(),
                                            (float)window->GetScreenHeight());
                 
-                if (rect_transform.position.x + positionAnchor.x > camera2D.GetPosition().x - rect_transform.size.x - halfWidth &&
-                    rect_transform.position.x + positionAnchor.x < camera2D.GetPosition().x + rect_transform.size.x + halfWidth &&
-                    rect_transform.position.y + positionAnchor.y > camera2D.GetPosition().y - rect_transform.size.y - halfHeight &&
-                    rect_transform.position.y + positionAnchor.y < camera2D.GetPosition().y + rect_transform.size.y + halfHeight &&
+                if (rect_transform.position.x + positionAnchor.x > camPos.x - rect_transform.size.x - halfWidth &&
+                    rect_transform.position.x + positionAnchor.x < camPos.x + rect_transform.size.x + halfWidth &&
+                    rect_transform.position.y + positionAnchor.y > camPos.y - rect_transform.size.y - halfHeight &&
+                    rect_transform.position.y + positionAnchor.y < camPos.y + rect_transform.size.y + halfHeight &&
                     rect_transform.active)
                 {
                     Draw(

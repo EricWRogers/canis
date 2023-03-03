@@ -10,7 +10,7 @@ namespace Canis
         GLTexture texture;
     };
 
-    static void GetSpriteFromTextureAtlas(Canis::Sprite2DComponent &_sprite,
+    static inline void GetSpriteFromTextureAtlas(Canis::Sprite2DComponent &_sprite,
                                     const unsigned short int _offsetX, const unsigned short int _offsetY,
                                     const unsigned int &_row, const unsigned int &_column,
                                     const unsigned int &_spriteWidth, const unsigned int &_spriteHeight,
