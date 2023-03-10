@@ -41,12 +41,14 @@ namespace Canis
         GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
         std::vector<Glyph *> glyphs;
         std::vector<SpriteVertex> vertices = {};
+        std::vector<unsigned int> indices = {};
         std::vector<RenderBatch> spriteRenderBatch;
         Shader *spriteShader;
         Camera2D camera2D;
 
         unsigned int vbo = 0;
         unsigned int vao = 0;
+        unsigned int ebo = 0;
         unsigned int glyphsCurrentIndex = 0;
         unsigned int glyphsMaxIndex = 0;
 
@@ -84,52 +86,70 @@ namespace Canis
 
         void CreateRenderBatches()
         {
-            //vertices.clear();
+            int gSize = glyphs.size();
+            if (indices.size() < gSize * 6)
+            {
+                indices.resize(gSize * 6);
+                int ci = 0;
+                int cv = 0;
+                int size = gSize * 6;
+                while (ci < size)
+                {
+                    cv += 4;
+                    indices[ci++] = cv - 4;
+                    indices[ci++] = cv - 3;
+                    indices[ci++] = cv - 1;
+                    indices[ci++] = cv - 3;
+                    indices[ci++] = cv - 2;
+                    indices[ci++] = cv - 1;
+                }
+            }
 
-            if (vertices.size() < glyphs.size() * 6)
-                vertices.resize(glyphs.size() * 6);
+            if (vertices.size() < gSize * 4)
+                vertices.resize(gSize * 4);
 
-            if (glyphs.empty())
+            if (gSize == 0)
                 return;
 
             int offset = 0;
             int cv = 0; // current vertex
-            spriteRenderBatch.emplace_back(offset, 6, glyphs[0]->textureId);
+            spriteRenderBatch.emplace_back(offset, 4, glyphs[0]->textureId);
 
-            vertices[cv++] = glyphs[0]->topLeft;
-            vertices[cv++] = glyphs[0]->bottomLeft;
-            vertices[cv++] = glyphs[0]->bottomRight;
-            vertices[cv++] = glyphs[0]->bottomRight;
             vertices[cv++] = glyphs[0]->topRight;
+            vertices[cv++] = glyphs[0]->bottomRight;
+            vertices[cv++] = glyphs[0]->bottomLeft;
             vertices[cv++] = glyphs[0]->topLeft;
 
-            offset += 6;
-
-            for (int cg = 1; cg < glyphs.size(); cg++)
+            offset += 4;
+            for (int cg = 1; cg < gSize; cg++)
             {
                 if (glyphs[cg]->textureId != glyphs[cg - 1]->textureId)
                 {
-                    spriteRenderBatch.emplace_back(offset, 6, glyphs[cg]->textureId);
+                    spriteRenderBatch.emplace_back(offset, 4, glyphs[cg]->textureId);
                 }
                 else
                 {
-                    spriteRenderBatch.back().numVertices += 6;
+                    spriteRenderBatch.back().numVertices += 4;
                 }
 
-                vertices[cv++] = glyphs[cg]->topLeft;
-                vertices[cv++] = glyphs[cg]->bottomLeft;
-                vertices[cv++] = glyphs[cg]->bottomRight;
-                vertices[cv++] = glyphs[cg]->bottomRight;
                 vertices[cv++] = glyphs[cg]->topRight;
+                vertices[cv++] = glyphs[cg]->bottomRight;
+                vertices[cv++] = glyphs[cg]->bottomLeft;
                 vertices[cv++] = glyphs[cg]->topLeft;
-                offset += 6;
+
+                offset += 4;
             }
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, glyphs.size() * 6 * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
-            glBufferSubData(GL_ARRAY_BUFFER, 0, glyphs.size() * 6 * sizeof(SpriteVertex), vertices.data());
+            glBufferData(GL_ARRAY_BUFFER, gSize * 4 * sizeof(SpriteVertex), nullptr, GL_DYNAMIC_DRAW);
+            glBufferSubData(GL_ARRAY_BUFFER, 0, gSize * 4 * sizeof(SpriteVertex), vertices.data());
+
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, gSize * 6 * sizeof(unsigned int), nullptr, GL_DYNAMIC_DRAW);
+            glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, gSize * 6 * sizeof(unsigned int), indices.data());
 
             glBindBuffer(GL_ARRAY_BUFFER, 0);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, 0);
         }
 
         void Begin(GlyphSortType sortType)
@@ -202,7 +222,7 @@ namespace Canis
             glyphsCurrentIndex++;
         }
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float& depth, const ColorComponent &color, const float& angle, const glm::vec2& origin)
+        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin)
         {
             Glyph *newGlyph;
 
@@ -239,7 +259,7 @@ namespace Canis
 
             // Glyph
 
-            //newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
+            // newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
             newGlyph->topLeft.position.x = topLeft.x + destRect.x;
             newGlyph->topLeft.position.y = topLeft.y + destRect.y;
             newGlyph->topLeft.position.z = depth;
@@ -247,30 +267,30 @@ namespace Canis
             newGlyph->topLeft.uv.x = uvRect.x;
             newGlyph->topLeft.uv.y = uvRect.y + uvRect.w;
 
-            //newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
+            // newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
             newGlyph->bottomLeft.position.x = bottomLeft.x + destRect.x;
             newGlyph->bottomLeft.position.y = bottomLeft.y + destRect.y;
             newGlyph->bottomLeft.position.z = depth;
             newGlyph->bottomLeft.color = color.color;
-            //newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+            // newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
             newGlyph->bottomLeft.uv.x = uvRect.x;
             newGlyph->bottomLeft.uv.y = uvRect.y;
 
-            //newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
+            // newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
             newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
             newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
             newGlyph->bottomRight.position.z = depth;
             newGlyph->bottomRight.color = color.color;
-            //newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+            // newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
             newGlyph->bottomRight.uv.x = uvRect.x + uvRect.z;
             newGlyph->bottomRight.uv.y = uvRect.y;
 
-            //newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
+            // newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
             newGlyph->topRight.position.x = topRight.x + destRect.x;
             newGlyph->topRight.position.y = topRight.y + destRect.y;
             newGlyph->topRight.position.z = depth;
             newGlyph->topRight.color = color.color;
-            //newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+            // newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
             newGlyph->topRight.uv.x = uvRect.x + uvRect.z;
             newGlyph->topRight.uv.y = uvRect.y + uvRect.w;
 
@@ -304,7 +324,7 @@ namespace Canis
             {
                 glBindTexture(GL_TEXTURE_2D, spriteRenderBatch[i].texture);
 
-                glDrawArrays(GL_TRIANGLES, spriteRenderBatch[i].offset, spriteRenderBatch[i].numVertices);
+                glDrawElements(GL_TRIANGLES, (spriteRenderBatch[i].numVertices / 4) * 6, GL_UNSIGNED_INT, (void *)((spriteRenderBatch[i].offset / 4) * 6 * sizeof(unsigned int))); // spriteRenderBatch[i].offset, spriteRenderBatch[i].numVertices);
             }
 
             glBindVertexArray(0);
@@ -322,6 +342,11 @@ namespace Canis
                 glGenBuffers(1, &vbo);
 
             glBindBuffer(GL_ARRAY_BUFFER, vbo);
+
+            if (ebo == 0)
+                glGenBuffers(1, &ebo);
+
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
 
             glEnableVertexAttribArray(0);
             glEnableVertexAttribArray(1);
@@ -344,9 +369,9 @@ namespace Canis
         void Create()
         {
             int id = assetManager->LoadShader("assets/shaders/sprite");
-            Canis::Shader* shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
-            
-            if(!shader->IsLinked())
+            Canis::Shader *shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+
+            if (!shader->IsLinked())
             {
                 shader->AddAttribute("vertexPosition");
                 shader->AddAttribute("vertexColor");
@@ -385,20 +410,19 @@ namespace Canis
             // Draw
             auto view = _registry.view<const RectTransformComponent, const Sprite2DComponent>();
             glm::vec2 positionAnchor = glm::vec2(0.0f);
-            float halfWidth = window->GetScreenWidth()/2;
-            float halfHeight = window->GetScreenHeight()/2;
+            float halfWidth = window->GetScreenWidth() / 2;
+            float halfHeight = window->GetScreenHeight() / 2;
             glm::vec2 camPos = camera2D.GetPosition();
             glm::vec2 anchorTable[] = {
-                GetAnchor(Canis::RectAnchor::TOPLEFT,       (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::TOPCENTER,     (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::TOPRIGHT,      (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::CENTERLEFT,    (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::CENTER,        (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::CENTERRIGHT,   (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::BOTTOMLEFT,    (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::BOTTOMCENTER,  (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-                GetAnchor(Canis::RectAnchor::BOTTOMRIGHT,   (float)window->GetScreenWidth(), (float)window->GetScreenHeight())
-            };
+                GetAnchor(Canis::RectAnchor::TOPLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::TOPCENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::TOPRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTERLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::CENTERRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMCENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
+                GetAnchor(Canis::RectAnchor::BOTTOMRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight())};
             ColorComponent color;
             glm::vec2 p;
             glm::vec2 s;
