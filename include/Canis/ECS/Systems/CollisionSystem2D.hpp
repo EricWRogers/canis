@@ -322,10 +322,14 @@ namespace Canis
             {
                 // really should have delete funcution that lives in scene that everyone call to delete entts the it calls a list of delegate
                 std::vector<entt::entity> &e = hits[_entity];
-                for (int i = 0; i < e.size(); i++)
+                int i = 0;
+                while (i < e.size())
                 {
                     if (e[i] == entt::tombstone || !GetScene().entityRegistry.valid(e[i])) {
                         e.erase(e.begin() + i);
+                    }
+                    else {
+                        i++;
                     }
                 }
                 return hits[_entity];
@@ -372,6 +376,17 @@ namespace Canis
                 BoxCast(_position, _size, _origin, _radians, Layer15, entities);
             if (_layers & BIT::SIXTEEN)
                 BoxCast(_position, _size, _origin, _radians, Layer16, entities);
+            
+            int i = 0;
+            while (i < entities.size())
+            {
+                if (entities[i] == entt::tombstone || !GetScene().entityRegistry.valid(entities[i])) {
+                    entities.erase(entities.begin() + i);
+                }
+                else {
+                    i++;
+                }
+            }
 
             return entities;
         }
