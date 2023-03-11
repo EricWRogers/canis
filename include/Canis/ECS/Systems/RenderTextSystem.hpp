@@ -35,7 +35,7 @@ namespace Canis
         {
         }
 
-        void RenderText(Canis::Shader &shader, std::string t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align)
+        void RenderText(Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align)
         {
             // activate corresponding render state
             shader.Use();
