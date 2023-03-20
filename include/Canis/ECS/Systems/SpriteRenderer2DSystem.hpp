@@ -454,4 +454,14 @@ namespace Canis
             SpriteRenderBatch(true);
         }
     };
+
+    bool DecodeSpriteRenderer2DSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::SpriteRenderer2DSystem")
+        {
+            _scene->CreateRenderSystem<SpriteRenderer2DSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace

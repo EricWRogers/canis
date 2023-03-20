@@ -68,8 +68,9 @@ namespace Canis
                 // serialize render systems
                 if(YAML::Node renderSystems = root["RenderSystems"]) {
                     for(int r = 0;  r < renderSystems.size(); r++) {
+                        std::string name = renderSystems[r].as<std::string>();
                         for(int d = 0;  d < decodeRenderSystem.size(); d++) {
-                            if (decodeRenderSystem[d](renderSystems, r, scenes[i]))
+                            if (decodeRenderSystem[d](name, scenes[i]))
                                 continue;
                         }
                     }
@@ -320,8 +321,9 @@ namespace Canis
 
                 if (auto scriptComponent = e["Canis::ScriptComponent"])
                 {
+                    std::string secomponent = scriptComponent.as<std::string>();
                     for (int d = 0; d < decodeScriptableEntity.size(); d++)
-                        if (decodeScriptableEntity[d](scriptComponent.as<std::string>(), entity))
+                        if (decodeScriptableEntity[d](secomponent, entity))
                             continue;
                 }
             }

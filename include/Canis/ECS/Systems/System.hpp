@@ -8,38 +8,37 @@
 
 namespace Canis
 {
-class Scene;
-class Entity;
+    class Scene;
+    class Entity;
 
-class System
-{
-private:
-    
-public:
-    bool m_isCreated = false;
-    
-    System() {};
+    class System
+    {
+    private:
+    public:
+        bool m_isCreated = false;
 
-    virtual void Create() {}
-    virtual void Ready() {}
-    virtual void Update(entt::registry &_registry, float _deltaTime) {}
-    virtual void Draw(entt::registry &_registry, float _deltaTime) {}
+        System(){};
 
-    bool IsCreated() { return m_isCreated; }
+        virtual void Create() {}
+        virtual void Ready() {}
+        virtual void Update(entt::registry &_registry, float _deltaTime) {}
+        virtual void Draw(entt::registry &_registry, float _deltaTime) {}
 
-    Scene& GetScene() { return *scene; }
-    AssetManager& GetAssetManager() { return *assetManager; }
-    Window& GetWindow() { return *window; }
-    InputManager& GetInputManager() { return *inputManager; }
+        bool IsCreated() { return m_isCreated; }
 
-    Scene *scene = nullptr;
-    Window *window = nullptr;
-    InputManager *inputManager = nullptr;
-    Time *time = nullptr;
-    AssetManager *assetManager = nullptr;
-    Camera *camera = nullptr;
+        Scene &GetScene() { return *scene; }
+        AssetManager &GetAssetManager() { return *assetManager; }
+        Window &GetWindow() { return *window; }
+        InputManager &GetInputManager() { return *inputManager; }
 
-    //virtual void Init() {}
-    //virtual void UpdateComponent() {}
-};
+        Scene *scene = nullptr;
+        Window *window = nullptr;
+        InputManager *inputManager = nullptr;
+        Time *time = nullptr;
+        AssetManager *assetManager = nullptr;
+        Camera *camera = nullptr;
+
+        // virtual void Init() {}
+        // virtual void UpdateComponent() {}
+    };
 } // end of Canis namespace

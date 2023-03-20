@@ -51,7 +51,7 @@ public:
     void SetDeltaTime(double _deltaTime);
 
     std::vector<std::function<bool(YAML::Node &_n, int _index, Canis::Scene *scene)>> decodeSystem = {};
-    std::vector<std::function<bool(YAML::Node &_n, int _index, Canis::Scene *scene)>> decodeRenderSystem = {};
+    std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeRenderSystem = {};
     std::vector<std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)>> decodeEntity = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Entity &_entity)>> decodeScriptableEntity = {};
 

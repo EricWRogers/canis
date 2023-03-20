@@ -163,6 +163,16 @@ namespace Canis
 
     private:
     };
+
+    bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::RenderTextSystem")
+        {
+            _scene->CreateRenderSystem<RenderTextSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace
 
 
