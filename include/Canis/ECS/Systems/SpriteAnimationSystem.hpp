@@ -29,12 +29,12 @@ namespace Canis
             {
                 if (entity == entt::tombstone && !_registry.valid(entity))
                     continue;
-                
-                animation.countDown -= _deltaTime*animation.speed;
+
+                animation.countDown -= _deltaTime * animation.speed;
 
                 if (animation.countDown < 0.0f)
                 {
-                    Sprite2DComponent& sprite = _registry.get<Sprite2DComponent>(entity);
+                    Sprite2DComponent &sprite = _registry.get<Sprite2DComponent>(entity);
                     animation.index++;
                     animation.redraw = false;
 
@@ -46,7 +46,7 @@ namespace Canis
 
                     if (animation.index >= spriteAnimationAsset->frames.size())
                         animation.index = 0;
-                    
+
                     animation.countDown = spriteAnimationAsset->frames[animation.index].timeOnFrame;
                     sprite.texture = assetManager->Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
 
@@ -59,13 +59,12 @@ namespace Canis
                         spriteAnimationAsset->frames[animation.index].width,
                         spriteAnimationAsset->frames[animation.index].height,
                         animation.flipX,
-                        animation.flipY
-                    );
+                        animation.flipY);
                 }
 
                 if (animation.redraw)
                 {
-                    Sprite2DComponent& sprite = _registry.get<Sprite2DComponent>(entity);
+                    Sprite2DComponent &sprite = _registry.get<Sprite2DComponent>(entity);
                     animation.redraw = false;
 
                     if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
@@ -73,7 +72,7 @@ namespace Canis
                         spriteAnimationId = animation.animationId;
                         spriteAnimationAsset = assetManager->Get<SpriteAnimationAsset>(spriteAnimationId);
                     }
-                    
+
                     sprite.texture = assetManager->Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
 
                     GetSpriteFromTextureAtlas(
@@ -85,10 +84,19 @@ namespace Canis
                         spriteAnimationAsset->frames[animation.index].width,
                         spriteAnimationAsset->frames[animation.index].height,
                         animation.flipX,
-                        animation.flipY
-                    );
+                        animation.flipY);
                 }
             }
         }
     };
+
+    bool DecodeSpriteAnimationSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::SpriteAnimationSystem")
+        {
+            _scene->CreateSystem<SpriteAnimationSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace

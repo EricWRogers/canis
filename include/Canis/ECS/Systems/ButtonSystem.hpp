@@ -52,4 +52,14 @@ namespace Canis
             }
         }
     };
+
+    bool DecodeButtonSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::ButtonSystem")
+        {
+            _scene->CreateSystem<ButtonSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace

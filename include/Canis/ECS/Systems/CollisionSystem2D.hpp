@@ -391,4 +391,14 @@ namespace Canis
             return entities;
         }
     };
+
+    bool DecodeCollisionSystem2D(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::CollisionSystem2D")
+        {
+            _scene->CreateSystem<CollisionSystem2D>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace

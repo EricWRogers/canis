@@ -38,4 +38,14 @@ namespace Canis
             }
         }
     };
-} // end of Canis namespace 
+
+    bool DecodeUISliderSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::UISliderSystem")
+        {
+            _scene->CreateSystem<UISliderSystem>();
+            return true;
+        }
+        return false;
+    }
+} // end of Canis namespace

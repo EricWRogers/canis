@@ -58,8 +58,9 @@ namespace Canis
                 // serialize systems
                 if(YAML::Node systems = root["Systems"]) {
                     for(int s = 0;  s < systems.size(); s++) {
+                        std::string name = systems[s].as<std::string>();
                         for(int d = 0;  d < decodeSystem.size(); d++) {
-                            if (decodeSystem[d](systems, s, scenes[i]))
+                            if (decodeSystem[d](name, scenes[i]))
                                 continue;
                         }
                     }
