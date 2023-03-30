@@ -3,6 +3,7 @@
 #include <vector>
 
 #include <Canis/External/entt.hpp>
+#include <Canis/Debug.hpp>
 
 namespace Canis
 {

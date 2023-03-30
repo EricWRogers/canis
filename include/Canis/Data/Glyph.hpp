@@ -3,6 +3,14 @@
 
 namespace Canis
 {
+    enum class GlyphSortType
+    {
+        NONE,
+        FRONT_TO_BACK,
+        BACK_TO_FRONT,
+        TEXTURE
+    };
+    
     struct Glyph
     {
         unsigned int textureId;

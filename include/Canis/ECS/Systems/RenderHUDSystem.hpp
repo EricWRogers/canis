@@ -1,12 +1,10 @@
 #pragma once
 #include <Canis/Data/Glyph.hpp>
-
 #include <Canis/ECS/Systems/System.hpp>
+#include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
 namespace Canis
 {
-    class SpriteRenderer2DSystem;
-    enum class GlyphSortType;
     class RenderHUDSystem : public System
     {
     private:

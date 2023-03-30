@@ -1,10 +1,5 @@
 #include <Canis/ECS/Systems/UISliderSystem.hpp>
 
-#include <glm/glm.hpp>
-#include <vector>
-
-#include <Canis/External/entt.hpp>
-
 #include <Canis/Scene.hpp>
 
 #include <Canis/ECS/Components/RectTransformComponent.hpp>

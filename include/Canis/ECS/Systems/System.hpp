@@ -1,15 +1,16 @@
 #pragma once
-#include <Canis/Time.hpp>
-#include <Canis/Camera.hpp>
-#include <Canis/Window.hpp>
-#include <Canis/InputManager.hpp>
-#include <Canis/AssetManager.hpp>
+
 #include <Canis/External/entt.hpp>
 
 namespace Canis
 {
     class Scene;
     class Entity;
+    class Time;
+    class Camera;
+    class Window;
+    class InputManager;
+    class AssetManager;
 
     class System
     {

@@ -1,11 +1,7 @@
 #pragma once
 #include <map>
 #include <vector>
-#include <glm/glm.hpp>
-
 #include <Canis/Data/Bit.hpp>
-
-#include <Canis/External/entt.hpp>
 
 #include <Canis/ECS/Systems/System.hpp>
 
