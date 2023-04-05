@@ -32,6 +32,8 @@ namespace Canis
         m_fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
         if (m_fragmentShaderId == 0)
             FatalError("Fragment shader failed to be created!");
+        
+        m_programId = glCreateProgram();
 
         CompileShaderFile(_vertexShaderFilePath, m_vertexShaderId);
         CompileShaderFile(_fragmentShaderFilePath, m_fragmentShaderId);
@@ -41,8 +43,6 @@ namespace Canis
     {
         if (m_isLinked)
             return;
-        
-        m_programId = glCreateProgram();
         
         glAttachShader(m_programId, m_vertexShaderId);
         glAttachShader(m_programId, m_fragmentShaderId);
