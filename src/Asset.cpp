@@ -2,7 +2,6 @@
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
 #include <memory>
-#include <glm/glm.hpp>
 #include <SDL_mixer.h>
 #include <GL/glew.h>
 

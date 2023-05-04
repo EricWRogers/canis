@@ -6,7 +6,6 @@
 
 #include <map>
 
-
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>

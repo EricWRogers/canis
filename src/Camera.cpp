@@ -1,5 +1,6 @@
 #include <Canis/Camera.hpp>
 #include <GL/glew.h>
+#include <glm/gtc/matrix_transform.hpp>
 
 namespace Canis
 {

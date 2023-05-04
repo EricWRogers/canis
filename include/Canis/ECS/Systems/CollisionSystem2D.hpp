@@ -5,8 +5,6 @@
 
 #include <Canis/Data/Bit.hpp>
 
-#include <Canis/External/entt.hpp>
-
 #include <Canis/ECS/Systems/System.hpp>
 
 namespace Canis
