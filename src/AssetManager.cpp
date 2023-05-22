@@ -143,10 +143,10 @@ namespace Canis
         return id;
     }
     
-    int AssetManager::LoadText(const std::string &_path, unsigned int fontSize)
+    int AssetManager::LoadText(const std::string &_path, unsigned int _fontSize)
     {
         std::map<std::string, int>::iterator it;
-        it = m_assetPath.find(_path + std::to_string(fontSize));
+        it = m_assetPath.find(_path + std::to_string(_fontSize));
 
         // check if text already exist
         if (it != m_assetPath.end()) // found
@@ -155,7 +155,7 @@ namespace Canis
         }
 
         // create text
-        Asset* text = new TextAsset(fontSize);
+        Asset* text = new TextAsset(_fontSize);
         text->Load(_path);
         int id = m_nextId;
 
@@ -163,7 +163,7 @@ namespace Canis
         m_assets[id] = text;
 
         // cache id
-        m_assetPath[_path + std::to_string(fontSize)] = id;
+        m_assetPath[_path + std::to_string(_fontSize)] = id;
 
         // increment id
         m_nextId++;
@@ -250,5 +250,34 @@ namespace Canis
         return id;
     }
     
+    int AssetManager::LoadTiledMap(const std::string &_path)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(_path);
 
+        // check if map already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create map
+        Asset* tiledMap = new TiledMapAsset();
+        tiledMap->Load(_path);
+
+        // load image tileset
+        
+        int id = m_nextId;
+
+        // cache map
+        m_assets[id] = tiledMap;
+
+        // cache id
+        m_assetPath[_path] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
 } // end of Canis namespace

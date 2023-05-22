@@ -41,7 +41,7 @@ namespace Canis
         return Ray { lRayStart_world, lRayDir_world };
     }
 
-    bool HitSphere(glm::vec3 center, float radius, Ray ray)
+    bool HitSphere(const glm::vec3 &center, const float &radius, const Ray &ray)
     {
         glm::vec3 oc = ray.origin - center;
         float a = glm::dot(ray.direction, ray.direction);

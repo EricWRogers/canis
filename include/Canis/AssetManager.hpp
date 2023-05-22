@@ -16,9 +16,10 @@ namespace Canis
         int LoadModel(const std::string &_path);
         int LoadSound(const std::string &_path);
         int LoadMusic(const std::string &_path);
-        int LoadText(const std::string &_path, unsigned int fontSize);
+        int LoadText(const std::string &_path, unsigned int _fontSize);
         int LoadShader(const std::string &_pathWithOutExtension);
-        int LoadSpriteAnimation(const std::string &path);
+        int LoadSpriteAnimation(const std::string &_path);
+        int LoadTiledMap(const std::string &_path);
         int GetIdByPath(const std::string &_path);
 
         template <typename T>

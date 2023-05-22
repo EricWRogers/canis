@@ -5,13 +5,13 @@
 #include FT_FREETYPE_H
 
 #include <map>
+#include <functional>
 
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
-
 
 namespace Canis
 {
@@ -21,8 +21,8 @@ namespace Canis
         Asset();
         ~Asset();
 
-        Asset(const Asset&) = delete;
-        Asset& operator= (const Asset&) = delete;
+        Asset(const Asset &) = delete;
+        Asset &operator=(const Asset &) = delete;
 
         virtual bool Load(std::string _path) = 0;
         virtual bool Free() = 0;
@@ -32,11 +32,12 @@ namespace Canis
     {
     private:
         GLTexture m_texture;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         GLTexture GetTexture() { return m_texture; }
-        GLTexture* GetPointerToTexture() { return &m_texture; }
+        GLTexture *GetPointerToTexture() { return &m_texture; }
     };
 
     class SkyboxAsset : public Asset
@@ -45,12 +46,13 @@ namespace Canis
         Canis::Shader *skyboxShader;
         unsigned int skyboxVAO, skyboxVBO;
         unsigned int cubemapTexture;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         unsigned int GetVAO() { return skyboxVAO; }
         unsigned int GetTexture() { return cubemapTexture; }
-        Canis::Shader* GetShader() { return skyboxShader; }
+        Canis::Shader *GetShader() { return skyboxShader; }
     };
 
     class ModelAsset : public Asset
@@ -60,6 +62,7 @@ namespace Canis
         unsigned int m_vao;
         unsigned int m_vbo;
         int m_size;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
@@ -82,6 +85,7 @@ namespace Canis
     {
     private:
         unsigned int m_vao, m_vbo, m_font_size;
+
     public:
         TextAsset(unsigned int _font_size) { m_font_size = _font_size; }
         std::map<GLchar, Character> Characters;
@@ -96,10 +100,11 @@ namespace Canis
     {
     private:
         void *chunk;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        
+
         void Play();
     };
 
@@ -107,10 +112,11 @@ namespace Canis
     {
     private:
         void *music = nullptr;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        
+
         void Play(int loops);
         void Stop();
     };
@@ -119,13 +125,14 @@ namespace Canis
     {
     private:
         Canis::Shader *m_shader;
+
     public:
         ShaderAsset() { m_shader = new Canis::Shader(); }
 
         bool Load(std::string _path) override;
         bool Free() override;
 
-        Canis::Shader* GetShader() { return m_shader; }
+        Canis::Shader *GetShader() { return m_shader; }
     };
 
     struct SpriteFrame
@@ -150,5 +157,22 @@ namespace Canis
         bool Free() override;
 
         std::vector<SpriteFrame> frames = {};
+    };
+
+    class TiledMapAsset : public Asset
+    {
+    public:
+        TiledMapAsset() {}
+
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        unsigned int GetTileWidth();
+        unsigned int GetTileHeight();
+        
+        std::vector<std::vector<unsigned int>> GetTiles(std::string _layer);
+
+    private:
+        void* loader = nullptr;
     };
 } // end of Canis namespace
