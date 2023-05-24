@@ -18,8 +18,7 @@
 //
 
 #include <iostream>
-#include "TMXTileLayer.h"
-
+#include <Canis/External/TMXLoader/TMXTileLayer.h>
 TMXTileLayer::TMXTileLayer(
     std::string const &name,
     unsigned width, unsigned height,

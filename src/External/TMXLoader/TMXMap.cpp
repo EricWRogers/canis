@@ -17,7 +17,7 @@
 //  http://github.com/martingrant/tmxloader
 
 #include <iostream>
-#include "TMXMap.h"
+#include <Canis/External/TMXLoader/TMXMap.h>
 
 TMXMap::TMXMap() : m_version(0.0f), m_width(0), m_height(0), m_tileWidth(0), m_tileHeight(0), m_backgroundColour({}) {}
 
@@ -71,6 +71,16 @@ TMXTileSet *TMXMap::getTileset(std::string const &tileSetName) noexcept
             return &m_tileVector[idx];
     std::cout << "TMXLoader: tileset layer '" << tileSetName << "' could not be found." << std::endl;
     return nullptr;
+}
+
+std::vector<std::string> TMXMap::getTilesetNames() noexcept
+{
+    std::vector<std::string> names = {};
+
+    for(unsigned int i = 0; i < m_tileVector.size(); ++i)
+        names.push_back(m_tileVector[i].getName());
+    
+    return names;
 }
 
 void TMXMap::addLayer(TMXTileLayer const &newLayer) noexcept { m_layerVector.push_back(newLayer); }

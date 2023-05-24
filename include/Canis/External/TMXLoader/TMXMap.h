@@ -47,6 +47,7 @@ public:
     /* TileSets */
     void addTileSet(TMXTileSet const &newTileSet) noexcept;
     TMXTileSet *getTileset(std::string const &tileSetName) noexcept;
+    std::vector<std::string> getTilesetNames() noexcept;
 
     /* Layers */
     void addLayer(TMXTileLayer const &newLayer) noexcept;

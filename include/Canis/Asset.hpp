@@ -172,6 +172,8 @@ namespace Canis
         
         std::vector<std::vector<unsigned int>> GetTiles(std::string _layer);
 
+        void* GetLoader() { return loader; }
+
     private:
         void* loader = nullptr;
     };

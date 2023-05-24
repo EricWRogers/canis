@@ -17,7 +17,7 @@
 //  http://github.com/martingrant/tmxloader
 
 #include <iostream>
-#include "TMXTileSet.h"
+#include <Canis/External/TMXLoader/TMXTileSet.h>
 
 TMXTileSet::TMXTileSet(
 	std::unordered_map<std::string, std::string> const&tileSetData,

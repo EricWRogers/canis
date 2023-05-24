@@ -1,5 +1,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
+#include <Canis/External/TMXLoader/TMXLoader.h>
+#include <Canis/Debug.hpp>
 
 namespace Canis
 {
@@ -266,6 +268,13 @@ namespace Canis
         tiledMap->Load(_path);
 
         // load image tileset
+        std::vector<std::string> spriteSheetPath = ((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTilesetNames();
+
+        for(std::string s : spriteSheetPath)
+        {
+            LoadTexture("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource());
+            Log("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource());
+        }
         
         int id = m_nextId;
 

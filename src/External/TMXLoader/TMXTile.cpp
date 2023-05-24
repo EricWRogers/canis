@@ -18,7 +18,7 @@
 //
 
 #include <iostream>
-#include "TMXTile.h"
+#include <Canis/External/TMXLoader/TMXTile.h>
 
 TMXTile::TMXTile(unsigned TileID, std::unordered_map<std::string, std::string> const &propertiesMap)
     : m_TileID{ TileID }, m_propertiesMap{propertiesMap} {}

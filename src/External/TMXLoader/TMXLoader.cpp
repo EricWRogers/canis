@@ -17,7 +17,7 @@
 //  http://bitbucket.org/martingrant/tmxloader
 //
 
-#include "TMXLoader.h"
+#include <Canis/External/TMXLoader/TMXLoader.h>
 
 
 TMXLoader::TMXLoader()
