@@ -284,7 +284,7 @@ namespace Canis
     bool TiledMapAsset::Free()
     {
         if (loader != nullptr)
-            delete loader;
+            delete ((TMXLoader*)loader);
         
         return true;
     }

@@ -272,8 +272,10 @@ namespace Canis
 
         for(std::string s : spriteSheetPath)
         {
-            LoadTexture("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource());
-            Log("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource());
+            // erase the first 3 elements of the string in a hack
+            // Canis TODO make a more robust solution for path problem
+            LoadTexture("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource().erase(0,3));
+            Log("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource().erase(0,3));
         }
         
         int id = m_nextId;
