@@ -55,7 +55,7 @@ void TMXLoader::loadMap(std::string mapName, std::string filePath)
         loadTileSets(m_mapContainer[mapName], parentNode);
         loadLayers(m_mapContainer[mapName], parentNode);
         
-        std::cout << "TMXLoader: loaded map '" << mapName << "' from: '" << filePath << "' successfully" << std::endl;
+        //std::cout << "TMXLoader: loaded map '" << mapName << "' from: '" << filePath << "' successfully" << std::endl;
     }
     else
     {
