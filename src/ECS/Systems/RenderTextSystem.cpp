@@ -110,6 +110,10 @@ namespace Canis
 
     void RenderTextSystem::Update(entt::registry &_registry, float _deltaTime)
     {
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_ALPHA);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_ALWAYS);
         // render text
         textShader.Use();
@@ -132,6 +136,10 @@ namespace Canis
         }
 
         textShader.UnUse();
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_ALPHA);
+        glDisable(GL_BLEND);
     }
 
     bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene)

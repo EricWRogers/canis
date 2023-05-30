@@ -324,7 +324,12 @@ namespace Canis
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
 		{
+			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_ALPHA);
+			glEnable(GL_BLEND);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
+			glEnable(GL_CULL_FACE);
 			
 			entities.clear();
 			sortingEntities.clear();
@@ -358,6 +363,11 @@ namespace Canis
 
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);
+
+			glDisable(GL_CULL_FACE);
+			glDisable(GL_DEPTH_TEST);
+			glDisable(GL_ALPHA);
+			glDisable(GL_BLEND);
 		}
 
 	private:

@@ -38,6 +38,12 @@ namespace Canis
 
     void RenderHUDSystem::Update(entt::registry &_registry, float _deltaTime)
     {
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_ALPHA);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_ALWAYS);
+
         m_spriteRenderer.Begin(m_glyphSortType);
 
         // Draw
@@ -65,6 +71,10 @@ namespace Canis
 
         m_spriteRenderer.End();
         m_spriteRenderer.SpriteRenderBatch(false);
+
+        glDisable(GL_DEPTH_TEST);
+        glDisable(GL_ALPHA);
+        glDisable(GL_BLEND);
     }
 
     bool DecodeRenderHUDSystem(const std::string &_name, Canis::Scene *_scene)
