@@ -65,5 +65,8 @@ public:
     float drawTime = 0.0f;
 
     unsigned int seed = 0;
+
+    std::unordered_map<std::string, std::string> lastSceneMessage = {};
+    std::unordered_map<std::string, std::string> currentSceneMessage = {};
 };
 } // end of Canis namespace

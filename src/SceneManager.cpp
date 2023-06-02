@@ -110,12 +110,10 @@ namespace Canis
                 });
             }
 
-
-            /*scene->entityRegistry.each([&](auto entityID) {
-                Canis::Log("HI");
-                scene->entityRegistry.destroy(entityID);
-            });*/
-
+            // swap maps
+            lastSceneMessage.swap(currentSceneMessage);
+            currentSceneMessage.clear();
+            
             scene->entityRegistry = entt::registry();
         }
 
