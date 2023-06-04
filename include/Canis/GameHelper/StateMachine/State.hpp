@@ -3,28 +3,34 @@
 #include <string>
 #include <functional>
 
-class State
+namespace Canis
 {
-protected:
-    bool m_hasBeenEntered = false;
-public:
-    std::string name = "";
-    std::function<void(std::string _name)> ChangeState = nullptr;
+    class State
+    {
+    protected:
+        bool m_hasBeenEntered = false;
 
-    State(std::function<void(std::string _name)> _changeState, std::string _name) {
-        ChangeState = _changeState;
-        name = _name;
-    }
+    public:
+        std::string name = "";
+        std::function<void(std::string _name)> ChangeState = nullptr;
 
-    virtual void Enter(Canis::ScriptableEntity &_scriptableEntity) {
-        m_hasBeenEntered = true;
-    }
-    
-    virtual void Update(Canis::ScriptableEntity &_scriptableEntity, float _deltaTime) {
+        State(std::function<void(std::string _name)> _changeState, std::string _name)
+        {
+            ChangeState = _changeState;
+            name = _name;
+        }
 
-    }
-    
-    virtual void Exit(Canis::ScriptableEntity &_scriptableEntity) {
+        virtual void Enter(Canis::ScriptableEntity &_scriptableEntity)
+        {
+            m_hasBeenEntered = true;
+        }
 
-    }
-};
+        virtual void Update(Canis::ScriptableEntity &_scriptableEntity, float _deltaTime)
+        {
+        }
+
+        virtual void Exit(Canis::ScriptableEntity &_scriptableEntity)
+        {
+        }
+    };
+} // End of Canis namespace
