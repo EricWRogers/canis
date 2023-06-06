@@ -1,6 +1,4 @@
 #pragma once
-#include <Canis/ScriptableEntity.hpp>
-
 #include "State.hpp"
 
 namespace Canis
@@ -25,7 +23,7 @@ namespace Canis
         void OnUpdate(float _dt)
         {
             if (m_state != nullptr)
-                m_state->Update(*this, _dt);
+                m_state->Update(_dt);
         }
 
         void SetState(State *_state)
@@ -34,10 +32,10 @@ namespace Canis
                 return;
 
             if (m_state != nullptr)
-                m_state->Exit(*this);
+                m_state->Exit(_state->name);
 
             m_state = _state;
-            m_state->Enter(*this);
+            m_state->Enter();
         }
 
         void ChangeState(std::string _name)
