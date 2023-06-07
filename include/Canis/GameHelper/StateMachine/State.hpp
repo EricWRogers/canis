@@ -15,10 +15,10 @@ namespace Canis
     public:
         std::string name = "";
         std::function<void(std::string _name)> ChangeState = nullptr;
-        Canis::ScriptableEntity scriptableEntity;
+        Canis::ScriptableEntity *scriptableEntity;
 
 
-        State(Canis::ScriptableEntity _scriptableEntity, std::function<void(std::string _name)> _changeState, std::string _name)
+        State(Canis::ScriptableEntity *_scriptableEntity, std::function<void(std::string _name)> _changeState, std::string _name)
         {
             scriptableEntity = _scriptableEntity;
             ChangeState = _changeState;
