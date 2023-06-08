@@ -25,7 +25,7 @@ namespace Canis
             name = _name;
         }
 
-        virtual void Enter()
+        virtual void Enter(std::unordered_map<std::string, std::string> &_message)
         {
             m_hasBeenEntered = true;
         }
