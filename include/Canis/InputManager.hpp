@@ -67,9 +67,15 @@ namespace Canis
         float GetLeftTrigger(unsigned int _gameControllerId);
         float GetRightTrigger(unsigned int _gameControllerId);
 
+        bool GetLeftClick() { return  m_leftClick; }
+        bool LeftClickReleased() { return  m_leftClick == false && m_wasLeftClick == true; }
+        bool JustLeftClicked() { return  m_leftClick == true && m_wasLeftClick == false; }
+
+        bool GetRightClick() { return  m_rightClick; }
+        bool RightClickReleased() { return  m_rightClick == false && m_wasRightClick == true; }
+        bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false; }
+
         glm::vec2 mouse = glm::vec2(0,0);
-        bool leftClick = false;
-        bool rightClick = false;
     private:
         bool IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _key);
         bool IsKeyDownInVec(std::vector<InputData> *_arr, unsigned int _value);
@@ -84,5 +90,10 @@ namespace Canis
         std::vector<GameController> m_gameControllers = {};
 
         bool m_keyVecIsOne = true;
+
+        bool m_leftClick = false;
+        bool m_rightClick = false;
+        bool m_wasLeftClick = false;
+        bool m_wasRightClick = false;
     };
 } // end of Canis namespace

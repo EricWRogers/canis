@@ -27,8 +27,22 @@ namespace Canis
                     inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y + positionAnchor.y)
                 {
                     color.color = button.hoverColor;
-                    if (inputManager->leftClick)
-                        button.func(button.instance);
+                    if (button.action == 0u)
+                    {
+                        if (inputManager->JustLeftClicked())
+                        {
+                            button.func(button.instance);
+                            return;
+                        }
+                    }
+                    else if (button.action == 1u)
+                    {
+                        if (inputManager->LeftClickReleased())
+                        {
+                            button.func(button.instance);
+                            return;
+                        }
+                    }                    
                 }
                 else
                 {
