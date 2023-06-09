@@ -162,7 +162,7 @@ namespace Canis
                             transform.scale,
                             color.color,
                             text.assetId,
-                            text.align,
+                            text.alignment,
                             text._textOffset);
             }
         }

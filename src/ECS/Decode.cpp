@@ -82,7 +82,7 @@ namespace Canis
             }
             tc.text = new std::string;
             (*tc.text) = textComponent["text"].as<std::string>();
-            tc.align = textComponent["align"].as<unsigned int>();
+            tc.alignment = textComponent["alignment"].as<unsigned int>();
         }
     }
 
