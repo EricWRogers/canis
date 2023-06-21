@@ -273,6 +273,8 @@ namespace Canis
         
         scene->Draw();
 
+        glFinish(); // make sure all queued command are finished
+
         m_drawEnd = high_resolution_clock::now();
         drawTime = std::chrono::duration_cast<std::chrono::nanoseconds>(m_drawEnd - m_drawStart).count() / 1000000000.0f;
     }
