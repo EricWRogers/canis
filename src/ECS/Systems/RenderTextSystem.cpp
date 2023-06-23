@@ -10,10 +10,11 @@
 #include <Canis/ECS/Components/TextComponent.hpp>
 
 #include <Canis/Scene.hpp>
+#include <Canis/Entity.hpp>
 
 namespace Canis
 {
-    void RenderTextSystem::RenderText(Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align, glm::vec2 &_textOffset)
+    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)
     {
         // activate corresponding render state
         shader.Use();
@@ -21,20 +22,11 @@ namespace Canis
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(assetManager->Get<TextAsset>(fontId)->GetVAO());
 
-        if ((align == Text::TextAlignment::RIGHT || align == Text::TextAlignment::CENTER) &&
-            _textOffset == glm::vec2(0.0f)) {
+        if ((_status & BIT::ONE) > 0) { // check if we need to recalculate the size &| alignment
             
-            /*
-            Log: Set Right : -175.000000 left : 1081.000000 right : 1256.000000
-            Log: Set Right : -410.400818 left : 854.599182 right : 1265.000000
-            Log: Set Right : -403.200745 left : 861.799255 right : 1265.000000
-
-            Log: Set Right : -112.000000 left : 1145.000000 right : 1257.000000
-            Log: Set Right : -410.400818 left : 854.599182 right : 1265.000000
-            Log: Set Right : -403.200745 left : 861.799255 right : 1265.000000
-            */
             float left  =  FLT_MAX;
             float right = -FLT_MAX;
+            float bigestH = -FLT_MAX;
             float xBackUp = x;
             std::string::const_iterator c;
             c = t.end();
@@ -48,6 +40,10 @@ namespace Canis
 
                 float w = ch.size.x * scale;
                 float h = ch.size.y * scale;
+
+                if (h > bigestH)
+                    bigestH = h;
+                
                 // update VBO for each character
                 float vertices[6][4] = {
                     {xpos - w, ypos + h, 0.0f, 0.0f},
@@ -69,15 +65,20 @@ namespace Canis
             }
 
             // set _textOffset
-            float delta = right - left;
+            float deltaX = right - left;
             x = xBackUp;
+
+            RectTransformComponent& rectTransform = ((Entity*)_entity)->GetComponent<RectTransformComponent>();
+            rectTransform.size.x = deltaX;
+            rectTransform.size.y = bigestH;
+
             if (align == Text::TextAlignment::RIGHT)
             {
-                _textOffset.x = -delta;
+                _textOffset.x = -deltaX;
             }
 
             if (align == Text::TextAlignment::CENTER) {
-                _textOffset.x = -(delta/2);
+                _textOffset.x = -(deltaX/2);
             }
         }
 
@@ -113,10 +114,7 @@ namespace Canis
             // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
             x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
         }
-
-        
-
-        
+    
         // iterate through all characters
         /**/
         glBindVertexArray(0);
@@ -144,18 +142,22 @@ namespace Canis
         projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
         glUniformMatrix4fv(glGetUniformLocation(textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        auto view = _registry.view<const RectTransformComponent, ColorComponent, TextComponent>();
+        auto view = _registry.view<RectTransformComponent, ColorComponent, TextComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
+        Canis::Entity e;
+        e.scene = scene;
 
         for (auto [entity, transform, color, text] : view.each())
         {
             if (transform.active == true)
             {
+                e.entityHandle = entity;
                 positionAnchor = GetAnchor((Canis::RectAnchor)transform.anchor,
                                            (float)window->GetScreenWidth(),
                                            (float)window->GetScreenHeight());
                 
-                RenderText(textShader,
+                RenderText(&e,
+                            textShader,
                             *text.text,
                             transform.position.x + positionAnchor.x,
                             transform.position.y + positionAnchor.y,
@@ -163,7 +165,8 @@ namespace Canis
                             color.color,
                             text.assetId,
                             text.alignment,
-                            text._textOffset);
+                            transform.originOffset,
+                            text._status);
             }
         }
 

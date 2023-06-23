@@ -21,10 +21,10 @@ namespace Canis
                                            (float)window->GetScreenWidth(),
                                            (float)window->GetScreenHeight());
 
-                if (inputManager->mouse.x > rect_transform.position.x + positionAnchor.x &&
-                    inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x + positionAnchor.x &&
-                    inputManager->mouse.y > rect_transform.position.y + positionAnchor.y &&
-                    inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y + positionAnchor.y)
+                if (inputManager->mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&
+                    inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x + rect_transform.originOffset.x + positionAnchor.x &&
+                    inputManager->mouse.y > rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y &&
+                    inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y + rect_transform.originOffset.y + positionAnchor.y)
                 {
                     color.color = button.hoverColor;
                     if (button.action == 0u)
