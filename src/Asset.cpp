@@ -11,9 +11,9 @@ namespace Canis
 
     Asset::~Asset() {}
 
-    bool TextureAsset::Load(std::string path)
+    bool TextureAsset::Load(std::string _path)
     {
-        m_texture = LoadImageToGLTexture(path, GL_RGBA, GL_RGBA);
+        m_texture = LoadImageToGLTexture(_path, GL_RGBA, GL_RGBA);
         return true;
     }
 
@@ -23,28 +23,28 @@ namespace Canis
         return true;
     }
 
-    bool SkyboxAsset::Load(std::string path)
+    bool SkyboxAsset::Load(std::string _path)
     {
-        skyboxShader = new Shader();
-        skyboxShader->Compile("assets/shaders/skybox.vs", "assets/shaders/skybox.fs");
-        skyboxShader->AddAttribute("aPos");
-        skyboxShader->Link();
+        m_skyboxShader = new Shader();
+        m_skyboxShader->Compile("assets/shaders/skybox.vs", "assets/shaders/skybox.fs");
+        m_skyboxShader->AddAttribute("aPos");
+        m_skyboxShader->Link();
 
         std::vector<std::string> faces;
 
-        faces.push_back(std::string(path).append("skybox_left.png"));
-        faces.push_back(std::string(path).append("skybox_right.png"));
-        faces.push_back(std::string(path).append("skybox_up.png"));
-        faces.push_back(std::string(path).append("skybox_down.png"));
-        faces.push_back(std::string(path).append("skybox_front.png"));
-        faces.push_back(std::string(path).append("skybox_back.png"));
+        faces.push_back(std::string(_path).append("skybox_left.png"));
+        faces.push_back(std::string(_path).append("skybox_right.png"));
+        faces.push_back(std::string(_path).append("skybox_up.png"));
+        faces.push_back(std::string(_path).append("skybox_down.png"));
+        faces.push_back(std::string(_path).append("skybox_front.png"));
+        faces.push_back(std::string(_path).append("skybox_back.png"));
 
-        cubemapTexture = Canis::LoadImageToCubemap(faces, GL_RGBA);
+        m_cubemapTexture = Canis::LoadImageToCubemap(faces, GL_RGBA);
 
-        glGenVertexArrays(1, &skyboxVAO);
-        glGenBuffers(1, &skyboxVBO);
-        glBindVertexArray(skyboxVAO);
-        glBindBuffer(GL_ARRAY_BUFFER, skyboxVBO);
+        glGenVertexArrays(1, &m_skyboxVAO);
+        glGenBuffers(1, &m_skyboxVBO);
+        glBindVertexArray(m_skyboxVAO);
+        glBindBuffer(GL_ARRAY_BUFFER, m_skyboxVBO);
         glBufferData(GL_ARRAY_BUFFER, skyboxVertices.size() * sizeof(float), &skyboxVertices[0], GL_STATIC_DRAW);
         glEnableVertexAttribArray(0);
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
@@ -54,20 +54,20 @@ namespace Canis
 
     bool SkyboxAsset::Free()
     {
-        delete skyboxShader;
-        glDeleteTextures(1, &cubemapTexture);
-        glDeleteBuffers(1, &skyboxVBO);
-        glDeleteVertexArrays(1, &skyboxVAO);
+        delete m_skyboxShader;
+        glDeleteTextures(1, &m_cubemapTexture);
+        glDeleteBuffers(1, &m_skyboxVBO);
+        glDeleteVertexArrays(1, &m_skyboxVAO);
         return true;
     }
 
-    bool ModelAsset::Load(std::string path)
+    bool ModelAsset::Load(std::string _path)
     {
         std::vector<glm::vec3> vertices;
         std::vector<glm::vec2> uvs;
         std::vector<glm::vec3> normals;
 
-        Canis::LoadOBJ(path, vertices, uvs, normals);
+        Canis::LoadOBJ(_path, vertices, uvs, normals);
 
         for (int i = 0; i < vertices.size(); i++)
         {
@@ -115,7 +115,7 @@ namespace Canis
         return true;
     }
 
-    bool TextAsset::Load(std::string path)
+    bool TextAsset::Load(std::string _path)
     {
         // FreeType
         // --------
@@ -127,7 +127,7 @@ namespace Canis
             Canis::Error("ERROR::FREETYPE: Could not init FreeType Library");
         }
 
-        if (FT_New_Face(ft, path.c_str(), 0, &face))
+        if (FT_New_Face(ft, _path.c_str(), 0, &face))
         {
             Canis::Error("ERROR::FREETYPE: Failed to load font");
         }
@@ -202,41 +202,41 @@ namespace Canis
         return true;
     }
 
-    bool SoundAsset::Load(std::string path)
+    bool SoundAsset::Load(std::string _path)
     {
-        chunk = Mix_LoadWAV(path.c_str());
+        m_chunk = Mix_LoadWAV(_path.c_str());
 
-        return chunk != nullptr;
+        return m_chunk != nullptr;
     }
 
     bool SoundAsset::Free()
     {
-        Mix_FreeChunk((Mix_Chunk*)chunk);
-        chunk = nullptr;
+        Mix_FreeChunk((Mix_Chunk*)m_chunk);
+        m_chunk = nullptr;
         return true;
     }
 
     void SoundAsset::Play()
     {
-        Mix_PlayChannel(-1, (Mix_Chunk*)chunk, 0);
+        Mix_PlayChannel(-1, (Mix_Chunk*)m_chunk, 0);
     }
 
-    bool MusicAsset::Load(std::string path)
+    bool MusicAsset::Load(std::string _path)
     {
-        music = Mix_LoadMUS(path.c_str());
-        return music != nullptr;
+        m_music = Mix_LoadMUS(_path.c_str());
+        return m_music != nullptr;
     }
 
     bool MusicAsset::Free()
     {
-        Mix_FreeMusic((Mix_Music*)music);
-        music = nullptr;
+        Mix_FreeMusic((Mix_Music*)m_music);
+        m_music = nullptr;
         return true;
     }
 
-    void MusicAsset::Play(int loops)
+    void MusicAsset::Play(int _loops)
     {
-        Mix_PlayMusic((Mix_Music*)music, loops);
+        Mix_PlayMusic((Mix_Music*)m_music, _loops);
     }
 
     void MusicAsset::Stop()

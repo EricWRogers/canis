@@ -42,15 +42,15 @@ namespace Canis
     class SkyboxAsset : public Asset
     {
     private:
-        Canis::Shader *skyboxShader;
-        unsigned int skyboxVAO, skyboxVBO;
-        unsigned int cubemapTexture;
+        Canis::Shader *m_skyboxShader;
+        unsigned int m_skyboxVAO, m_skyboxVBO;
+        unsigned int m_cubemapTexture;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        unsigned int GetVAO() { return skyboxVAO; }
-        unsigned int GetTexture() { return cubemapTexture; }
-        Canis::Shader* GetShader() { return skyboxShader; }
+        unsigned int GetVAO() { return m_skyboxVAO; }
+        unsigned int GetTexture() { return m_cubemapTexture; }
+        Canis::Shader* GetShader() { return m_skyboxShader; }
     };
 
     class ModelAsset : public Asset
@@ -95,7 +95,7 @@ namespace Canis
     class SoundAsset : public Asset
     {
     private:
-        void *chunk;
+        void *m_chunk;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
@@ -106,12 +106,12 @@ namespace Canis
     class MusicAsset : public Asset
     {
     private:
-        void *music = nullptr;
+        void *m_music = nullptr;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         
-        void Play(int loops);
+        void Play(int _loops);
         void Stop();
     };
 
