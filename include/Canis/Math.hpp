@@ -34,5 +34,7 @@ namespace Canis
 
     float RandomFloat(float min, float max);
 
-    glm::vec4 HexToRGBA(unsigned int RRGGBBAA);
+    glm::vec4 HexToRGBA(unsigned int _RRGGBBAA);
+
+    glm::vec4 UIntToRGBA(unsigned int _red, unsigned int _green, unsigned int _blue, unsigned int _alpha);
 } 
