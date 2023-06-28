@@ -12,6 +12,9 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 namespace Canis
 {
     void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)

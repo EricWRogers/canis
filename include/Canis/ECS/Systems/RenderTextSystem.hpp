@@ -1,7 +1,4 @@
 #pragma once
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
 #include <Canis/ECS/Systems/System.hpp>
 #include <glm/glm.hpp>
 #include <Canis/Shader.hpp>
