@@ -166,4 +166,14 @@ namespace Canis
         
         return RandomFloat(max, min);        
     }
+
+    glm::vec4 HexToRGBA(unsigned int RRGGBBAA)
+    {
+        glm::vec4 color = glm::vec4(0.0f);
+        color.r = ((RRGGBBAA >> 24) & 0xFF) / 255.0f;
+        color.g = ((RRGGBBAA >> 16) & 0xFF) / 255.0f;
+        color.b = ((RRGGBBAA >>  8) & 0xFF) / 255.0f;
+        color.a = ((RRGGBBAA) & 0xFF) / 255.0f;
+        return color;
+    }
 }

@@ -33,4 +33,6 @@ namespace Canis
     void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation);
 
     float RandomFloat(float min, float max);
+
+    glm::vec4 HexToRGBA(unsigned int RRGGBBAA);
 } 
