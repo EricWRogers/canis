@@ -16,11 +16,10 @@ struct TextComponent
 // bit one if 1 alignment should be recalculated
 
 namespace Text {
-	enum TextAlignment {
-		LEFT   = 0u,
-		RIGHT  = 1u,
-		CENTER = 2u
-	};
+	
+	const unsigned int LEFT   = 0u;
+	const unsigned int RIGHT  = 1u;
+	const unsigned int CENTER = 2u;
 
 	inline void Set(TextComponent &_textComponent, RectTransformComponent &_rectComponent, std::string _text) {
 		(*_textComponent.text) = _text;

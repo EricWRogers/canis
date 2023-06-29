@@ -3,6 +3,9 @@
 #include <glm/glm.hpp>
 #include <Canis/Shader.hpp>
 
+#include <ft2build.h>
+#include FT_FREETYPE_H
+
 namespace Canis
 {
     class Shader;

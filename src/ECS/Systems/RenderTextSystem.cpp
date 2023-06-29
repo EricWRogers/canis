@@ -12,9 +12,6 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
 
-#include <ft2build.h>
-#include FT_FREETYPE_H
-
 namespace Canis
 {
     void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)
@@ -75,12 +72,12 @@ namespace Canis
             rectTransform.size.x = deltaX;
             rectTransform.size.y = bigestH;
 
-            if (align == Text::TextAlignment::RIGHT)
+            if (align == Text::RIGHT)
             {
                 _textOffset.x = -deltaX;
             }
 
-            if (align == Text::TextAlignment::CENTER) {
+            if (align == Text::CENTER) {
                 _textOffset.x = -(deltaX/2);
             }
         }
