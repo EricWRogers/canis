@@ -79,7 +79,7 @@ namespace Canis
         }
 
         m_size = m_vertices.size();
-        Canis::Log("s " + std::to_string(m_vertices.size()));
+        // Canis::Log("s " + std::to_string(m_vertices.size()));
 
         glGenVertexArrays(1, &m_vao);
         glGenBuffers(1, &m_vbo);
