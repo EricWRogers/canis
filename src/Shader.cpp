@@ -61,7 +61,7 @@ namespace Canis
 
             glDeleteProgram(m_programId);
 
-            FatalError("Shader failed to link!\nOpengl Error: " + std::string(infoLog[0], maxLength));
+            FatalError("Shader failed to link!\nOpengl Error: " + std::string(infoLog.begin(), infoLog.end()));
         } else {
             m_isLinked = true;
         }
@@ -193,7 +193,7 @@ namespace Canis
 
             glDeleteShader(_id);
 
-            FatalError("Shader " + _filePath + " failed to compile\nOpengl Error: " + std::string(errorLog[0], maxLength));
+            FatalError("Shader " + _filePath + " failed to compile\nOpengl Error: " + std::string(errorLog.begin(), errorLog.end()));
             return;
         }
     }
