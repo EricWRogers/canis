@@ -37,4 +37,10 @@ namespace Canis
     glm::vec4 HexToRGBA(unsigned int _RRGGBBAA);
 
     glm::vec4 UIntToRGBA(unsigned int _red, unsigned int _green, unsigned int _blue, unsigned int _alpha);
+
+    void Lerp(float &_value, const float &_min, const float &_max, const float &_fraction);
+
+    void Lerp(glm::vec3 &_value, const glm::vec3 &_min, const glm::vec3 &_max, const float &_fraction);
+
+    void Lerp(glm::vec4 &_value, const glm::vec4 &_min, const glm::vec4 &_max, const float &_fraction);
 } 
