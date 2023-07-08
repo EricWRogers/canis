@@ -32,8 +32,6 @@ namespace Canis
         m_fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
         if (m_fragmentShaderId == 0)
             FatalError("Fragment shader failed to be created!");
-        
-        m_programId = glCreateProgram();
 
         CompileShaderFile(_vertexShaderFilePath, m_vertexShaderId);
         CompileShaderFile(_fragmentShaderFilePath, m_fragmentShaderId);
@@ -43,6 +41,8 @@ namespace Canis
     {
         if (m_isLinked)
             return;
+
+        m_programId = glCreateProgram();
         
         glAttachShader(m_programId, m_vertexShaderId);
         glAttachShader(m_programId, m_fragmentShaderId);
@@ -57,7 +57,7 @@ namespace Canis
             glGetProgramiv(m_programId, GL_INFO_LOG_LENGTH, &maxLength);
 
             std::vector<GLchar> infoLog(maxLength);
-            glGetProgramInfoLog(m_programId, maxLength, &maxLength, &infoLog[0]);
+            glGetProgramInfoLog(m_programId, maxLength, &maxLength, infoLog.data());
 
             glDeleteProgram(m_programId);
 
@@ -189,7 +189,7 @@ namespace Canis
             glGetShaderiv(_id, GL_INFO_LOG_LENGTH, &maxLength);
 
             std::vector<char> errorLog(maxLength);
-            glGetShaderInfoLog(_id, maxLength, &maxLength, &errorLog[0]);
+            glGetShaderInfoLog(_id, maxLength, &maxLength, errorLog.data());
 
             glDeleteShader(_id);
 
