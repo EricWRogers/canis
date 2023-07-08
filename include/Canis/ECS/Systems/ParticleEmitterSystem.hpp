@@ -95,10 +95,10 @@ public:
             emitter.time -= _deltaTime;
 
             if (!(emitter.state & ParticleEmitterState::BURST) && !(emitter.state & ParticleEmitterState::PAUSED)) {
-                emitter.spawnCountDown -= _deltaTime;
+                emitter._spawnCountDown -= _deltaTime;
 
-                if (emitter.spawnCountDown < 0.0f) {
-                    emitter.spawnCountDown = emitter.timeTillSpawn;
+                if (emitter._spawnCountDown < 0.0f) {
+                    emitter._spawnCountDown = emitter.timeTillSpawn;
                     int numHaveSpawned = 0;
 
                     for(int i = 0; i < emitter.numOfParticle; i++) {
@@ -167,6 +167,10 @@ public:
                     t.isDirty = true;
 
                     p.time -= _deltaTime;
+
+                    if (emitter.state & ParticleEmitterState::COLORLERP) { // get rid of div
+                        Canis::Lerp(c.color, emitter.colorStart, emitter.colorEnd, 1 - (p.time/emitter.particleLifeTime));
+                    }
 
                     if (p.time <= 0.0f) {
                         t.active = false;
