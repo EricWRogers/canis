@@ -31,7 +31,6 @@ namespace Canis
 	class RenderMeshWithShadowSystem : public System
 	{
 	private:
-		std::vector<entt::entity> entities = {};
 		std::vector<RenderEnttRapper> sortingEntities = {};
 
 	public:
@@ -330,8 +329,7 @@ namespace Canis
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
-			
-			entities.clear();
+
 			sortingEntities.clear();
 
 			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
@@ -356,10 +354,6 @@ namespace Canis
 			}
 
 			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
-
-			/*for(RenderEnttRapper rer : sortingEntities) {
-				entities.push_back(rer.e);
-			}*/
 
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);

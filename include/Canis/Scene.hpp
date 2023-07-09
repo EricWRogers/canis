@@ -19,6 +19,9 @@ namespace Canis
 
             std::vector<System*> m_updateSystems = {};
             std::vector<System*> m_renderSystems = {};
+            high_resolution_clock::time_point m_drawStart;
+            high_resolution_clock::time_point m_drawEnd;
+            float m_drawTime;
         public:
             //Scene() {}
             Scene(std::string _name);

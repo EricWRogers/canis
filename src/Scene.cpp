@@ -49,9 +49,19 @@ namespace Canis
     void Scene::Draw()
     {
         glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        for (int i = 0; i < m_renderSystems.size(); i++)
+        {
+            //m_drawStart = high_resolution_clock::now();
+            m_renderSystems[i]->Update(entityRegistry, deltaTime);
+            //m_drawEnd = high_resolution_clock::now();
+            //m_drawTime = std::chrono::duration_cast<std::chrono::nanoseconds>(m_drawEnd - m_drawStart).count() / 1000000000.0f;
+            glFlush();
+            //Canis::Log(std::to_string(i)+" "+std::to_string(m_drawTime));
+        }
         
-        for(System* s : m_renderSystems)
-            s->Update(entityRegistry, deltaTime);
+        //for(System* s : m_renderSystems)
+        //    s->Update(entityRegistry, deltaTime);
     }
 
     void Scene::InputUpdate()
