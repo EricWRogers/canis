@@ -216,9 +216,6 @@ namespace Canis
             patientLoadIndex = -1;
         }
         
-        scene->Update();
-
-
         auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
 
         for(auto [_entity, _scriptComponent] : view.each())
@@ -229,6 +226,8 @@ namespace Canis
                 _scriptComponent.Instance->OnCreate();
             }
         }
+        
+        scene->Update();
 
         for(auto [_entity, _scriptComponent] : view.each())
         {
