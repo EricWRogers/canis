@@ -84,6 +84,18 @@ namespace List {
         return *count;
     }
 
+    int Find(void* _refList, void* _value) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        for (int i = 0; i < *count; i++)
+            if (memcmp((*((unsigned char**)_refList)) + i,_value,*elementSize) == 0)
+                return i;
+        
+        return -1;
+    }
+
     void Grow(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;

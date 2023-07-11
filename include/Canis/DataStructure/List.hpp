@@ -6,6 +6,7 @@ namespace Canis {
         extern void Init(void* _refList, unsigned int _capacity, size_t _elementSize);
         extern void Add(void* _refList, const void* _value);
         extern unsigned int GetCount(void* _refList);
+        extern int Find(void* _refList, void* _value);
         extern void Grow(void* _refList);
     }
 }
