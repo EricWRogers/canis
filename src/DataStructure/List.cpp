@@ -90,10 +90,17 @@ namespace List {
         unsigned int* capacity = count - 1;
 
         for (int i = 0; i < *count; i++)
-            if (memcmp((*((unsigned char**)_refList)) + i,_value,*elementSize) == 0)
+            if (memcmp((*((unsigned char**)_refList)) + (i * (*elementSize)),_value,*elementSize) == 0)
                 return i;
         
         return -1;
+    }
+
+    void* End(void* _refList) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+
+        return (*((unsigned char**)_refList)) + (*count * (*elementSize));
     }
 
     void Grow(void* _refList) {
