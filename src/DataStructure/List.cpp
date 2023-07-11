@@ -33,6 +33,15 @@ namespace List {
         *((void**)_refList) = elementSize + 1;
     }
 
+    void Free(void* _refList) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        free((void*)capacity);
+        *((void**)_refList) = nullptr;
+    }
+
     void Add(void* _refList, const void* _value) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
@@ -87,7 +96,6 @@ namespace List {
     int Find(void* _refList, void* _value) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
 
         for (int i = 0; i < *count; i++)
             if (memcmp((*((unsigned char**)_refList)) + (i * (*elementSize)),_value,*elementSize) == 0)
