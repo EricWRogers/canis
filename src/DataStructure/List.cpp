@@ -4,7 +4,7 @@
 
 namespace Canis {
 namespace List {
-    void Init(void*& _list, unsigned int _capacity, size_t _elementSize) {
+    void Init(void* _refList, unsigned int _capacity, size_t _elementSize) {
         // unsigned int capacity
         // unsinged int count
         // size_t elementSize
@@ -23,36 +23,53 @@ namespace List {
         std::cout << "capacity : " << capacity << std::endl;
         std::cout << "count : " << count << std::endl;
         std::cout << "elementSize : " << elementSize << std::endl;
-        std::cout << "_list : " << elementSize + 1 << std::endl;
+        std::cout << "_refList : " << elementSize + 1 << std::endl;
         std::cout << "sizeof : " << sizeof(size_t) << std::endl;
 
         *capacity = _capacity;
         *count = 0;
         *elementSize = _elementSize;
 
-        _list = elementSize + 1;
+        *((void**)_refList) = elementSize + 1;
     }
 
-    void Add(void*& _list, const void* _value) {
-        size_t* elementSize = ((size_t*)_list) - 1;
+    void Add(void* _refList, const void* _value) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
         unsigned int* capacity = count - 1;
 
-        /*std::cout << "capacity : " << capacity << std::endl;
-        std::cout << "count : " << count << std::endl;
-        std::cout << "elementSize : " << elementSize << std::endl;
-        std::cout << "_list : " << _list << std::endl;
-        std::cout << "sizeof : " << sizeof(size_t) << std::endl;
-        std::cout << "here" << std::endl;
-        std::cout << "count : " << (*count) << std::endl;*/
-
         if (*count >= *capacity)
         {
-            // resize
+            //Grow(_refList);
+
+            //elementSize = ((size_t*)(*((void**)_refList))) - 1;
+            //unsigned int* count = ((unsigned int*)elementSize) - 1;
+            //unsigned int* capacity = count - 1;
+
+            *capacity = *capacity * 2;
+
+            void* data = capacity;
+
+            std::cout << "data : " << data << std::endl;
+
+            data = realloc(
+                (void*)capacity,
+                sizeof(unsigned int)
+                + sizeof(unsigned int)
+                + sizeof(size_t)
+                + (*capacity * *elementSize)
+            );
+
+            std::cout << "data : " << data << std::endl;
+
+            capacity = (unsigned int*)data;
+            count = capacity + 1;
+            elementSize = (size_t*)(count + 1);
+            *((void**)_refList) = elementSize + 1;
         }
         
         memcpy(
-            (void*)((char*)_list + ((*count) * (*elementSize))),
+            (void*)((char*)(*(void**)_refList) + ((*count) * (*elementSize))),
             _value,
             *elementSize
         );
@@ -60,30 +77,44 @@ namespace List {
         *count = *count + 1;
     }
 
-    unsigned int Length(void*& _list) {
-        size_t* elementSize = ((size_t*)_list) - 1;
+    unsigned int GetCount(void* _refList) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
 
         return *count;
     }
 
-    void Grow(void*& _list) {
-        size_t* elementSize = ((size_t*)_list) - 1;
+    void Grow(void* _refList) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
         unsigned int* capacity = count - 1;
 
+        std::cout << "capacity " << *capacity << std::endl; 
+
         *capacity = *capacity * 2;
 
-        void* data = malloc(
+        std::cout << "capacity " << *capacity << std::endl;
+
+        void* data = capacity;
+
+        std::cout << "data : " << data << std::endl;
+
+        data = realloc(
+            (void*)capacity,
             sizeof(unsigned int)
             + sizeof(unsigned int)
             + sizeof(size_t)
             + (*capacity * *elementSize)
         );
 
-        // copy data
+        std::cout << "data : " << data << std::endl;
 
-        // return new data
+        capacity = (unsigned int*)data;
+        count = capacity + 1;
+        elementSize = (size_t*)(count + 1);
+        *((void**)_refList) = elementSize + 1;
+
+        std::cout << "capacity " << *capacity << std::endl;
     }
 }
 }
