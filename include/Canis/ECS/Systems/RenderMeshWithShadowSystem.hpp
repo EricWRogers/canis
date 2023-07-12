@@ -21,6 +21,9 @@
 #include "../Components/SphereColliderComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
 
+#include <Canis/DataStructure/List.hpp>
+#include <Canis/Time.hpp>
+
 namespace Canis
 {
 	struct RenderEnttRapper {
@@ -32,6 +35,9 @@ namespace Canis
 	{
 	private:
 		std::vector<RenderEnttRapper> sortingEntities = {};
+		RenderEnttRapper* sortingEntitiesList = nullptr;
+		high_resolution_clock::time_point startTime;
+    	high_resolution_clock::time_point endTime;
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
@@ -71,6 +77,10 @@ namespace Canis
 			glDrawBuffer(GL_NONE);
 			glReadBuffer(GL_NONE);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
+		~RenderMeshWithShadowSystem() {
+			Canis::List::Free(&sortingEntitiesList);
 		}
 
 		struct Plan
@@ -294,6 +304,8 @@ namespace Canis
 		}		
 		
 		void Create() {
+			Canis::List::Init(&sortingEntitiesList,100,sizeof(RenderEnttRapper));
+
 			int id = assetManager->LoadShader("assets/shaders/shadow_mapping_depth");
             shadow_mapping_depth_shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
             
@@ -331,6 +343,7 @@ namespace Canis
 			glEnable(GL_CULL_FACE);
 
 			sortingEntities.clear();
+			Canis::List::Clear(&sortingEntitiesList);
 
 			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
 
@@ -351,9 +364,18 @@ namespace Canis
 				rer.distance = glm::distance(transform.position, camera->Position);
 
 				sortingEntities.push_back(rer);
+				//Canis::List::Add(&sortingEntitiesList, &rer);
 			}
 
+			//startTime = high_resolution_clock::now();
 			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
+			//endTime = high_resolution_clock::now();
+			//std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
+
+			//startTime = high_resolution_clock::now();
+			//Canis::List::MergeSort(&sortingEntitiesList, Canis::DoubleAscending);
+			//endTime = high_resolution_clock::now();
+			//std::cout << "MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
 			ShadowDepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);

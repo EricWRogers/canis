@@ -5,6 +5,7 @@ namespace Canis {
     namespace List {
         extern void Init(void* _refList, unsigned int _capacity, size_t _elementSize);
         extern void Free(void* _refList);
+        extern void Clear(void* _refList);
         extern void Add(void* _refList, const void* _value);
         extern void BubbleSort(void* _refList, bool (*_compareFunc)(void*, void*));
         extern void SelectionSort(void* _refList, bool (*_compareFunc)(void*, void*));
