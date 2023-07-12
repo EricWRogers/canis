@@ -86,6 +86,71 @@ namespace List {
         *count = *count + 1;
     }
 
+    void BubbleSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        void* begin = *((void**)_refList);
+        void* end = (*((unsigned char**)_refList)) + (*count * (*elementSize));
+        bool swapped = true;
+        char* temp = new char[*elementSize];
+        void* current = nullptr;
+        void* next = nullptr;
+
+        while(swapped) {
+            swapped = false;
+            current = begin;
+            while(current != end) {
+                next = ((unsigned char*)current) + (*elementSize);
+                if (next != end) {
+                    if (_compareFunc(current, next)) {
+                        swapped = true;
+                        memcpy( temp, current, *elementSize);
+                        memcpy( current, next,*elementSize);
+                        memcpy( next, temp, *elementSize);
+                    }
+                }
+
+                current = next;
+            }
+        }
+
+        delete[] temp;
+    }
+
+    void SelectionSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        char* temp = new char[*elementSize];
+        void* current = nullptr;
+        void* next = nullptr;
+
+        int i, j, minIdx;
+        for (i = 0; i < *count - 1; i++) {
+            minIdx = i;
+            for (j = i + 1; j < *count; j++) {
+                next = ((char*)(*(void**)_refList) + (j * (*elementSize)));
+                current = ((char*)(*(void**)_refList) + (minIdx * (*elementSize)));
+                if (_compareFunc(current, next)) {
+                    minIdx = j;
+                }
+            }
+
+            if (minIdx != i) {
+                current = ((char*)(*(void**)_refList) + (i * (*elementSize)));
+                next = ((char*)(*(void**)_refList) + (minIdx * (*elementSize)));
+                memcpy( temp, current, *elementSize);
+                memcpy( current, next, *elementSize);
+                memcpy( next, temp, *elementSize);
+            }
+        }
+
+        delete[] temp;
+    }
+
     unsigned int GetCount(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
@@ -143,5 +208,28 @@ namespace List {
 
         std::cout << "capacity " << *capacity << std::endl;
     }
-}
-}
+}  // End of List
+    bool DoubleAscending(void* a, void *b) {
+        return *(double*)a > *(double*)b;
+    }
+
+    bool DoubleDescending(void* a, void *b) {
+        return *(double*)a < *(double*)b;
+    }
+
+    bool FloatAscending(void* a, void *b) {
+        return *(float*)a > *(float*)b;
+    }
+
+    bool FloatDescending(void* a, void *b) {
+        return *(float*)a < *(float*)b;
+    }
+
+    bool IntAscending(void* a, void *b) {
+        return *(int*)a > *(int*)b;
+    }
+
+    bool IntDescending(void* a, void *b) {
+        return *(int*)a < *(int*)b;
+    }
+} // End of Canis
