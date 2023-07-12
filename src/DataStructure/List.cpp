@@ -151,6 +151,103 @@ namespace List {
         delete[] temp;
     }
 
+    void MergeSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        if (*count < 2)
+            return;
+        
+        uint begin = 0;
+        uint end = *count - 1;
+        uint mid = begin + (end - begin) / 2;
+
+        _MergeSort(_refList, begin, mid, _compareFunc);
+        _MergeSort(_refList, mid + 1, end, _compareFunc);
+        _Merge(_refList, begin, mid, end, _compareFunc);
+    }
+
+    void _MergeSort(void* _refList, int _begin, int _end, bool (*_compareFunc)(void*, void*)) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        unsigned int* capacity = count - 1;
+
+        if (_begin >= _end)
+            return;
+
+        uint mid = _begin + (_end - _begin) / 2;
+
+        _MergeSort(_refList, _begin, mid, _compareFunc);
+        _MergeSort(_refList, mid + 1, _end, _compareFunc);
+        _Merge(_refList, _begin, mid, _end, _compareFunc);
+    }
+    
+    void _Merge(void* _refList, int _left, int _mid, int _right, bool (*_compareFunc)(void*, void*)) {
+        size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
+
+        int const subArrayOneSize = _mid - _left + 1;
+        int const subArrayTwoSize = _right - _mid;
+    
+        // Create temp arrays
+        char* leftArray = new char[(subArrayOneSize) * (*elementSize)];
+        char* rightArray = new char[(subArrayTwoSize) * (*elementSize)];
+    
+        // Copy data to temp arrays leftArray[] and rightArray[]
+        memcpy( leftArray, ((char*)(*(void**)_refList) + (_left * (*elementSize))), (subArrayOneSize) * (*elementSize));
+        memcpy( rightArray, ((char*)(*(void**)_refList) + ((_mid+1) * (*elementSize))), (subArrayTwoSize) * (*elementSize));
+
+        int indexOfSubArrayOne = 0;
+        int indexOfSubArrayTwo = 0;
+        int indexOfMergedArray = _left;
+
+        // Merge the temp arrays back into array[left..right]
+        while (indexOfSubArrayOne < subArrayOneSize && indexOfSubArrayTwo < subArrayTwoSize) {
+            if (!_compareFunc(leftArray + (indexOfSubArrayOne * (*elementSize)), rightArray + (indexOfSubArrayTwo * (*elementSize)))) {
+                //std::cout << *(double*)(leftArray + (indexOfSubArrayOne * (*elementSize))) << std::endl;
+                memcpy(
+                    ((char*)(*(void**)_refList) + (indexOfMergedArray * (*elementSize))),
+                    leftArray + (indexOfSubArrayOne * (*elementSize)),
+                    *elementSize
+                );
+                indexOfSubArrayOne++;
+            }
+            else {
+                //std::cout << *(double*)(rightArray + (indexOfSubArrayTwo * (*elementSize))) << std::endl;
+                memcpy(
+                    ((char*)(*(void**)_refList) + (indexOfMergedArray * (*elementSize))),
+                    rightArray + (indexOfSubArrayTwo * (*elementSize)),
+                    *elementSize
+                );
+                indexOfSubArrayTwo++;
+            }
+            indexOfMergedArray++;
+        }
+    
+        while (indexOfSubArrayOne < subArrayOneSize) {
+            memcpy(
+                ((char*)(*(void**)_refList) + (indexOfMergedArray * (*elementSize))),
+                leftArray + (indexOfSubArrayOne * (*elementSize)),
+                *elementSize
+            );
+            indexOfSubArrayOne++;
+            indexOfMergedArray++;
+        }
+
+        while (indexOfSubArrayTwo < subArrayTwoSize) {
+            memcpy(
+                ((char*)(*(void**)_refList) + (indexOfMergedArray * (*elementSize))),
+                rightArray + (indexOfSubArrayTwo * (*elementSize)),
+                *elementSize
+            );
+            indexOfSubArrayTwo++;
+            indexOfMergedArray++;
+        }
+       
+        delete[] leftArray;
+        delete[] rightArray;
+    }
+
     unsigned int GetCount(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
