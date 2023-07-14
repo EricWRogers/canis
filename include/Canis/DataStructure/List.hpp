@@ -3,14 +3,14 @@
 
 namespace Canis {
     namespace List {
-        extern void Init(void* _refList, unsigned int _capacity, size_t _elementSize);
+        extern void Init(void* _refList, uint32_t _capacity, size_t _elementSize);
         extern void Free(void* _refList);
         extern void Clear(void* _refList);
         extern void Add(void* _refList, const void* _value);
         extern void BubbleSort(void* _refList, bool (*_compareFunc)(void*, void*));
         extern void SelectionSort(void* _refList, bool (*_compareFunc)(void*, void*));
         extern void MergeSort(void* _refList, bool (*_compareFunc)(void*, void*));
-        extern unsigned int GetCount(void* _refList);
+        extern uint32_t GetCount(void* _refList);
         extern int Find(void* _refList, void* _value);
         extern void* End(void* _refList);
         extern void Grow(void* _refList);

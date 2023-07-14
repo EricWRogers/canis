@@ -2,23 +2,23 @@
 #include <cstdlib>
 #include <iostream>
 
-// unsigned int capacity
-// unsinged int count
+// uint32_t capacity
+// uint32_t count
 // size_t elementSize
 // beginning of array
 
 namespace Canis {
 namespace List {
-    void Init(void* _refList, uint _capacity, size_t _elementSize) {
+    void Init(void* _refList, uint32_t _capacity, size_t _elementSize) {
         void* data = malloc(
-            sizeof(unsigned int)
-            + sizeof(unsigned int)
+            sizeof(uint32_t)
+            + sizeof(uint32_t)
             + sizeof(size_t)
             + (_capacity * _elementSize)
         );
 
-        uint* capacity = (uint*)data;
-        uint* count = capacity + 1;
+        uint32_t* capacity = (uint32_t*)data;
+        uint32_t* count = capacity + 1;
         size_t* elementSize = (size_t*)(count + 1);
         *((void**)_refList) = elementSize + 1;
 
@@ -30,8 +30,8 @@ namespace List {
 
     void Free(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         free((void*)capacity);
         *((void**)_refList) = nullptr;
@@ -39,15 +39,15 @@ namespace List {
 
     void Clear(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
 
         *count = 0;
     }
 
     void Add(void* _refList, const void* _value) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         if (*count >= *capacity)
         {
@@ -57,13 +57,13 @@ namespace List {
 
             data = realloc(
                 (void*)capacity,
-                sizeof(unsigned int)
-                + sizeof(unsigned int)
+                sizeof(uint32_t)
+                + sizeof(uint32_t)
                 + sizeof(size_t)
                 + (*capacity * *elementSize)
             );
 
-            capacity = (uint*)data;
+            capacity = (uint32_t*)data;
             count = capacity + 1;
             elementSize = (size_t*)(count + 1);
             *((void**)_refList) = elementSize + 1;
@@ -80,8 +80,8 @@ namespace List {
 
     void BubbleSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         void* begin = *((void**)_refList);
         void* end = (*((char**)_refList)) + (*count * (*elementSize));
@@ -113,8 +113,8 @@ namespace List {
 
     void SelectionSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         char* temp = new char[*elementSize];
         void* current = nullptr;
@@ -145,15 +145,15 @@ namespace List {
 
     void MergeSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         if (*count < 2)
             return;
         
-        uint begin = 0;
-        uint end = *count - 1;
-        uint mid = begin + (end - begin) / 2;
+        uint32_t begin = 0;
+        uint32_t end = *count - 1;
+        uint32_t mid = begin + (end - begin) / 2;
 
         _MergeSort(_refList, begin, mid, _compareFunc);
         _MergeSort(_refList, mid + 1, end, _compareFunc);
@@ -162,13 +162,13 @@ namespace List {
 
     void _MergeSort(void* _refList, int _begin, int _end, bool (*_compareFunc)(void*, void*)) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         if (_begin >= _end)
             return;
 
-        uint mid = _begin + (_end - _begin) / 2;
+        uint32_t mid = _begin + (_end - _begin) / 2;
 
         _MergeSort(_refList, _begin, mid, _compareFunc);
         _MergeSort(_refList, mid + 1, _end, _compareFunc);
@@ -240,16 +240,16 @@ namespace List {
         delete[] rightArray;
     }
 
-    unsigned int GetCount(void* _refList) {
+    uint32_t GetCount(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
 
         return *count;
     }
 
     int Find(void* _refList, void* _value) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
 
         for (int i = 0; i < *count; i++)
             if (memcmp((*((char**)_refList)) + (i * (*elementSize)),_value,*elementSize) == 0)
@@ -260,15 +260,15 @@ namespace List {
 
     void* End(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
 
         return (*((char**)_refList)) + (*count * (*elementSize));
     }
 
     void Grow(void* _refList) {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
-        unsigned int* count = ((unsigned int*)elementSize) - 1;
-        unsigned int* capacity = count - 1;
+        uint32_t* count = ((uint32_t*)elementSize) - 1;
+        uint32_t* capacity = count - 1;
 
         std::cout << "capacity " << *capacity << std::endl; 
 
@@ -282,15 +282,15 @@ namespace List {
 
         data = realloc(
             (void*)capacity,
-            sizeof(unsigned int)
-            + sizeof(unsigned int)
+            sizeof(uint32_t)
+            + sizeof(uint32_t)
             + sizeof(size_t)
             + (*capacity * *elementSize)
         );
 
         std::cout << "data : " << data << std::endl;
 
-        capacity = (unsigned int*)data;
+        capacity = (uint32_t*)data;
         count = capacity + 1;
         elementSize = (size_t*)(count + 1);
         *((void**)_refList) = elementSize + 1;
