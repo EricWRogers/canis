@@ -2,13 +2,14 @@
 #include <cstdlib>
 #include <iostream>
 
+// unsigned int capacity
+// unsinged int count
+// size_t elementSize
+// beginning of array
+
 namespace Canis {
 namespace List {
-    void Init(void* _refList, unsigned int _capacity, size_t _elementSize) {
-        // unsigned int capacity
-        // unsinged int count
-        // size_t elementSize
-        // begin
+    void Init(void* _refList, uint _capacity, size_t _elementSize) {
         void* data = malloc(
             sizeof(unsigned int)
             + sizeof(unsigned int)
@@ -16,21 +17,15 @@ namespace List {
             + (_capacity * _elementSize)
         );
 
-        unsigned int* capacity = (unsigned int*)data;
-        unsigned int* count = capacity + 1;
+        uint* capacity = (uint*)data;
+        uint* count = capacity + 1;
         size_t* elementSize = (size_t*)(count + 1);
+        *((void**)_refList) = elementSize + 1;
 
-        /*std::cout << "capacity : " << capacity << std::endl;
-        std::cout << "count : " << count << std::endl;
-        std::cout << "elementSize : " << elementSize << std::endl;
-        std::cout << "_refList : " << elementSize + 1 << std::endl;
-        std::cout << "sizeof : " << sizeof(size_t) << std::endl;*/
-
+        // init variables
         *capacity = _capacity;
         *count = 0;
         *elementSize = _elementSize;
-
-        *((void**)_refList) = elementSize + 1;
     }
 
     void Free(void* _refList) {
@@ -56,17 +51,9 @@ namespace List {
 
         if (*count >= *capacity)
         {
-            //Grow(_refList);
-
-            //elementSize = ((size_t*)(*((void**)_refList))) - 1;
-            //unsigned int* count = ((unsigned int*)elementSize) - 1;
-            //unsigned int* capacity = count - 1;
-
             *capacity = *capacity * 2;
 
             void* data = capacity;
-
-            //std::cout << "data : " << data << std::endl;
 
             data = realloc(
                 (void*)capacity,
@@ -76,9 +63,7 @@ namespace List {
                 + (*capacity * *elementSize)
             );
 
-            //std::cout << "data : " << data << std::endl;
-
-            capacity = (unsigned int*)data;
+            capacity = (uint*)data;
             count = capacity + 1;
             elementSize = (size_t*)(count + 1);
             *((void**)_refList) = elementSize + 1;
@@ -90,7 +75,7 @@ namespace List {
             *elementSize
         );
 
-        *count = *count + 1;
+        (*count)++;
     }
 
     void BubbleSort(void* _refList, bool (*_compareFunc)(void*, void*)) {
@@ -99,7 +84,7 @@ namespace List {
         unsigned int* capacity = count - 1;
 
         void* begin = *((void**)_refList);
-        void* end = (*((unsigned char**)_refList)) + (*count * (*elementSize));
+        void* end = (*((char**)_refList)) + (*count * (*elementSize));
         bool swapped = true;
         char* temp = new char[*elementSize];
         void* current = nullptr;
@@ -109,7 +94,7 @@ namespace List {
             swapped = false;
             current = begin;
             while(current != end) {
-                next = ((unsigned char*)current) + (*elementSize);
+                next = ((char*)current) + (*elementSize);
                 if (next != end) {
                     if (_compareFunc(current, next)) {
                         swapped = true;
@@ -267,7 +252,7 @@ namespace List {
         unsigned int* count = ((unsigned int*)elementSize) - 1;
 
         for (int i = 0; i < *count; i++)
-            if (memcmp((*((unsigned char**)_refList)) + (i * (*elementSize)),_value,*elementSize) == 0)
+            if (memcmp((*((char**)_refList)) + (i * (*elementSize)),_value,*elementSize) == 0)
                 return i;
         
         return -1;
@@ -277,7 +262,7 @@ namespace List {
         size_t* elementSize = ((size_t*)(*((void**)_refList))) - 1;
         unsigned int* count = ((unsigned int*)elementSize) - 1;
 
-        return (*((unsigned char**)_refList)) + (*count * (*elementSize));
+        return (*((char**)_refList)) + (*count * (*elementSize));
     }
 
     void Grow(void* _refList) {
