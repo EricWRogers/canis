@@ -345,7 +345,7 @@ namespace Canis
 			sortingEntities.clear();
 			Canis::List::Clear(&sortingEntitiesList);
 
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, 0.1f, 100.0f);
+			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
 

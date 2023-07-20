@@ -38,6 +38,8 @@ namespace Canis
         float MouseSensitivity;
         float Zoom;
         float FOV = glm::radians(30.0f);
+        float nearPlane = 0.1;
+        float farPlane = 100.0f;
         bool override_camera = true;
         glm::mat4 modelMatrix;
 

@@ -41,6 +41,21 @@ namespace Canis
         return Ray { lRayStart_world, lRayDir_world };
     }
 
+    glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position) {
+        // Calculate the projection matrix
+        glm::mat4 projectionMatrix = glm::perspective(_camera.FOV, _window.GetScreenWidth() / (float)_window.GetScreenHeight(), _camera.nearPlane, _camera.farPlane);
+
+        // Convert world space to screen space
+        glm::vec4 viewSpacePoint = _camera.GetViewMatrix() * glm::vec4(_position, 1.0f);
+        glm::vec4 clipSpacePoint = projectionMatrix * viewSpacePoint;
+
+        // Normalize to NDC
+        clipSpacePoint /= clipSpacePoint.w;
+
+        // Convert NDC to screen coordinates
+        return glm::vec2((clipSpacePoint.x + 1.0f) * 0.5f * _window.GetScreenWidth(), (1.0f - clipSpacePoint.y) * 0.5f * _window.GetScreenHeight());
+    }
+
     bool HitSphere(glm::vec3 center, float radius, Ray ray)
     {
         glm::vec3 oc = ray.origin - center;

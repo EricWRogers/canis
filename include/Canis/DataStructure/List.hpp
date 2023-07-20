@@ -1,5 +1,6 @@
 #pragma once
 #include <string.h>
+#include <cstdint>
 
 namespace Canis {
     namespace List {

@@ -16,6 +16,8 @@ namespace Canis
 
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
 
+    glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position);
+
     bool HitSphere(glm::vec3 center, float radius, Ray ray);
 
     glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest);
