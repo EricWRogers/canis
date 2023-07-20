@@ -76,6 +76,7 @@ namespace Canis
         bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false; }
 
         glm::vec2 mouse = glm::vec2(0,0);
+        glm::vec2 mouseRel = glm::vec2(0);
     private:
         bool IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _key);
         bool IsKeyDownInVec(std::vector<InputData> *_arr, unsigned int _value);

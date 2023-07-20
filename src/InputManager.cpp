@@ -22,6 +22,7 @@ namespace Canis
     bool InputManager::Update(int _screenWidth, int _screenHeight)
     {
         SwapMaps();
+        mouseRel = glm::vec2(0.0f);
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -34,6 +35,8 @@ namespace Canis
             case SDL_MOUSEMOTION:
                     mouse.x = event.motion.x;
                     mouse.y = _screenHeight - event.motion.y;
+                    mouseRel.x = event.motion.xrel;
+                    mouseRel.y = event.motion.yrel;
                     //camera.ProcessMouseMovement(event.motion.xrel, -event.motion.yrel);
                 break;
             case SDL_KEYUP:
