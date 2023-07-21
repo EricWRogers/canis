@@ -53,7 +53,7 @@ namespace Canis
         clipSpacePoint /= clipSpacePoint.w;
 
         // Convert NDC to screen coordinates
-        return glm::vec2((clipSpacePoint.x + 1.0f) * 0.5f * _window.GetScreenWidth(), (1.0f - clipSpacePoint.y) * 0.5f * _window.GetScreenHeight());
+        return glm::vec2((clipSpacePoint.x + 1.0f) * 0.5f * _window.GetScreenWidth(), _window.GetScreenHeight() - ((1.0f - clipSpacePoint.y) * 0.5f * _window.GetScreenHeight()));
     }
 
     bool HitSphere(glm::vec3 center, float radius, Ray ray)
