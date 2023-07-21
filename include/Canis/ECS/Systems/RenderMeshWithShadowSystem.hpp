@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <string>
+#include <random>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -41,6 +42,7 @@ namespace Canis
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
+		Canis::Shader *camera_depth_map;
 		Canis::Shader *shadow_mapping_shader;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
@@ -53,6 +55,11 @@ namespace Canis
 		const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
 		unsigned int depthMapFBO;
 		unsigned int depthMap;
+		bool ssao = true;
+		unsigned int mainCameraDepthMapFBO;
+		unsigned int mainCameraDepthMap;
+		unsigned int noiseTexture;
+		std::vector<glm::vec3> ssaoKernel;
 		float lightProjectionSize = 20.0f;
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
@@ -221,6 +228,62 @@ namespace Canis
 			glCullFace(GL_BACK);
 		}
 
+		void CameraDepthPass(float deltaTime, entt::registry &registry) {
+			glDisable(GL_CULL_FACE); 
+			
+			// render
+        	// ------
+        	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			camera_depth_map->Use();
+
+			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+			glm::mat4 projection = glm::mat4(1.0f);
+			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
+			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
+			cameraView = camera->GetViewMatrix();
+			// pass transformation matrices to the shader
+			//camera_depth_map->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
+			camera_depth_map->SetMat4("camera", cameraView * projection);
+
+			camera_depth_map->SetInt("mainCameraDepthMap", 0);
+
+			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
+			glBindFramebuffer(GL_FRAMEBUFFER, mainCameraDepthMap);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glActiveTexture(GL_TEXTURE0);
+			
+			// render scene
+			std::string modelKey = "model";
+
+			for (RenderEnttRapper rer : sortingEntities)
+			{
+				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+
+				if (!mesh.castShadow)
+					continue;
+				
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+
+				glBindVertexArray(mesh.vao);
+
+				camera_depth_map->SetMat4(modelKey, transform.modelMatrix);
+
+				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// reset viewport
+			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			camera_depth_map->UnUse();
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+		}
+
 		void DrawMesh(float deltaTime, entt::registry &registry)
 		{
 			// reset viewport
@@ -259,10 +322,31 @@ namespace Canis
 			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
 
 			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, depthMap);
 
-			shadow_mapping_shader->SetInt("diffuseTexture", 0);
-    		shadow_mapping_shader->SetInt("shadowMap", 1);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, mainCameraDepthMap);
+
+			glActiveTexture(GL_TEXTURE4);
+			glBindTexture(GL_TEXTURE_2D, noiseTexture);
+
+			shadow_mapping_shader->SetInt("shadowMap", 2);
+    		shadow_mapping_shader->SetInt("gPosition", 3);
+			shadow_mapping_shader->SetInt("texNoise", 4);
+
+			if (ssao) {
+				shadow_mapping_shader->SetInt("ssao", 1);
+			} else {
+				shadow_mapping_shader->SetInt("ssao", 0);
+			}
+
+			for (unsigned int i = 0; i < 64; ++i)
+                shadow_mapping_shader->SetVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
+
+			shadow_mapping_shader->SetVec2("noiseScale", glm::vec2(window->GetScreenWidth()/4.0f,window->GetScreenHeight()/4.0f));
 
 			shadow_mapping_shader->SetVec3("viewPos", camera->Position);
 			shadow_mapping_shader->SetVec3("lightPos", lightPos);
@@ -270,7 +354,7 @@ namespace Canis
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 			glm::mat4 projection = glm::mat4(1.0f);
-			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
+			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 100.0f);
 			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 			cameraView = camera->GetViewMatrix();
 			// pass transformation matrices to the shader
@@ -306,12 +390,73 @@ namespace Canis
 		void Create() {
 			Canis::List::Init(&sortingEntitiesList,100,sizeof(RenderEnttRapper));
 
+			// configure main camera depth map FBO
+			// -----------------------
+			glGenFramebuffers(1, &mainCameraDepthMapFBO);
+			// create depth texture
+			glGenTextures(1, &mainCameraDepthMap);
+			glBindTexture(GL_TEXTURE_2D, mainCameraDepthMap);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+			float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+			// attach depth texture as FBO's depth buffer
+			glBindFramebuffer(GL_FRAMEBUFFER, mainCameraDepthMapFBO);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, mainCameraDepthMap, 0);
+			glDrawBuffer(GL_NONE);
+			glReadBuffer(GL_NONE);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// generate noise texture
+			// ----------------------
+			std::uniform_real_distribution<float> randomFloats(0.0, 1.0); // generates random floats between 0.0 and 1.0
+    		std::default_random_engine generator;
+			std::vector<glm::vec3> ssaoNoise;
+			for (unsigned int i = 0; i < 16; i++)
+			{
+				glm::vec3 noise(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, 0.0f); // rotate around z-axis (in tangent space)
+				ssaoNoise.push_back(noise);
+			}
+			glGenTextures(1, &noiseTexture);
+			glBindTexture(GL_TEXTURE_2D, noiseTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+			// generate sample kernel
+			// ----------------------
+			for (unsigned int i = 0; i < 64; ++i)
+			{
+				glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+				sample = glm::normalize(sample);
+				sample *= randomFloats(generator);
+				float scale = float(i) / 64.0f;
+
+				// scale samples s.t. they're more aligned to center of kernel
+				Lerp(scale, 0.1f, 1.0f, scale * scale);
+				sample *= scale;
+				ssaoKernel.push_back(sample);
+			}
+
 			int id = assetManager->LoadShader("assets/shaders/shadow_mapping_depth");
             shadow_mapping_depth_shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
             
             if(!shadow_mapping_depth_shader->IsLinked())
             {
                 shadow_mapping_depth_shader->Link();
+            }
+
+			id = assetManager->LoadShader("assets/shaders/camera_depth_map");
+            camera_depth_map = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!camera_depth_map->IsLinked())
+            {
+                camera_depth_map->Link();
             }
 
 			id = assetManager->LoadShader("assets/shaders/shadow_mapping");
@@ -378,6 +523,10 @@ namespace Canis
 			//std::cout << "MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
 			ShadowDepthPass(_deltaTime, _registry);
+
+			if (ssao)
+				CameraDepthPass(_deltaTime, _registry);
+			
 			DrawMesh(_deltaTime, _registry);
 
 			glDisable(GL_CULL_FACE);
