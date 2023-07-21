@@ -14,11 +14,11 @@
 
 namespace Canis
 {
-    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec3 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)
+    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)
     {
         // activate corresponding render state
         shader.Use();
-        glUniform3f(glGetUniformLocation(shader.GetProgramID(), "textColor"), color.x, color.y, color.z);
+        shader.SetVec4("textColor", color);
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(assetManager->Get<TextAsset>(fontId)->GetVAO());
 
