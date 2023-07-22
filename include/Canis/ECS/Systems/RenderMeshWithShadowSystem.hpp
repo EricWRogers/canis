@@ -44,6 +44,7 @@ namespace Canis
 		Canis::Shader *shadow_mapping_shader;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
+		Canis::GLTexture *emissionColorPaletteTexture;
 
 		int entities_rendered = 0;
 		glm::vec3 lightPos = glm::vec3(0.0f, 20.0f, 0.0f);
@@ -253,16 +254,25 @@ namespace Canis
 			// material
 			shadow_mapping_shader->SetInt("material.diffuse", 0);
 			shadow_mapping_shader->SetInt("material.specular", 1);
+			shadow_mapping_shader->SetInt("material.emission", 2);
 			shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
+
+			shadow_mapping_shader->SetInt("hdr", true);
+        	shadow_mapping_shader->SetFloat("exposure", 3.1f);
 
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
 
 			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
+
+			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_2D, depthMap);
 
-			shadow_mapping_shader->SetInt("diffuseTexture", 0);
-    		shadow_mapping_shader->SetInt("shadowMap", 1);
+    		shadow_mapping_shader->SetInt("shadowMap", 3);
 
 			shadow_mapping_shader->SetVec3("viewPos", camera->Position);
 			shadow_mapping_shader->SetVec3("lightPos", lightPos);
@@ -328,9 +338,9 @@ namespace Canis
 
 			diffuseColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/diffuse.png"))->GetPointerToTexture();
 			
-			specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(
-                                                      assetManager->LoadTexture("assets/textures/palette/specular.png"))
-                                          ->GetPointerToTexture();
+			specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/specular.png"))->GetPointerToTexture();
+			
+			emissionColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/emission.png"))->GetPointerToTexture();
 		}
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
