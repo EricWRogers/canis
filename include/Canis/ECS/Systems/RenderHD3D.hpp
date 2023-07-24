@@ -41,6 +41,9 @@ namespace Canis
 	public:
 		Canis::Shader *hdrShader;
 		Canis::Shader *lightingShader;
+		Canis::Shader *geometryPassShader;
+		Canis::Shader *lightingPassShader;
+		Canis::Shader *lightBoxShader;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 		Canis::GLTexture *emissionColorPaletteTexture;
@@ -58,10 +61,17 @@ namespace Canis
 
 		unsigned int hdrFBO;
 		unsigned int colorBuffer;
-		unsigned int rboDepth;
 		unsigned int quadVAO = 0;
 		unsigned int quadVBO;
 
+		unsigned int gBuffer;
+		unsigned int gPosition, gNormal, gAlbedoSpec;
+		unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
+		unsigned int rboDepth;
+
+		unsigned int modelId = 0;
+
+		const unsigned int NR_LIGHTS = 500;
 		std::vector<glm::vec3> lightPositions;
 		std::vector<glm::vec3> lightColors;
 
@@ -227,42 +237,117 @@ namespace Canis
 			glBindVertexArray(0);
 		}
 
+		void GeometryPass(float deltaTime, entt::registry &registry)
+		{
+			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			// 1. geometry pass: render scene's geometry/color data into gbuffer
+			// -----------------------------------------------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glm::mat4 projection = glm::perspective(camera->FOV, window->GetScreenWidth()/(float)window->GetScreenHeight(), camera->nearPlane, camera->farPlane);
+            glm::mat4 view = camera->GetViewMatrix();
+			glm::mat4 model = glm::mat4(1.0f);
+			geometryPassShader->Use();
+			geometryPassShader->SetMat4("projection", projection);
+			geometryPassShader->SetMat4("view", view);
+
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+			for (RenderEnttRapper rer : sortingEntities)
+			{
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
+				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+
+				glBindVertexArray(mesh.vao);
+
+				geometryPassShader->SetMat4("model", transform.modelMatrix);
+				geometryPassShader->SetVec4("color", color.color);
+
+				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+
+				entities_rendered++;
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
 
 		void LightingPass(float deltaTime, entt::registry &registry)
 		{
-			lightingShader->Use();
-			lightingShader->SetInt("diffuseTexture", 0);
+			// 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
+			// -----------------------------------------------------------------------------------------------------------------------
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-			// render
-        	// ------
-        	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			lightingPassShader->Use();
+			lightingPassShader->SetInt("gPosition", 0);
+			lightingPassShader->SetInt("gNormal", 1);
+			lightingPassShader->SetInt("gAlbedoSpec", 2);
+			//lightingPassShader->SetInt("ssao", 3);
+			lightingPassShader->SetInt("numPointLights", NR_LIGHTS);
+			
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, gPosition);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, gNormal);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+			// send light relevant uniforms
+			for (unsigned int i = 0; i < lightPositions.size(); i++)
+			{
+				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
+				// update attenuation parameters and calculate radius
+				const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+				const float linear = 0.7f;
+				const float quadratic = 1.8f;
+				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Linear", linear);
+				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
+				// then calculate radius of light volume/sphere
+				const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
+				float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
+				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Radius", radius);
+			}
+			lightingPassShader->SetVec3("viewPos", camera->Position);
+			// finally render quad
+			if (quadVAO == 0)
+			{
+				float quadVertices[] = {
+					// positions        // texture Coords
+					-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+					-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+					1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+					1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+				};
+				// setup plane VAO
+				glGenVertexArrays(1, &quadVAO);
+				glGenBuffers(1, &quadVBO);
+				glBindVertexArray(quadVAO);
+				glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+				glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+				glEnableVertexAttribArray(0);
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+				glEnableVertexAttribArray(1);
+				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+			}
+			glBindVertexArray(quadVAO);
+			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+			glBindVertexArray(0);
 
-        	// 1. render scene into floating point framebuffer
-        	// -----------------------------------------------
-        	glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-            glm::mat4 projection = glm::perspective(glm::radians(camera->Zoom), window->GetScreenWidth()/(float)window->GetScreenHeight(), camera->nearPlane, camera->farPlane);
-            glm::mat4 view = camera->GetViewMatrix();
-            lightingShader->SetMat4("projection", projection);
-            lightingShader->SetMat4("view", view);
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
-            // set lighting uniforms
-            for (unsigned int i = 0; i < lightPositions.size(); i++)
-            {
-                lightingShader->SetVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
-                lightingShader->SetVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
-            }
-            lightingShader->SetVec3("viewPos", camera->Position);
-            // render tunnel
-            glm::mat4 model = glm::mat4(1.0f);
-            model = glm::translate(model, glm::vec3(0.0f, 0.0f, 25.0));
-            model = glm::scale(model, glm::vec3(2.5f, 2.5f, 27.5f));
-            lightingShader->SetMat4("model", model);
-            lightingShader->SetInt("inverse_normals", true);
-            renderCube();
-        	glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			// 2.5. copy content of geometry's depth buffer to default framebuffer's depth buffer
+			// ----------------------------------------------------------------------------------
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, gBuffer);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, 0); // write to default framebuffer
+			// blit to default framebuffer. Note that this may or may not work as the internal formats of both the FBO and default framebuffer have to match.
+			// the internal formats are implementation defined. This works on all of my systems, but if it doesn't on yours you'll likely have to write to the 		
+			// depth buffer in another shader stage (or somehow see to match the default framebuffer's internal format with the FBO's internal format).
+			glBlitFramebuffer(0, 0, window->GetScreenWidth(), window->GetScreenHeight(), 0, 0, window->GetScreenWidth(), window->GetScreenHeight(), GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
 		void HDRPass(float deltaTime, entt::registry &registry)
@@ -405,10 +490,6 @@ namespace Canis
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			// create depth buffer (renderbuffer)
-			glGenRenderbuffers(1, &rboDepth);
-			glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight());
 			// attach buffers
 			glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffer, 0);
@@ -417,15 +498,56 @@ namespace Canis
 				std::cout << "Framebuffer not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-			lightPositions.push_back(glm::vec3( 0.0f,  0.0f, 49.5f)); // back light
-			lightPositions.push_back(glm::vec3(-1.4f, -1.9f, 9.0f));
-			lightPositions.push_back(glm::vec3( 0.0f, -1.8f, 4.0f));
-			lightPositions.push_back(glm::vec3( 0.8f, -1.7f, 6.0f));
-			// colors
-			lightColors.push_back(glm::vec3(200.0f, 200.0f, 200.0f));
-			lightColors.push_back(glm::vec3(0.1f, 0.0f, 0.0f));
-			lightColors.push_back(glm::vec3(0.0f, 0.0f, 0.2f));
-			lightColors.push_back(glm::vec3(0.0f, 0.1f, 0.0f));
+			// configure g-buffer framebuffer
+			// ------------------------------
+			glGenFramebuffers(1, &gBuffer);
+			glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
+			// position color buffer
+			glGenTextures(1, &gPosition);
+			glBindTexture(GL_TEXTURE_2D, gPosition);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, gPosition, 0);
+			// normal color buffer
+			glGenTextures(1, &gNormal);
+			glBindTexture(GL_TEXTURE_2D, gNormal);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, gNormal, 0);
+			// color + specular color buffer
+			glGenTextures(1, &gAlbedoSpec);
+			glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_UNSIGNED_BYTE, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT2, GL_TEXTURE_2D, gAlbedoSpec, 0);
+			// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
+			glDrawBuffers(3, attachments);
+			// create and attach depth buffer (renderbuffer)
+			glGenRenderbuffers(1, &rboDepth);
+			glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight());
+			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
+			// finally check if framebuffer is complete
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cout << "Framebuffer not complete!" << std::endl;
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			for (unsigned int i = 0; i < NR_LIGHTS; i++)
+			{
+				// calculate slightly random offsets
+				float xPos = static_cast<float>(((rand() % 100) / 100.0) * 23.0);
+				float yPos = static_cast<float>(((rand() % 100) / 100.0) * 2.0);
+				float zPos = static_cast<float>(((rand() % 100) / 100.0) * 30.0);
+				lightPositions.push_back(glm::vec3(xPos, yPos, zPos));
+				// also calculate random color
+				float rColor = static_cast<float>(((rand() % 100) / 100.0f)); // between 0.5 and 1.)
+				float gColor = static_cast<float>(((rand() % 100) / 100.0f)); // between 0.5 and 1.)
+				float bColor = static_cast<float>(((rand() % 100) / 100.0f)); // between 0.5 and 1.)
+				lightColors.push_back(glm::vec3(rColor, gColor, bColor));
+			}
 
 			int id = assetManager->LoadShader("assets/shaders/hdr");
             hdrShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
@@ -446,6 +568,22 @@ namespace Canis
                 lightingShader->Link();
             }
 
+			id = assetManager->LoadShader("assets/shaders/g_buffer");
+            geometryPassShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!geometryPassShader->IsLinked())
+            {
+                geometryPassShader->Link();
+            }
+
+			id = assetManager->LoadShader("assets/shaders/deferred_shading");
+            lightingPassShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!lightingPassShader->IsLinked())
+            {
+                lightingPassShader->Link();
+            }
+
 			diffuseColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/diffuse.png"))->GetPointerToTexture();
 			
 			specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/specular.png"))->GetPointerToTexture();
@@ -457,10 +595,12 @@ namespace Canis
 		{
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
-			glEnable(GL_BLEND);
+			//glEnable(GL_BLEND);
+			glDisable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
-			//glEnable(GL_CULL_FACE);
+			glEnable(GL_CULL_FACE);
+			glEnable(GL_BACK);
 
 			sortingEntities.clear();
 			Canis::List::Clear(&sortingEntitiesList);
@@ -476,8 +616,8 @@ namespace Canis
 
 				glm::mat4 m = Canis::GetModelMatrix(transform);
 
-				if (!isOnFrustum(camFrustum, transform, m, sphere))
-					continue;
+				//if (!isOnFrustum(camFrustum, transform, m, sphere))
+				//	continue;
 
 				RenderEnttRapper rer = {};
 				rer.e = entity;
@@ -488,8 +628,8 @@ namespace Canis
 
 			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
 
+			GeometryPass(_deltaTime, _registry);
 			LightingPass(_deltaTime, _registry);
-			HDRPass(_deltaTime, _registry);
 
 			glDisable(GL_CULL_FACE);
 			glDisable(GL_DEPTH_TEST);
