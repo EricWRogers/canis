@@ -1,6 +1,7 @@
 #pragma once
 #include <algorithm>
 #include <string>
+#include <random>
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
@@ -44,11 +45,14 @@ namespace Canis
 		Canis::Shader *geometryPassShader;
 		Canis::Shader *lightingPassShader;
 		Canis::Shader *lightBoxShader;
+		Canis::Shader *ssaoShader;
+		Canis::Shader *blurSSAOShader;
 		Canis::GLTexture *diffuseColorPaletteTexture;
 		Canis::GLTexture *specularColorPaletteTexture;
 		Canis::GLTexture *emissionColorPaletteTexture;
 
 		int entities_rendered = 0;
+		glm::mat4 perspectiveProjection;
 		glm::vec3 lightPos = glm::vec3(0.0f, 20.0f, 0.0f);
 		glm::vec3 lightLookAt = glm::vec3(12.0f,0.0f,15.0f);
 		float nearPlane = 1.0f;
@@ -69,9 +73,14 @@ namespace Canis
 		unsigned int attachments[3] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1, GL_COLOR_ATTACHMENT2 };
 		unsigned int rboDepth;
 
-		unsigned int modelId = 0;
+		unsigned int ssaoFBO, ssaoBlurFBO;
+		unsigned int ssaoColorBuffer, ssaoColorBufferBlur;
+		unsigned int noiseTexture;
 
-		const unsigned int NR_LIGHTS = 500;
+		std::vector<glm::vec3> ssaoKernel;
+		std::vector<glm::vec3> ssaoNoise;
+
+		const unsigned int NR_LIGHTS = 50;
 		std::vector<glm::vec3> lightPositions;
 		std::vector<glm::vec3> lightColors;
 
@@ -246,11 +255,11 @@ namespace Canis
 			// -----------------------------------------------------------------
 			glBindFramebuffer(GL_FRAMEBUFFER, gBuffer);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			glm::mat4 projection = glm::perspective(camera->FOV, window->GetScreenWidth()/(float)window->GetScreenHeight(), camera->nearPlane, camera->farPlane);
+			perspectiveProjection = glm::perspective(camera->FOV, window->GetScreenWidth()/(float)window->GetScreenHeight(), camera->nearPlane, camera->farPlane);
             glm::mat4 view = camera->GetViewMatrix();
 			glm::mat4 model = glm::mat4(1.0f);
 			geometryPassShader->Use();
-			geometryPassShader->SetMat4("projection", projection);
+			geometryPassShader->SetMat4("projection", perspectiveProjection);
 			geometryPassShader->SetMat4("view", view);
 
 			glActiveTexture(GL_TEXTURE0);
@@ -258,6 +267,8 @@ namespace Canis
 
 			glActiveTexture(GL_TEXTURE1);
 			glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+			geometryPassShader->SetInt("invertedNormals", 0);
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -278,6 +289,88 @@ namespace Canis
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 		}
 
+		void SSAOPass(float deltaTime, entt::registry &registry)
+		{
+			// 2. generate SSAO texture
+			// ------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+				glClear(GL_COLOR_BUFFER_BIT);
+				ssaoShader->Use();
+				ssaoShader->SetInt("gPosition", 0);
+				ssaoShader->SetInt("gNormal", 1);
+				ssaoShader->SetInt("texNoise", 2);
+				// Send kernel + rotation 
+				for (unsigned int i = 0; i < 64; ++i)
+					ssaoShader->SetVec3("samples[" + std::to_string(i) + "]", ssaoKernel[i]);
+				ssaoShader->SetMat4("projection", perspectiveProjection);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, gPosition);
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, gNormal);
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, noiseTexture);
+				// render quad
+				if (quadVAO == 0)
+				{
+					float quadVertices[] = {
+						// positions        // texture Coords
+						-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+						-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+						1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+						1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+					};
+					// setup plane VAO
+					glGenVertexArrays(1, &quadVAO);
+					glGenBuffers(1, &quadVBO);
+					glBindVertexArray(quadVAO);
+					glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+					glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+					glEnableVertexAttribArray(0);
+					glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+					glEnableVertexAttribArray(1);
+					glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+				}
+				glBindVertexArray(quadVAO);
+				glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+				glBindVertexArray(0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+
+			// 3. blur SSAO texture to remove noise
+			// ------------------------------------
+			glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+				glClear(GL_COLOR_BUFFER_BIT);
+				blurSSAOShader->Use();
+				blurSSAOShader->SetInt("ssaoInput", 0);
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+				// render quad
+				if (quadVAO == 0)
+				{
+					float quadVertices[] = {
+						// positions        // texture Coords
+						-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
+						-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
+						1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
+						1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+					};
+					// setup plane VAO
+					glGenVertexArrays(1, &quadVAO);
+					glGenBuffers(1, &quadVBO);
+					glBindVertexArray(quadVAO);
+					glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
+					glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
+					glEnableVertexAttribArray(0);
+					glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+					glEnableVertexAttribArray(1);
+					glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+				}
+				glBindVertexArray(quadVAO);
+				glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+				glBindVertexArray(0);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+		}
+
 		void LightingPass(float deltaTime, entt::registry &registry)
 		{
 			// 2. lighting pass: calculate lighting by iterating over a screen filled quad pixel-by-pixel using the gbuffer's content.
@@ -288,7 +381,7 @@ namespace Canis
 			lightingPassShader->SetInt("gPosition", 0);
 			lightingPassShader->SetInt("gNormal", 1);
 			lightingPassShader->SetInt("gAlbedoSpec", 2);
-			//lightingPassShader->SetInt("ssao", 3);
+			lightingPassShader->SetInt("ssao", 3);
 			lightingPassShader->SetInt("numPointLights", NR_LIGHTS);
 			
 			glActiveTexture(GL_TEXTURE0);
@@ -297,10 +390,13 @@ namespace Canis
 			glBindTexture(GL_TEXTURE_2D, gNormal);
 			glActiveTexture(GL_TEXTURE2);
 			glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
 			// send light relevant uniforms
 			for (unsigned int i = 0; i < lightPositions.size(); i++)
 			{
-				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Position", lightPositions[i]);
+				glm::vec3 lightPosView = glm::vec3(camera->GetViewMatrix() * glm::vec4(lightPositions[i], 1.0));
+				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Position", lightPosView);
 				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
 				// update attenuation parameters and calculate radius
 				const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
@@ -535,6 +631,66 @@ namespace Canis
 				std::cout << "Framebuffer not complete!" << std::endl;
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
+			// also create framebuffer to hold SSAO processing stage 
+			// -----------------------------------------------------
+			glGenFramebuffers(1, &ssaoFBO); 
+			glBindFramebuffer(GL_FRAMEBUFFER, ssaoFBO);
+			// SSAO color buffer
+			glGenTextures(1, &ssaoColorBuffer);
+			glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RED, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBuffer, 0);
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cout << "SSAO Framebuffer not complete!" << std::endl;
+			// and blur stage
+			glGenFramebuffers(1, &ssaoBlurFBO);
+			glBindFramebuffer(GL_FRAMEBUFFER, ssaoBlurFBO);
+			glGenTextures(1, &ssaoColorBufferBlur);
+			glBindTexture(GL_TEXTURE_2D, ssaoColorBufferBlur);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RED, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, ssaoColorBufferBlur, 0);
+			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+				std::cout << "SSAO Blur Framebuffer not complete!" << std::endl;
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// generate sample kernel
+			// ----------------------
+			std::uniform_real_distribution<float> randomFloats(0.0f, 1.0f); // generates random floats between 0.0 and 1.0
+			std::default_random_engine generator;
+			for (unsigned int i = 0; i < 64; ++i)
+			{
+				glm::vec3 sample(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, randomFloats(generator));
+				sample = glm::normalize(sample);
+				sample *= randomFloats(generator);
+				float scale = float(i) / 64.0f;
+
+				// scale samples s.t. they're more aligned to center of kernel
+				Lerp(scale, 0.1f, 1.0f, scale * scale);
+				sample *= scale;
+				Canis::Log(std::to_string(scale));
+				ssaoKernel.push_back(sample);
+			}
+
+			// generate noise texture
+			// ----------------------
+			for (unsigned int i = 0; i < 16; i++)
+			{
+				glm::vec3 noise(randomFloats(generator) * 2.0 - 1.0, randomFloats(generator) * 2.0 - 1.0, 0.0f); // rotate around z-axis (in tangent space)
+				ssaoNoise.push_back(noise);
+			}
+			glGenTextures(1, &noiseTexture);
+			glBindTexture(GL_TEXTURE_2D, noiseTexture);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, 4, 4, 0, GL_RGB, GL_FLOAT, &ssaoNoise[0]);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+
+
 			for (unsigned int i = 0; i < NR_LIGHTS; i++)
 			{
 				// calculate slightly random offsets
@@ -584,6 +740,22 @@ namespace Canis
                 lightingPassShader->Link();
             }
 
+			id = assetManager->LoadShader("assets/shaders/ssao");
+            ssaoShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!ssaoShader->IsLinked())
+            {
+                ssaoShader->Link();
+            }
+
+			id = assetManager->LoadShader("assets/shaders/ssao_blur");
+            blurSSAOShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!blurSSAOShader->IsLinked())
+            {
+                blurSSAOShader->Link();
+            }
+
 			diffuseColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/diffuse.png"))->GetPointerToTexture();
 			
 			specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(assetManager->LoadTexture("assets/textures/palette/specular.png"))->GetPointerToTexture();
@@ -629,6 +801,7 @@ namespace Canis
 			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
 
 			GeometryPass(_deltaTime, _registry);
+			SSAOPass(_deltaTime, _registry);
 			LightingPass(_deltaTime, _registry);
 
 			glDisable(GL_CULL_FACE);
