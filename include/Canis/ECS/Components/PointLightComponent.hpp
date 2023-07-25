@@ -5,15 +5,11 @@ namespace Canis
 {
 	struct PointLightComponent
 	{
-        // Get this values from the transform
-		// glm::vec3 position;
-    
-        float constant;
-        float linear;
-        float quadratic;
+        glm::vec3 offset = glm::vec3(0.0f);
+        glm::vec3 color = glm::vec3(1.0f);
         
-        glm::vec3 ambient;
-        glm::vec3 diffuse;
-        glm::vec3 specular;
+        float linear = 0.7f;
+        float quadratic = 1.8f;
+        float radius;
 	};
 } // end of Canis namespace

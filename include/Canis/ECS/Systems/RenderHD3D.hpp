@@ -21,6 +21,7 @@
 #include "../Components/MeshComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
+#include "../Components/PointLightComponent.hpp"
 
 #include <Canis/DataStructure/List.hpp>
 #include <Canis/Time.hpp>
@@ -382,7 +383,6 @@ namespace Canis
 			lightingPassShader->SetInt("gNormal", 1);
 			lightingPassShader->SetInt("gAlbedoSpec", 2);
 			lightingPassShader->SetInt("ssao", 3);
-			lightingPassShader->SetInt("numPointLights", NR_LIGHTS);
 			
 			glActiveTexture(GL_TEXTURE0);
 			glBindTexture(GL_TEXTURE_2D, gPosition);
@@ -392,23 +392,56 @@ namespace Canis
 			glBindTexture(GL_TEXTURE_2D, gAlbedoSpec);
 			glActiveTexture(GL_TEXTURE3);
 			glBindTexture(GL_TEXTURE_2D, ssaoColorBuffer);
-			// send light relevant uniforms
-			for (unsigned int i = 0; i < lightPositions.size(); i++)
+
+			// directional light
+			int numDirLights = 0;
+
+			auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+
+			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
-				glm::vec3 lightPosView = glm::vec3(camera->GetViewMatrix() * glm::vec4(lightPositions[i], 1.0));
-				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Position", lightPosView);
-				lightingPassShader->SetVec3("lights[" + std::to_string(i) + "].Color", lightColors[i]);
-				// update attenuation parameters and calculate radius
-				const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
-				const float linear = 0.7f;
-				const float quadratic = 1.8f;
-				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Linear", linear);
-				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Quadratic", quadratic);
-				// then calculate radius of light volume/sphere
-				const float maxBrightness = std::fmaxf(std::fmaxf(lightColors[i].r, lightColors[i].g), lightColors[i].b);
-				float radius = (-linear + std::sqrt(linear * linear - 4 * quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * quadratic);
-				lightingPassShader->SetFloat("lights[" + std::to_string(i) + "].Radius", radius);
+				if (transform.active)
+				{
+					numDirLights++;
+					lightingPassShader->SetVec3("directionalLight.direction", transform.rotation);
+					lightingPassShader->SetVec3("directionalLight.ambient", directionalLight.ambient);
+					lightingPassShader->SetVec3("directionalLight.diffuse", directionalLight.diffuse);
+					lightingPassShader->SetVec3("directionalLight.specular", directionalLight.specular);
+				}
+				break;
 			}
+			lightingPassShader->SetInt("numDirectionalLights", numDirLights);
+
+			// point light
+			int numPointLights = 0;
+
+			auto viewPointLight = registry.view<const Canis::TransformComponent, const Canis::PointLightComponent>();
+
+			for (auto [entity, transform, pointLight] : viewPointLight.each())
+			{
+				if (transform.active)
+				{
+					//if (numDirLights + 1 >= NR_LIGHTS)
+					//	break;
+					
+					glm::vec3 lightPosView = glm::vec3(camera->GetViewMatrix() * glm::vec4(transform.position + pointLight.offset, 1.0));
+					lightingPassShader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].Position", lightPosView);
+					lightingPassShader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].Color", pointLight.color);
+					// update attenuation parameters and calculate radius
+					const float constant = 1.0f; // note that we don't send this to the shader, we assume it is always 1.0 (in our case)
+					//const float linear = 0.7f;
+					//const float quadratic = 1.8f;
+					lightingPassShader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].Linear", pointLight.linear);
+					lightingPassShader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].Quadratic", pointLight.quadratic);
+					// then calculate radius of light volume/sphere
+					const float maxBrightness = std::fmaxf(std::fmaxf(pointLight.color.r, pointLight.color.g), pointLight.color.b);
+					float radius = (-pointLight.linear + std::sqrt(pointLight.linear * pointLight.linear - 4 * pointLight.quadratic * (constant - (256.0f / 5.0f) * maxBrightness))) / (2.0f * pointLight.quadratic);
+					lightingPassShader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].Radius", radius);
+
+					numPointLights++;
+				}
+			}
+			lightingPassShader->SetInt("numPointLights", numPointLights);
 			lightingPassShader->SetVec3("viewPos", camera->Position);
 			// finally render quad
 			if (quadVAO == 0)
@@ -671,7 +704,6 @@ namespace Canis
 				// scale samples s.t. they're more aligned to center of kernel
 				Lerp(scale, 0.1f, 1.0f, scale * scale);
 				sample *= scale;
-				Canis::Log(std::to_string(scale));
 				ssaoKernel.push_back(sample);
 			}
 
