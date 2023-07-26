@@ -50,7 +50,7 @@ namespace Canis
 		Canis::GLTexture *emissionColorPaletteTexture;
 
 		int entities_rendered = 0;
-		glm::vec3 lightPos = glm::vec3(0.0f, 20.0f, 0.0f);
+		glm::vec3 lightPos = glm::vec3(0.0f, 30.0f, 30.0f);
 		glm::vec3 lightLookAt = glm::vec3(12.0f,0.0f,15.0f);
 		float nearPlane = 1.0f;
 		float farPlane = 40.0f;
@@ -355,7 +355,7 @@ namespace Canis
 			{
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
 				blurShader->SetInt("horizontal", horizontal);
-				glActiveTexture(GL_TEXTURE0+i);
+				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
 				renderQuad();
 				horizontal = !horizontal;
@@ -411,7 +411,7 @@ namespace Canis
 			glGenTextures(2, colorBuffers);
 			for (unsigned int i = 0; i < 2; i++)
 			{
-				glActiveTexture(GL_TEXTURE0+i);
+				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
