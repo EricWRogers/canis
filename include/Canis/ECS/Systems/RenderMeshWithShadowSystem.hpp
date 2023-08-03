@@ -71,7 +71,7 @@ namespace Canis
 		glm::mat4 lightSpaceMatrix;
 
 		bool bloom = true;
-		float exposure = 1.1f;
+		float exposure = 1.0f;
 
 		RenderMeshWithShadowSystem() : System() {
 			
@@ -349,7 +349,7 @@ namespace Canis
 			// --------------------------------------------------
 			horizontal = true;
 			first_iteration = true;
-			unsigned int amount = 10;
+			unsigned int amount = 15;
 			blurShader->Use();
 			blurShader->SetInt("image", 0);
 			for (unsigned int i = 0; i < amount; i++)
@@ -412,7 +412,6 @@ namespace Canis
 			glGenTextures(2, colorBuffers);
 			for (unsigned int i = 0; i < 2; i++)
 			{
-				glActiveTexture(GL_TEXTURE0);
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -441,7 +440,6 @@ namespace Canis
 			for (unsigned int i = 0; i < 2; i++)
 			{
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-				glActiveTexture(GL_TEXTURE0+i);
 				glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
