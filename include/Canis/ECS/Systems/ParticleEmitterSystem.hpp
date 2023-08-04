@@ -46,6 +46,8 @@ public:
                     
                     ColorComponent colorComponent = {};
                     colorComponent.color = emitter.colorStart;
+                    colorComponent.emission = emitter.emission;
+                    colorComponent.emissionUsingAlbedoIntesity = emitter.emissionUsingAlbedoIntesity;
 
                     MeshComponent meshComponent = {};
                     meshComponent.id = emitter.modelID;

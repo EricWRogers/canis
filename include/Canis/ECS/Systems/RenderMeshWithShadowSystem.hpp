@@ -317,8 +317,10 @@ namespace Canis
 
 			shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 			
-			std::string modelKey = "model";
-			std::string colorKey = "color";
+			std::string modelKey = "MODEL";
+			std::string colorKey = "COLOR";
+			std::string emissionKey = "EMISSION";
+			std::string emissionUsingAlbedoIntesityKey = "EMISSIONUSINGALBEDOINTESITY";
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -329,7 +331,10 @@ namespace Canis
 				glBindVertexArray(mesh.vao);
 
 				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
+
 				shadow_mapping_shader->SetVec4(colorKey, color.color);
+				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
+				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
 				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
 

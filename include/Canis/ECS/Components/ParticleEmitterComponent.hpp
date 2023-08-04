@@ -33,6 +33,8 @@ namespace Canis
         glm::vec3 maxRotation = glm::vec3(360.0f);
         glm::vec4 colorStart = glm::vec4(1.0f);
         glm::vec4 colorEnd = glm::vec4(1.0f);
+        glm::vec3 emission = glm::vec3(0.0f);
+        float emissionUsingAlbedoIntesity = 0.0f;
         unsigned int modelID = 0;
         bool castShadow = false;
         float timeTillSpawn = 0.1f;
