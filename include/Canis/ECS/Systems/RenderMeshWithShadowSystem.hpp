@@ -219,20 +219,30 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
+			unsigned int modelId = 0;
+			unsigned int vao = 0;
+			unsigned int size = 0;
+
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+
+				if (mesh.id != modelId) {
+					modelId = mesh.id;
+					vao = assetManager->Get<ModelAsset>(modelId)->vao;
+					size = assetManager->Get<ModelAsset>(modelId)->size;
+				}
 
 				if (!mesh.castShadow)
 					continue;
 				
 				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 
-				glBindVertexArray(mesh.vao);
+				glBindVertexArray(vao);
 
 				shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 
-				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+				glDrawArrays(GL_TRIANGLES, 0, size);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -322,13 +332,23 @@ namespace Canis
 			std::string emissionKey = "EMISSION";
 			std::string emissionUsingAlbedoIntesityKey = "EMISSIONUSINGALBEDOINTESITY";
 
+			unsigned int modelId = 0;
+			unsigned int vao = 0;
+			unsigned int size = 0;
+
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
 				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
 
-				glBindVertexArray(mesh.vao);
+				if (mesh.id != modelId) {
+					modelId = mesh.id;
+					vao = assetManager->Get<ModelAsset>(modelId)->vao;
+					size = assetManager->Get<ModelAsset>(modelId)->size;
+				}
+
+				glBindVertexArray(vao);
 
 				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
 
@@ -336,7 +356,7 @@ namespace Canis
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
-				glDrawArrays(GL_TRIANGLES, 0, mesh.size);
+				glDrawArrays(GL_TRIANGLES, 0, size);
 
 				entities_rendered++;
 			}

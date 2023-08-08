@@ -55,28 +55,16 @@ namespace Canis
 
     class ModelAsset : public Asset
     {
-    private:
-        std::vector<Canis::Vertex> m_vertices;
-        unsigned int m_vao;
-        unsigned int m_vbo;
-        int m_size;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        unsigned int GetVAO() { return m_vao; }
-        unsigned int GetVBO() { return m_vbo; }
-        int GetSize() { return m_size; }
-        std::vector<Canis::Vertex> GetVertices() { return m_vertices; }
-    };
+        bool LoadWithVertex(const std::vector<Canis::Vertex> &_vertices);
 
-    /*class MeshAsset : public Asset
-    {
-    private:
-        std::string m_pathToBaseMesh = "";
-    public:
-        bool Load(std::string _path) override;
-        bool Free() override;
-    };*/
+        std::vector<Canis::Vertex> vertices;
+        unsigned int vao;
+        unsigned int vbo;
+        int size;
+    };
 
     class TextAsset : public Asset
     {

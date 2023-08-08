@@ -52,8 +52,6 @@ public:
                     MeshComponent meshComponent = {};
                     meshComponent.id = emitter.modelID;
                     meshComponent.castShadow = emitter.castShadow;
-                    meshComponent.vao = assetManager->Get<Canis::ModelAsset>(meshComponent.id)->GetVAO();
-                    meshComponent.size = assetManager->Get<Canis::ModelAsset>(meshComponent.id)->GetSize();
 
                     SphereColliderComponent sphereColliderComponent = {};
 

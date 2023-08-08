@@ -87,6 +87,34 @@ namespace Canis
         return id;
     }
 
+    int AssetManager::LoadModel(const std::string &_name, const std::vector<Canis::Vertex> &_vertices)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(_name);
+
+        // check if model already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create model
+        Asset* model = new ModelAsset();
+        ((ModelAsset*)model)->LoadWithVertex(_vertices);
+        int id = m_nextId;
+
+        // cache model
+        m_assets[id] = model;
+
+        // cache id
+        m_assetPath[_name] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
+
     int AssetManager::LoadSound(const std::string &_path)
     {
         std::map<std::string, int>::iterator it;

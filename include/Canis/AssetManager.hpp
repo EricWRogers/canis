@@ -14,6 +14,7 @@ namespace Canis
         int LoadTexture(const std::string &_path);
         int LoadSkybox(const std::string &_path);
         int LoadModel(const std::string &_path);
+        int LoadModel(const std::string &_name, const std::vector<Canis::Vertex> &_vertices);
         int LoadSound(const std::string &_path);
         int LoadMusic(const std::string &_path);
         int LoadText(const std::string &_path, unsigned int fontSize);
