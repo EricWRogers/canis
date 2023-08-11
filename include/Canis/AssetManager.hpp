@@ -20,6 +20,7 @@ namespace Canis
         int LoadText(const std::string &_path, unsigned int fontSize);
         int LoadShader(const std::string &_pathWithOutExtension);
         int LoadSpriteAnimation(const std::string &path);
+        int LoadMaterial(const std::string &_path);
         int GetIdByPath(const std::string &_path);
 
         template <typename T>
@@ -30,7 +31,7 @@ namespace Canis
 
     private:
         int m_nextId{ 0 };
-        std::map<int, Asset*> m_assets{};
+        std::map<int, void*> m_assets{};
         std::map<std::string, int> m_assetPath{};
     };
 } // end of Canis namespace

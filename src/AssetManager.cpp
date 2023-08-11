@@ -278,5 +278,75 @@ namespace Canis
         return id;
     }
     
+    int AssetManager::LoadMaterial(const std::string &_path)
+    {
+        std::map<std::string, int>::iterator it;
+        it = m_assetPath.find(_path);
 
+        // check if animation already exist
+        if (it != m_assetPath.end()) // found
+        {
+            return it->second;
+        }
+
+        // create animation
+        MaterialAsset* material = new MaterialAsset();
+
+        YAML::Node root = YAML::LoadFile(_path);
+
+        if (YAML::Node shaderNode = root["shader"])
+        {
+            std::string shaderPath = shaderNode.as<std::string>();
+
+            material->shaderId = LoadShader(shaderPath);
+
+            ShaderAsset* shaderAsset = Get<ShaderAsset>(material->shaderId);
+
+            if (shaderAsset->GetShader()->IsLinked() == false) {
+                shaderAsset->GetShader()->Link();
+            }
+
+            material->info |= MaterialInfo::HASSHADER;
+        }
+
+        if (YAML::Node albedoNode = root["albedo"])
+        {
+            std::string albedoPath = albedoNode.as<std::string>();
+
+            material->albedoId = LoadTexture(albedoPath);
+
+            material->info |= MaterialInfo::HASALBEDO;
+        }
+
+        if (YAML::Node specularNode = root["specular"])
+        {
+            std::string specularPath = specularNode.as<std::string>();
+
+            material->specularId = LoadTexture(specularPath);
+
+            material->info |= MaterialInfo::HASSPECULAR;
+        }
+
+        if (YAML::Node emissionNode = root["emission"])
+        {
+            std::string emissionPath = emissionNode.as<std::string>();
+
+            material->emissionId = LoadTexture(emissionPath);
+
+            material->info |= MaterialInfo::HASEMISSION;
+        }
+
+        int id = m_nextId;
+
+        // cache material
+        m_assets[id] = material;
+
+        // cache id
+        m_assetPath[_path] = id;
+
+        // increment id
+        m_nextId++;
+
+        return id;
+    }
 } // end of Canis namespace

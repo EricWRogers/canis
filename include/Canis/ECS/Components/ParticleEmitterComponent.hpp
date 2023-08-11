@@ -35,7 +35,8 @@ namespace Canis
         glm::vec4 colorEnd = glm::vec4(1.0f);
         glm::vec3 emission = glm::vec3(0.0f);
         float emissionUsingAlbedoIntesity = 0.0f;
-        unsigned int modelID = 0;
+        int modelID = -1;
+        int material = -1;
         bool castShadow = false;
         float timeTillSpawn = 0.1f;
         float _spawnCountDown = 0.0f;

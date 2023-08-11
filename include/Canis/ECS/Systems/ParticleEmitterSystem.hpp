@@ -52,6 +52,7 @@ public:
                     MeshComponent meshComponent = {};
                     meshComponent.id = emitter.modelID;
                     meshComponent.castShadow = emitter.castShadow;
+                    meshComponent.material = emitter.material;
 
                     SphereColliderComponent sphereColliderComponent = {};
 
