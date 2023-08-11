@@ -59,7 +59,7 @@ namespace Canis
                                            (float)window->GetScreenHeight());
 
                 m_spriteRenderer.Draw(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x, rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y, rect_transform.size.x, rect_transform.size.y),
+                    glm::vec4(rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x, rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y, rect_transform.size.x * rect_transform.scale, rect_transform.size.y * rect_transform.scale),
                     image.uv,
                     image.texture,
                     rect_transform.depth,

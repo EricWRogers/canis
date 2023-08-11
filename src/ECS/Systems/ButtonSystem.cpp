@@ -22,11 +22,14 @@ namespace Canis
                                            (float)window->GetScreenHeight());
 
                 if (inputManager->mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&
-                    inputManager->mouse.x < rect_transform.position.x + rect_transform.size.x + rect_transform.originOffset.x + positionAnchor.x &&
+                    inputManager->mouse.x < rect_transform.position.x + (rect_transform.size.x * rect_transform.scale) + rect_transform.originOffset.x + positionAnchor.x &&
                     inputManager->mouse.y > rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y &&
-                    inputManager->mouse.y < rect_transform.position.y + rect_transform.size.y + rect_transform.originOffset.y + positionAnchor.y)
+                    inputManager->mouse.y < rect_transform.position.y + (rect_transform.size.y * rect_transform.scale) + rect_transform.originOffset.y + positionAnchor.y)
                 {
                     color.color = button.hoverColor;
+                    button.mouseOver = true;
+                    rect_transform.scale = button.hoverScale;
+
                     if (button.action == 0u)
                     {
                         if (inputManager->JustLeftClicked())
@@ -47,6 +50,8 @@ namespace Canis
                 else
                 {
                     color.color = button.baseColor;
+                    button.mouseOver = false;
+                    rect_transform.scale = button.scale;
                 }
             }
         }

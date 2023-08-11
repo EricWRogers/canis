@@ -10,5 +10,8 @@ namespace Canis
         glm::vec4 baseColor = glm::vec4(0.9f,0.9f,0.9f,1.0f);
         glm::vec4 hoverColor = glm::vec4(1.0f);
         unsigned int action = 0u; // 0 = just clicked, 1 = mouse released
+        bool mouseOver = false;
+        float scale = 1.0f;
+        float hoverScale = 1.0f;
     };
 } // end of Canis namespace
