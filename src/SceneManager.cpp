@@ -86,6 +86,8 @@ namespace Canis
     {
         if (scenes.size() < _index)
             FatalError("Failed to load scene at index " + std::to_string(_index));
+
+        patientLoadIndex = -1;
         
         if (scene != nullptr)
         {
@@ -130,6 +132,12 @@ namespace Canis
         }
 
         scene->Load();
+
+        // in case someone calls load in load
+        if (patientLoadIndex != -1)
+        {
+            Load(patientLoadIndex);
+        }
 
         if(scene->path != "")
         {
