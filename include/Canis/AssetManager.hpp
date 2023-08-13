@@ -29,6 +29,11 @@ namespace Canis
             return (T*)m_assets[id];
         }
 
+        bool Has(std::string _name)
+        {
+            return m_assetPath.contains(_name);
+        }
+
     private:
         int m_nextId{ 0 };
         std::map<int, void*> m_assets{};

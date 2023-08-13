@@ -66,7 +66,7 @@ public:
 
     unsigned int seed = 0;
 
-    std::unordered_map<std::string, std::string> lastSceneMessage = {};
-    std::unordered_map<std::string, std::string> currentSceneMessage = {};
+    std::unordered_map<std::string, std::string> message = {};
+    std::unordered_map<std::string, std::string> nextMessage = {};
 };
 } // end of Canis namespace

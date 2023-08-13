@@ -111,8 +111,8 @@ namespace Canis
             }
 
             // swap maps
-            lastSceneMessage.swap(currentSceneMessage);
-            currentSceneMessage.clear();
+            message.swap(nextMessage);
+            nextMessage.clear();
             
             scene->entityRegistry = entt::registry();
         }
