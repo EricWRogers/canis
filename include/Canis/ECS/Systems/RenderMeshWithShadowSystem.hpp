@@ -69,6 +69,7 @@ namespace Canis
 		float lightProjectionSize = 20.0f;
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
+		float m_time = 0.0f;
 
 		bool bloom = true;
 		float exposure = 1.0f;
@@ -360,6 +361,13 @@ namespace Canis
 					glBindTexture(GL_TEXTURE_2D, shadowMap);
 				}
 
+				glActiveTexture(GL_TEXTURE4);
+				glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+				shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+
+				m_time += SDL_GetTicks();
+				shadow_mapping_shader->SetFloat("TIME", m_time);
+
 				glBindVertexArray(vao);
 
 				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
@@ -526,7 +534,6 @@ namespace Canis
 		{
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
-			//glEnable(GL_BLEND);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
