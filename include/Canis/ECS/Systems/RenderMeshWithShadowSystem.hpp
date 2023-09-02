@@ -375,7 +375,7 @@ namespace Canis
 
 				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
 				{
-					glFlush();
+					glFinish();
 					glDisable(GL_BLEND);
 
 					glActiveTexture(GL_TEXTURE4);
@@ -479,11 +479,11 @@ namespace Canis
 			for (unsigned int i = 0; i < 2; i++)
 			{
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 				// attach texture to framebuffer
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
 			}
