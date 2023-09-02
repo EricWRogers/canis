@@ -1,5 +1,6 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
+#include <Canis/Debug.hpp>
 
 namespace Canis
 {
@@ -334,6 +335,22 @@ namespace Canis
             material->emissionId = LoadTexture(emissionPath);
 
             material->info |= MaterialInfo::HASEMISSION;
+        }
+
+        if (YAML::Node noiseNode = root["noise"])
+        {
+            std::string noisePath = noiseNode.as<std::string>();
+
+
+            material->noiseId = LoadTexture(noisePath);
+
+            material->info |= MaterialInfo::HASNOISE;
+        }
+
+        if (YAML::Node screenNode = root["screen"])
+        {
+            if ( screenNode.as<std::string>() == "true" )
+                material->info |= MaterialInfo::HASSCREENTEXTURE;
         }
 
         int id = m_nextId;

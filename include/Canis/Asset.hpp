@@ -142,13 +142,15 @@ namespace Canis
 
     enum MaterialInfo
     {
-        HASSHADER   = 1u,
-        HASALBEDO   = 2u,
-        HASSPECULAR = 4u,
-        HASEMISSION = 8u,
-        HASCOLOR    = 16u,
-        HASEMISSIONCOLOR = 32u,
-        HASEMISSIONUSINgALEDOPLUSINTESITY = 64u
+        HASSHADER                           = 1u,
+        HASALBEDO                           = 2u,
+        HASSPECULAR                         = 4u,
+        HASEMISSION                         = 8u,
+        HASNOISE                            = 16u,
+        HASSCREENTEXTURE                    = 32u,
+        HASCOLOR                            = 64u,
+        HASEMISSIONCOLOR                    = 128u,
+        HASEMISSIONUSINGALEDOPLUSINTESITY   = 256u
     };
     
     /*
@@ -163,6 +165,7 @@ namespace Canis
         unsigned int albedoId;
         unsigned int specularId;
         unsigned int emissionId;
+        unsigned int noiseId;
         glm::vec4 color;
         glm::vec3 emissionColor;
         float emissionUsingAlbedoPlusIntesity;

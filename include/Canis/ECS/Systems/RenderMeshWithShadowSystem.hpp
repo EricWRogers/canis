@@ -284,6 +284,7 @@ namespace Canis
 			int materialId = -1;
 			unsigned int vao = 0;
 			unsigned int size = 0;
+			unsigned int materialInfo = 0u;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -300,6 +301,7 @@ namespace Canis
 				if (mesh.material != materialId) {
 					materialId = mesh.material;
 					MaterialAsset* material = assetManager->Get<MaterialAsset>(materialId);
+					materialInfo = material->info;
 
 					shadow_mapping_shader = assetManager->Get<ShaderAsset>(
 						material->shaderId
@@ -359,13 +361,32 @@ namespace Canis
 
 					glActiveTexture(GL_TEXTURE3);
 					glBindTexture(GL_TEXTURE_2D, shadowMap);
+
+					if ( (material->info | MaterialInfo::HASNOISE) == material->info )
+					{
+						//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
+						glActiveTexture(GL_TEXTURE5);
+						glBindTexture(GL_TEXTURE_2D,
+							assetManager->Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
+						);
+						shadow_mapping_shader->SetInt("NOISE", 5);
+					}
 				}
 
-				glActiveTexture(GL_TEXTURE4);
-				glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
-				shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
+				{
+					glFlush();
+					glDisable(GL_BLEND);
 
-				m_time += SDL_GetTicks();
+					glActiveTexture(GL_TEXTURE4);
+					glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+					shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+				}
+				else
+				{
+					glEnable(GL_BLEND);
+				}
+
 				shadow_mapping_shader->SetFloat("TIME", m_time);
 
 				glBindVertexArray(vao);
@@ -458,11 +479,11 @@ namespace Canis
 			for (unsigned int i = 0; i < 2; i++)
 			{
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA32F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
 				// attach texture to framebuffer
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
 			}
@@ -537,6 +558,8 @@ namespace Canis
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
+
+			m_time += _deltaTime;
 
 			sortingEntities.clear();
 			Canis::List::Clear(&sortingEntitiesList);
