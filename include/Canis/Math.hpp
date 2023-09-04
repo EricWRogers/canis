@@ -14,6 +14,10 @@ namespace Canis
         glm::vec3 direction;
     };
 
+    const float PI = 3.14159265f;
+
+    const float RAD2DEG = 180.0f / PI;
+
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
 
     glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position);
