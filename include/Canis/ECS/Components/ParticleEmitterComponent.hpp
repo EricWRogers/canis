@@ -6,12 +6,13 @@ namespace Canis
 {
     enum ParticleEmitterState
     {
-        NONE      = 0,
-        LOOPING   = 1,
-        BURST     = 2,
-        GRAVITY   = 4,
-        PAUSED    = 8,
-        COLORLERP = 16,
+        NONE            = 0,
+        LOOPING         = 1,
+        BURST           = 2,
+        GRAVITY         = 4,
+        PAUSED          = 8,
+        COLORLERP       = 16,
+        DESTROYONEND    = 32,
     };
 
     struct ParticleEmitterComponent

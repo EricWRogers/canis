@@ -68,28 +68,28 @@ public:
                 }
             }
 
-            if (emitter.time == emitter.lifeTime) {
-                if (emitter.state & ParticleEmitterState::BURST) {
-                    for(int i = 0; i < emitter.numOfParticle; i++) {
-                        TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
-                        ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
-                        ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
+            if (emitter.state & ParticleEmitterState::BURST && !(emitter.state & ParticleEmitterState::PAUSED)) {
+                for(int i = 0; i < emitter.numOfParticle; i++) {
+                    TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
+                    ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
+                    ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
-                        c.color = emitter.colorStart;
-                        float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
-                        t.scale = transform.scale*scaleMul;
-                        t.isDirty = true;
-                        t.active = true;
-                        p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
-                        p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);
-                        p.velocity.z = RandomFloat(emitter.minVelocity.z, emitter.maxVelocity.z);
+                    t = transform;
+                    c.color = emitter.colorStart;
+                    float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
+                    t.scale = transform.scale*scaleMul;
+                    t.isDirty = true;
+                    t.active = true;
+                    p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
+                    p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);
+                    p.velocity.z = RandomFloat(emitter.minVelocity.z, emitter.maxVelocity.z);
 
-                        p.velocity = glm::normalize(p.velocity)*emitter.speed;
-                        
-                        p.acceleration = glm::vec3(0.0f);
-                        p.time = emitter.particleLifeTime;
-                    }
+                    p.velocity = glm::normalize(p.velocity)*emitter.speed;
+                    
+                    p.acceleration = glm::vec3(0.0f);
+                    p.time = emitter.particleLifeTime;
                 }
+                emitter.state |= ParticleEmitterState::PAUSED;
             }
 
             // clean up
@@ -143,7 +143,8 @@ public:
                 if (emitter.state & ParticleEmitterState::LOOPING) {
                     emitter.time = emitter.lifeTime;
                 }
-                else {
+                else if (emitter.state & ParticleEmitterState::DESTROYONEND) {
+                    // the future having a pool of particels that is shared would be better
                     for(entt::entity e : emitter.particles) {
                         _registry.destroy(e);
                     }
