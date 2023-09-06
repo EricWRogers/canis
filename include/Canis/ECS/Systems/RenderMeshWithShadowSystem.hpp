@@ -44,6 +44,7 @@ namespace Canis
 		Canis::Shader *depthMapShader;
 		Canis::Shader *shadow_mapping_shader;
 		Canis::Shader *blurShader;
+		Canis::Shader *screenSpaceCopyShader;
 		Canis::Shader *bloomFinalShader;
 
 		Canis::GLTexture *diffuseColorPaletteTexture;
@@ -60,6 +61,8 @@ namespace Canis
 		const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
 		unsigned int shadowMapFBO = 0;
 		unsigned int shadowMap;
+		unsigned int screenSpaceFBO;
+		unsigned int screenSpace;
 		unsigned int hdrFBO;
 		unsigned int colorBuffers[2];
 		unsigned int rboDepth;
@@ -307,6 +310,33 @@ namespace Canis
 						material->shaderId
 					)->GetShader();
 
+					if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
+					{
+						//glFinish();
+						glDisable(GL_BLEND);
+
+						glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+						glFlush();
+
+						glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
+						glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+						screenSpaceCopyShader->Use();
+						glActiveTexture(GL_TEXTURE0);
+						glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+						
+						screenSpaceCopyShader->SetInt("image", 0);
+						renderQuad();
+						screenSpaceCopyShader->UnUse();
+
+
+						glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+					}
+					else
+					{
+						glEnable(GL_BLEND);
+					}
+
 					// activate shader
 					shadow_mapping_shader->Use();
 
@@ -362,6 +392,10 @@ namespace Canis
 					glActiveTexture(GL_TEXTURE3);
 					glBindTexture(GL_TEXTURE_2D, shadowMap);
 
+					glActiveTexture(GL_TEXTURE4);
+					glBindTexture(GL_TEXTURE_2D, screenSpace);
+					shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+
 					if ( (material->info | MaterialInfo::HASNOISE) == material->info )
 					{
 						//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
@@ -370,22 +404,11 @@ namespace Canis
 							assetManager->Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
 						);
 						shadow_mapping_shader->SetInt("NOISE", 5);
+						
 					}
 				}
 
-				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
-				{
-					glFinish();
-					glDisable(GL_BLEND);
-
-					glActiveTexture(GL_TEXTURE4);
-					glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
-					shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
-				}
-				else
-				{
-					glEnable(GL_BLEND);
-				}
+				
 
 				shadow_mapping_shader->SetFloat("TIME", m_time);
 
@@ -518,6 +541,18 @@ namespace Canis
 					std::cout << "Framebuffer not complete!" << std::endl;
 			}
 
+			glGenFramebuffers(1, &screenSpaceFBO);
+			glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
+			// create 2 floating point color buffers (1 for normal rendering, other for brightness threshold values)
+			glGenTextures(1, &screenSpace);
+			glBindTexture(GL_TEXTURE_2D, screenSpace);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+			
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenSpace, 0);
 		}
 
 		void Create() {
@@ -549,6 +584,13 @@ namespace Canis
             {
                 bloomFinalShader->Link();
             }
+
+			id = assetManager->LoadShader("assets/shaders/screen_space_copy");
+			screenSpaceCopyShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+			if (!screenSpaceCopyShader->IsLinked())
+			{
+				screenSpaceCopyShader->Link();
+			}
 		}
     	void Ready() {}
     	void Update(entt::registry &_registry, float _deltaTime)
