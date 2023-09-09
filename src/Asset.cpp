@@ -238,6 +238,10 @@ namespace Canis
     {
         m_chunk = Mix_LoadWAV(_path.c_str());
 
+        if (m_chunk == nullptr) {
+            Canis::Warning("Warning failed to load: " + _path);
+        }
+
         return m_chunk != nullptr;
     }
 
@@ -256,6 +260,11 @@ namespace Canis
     bool MusicAsset::Load(std::string _path)
     {
         m_music = Mix_LoadMUS(_path.c_str());
+
+        if (m_music == nullptr) {
+            Canis::Warning("Warning failed to load: " + _path);
+        }
+
         return m_music != nullptr;
     }
 
