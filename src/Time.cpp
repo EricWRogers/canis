@@ -36,7 +36,7 @@ namespace Canis
 
     void Time::calculateFPS()
     {
-        static const int NUM_SAMPLES = 5000;
+        static const int NUM_SAMPLES = 50;
         static float frameTimes[NUM_SAMPLES];
         static int currentFrame = 0;
 
