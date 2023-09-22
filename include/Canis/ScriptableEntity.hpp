@@ -28,6 +28,7 @@ public:
     AssetManager& GetAssetManager() { return *m_Entity.scene->assetManager; }
     Window& GetWindow() { return *m_Entity.scene->window; }
     InputManager& GetInputManager() { return *m_Entity.scene->inputManager; }
+    Camera& GetCamera() { return *m_Entity.scene->camera; }
 
     template<typename T>
     T* GetSystem() { return m_Entity.scene->GetSystem<T>(); }
