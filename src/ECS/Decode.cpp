@@ -56,6 +56,7 @@ namespace Canis
             rt.rotation = rectTransform["rotation"].as<float>();
             rt.scale = rectTransform["scale"].as<float>();
             rt.depth = rectTransform["depth"].as<float>();
+            rt.scaleWithScreen = (ScaleWithScreen)rectTransform["scaleWithScreen"].as<int>(0);
         }
     }
 

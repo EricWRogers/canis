@@ -17,6 +17,14 @@ namespace Canis
 		BOTTOMRIGHT = 8
 	};
 
+	enum class ScaleWithScreen
+	{
+		NONE = 0,
+		WIDTH = 1,
+		HEIGHT = 2,
+		WIDTHANDHEIGHT = 3
+	};
+
 	glm::vec2 static GetAnchor(const RectAnchor &_anchor, const float &_windowWidth, const float &_windowHeight)
 	{
 		switch (_anchor)
@@ -73,5 +81,6 @@ namespace Canis
 		float rotation = 0.0f;
 		float scale = 1.0f;
 		float depth = 1.0f;
+		ScaleWithScreen scaleWithScreen = ScaleWithScreen::NONE; 
 	};
 } // end of Canis namespace
