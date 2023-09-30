@@ -59,12 +59,15 @@ namespace Canis
                                            (float)window->GetScreenHeight());
 
                 glm::vec2 size = rect_transform.size;
+                glm::vec2 offset = rect_transform.originOffset;
 
                 if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTH)
                 {
                     float scaleX = static_cast<float>(window->GetScreenWidth()) / 1280.0f;
                     size.x *= scaleX;
                     size.y *= scaleX;
+                    offset.x *= scaleX;
+                    offset.y *= scaleX;
                 }
 
                 if (rect_transform.scaleWithScreen == ScaleWithScreen::HEIGHT)
@@ -72,6 +75,8 @@ namespace Canis
                     float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
                     size.x *= scaleY;
                     size.y *= scaleY;
+                    offset.x *= scaleY;
+                    offset.y *= scaleY;
                 }
 
                 if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTHANDHEIGHT)
@@ -80,10 +85,12 @@ namespace Canis
                     float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
                     size.x *= scaleX;
                     size.y *= scaleY;
+                    offset.x *= scaleX;
+                    offset.y *= scaleY;
                 }
 
                 m_spriteRenderer.Draw(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x, rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
+                    glm::vec4(rect_transform.position.x + positionAnchor.x + offset.x, rect_transform.position.y + positionAnchor.y + offset.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
                     image.texture,
                     rect_transform.depth,
