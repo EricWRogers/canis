@@ -20,8 +20,8 @@ namespace Canis
             slider.maxUVX = (slider.maxUVX < 0.0f) ? 0.0f : slider.maxUVX;
             slider.maxUVX = (slider.maxUVX > 1.0f) ? 1.0f : slider.maxUVX;
             image.uv.x = slider.minUVX;
-            image.uv.z = (slider.value * slider.maxUVX) + slider.minUVX;
-            rect.size.x = slider.maxWidth * slider.value;
+            image.uv.z = (slider.value * slider.maxUVX);
+            rect.size.x = (slider.maxWidth * (slider.value * slider.maxUVX)) + (slider.maxWidth * slider.minUVX);
         }
     }
 
