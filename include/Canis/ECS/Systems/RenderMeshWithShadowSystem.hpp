@@ -77,6 +77,13 @@ namespace Canis
 		bool bloom = true;
 		float exposure = 1.0f;
 
+		enum SortBy{
+			DISTANCE,
+			HEIGHT
+		};
+
+		SortBy sortBy = SortBy::DISTANCE;
+
 		RenderMeshWithShadowSystem() : System() {
 			
 		}
@@ -301,7 +308,7 @@ namespace Canis
 					size = assetManager->Get<ModelAsset>(modelId)->size;
 				}
 
-				if (mesh.material != materialId) {
+				if (true){//mesh.material != materialId) {
 					materialId = mesh.material;
 					MaterialAsset* material = assetManager->Get<MaterialAsset>(materialId);
 					materialInfo = material->info;
@@ -513,7 +520,7 @@ namespace Canis
 			// create and attach depth buffer (renderbuffer)
 			glGenRenderbuffers(1, &rboDepth);
 			glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
-			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight());
+			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, window->GetScreenWidth(), window->GetScreenHeight());
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
 			// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
 			unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
@@ -622,14 +629,20 @@ namespace Canis
 
 				RenderEnttRapper rer = {};
 				rer.e = entity;
-				rer.distance = glm::distance(transform.position, camera->Position);
+				if (sortBy == SortBy::DISTANCE)
+					rer.distance = glm::distance(transform.position, camera->Position);
+				if (sortBy == SortBy::HEIGHT)
+					rer.distance = transform.position.y;
 
 				sortingEntities.push_back(rer);
 				//Canis::List::Add(&sortingEntitiesList, &rer);
 			}
 
 			//startTime = high_resolution_clock::now();
-			std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
+			if (sortBy == SortBy::DISTANCE)
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
+			if (sortBy == SortBy::HEIGHT)
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance <= b.distance); });
 			//endTime = high_resolution_clock::now();
 			//std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
