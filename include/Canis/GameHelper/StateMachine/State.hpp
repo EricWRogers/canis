@@ -9,9 +9,6 @@ namespace Canis
 {
     class State
     {
-    protected:
-        bool m_hasBeenEntered = false;
-
     public:
         std::string name = "";
         std::function<void(std::string _name)> ChangeState = nullptr;
@@ -27,7 +24,6 @@ namespace Canis
 
         virtual void Enter(std::unordered_map<std::string, std::string> &_message)
         {
-            m_hasBeenEntered = true;
         }
 
         virtual void Update(float _deltaTime)

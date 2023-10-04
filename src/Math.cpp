@@ -216,4 +216,17 @@ namespace Canis
     {
         _value = _min + _fraction * (_max - _min);
     }
+
+    void Clamp(float &_value, float _min, float _max)
+    {
+        if (_value < _min)
+        {
+            _value = _min;
+        }
+
+        if (_value > _max)
+        {
+            _value = _max;
+        }
+    }
 }
