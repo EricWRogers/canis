@@ -30,6 +30,8 @@ add_subdirectory(external/stb)
 add_subdirectory(external/freetype2)
 add_subdirectory(external/SDL_mixer)
 
+set(YAML_CPP_BUILD_TOOLS            OFF)
+
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype2/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
