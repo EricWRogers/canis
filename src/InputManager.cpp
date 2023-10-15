@@ -148,6 +148,28 @@ namespace Canis
         return false;
     }
 
+    bool InputManager::JustPressedButton(unsigned int _gameControllerId, unsigned int _buttonId)
+    {
+        if (m_gameControllers.size() > _gameControllerId)
+        {
+            return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0 &&
+            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) == 0);
+        }
+
+        return false;
+    }
+
+    bool InputManager::JustReleasedButton(unsigned int _gameControllerId, unsigned int _buttonId)
+    {
+        if (m_gameControllers.size() > _gameControllerId)
+        {
+            return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) == 0 &&
+            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) > 0);
+        }
+
+        return false;
+    }
+
     glm::vec2 InputManager::GetLeftStick(unsigned int _gameControllerId)
     {
         if (m_gameControllers.size() > _gameControllerId)

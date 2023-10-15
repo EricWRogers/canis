@@ -23,7 +23,6 @@ namespace Canis
         DPAD_LEFT       = 8192u,
         DPAD_RIGHT      = 16384u
     };
-
     struct GameControllerData
     {
         glm::vec2 leftStick = glm::vec2(0.0f);
@@ -53,14 +52,13 @@ namespace Canis
 
         bool Update(int _screenWidth, int _screenHeight);
 
-        void PressKey(unsigned int _keyID);
-        void ReleasedKey(unsigned int _keyID);
-        void SwapMaps();
-
         bool GetKey(unsigned int _keyID);
-        bool GetButton(unsigned int _gameControllerId, unsigned int _buttonId);
         bool JustPressedKey(unsigned int _keyID);
         bool JustReleasedKey(unsigned int _keyID);
+        
+        bool GetButton(unsigned int _gameControllerId, unsigned int _buttonId);
+        bool JustPressedButton(unsigned int _gameControllerId, unsigned int _buttonId);
+        bool JustReleasedButton(unsigned int _gameControllerId, unsigned int _buttonId);
 
         glm::vec2 GetLeftStick(unsigned int _gameControllerId);
         glm::vec2 GetRightStick(unsigned int _gameControllerId);
@@ -77,7 +75,12 @@ namespace Canis
 
         glm::vec2 mouse = glm::vec2(0,0);
         glm::vec2 mouseRel = glm::vec2(0);
+        
     private:
+        void PressKey(unsigned int _keyID);
+        void ReleasedKey(unsigned int _keyID);
+        void SwapMaps();
+
         bool IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _key);
         bool IsKeyDownInVec(std::vector<InputData> *_arr, unsigned int _value);
         int  IsInLastKnown(unsigned int _value);
