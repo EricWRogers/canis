@@ -28,7 +28,7 @@ namespace Canis
 {
 	struct RenderEnttRapper {
 		entt::entity e;
-		float distance;
+		float value;
 	};
 
 	class RenderMeshWithShadowSystem : public System
@@ -630,9 +630,9 @@ namespace Canis
 				RenderEnttRapper rer = {};
 				rer.e = entity;
 				if (sortBy == SortBy::DISTANCE)
-					rer.distance = glm::distance(transform.position, camera->Position);
+					rer.value = glm::distance(transform.position, camera->Position);
 				if (sortBy == SortBy::HEIGHT)
-					rer.distance = transform.position.y;
+					rer.value = transform.position.y;
 
 				sortingEntities.push_back(rer);
 				//Canis::List::Add(&sortingEntitiesList, &rer);
@@ -640,9 +640,9 @@ namespace Canis
 
 			//startTime = high_resolution_clock::now();
 			if (sortBy == SortBy::DISTANCE)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance >= b.distance); });
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.value > b.value); });
 			if (sortBy == SortBy::HEIGHT)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.distance <= b.distance); });
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.value < b.value); });
 			//endTime = high_resolution_clock::now();
 			//std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
