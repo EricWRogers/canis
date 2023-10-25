@@ -1,4 +1,5 @@
 #include <Canis/Canis.hpp>
+#include <Canis/Debug.hpp>
 #include <SDL.h>
 
 #include <fstream>

@@ -3,6 +3,7 @@
 #include <map>
 
 #include <Canis/Asset.hpp>
+#include <Canis/Debug.hpp>
 
 namespace Canis
 {
@@ -32,6 +33,34 @@ namespace Canis
         bool Has(std::string _name)
         {
             return m_assetPath.contains(_name);
+        }
+
+        void Free(std::string _name)
+        {
+            if (!Has(_name))
+                return;
+            
+            int assetId = m_assetPath[_name];
+
+            {
+                std::map<std::string, int>::iterator it;
+                it = m_assetPath.find(_name);
+
+                m_assetPath.erase(it);
+            }
+
+            if (!m_assets.contains(assetId))
+                return;
+
+            ((Asset*)m_assets[assetId])->Free();
+            delete ((Asset*)m_assets[assetId]);
+
+            {
+                std::map<int, void*>::iterator it;
+                it = m_assets.find(assetId);
+
+                m_assets.erase(it);
+            }
         }
 
     private:

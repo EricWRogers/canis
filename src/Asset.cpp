@@ -110,15 +110,18 @@ namespace Canis
 
     bool ModelAsset::Free()
     {
+        vertices.resize(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glDeleteBuffers(1, &vbo);
         glDeleteVertexArrays(1, &vao);
+        
         return true;
     }
 
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
     {
-        vertices = _vertices;
-        size = vertices.size();
+        //vertices = _vertices;
+        size = _vertices.size();
 
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
@@ -127,7 +130,7 @@ namespace Canis
         glBindVertexArray(vao);
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, _vertices.size() * sizeof(Canis::Vertex), &_vertices[0], GL_STATIC_DRAW);
 
         // position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);

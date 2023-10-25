@@ -5,8 +5,8 @@ namespace Canis
     struct ProjectConfig
     {
         bool fullscreen = false;
-        int width = 720;
-        int heigth = 1280;
+        int width = 1280;
+        int heigth = 800;
         bool overrideSeed = false;
         unsigned int seed = 0;
     };
