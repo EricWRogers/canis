@@ -1,13 +1,73 @@
 #include <Canis/Canis.hpp>
 #include <SDL.h>
 
+#include <fstream>
+
 namespace Canis
 {
+    ProjectConfig& GetProjectConfig()
+    {
+        static ProjectConfig projectConfig = {};
+        return projectConfig;
+    }
+
     int Init()
     {
         SDL_Init(SDL_INIT_EVERYTHING);
 
         SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+
+        // load project.canis
+        std::ifstream file;
+        file.open("assets/project.canis");
+
+        if (!file.is_open()) return 1;
+
+        std::string word;
+        int wholeNumber = 0;
+        unsigned int unsignedWholeNumber = 0;
+        while(file >> word) {
+            if (word == "fullscreen"){
+                if (file >> word) {
+                    if (word == "true")
+                        GetProjectConfig().fullscreen = true;
+                    else
+                        GetProjectConfig().fullscreen = false;
+                    
+                    continue;
+                }
+            }
+            if (word == "width") {
+                if (file >> wholeNumber) {
+                    GetProjectConfig().width = wholeNumber;
+                    continue;
+                }
+            }
+            if (word == "heigth") {
+                if (file >> wholeNumber) {
+                    GetProjectConfig().heigth = wholeNumber;
+                    continue;
+                }
+            }
+            if(word == "override_seed")
+            {
+                if(file >> word)
+                {
+                    GetProjectConfig().overrideSeed = (word == "true");
+                    continue;
+                }
+            }
+            if(word == "seed")
+            {
+                if(file >> unsignedWholeNumber)
+                {
+                    GetProjectConfig().seed = unsignedWholeNumber;
+                    continue;
+                }
+            }
+        }
+
+        file.close();
         
         return 0;
     }
