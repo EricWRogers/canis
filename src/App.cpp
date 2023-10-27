@@ -71,7 +71,6 @@ namespace Canis
             &inputManager,
             &time,
             &camera,
-            &assetManager,
             seed
         );
 

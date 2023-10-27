@@ -43,7 +43,6 @@ private:
     Canis::Time time;
     Canis::InputManager inputManager;
     Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.15f, -0.3f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW+90.0f,Canis::PITCH+0.0f);
-    Canis::AssetManager assetManager;
     
     double deltaTime;
 

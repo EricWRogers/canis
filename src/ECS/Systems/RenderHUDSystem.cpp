@@ -29,7 +29,6 @@ namespace Canis
         m_spriteRenderer.inputManager = inputManager;
         m_spriteRenderer.time = time;
         m_spriteRenderer.camera = camera;
-        m_spriteRenderer.assetManager = assetManager;
         m_spriteRenderer.window = window;
         m_spriteRenderer.SetSort(m_glyphSortType);
         m_spriteRenderer.Create();

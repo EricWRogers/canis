@@ -28,7 +28,7 @@ namespace Canis
         
         void Create()
         {
-            skyboxAssetId = assetManager->LoadSkybox("assets/textures/space-nebulas-skybox/");
+            skyboxAssetId = AssetManager::LoadSkybox("assets/textures/space-nebulas-skybox/");
         }
 
         void Ready()
@@ -40,20 +40,20 @@ namespace Canis
         {
             // draw skybox as last
             glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-            assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetShader()->Use();
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->Use();
             glm::mat4 projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.1f, 1000.0f);
             glm::mat4 view = glm::mat4(glm::mat3(camera->GetViewMatrix())); // remove translation from the view matrix
-            assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("view", view);
-            assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("projection", projection);
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("view", view);
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("projection", projection);
             // skybox cube
-            glBindVertexArray(assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetVAO());
+            glBindVertexArray(AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetVAO());
             //Canis::Log(std::to_string(AssetManager::GetInstance().Get<Skybox>(skyboxAssetId)->GetVAO()));
             glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetTexture());
+            glBindTexture(GL_TEXTURE_CUBE_MAP, AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetTexture());
             glDrawArrays(GL_TRIANGLES, 0, 36);
             glBindVertexArray(0);
             glDepthFunc(GL_LESS); // set depth function back to default
-            assetManager->Get<SkyboxAsset>(skyboxAssetId)->GetShader()->UnUse();
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->UnUse();
         }
     };
 } // end of Canis namespace

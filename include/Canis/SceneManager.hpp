@@ -32,7 +32,6 @@ public:
                     InputManager *_inputManager,
                     Time *_time,
                     Camera *_camera,
-                    AssetManager *_assetManager,
                     unsigned int _seed);
 
     void ForceLoad(std::string _name);
@@ -58,7 +57,6 @@ public:
     Window *window;
     InputManager *inputManager;
     Time *time;
-    AssetManager *assetManager;
     Camera *camera;
 
     float updateTime = 0.0f;

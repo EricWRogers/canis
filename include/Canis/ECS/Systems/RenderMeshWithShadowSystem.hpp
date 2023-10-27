@@ -240,8 +240,8 @@ namespace Canis
 
 				if (mesh.id != modelId) {
 					modelId = mesh.id;
-					vao = assetManager->Get<ModelAsset>(modelId)->vao;
-					size = assetManager->Get<ModelAsset>(modelId)->size;
+					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+					size = AssetManager::Get<ModelAsset>(modelId)->size;
 				}
 
 				if (!mesh.castShadow)
@@ -304,16 +304,16 @@ namespace Canis
 
 				if (mesh.id != modelId) {
 					modelId = mesh.id;
-					vao = assetManager->Get<ModelAsset>(modelId)->vao;
-					size = assetManager->Get<ModelAsset>(modelId)->size;
+					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+					size = AssetManager::Get<ModelAsset>(modelId)->size;
 				}
 
 				if (true){//mesh.material != materialId) {
 					materialId = mesh.material;
-					MaterialAsset* material = assetManager->Get<MaterialAsset>(materialId);
+					MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
 					materialInfo = material->info;
 
-					shadow_mapping_shader = assetManager->Get<ShaderAsset>(
+					shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
 						material->shaderId
 					)->GetShader();
 
@@ -383,9 +383,9 @@ namespace Canis
 					shadow_mapping_shader->SetMat4("view", cameraView);
 					shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 
-					diffuseColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
-					specularColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
-					emissionColorPaletteTexture = assetManager->Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
+					diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
+					specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
+					emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
 
 					glActiveTexture(GL_TEXTURE0);
 					glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
@@ -408,7 +408,7 @@ namespace Canis
 						//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
 						glActiveTexture(GL_TEXTURE5);
 						glBindTexture(GL_TEXTURE_2D,
-							assetManager->Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
+							AssetManager::Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
 						);
 						shadow_mapping_shader->SetInt("NOISE", 5);
 						
@@ -568,32 +568,32 @@ namespace Canis
 
 			Canis::List::Init(&sortingEntitiesList,100,sizeof(RenderEnttRapper));
 
-			int id = assetManager->LoadShader("assets/shaders/shadow_mapping_depth");
-            shadow_mapping_depth_shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+			int id = AssetManager::LoadShader("assets/shaders/shadow_mapping_depth");
+            shadow_mapping_depth_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
             
             if(!shadow_mapping_depth_shader->IsLinked())
             {
                 shadow_mapping_depth_shader->Link();
             }
 
-			id = assetManager->LoadShader("assets/shaders/blur");
-            blurShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+			id = AssetManager::LoadShader("assets/shaders/blur");
+            blurShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
             
             if(!blurShader->IsLinked())
             {
                 blurShader->Link();
             }
 			
-			id = assetManager->LoadShader("assets/shaders/bloom_final");
-            bloomFinalShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+			id = AssetManager::LoadShader("assets/shaders/bloom_final");
+            bloomFinalShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
             
             if(!bloomFinalShader->IsLinked())
             {
                 bloomFinalShader->Link();
             }
 
-			id = assetManager->LoadShader("assets/shaders/screen_space_copy");
-			screenSpaceCopyShader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+			id = AssetManager::LoadShader("assets/shaders/screen_space_copy");
+			screenSpaceCopyShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
 			if (!screenSpaceCopyShader->IsLinked())
 			{
 				screenSpaceCopyShader->Link();

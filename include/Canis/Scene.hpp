@@ -79,7 +79,6 @@ namespace Canis
             InputManager *inputManager;
             unsigned int *sceneManager;
             Time *time;
-            AssetManager *assetManager;
             Camera *camera;
             unsigned int seed;
 

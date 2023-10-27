@@ -20,7 +20,7 @@ namespace Canis
         shader.Use();
         shader.SetVec4("textColor", color);
         glActiveTexture(GL_TEXTURE0);
-        glBindVertexArray(assetManager->Get<TextAsset>(fontId)->GetVAO());
+        glBindVertexArray(AssetManager::Get<TextAsset>(fontId)->GetVAO());
 
         if ((_status & BIT::ONE) > 0) { // check if we need to recalculate the size &| alignment
             
@@ -33,7 +33,7 @@ namespace Canis
             c--;
             for (; true; c--)
             {
-                Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
+                Character ch = AssetManager::Get<TextAsset>(fontId)->Characters[*c];
 
                 float xpos = x + ch.bearing.x * scale;
                 float ypos = y - (ch.size.y - ch.bearing.y) * scale;
@@ -86,7 +86,7 @@ namespace Canis
         std::string::const_iterator c;
         for (c = t.begin(); c != t.end(); c++)
         {
-            Character ch = assetManager->Get<TextAsset>(fontId)->Characters[*c];
+            Character ch = AssetManager::Get<TextAsset>(fontId)->Characters[*c];
 
             float xpos = _textOffset.x + x + ch.bearing.x * scale;
             float ypos = _textOffset.y + y - (ch.size.y - ch.bearing.y) * scale;
@@ -105,7 +105,7 @@ namespace Canis
             // render glyph texture over quad
             glBindTexture(GL_TEXTURE_2D, ch.textureID);
             // update content of VBO memory
-            glBindBuffer(GL_ARRAY_BUFFER, assetManager->Get<TextAsset>(fontId)->GetVBO());
+            glBindBuffer(GL_ARRAY_BUFFER, AssetManager::Get<TextAsset>(fontId)->GetVBO());
             glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
 
             glBindBuffer(GL_ARRAY_BUFFER, 0);

@@ -10,7 +10,6 @@ namespace Canis
     class Camera;
     class Window;
     class InputManager;
-    class AssetManager;
 
     class System
     {
@@ -28,7 +27,6 @@ namespace Canis
         bool IsCreated() { return m_isCreated; }
 
         Scene &GetScene() { return *scene; }
-        AssetManager &GetAssetManager() { return *assetManager; }
         Window &GetWindow() { return *window; }
         InputManager &GetInputManager() { return *inputManager; }
 
@@ -36,7 +34,6 @@ namespace Canis
         Window *window = nullptr;
         InputManager *inputManager = nullptr;
         Time *time = nullptr;
-        AssetManager *assetManager = nullptr;
         Camera *camera = nullptr;
     };
 } // end of Canis namespace

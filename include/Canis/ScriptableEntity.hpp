@@ -25,7 +25,6 @@ public:
 
     Entity CreateEntity() { return m_Entity.scene->CreateEntity(); }
     Entity CreateEntity(const std::string &_tag) { return m_Entity.scene->CreateEntity(_tag); }
-    AssetManager& GetAssetManager() { return *m_Entity.scene->assetManager; }
     Window& GetWindow() { return *m_Entity.scene->window; }
     InputManager& GetInputManager() { return *m_Entity.scene->inputManager; }
     Camera& GetCamera() { return *m_Entity.scene->camera; }

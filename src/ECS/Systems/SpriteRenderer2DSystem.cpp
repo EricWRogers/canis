@@ -306,8 +306,8 @@ namespace Canis
 
     void SpriteRenderer2DSystem::Create()
     {
-        int id = assetManager->LoadShader("assets/shaders/sprite");
-        Canis::Shader *shader = assetManager->Get<Canis::ShaderAsset>(id)->GetShader();
+        int id = AssetManager::LoadShader("assets/shaders/sprite");
+        Canis::Shader *shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
 
         if (!shader->IsLinked())
         {

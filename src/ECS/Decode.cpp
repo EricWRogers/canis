@@ -77,7 +77,7 @@ namespace Canis
             auto asset = textComponent["assetId"];
             if (asset)
             {
-                tc.assetId = _sceneManager->assetManager->LoadText(
+                tc.assetId = AssetManager::LoadText(
                     asset["path"].as<std::string>(),
                     asset["size"].as<unsigned int>());
             }
@@ -93,8 +93,8 @@ namespace Canis
         {
             auto &s2dc = _entity.AddComponent<Canis::Sprite2DComponent>();
             s2dc.uv = sprite2DComponent["uv"].as<glm::vec4>();
-            s2dc.texture = _sceneManager->assetManager->Get<Canis::TextureAsset>(
-                                           _sceneManager->assetManager->LoadTexture(
+            s2dc.texture = AssetManager::Get<Canis::TextureAsset>(
+                                           AssetManager::LoadTexture(
                                                sprite2DComponent["texture"].as<std::string>()))
                                ->GetTexture();
         }
@@ -106,8 +106,8 @@ namespace Canis
         {
             auto &uiic = _entity.AddComponent<Canis::UIImageComponent>();
             uiic.uv = uiImageComponent["uv"].as<glm::vec4>();
-            uiic.texture = _sceneManager->assetManager->Get<Canis::TextureAsset>(
-                                           _sceneManager->assetManager->LoadTexture(
+            uiic.texture = AssetManager::Get<Canis::TextureAsset>(
+                                           AssetManager::LoadTexture(
                                                uiImageComponent["texture"].as<std::string>()))
                                ->GetTexture();
         }
@@ -130,7 +130,7 @@ namespace Canis
         if (auto spriteAnimationComponent = _n["Canis::SpriteAnimationComponent"])
         {
             auto &sac = _entity.AddComponent<Canis::SpriteAnimationComponent>();
-            sac.animationId = _sceneManager->assetManager->LoadSpriteAnimation(
+            sac.animationId = AssetManager::LoadSpriteAnimation(
                 spriteAnimationComponent["animationId"].as<std::string>());
             sac.countDown = spriteAnimationComponent["countDown"].as<float>();
             sac.index = spriteAnimationComponent["index"].as<unsigned short int>();

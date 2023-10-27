@@ -80,7 +80,6 @@ namespace Canis
         _system->window = window;
         _system->inputManager = inputManager;
         _system->time = time;
-        _system->assetManager = assetManager;
         _system->camera = camera;
         systems.push_back(_system);
     }

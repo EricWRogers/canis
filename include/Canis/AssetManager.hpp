@@ -7,12 +7,59 @@
 
 namespace Canis
 {
-    class AssetManager
+    namespace AssetManager
     {
-    public:
-        AssetManager() {};
+        struct AssetLibrary {
+            int nextId{ 0 };
+            std::map<int, void*> assets{};
+            std::map<std::string, int> assetPath{};
+        };
+
+        AssetLibrary& GetAssetLibrary();
+
+        bool Has(std::string _name);
+
+        template <typename T>
+        T* Get(int id)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            return (T*)assetLibrary.assets[id];
+        }
+
+        template <typename T>
+        void Free(std::string _name)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            if (!Has(_name))
+                return;
+            
+            int assetId = assetLibrary.assetPath[_name];
+
+            {
+                std::map<std::string, int>::iterator it;
+                it = assetLibrary.assetPath.find(_name);
+
+                assetLibrary.assetPath.erase(it);
+            }
+
+            if (!assetLibrary.assets.contains(assetId))
+                return;
+
+            ((T*)assetLibrary.assets[assetId])->Free();
+            delete ((T*)assetLibrary.assets[assetId]);
+
+            {
+                std::map<int, void*>::iterator it;
+                it = assetLibrary.assets.find(assetId);
+
+                assetLibrary.assets.erase(it);
+            }
+        }
 
         int LoadTexture(const std::string &_path);
+        TextureAsset* GetTexture(const std::string &_path);
+        TextureAsset* GetTexture(const int _textureID);
+
         int LoadSkybox(const std::string &_path);
         int LoadModel(const std::string &_path);
         int LoadModel(const std::string &_name, const std::vector<Canis::Vertex> &_vertices);
@@ -20,53 +67,8 @@ namespace Canis
         int LoadMusic(const std::string &_path);
         int LoadText(const std::string &_path, unsigned int fontSize);
         int LoadShader(const std::string &_pathWithOutExtension);
-        int LoadSpriteAnimation(const std::string &path);
         int LoadMaterial(const std::string &_path);
-        int GetIdByPath(const std::string &_path);
+        int LoadSpriteAnimation(const std::string &path);
 
-        template <typename T>
-        T* Get(int id)
-        {
-            return (T*)m_assets[id];
-        }
-
-        bool Has(std::string _name)
-        {
-            return m_assetPath.contains(_name);
-        }
-
-        template <typename T>
-        void Free(std::string _name)
-        {
-            if (!Has(_name))
-                return;
-            
-            int assetId = m_assetPath[_name];
-
-            {
-                std::map<std::string, int>::iterator it;
-                it = m_assetPath.find(_name);
-
-                m_assetPath.erase(it);
-            }
-
-            if (!m_assets.contains(assetId))
-                return;
-
-            ((T*)m_assets[assetId])->Free();
-            delete ((T*)m_assets[assetId]);
-
-            {
-                std::map<int, void*>::iterator it;
-                it = m_assets.find(assetId);
-
-                m_assets.erase(it);
-            }
-        }
-
-    private:
-        int m_nextId{ 0 };
-        std::map<int, void*> m_assets{};
-        std::map<std::string, int> m_assetPath{};
-    };
+    } // end of AssetManager namespace
 } // end of Canis namespace
