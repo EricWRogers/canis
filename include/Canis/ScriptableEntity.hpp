@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Canis/Entity.hpp>
+#include <Canis/AssetManager.hpp>
 
 namespace Canis
 {
