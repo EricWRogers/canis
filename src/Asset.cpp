@@ -120,7 +120,7 @@ namespace Canis
 
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
     {
-        //vertices = _vertices;
+        vertices = _vertices;
         size = _vertices.size();
 
         glGenVertexArrays(1, &vao);

@@ -35,6 +35,7 @@ namespace Canis
             return m_assetPath.contains(_name);
         }
 
+        template <typename T>
         void Free(std::string _name)
         {
             if (!Has(_name))
@@ -52,8 +53,8 @@ namespace Canis
             if (!m_assets.contains(assetId))
                 return;
 
-            ((Asset*)m_assets[assetId])->Free();
-            delete ((Asset*)m_assets[assetId]);
+            ((T*)m_assets[assetId])->Free();
+            delete ((T*)m_assets[assetId]);
 
             {
                 std::map<int, void*>::iterator it;
