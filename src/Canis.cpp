@@ -50,6 +50,22 @@ namespace Canis
                     continue;
                 }
             }
+            if(word == "use_frame_limit")
+            {
+                if(file >> word)
+                {
+                    GetProjectConfig().useFrameLimit = (word == "true");
+                    continue;
+                }
+            }
+            if(word == "frame_limit")
+            {
+                if(file >> wholeNumber)
+                {
+                    GetProjectConfig().frameLimit = wholeNumber;
+                    continue;
+                }
+            }
             if(word == "override_seed")
             {
                 if(file >> word)

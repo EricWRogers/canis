@@ -7,6 +7,8 @@ namespace Canis
         bool fullscreen = false;
         int width = 1280;
         int heigth = 800;
+        bool useFrameLimit = false;
+        int frameLimit = 60;
         bool overrideSeed = false;
         unsigned int seed = 0;
     };

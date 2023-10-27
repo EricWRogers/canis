@@ -59,7 +59,10 @@ namespace Canis
         srand(seed);
         Canis::Log("seed : " + std::to_string(seed));
 
-        time.init(60);
+        if(GetProjectConfig().useFrameLimit)
+            time.init(GetProjectConfig().frameLimit+0.0f);
+        else
+            time.init(100000);
 
         camera.override_camera = false;
 
