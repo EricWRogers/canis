@@ -4,6 +4,7 @@
 #include <memory>
 #include <SDL_mixer.h>
 #include <GL/glew.h>
+#include <unordered_map>
 
 namespace Canis
 {
@@ -89,14 +90,65 @@ namespace Canis
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glDeleteBuffers(1, &vbo);
         glDeleteVertexArrays(1, &vao);
-        
+
         return true;
     }
 
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
     {
-        vertices = _vertices;
         size = _vertices.size();
+
+        struct OptimizedVertex
+        {
+            Vertex vertex;
+            unsigned int newIndex;
+        };
+
+        bool found = false;
+            int newIndex = 0;
+            unsigned int s = vertices.size();
+
+        for (GLuint i = 0; i < size; i++)
+        {
+            found = false;
+            newIndex = 0;
+            s = vertices.size();
+            for (int v = 0; v < s; v++)
+            {
+                if (_vertices[i].position == vertices[v].position)
+                {
+                    if (_vertices[i].normal == vertices[v].normal)
+                    {
+                        if (_vertices[i].texCoords == vertices[v].texCoords)
+                        {
+                            newIndex = v;
+                            found = true;
+                            break;
+                        }
+                    }
+                }
+            }
+
+            if (!found)
+            {
+                vertices.push_back(_vertices[i]);
+                indices.push_back(s - 1);
+            }
+            else
+            {
+                indices.push_back(newIndex);
+            }
+            //Log("vertices: " + std::to_string(vertices[vertices.size]))
+        }
+
+        /*vertices.resize(optimizedVertices.size());
+
+        for (int i = 0; i < optimizedVertices.size(); i++)
+        {
+            vertices[i] = optimizedVertices[i].vertex;
+        }*/
+
+        size = vertices.size();
 
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
@@ -105,7 +157,7 @@ namespace Canis
         glBindVertexArray(vao);
 
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glBufferData(GL_ARRAY_BUFFER, _vertices.size() * sizeof(Canis::Vertex), &_vertices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
 
         // position attribute
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
@@ -116,6 +168,10 @@ namespace Canis
         // texture coords
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
         glEnableVertexAttribArray(2);
+
+        glGenBuffers(1, &ebo);
+        glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), &indices[0], GL_STATIC_DRAW);
 
         // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -216,7 +272,8 @@ namespace Canis
     {
         m_chunk = Mix_LoadWAV(_path.c_str());
 
-        if (m_chunk == nullptr) {
+        if (m_chunk == nullptr)
+        {
             Canis::Warning("Warning failed to load: " + _path);
         }
 
@@ -225,21 +282,22 @@ namespace Canis
 
     bool SoundAsset::Free()
     {
-        Mix_FreeChunk((Mix_Chunk*)m_chunk);
+        Mix_FreeChunk((Mix_Chunk *)m_chunk);
         m_chunk = nullptr;
         return true;
     }
 
     void SoundAsset::Play()
     {
-        Mix_PlayChannel(-1, (Mix_Chunk*)m_chunk, 0);
+        Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
     }
 
     bool MusicAsset::Load(std::string _path)
     {
         m_music = Mix_LoadMUS(_path.c_str());
 
-        if (m_music == nullptr) {
+        if (m_music == nullptr)
+        {
             Canis::Warning("Warning failed to load: " + _path);
         }
 
@@ -248,14 +306,14 @@ namespace Canis
 
     bool MusicAsset::Free()
     {
-        Mix_FreeMusic((Mix_Music*)m_music);
+        Mix_FreeMusic((Mix_Music *)m_music);
         m_music = nullptr;
         return true;
     }
 
     void MusicAsset::Play(int _loops)
     {
-        Mix_PlayMusic((Mix_Music*)m_music, _loops);
+        Mix_PlayMusic((Mix_Music *)m_music, _loops);
     }
 
     void MusicAsset::Stop()

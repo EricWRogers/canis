@@ -60,9 +60,11 @@ namespace Canis
         bool Free() override;
         bool LoadWithVertex(const std::vector<Canis::Vertex> &_vertices);
 
-        std::vector<Canis::Vertex> vertices;
+        std::vector<Vertex> vertices;
+        std::vector<int> indices;
         unsigned int vao;
         unsigned int vbo;
+        unsigned int ebo;
         int size;
     };
 

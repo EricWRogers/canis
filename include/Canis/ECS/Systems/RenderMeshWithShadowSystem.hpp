@@ -233,6 +233,7 @@ namespace Canis
 			unsigned int modelId = 0;
 			unsigned int vao = 0;
 			unsigned int size = 0;
+			unsigned int ebo = 0;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -242,6 +243,7 @@ namespace Canis
 					modelId = mesh.id;
 					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
+					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 				}
 
 				if (!mesh.castShadow)
@@ -253,7 +255,8 @@ namespace Canis
 
 				shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 
-				glDrawArrays(GL_TRIANGLES, 0, size);
+				//glDrawArrays(GL_TRIANGLES, 0, size);
+				glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -294,6 +297,7 @@ namespace Canis
 			int materialId = -1;
 			unsigned int vao = 0;
 			unsigned int size = 0;
+			unsigned int ebo = 0;
 			unsigned int materialInfo = 0u;
 
 			for (RenderEnttRapper rer : sortingEntities)
@@ -306,6 +310,7 @@ namespace Canis
 					modelId = mesh.id;
 					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
+					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 				}
 
 				if (true){//mesh.material != materialId) {
@@ -427,7 +432,8 @@ namespace Canis
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
-				glDrawArrays(GL_TRIANGLES, 0, size);
+				//glDrawArrays(GL_TRIANGLES, 0, size);
+				glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 
 				entities_rendered++;
 			}
