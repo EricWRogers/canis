@@ -89,6 +89,7 @@ namespace Canis
         vertices.resize(0);
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glDeleteBuffers(1, &vbo);
+        glDeleteBuffers(1, &ebo);
         glDeleteVertexArrays(1, &vao);
 
         return true;
@@ -98,55 +99,31 @@ namespace Canis
     {
         size = _vertices.size();
 
-        struct OptimizedVertex
-        {
-            Vertex vertex;
-            unsigned int newIndex;
-        };
-
         bool found = false;
-            int newIndex = 0;
-            unsigned int s = vertices.size();
+        unsigned int s = vertices.size();
 
         for (GLuint i = 0; i < size; i++)
         {
             found = false;
-            newIndex = 0;
             s = vertices.size();
-            for (int v = 0; v < s; v++)
+            for (int v = s - 1; v > -1; v--)
             {
-                if (_vertices[i].position == vertices[v].position)
+                if (_vertices[i].position  == vertices[v].position &&
+                    _vertices[i].normal    == vertices[v].normal &&
+                    _vertices[i].texCoords == vertices[v].texCoords)
                 {
-                    if (_vertices[i].normal == vertices[v].normal)
-                    {
-                        if (_vertices[i].texCoords == vertices[v].texCoords)
-                        {
-                            newIndex = v;
-                            found = true;
-                            break;
-                        }
-                    }
+                    indices.push_back(v);
+                    found = true;
+                    break;
                 }
             }
 
             if (!found)
             {
                 vertices.push_back(_vertices[i]);
-                indices.push_back(s - 1);
+                indices.push_back(vertices.size() - 1);
             }
-            else
-            {
-                indices.push_back(newIndex);
-            }
-            //Log("vertices: " + std::to_string(vertices[vertices.size]))
         }
-
-        /*vertices.resize(optimizedVertices.size());
-
-        for (int i = 0; i < optimizedVertices.size(); i++)
-        {
-            vertices[i] = optimizedVertices[i].vertex;
-        }*/
 
         size = vertices.size();
 
@@ -171,7 +148,7 @@ namespace Canis
 
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), &indices[0], GL_STATIC_DRAW);
+        glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
         // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
         glBindBuffer(GL_ARRAY_BUFFER, 0);

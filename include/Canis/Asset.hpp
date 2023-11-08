@@ -61,11 +61,22 @@ namespace Canis
         bool LoadWithVertex(const std::vector<Canis::Vertex> &_vertices);
 
         std::vector<Vertex> vertices;
-        std::vector<int> indices;
+        std::vector<unsigned int> indices;
         unsigned int vao;
         unsigned int vbo;
         unsigned int ebo;
         int size;
+    };
+
+    class InstanceMeshAsset : public Asset
+    {
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+        bool Load(const std::vector<glm::mat4> &_modelMatrices);
+
+        unsigned int buffer;
+        unsigned int modelID;
     };
 
     class TextAsset : public Asset
