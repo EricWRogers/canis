@@ -115,4 +115,11 @@ namespace Canis
 
         return e;
     }
+
+    Entity Scene::FindEntityWithTag(const std::string &_tag)
+    {
+        Canis::Entity e(this);
+        e.entityHandle = e.GetEntityWithTag(_tag);
+        return e;
+    }
 } // end of Canis namespace

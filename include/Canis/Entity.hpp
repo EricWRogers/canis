@@ -10,24 +10,12 @@ class Entity
 {
 private:
     friend class Scene;
-
-    bool TagEquals(const char a[20], const char b[20])
-    {
-        int i = 0;
-        while(i < 20)
-        {
-            if ((int)a[i] - (int)b[i] != 0)
-                return false;
-            
-            i++;
-        }
-        return true;
-    }
 public:
     entt::entity entityHandle{ entt::null };
     Canis::Scene *scene = nullptr;
 
     Entity() = default;
+    Entity(Scene* _scene) : scene(_scene) {};
     Entity(entt::entity _handle, Scene* _scene) : entityHandle(_handle), scene(_scene) {};
     Entity(const Entity& _other) = default;
 
@@ -123,8 +111,6 @@ public:
         return entities;
     }
 
-    
-
     operator bool() const { return entityHandle != entt::null; }
     operator entt::entity() const { return entityHandle; }
     operator uint32_t() const { return (uint32_t)entityHandle; }
@@ -140,6 +126,19 @@ public:
     bool operator!=(const Entity& other) const
     {
         return !(*this == other);
+    }
+
+    bool TagEquals(const char a[20], const char b[20])
+    {
+        int i = 0;
+        while(i < 20)
+        {
+            if ((int)a[i] - (int)b[i] != 0)
+                return false;
+            
+            i++;
+        }
+        return true;
     }
 };
 } // end of Canis namespace
