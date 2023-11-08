@@ -48,8 +48,16 @@ namespace Canis
                 //Canis::Log("DOWN");
                 break;
             case SDL_MOUSEBUTTONDOWN:
-                m_leftClick = (event.button.button == SDL_BUTTON_LEFT);
-                m_rightClick = (event.button.button == SDL_BUTTON_RIGHT);
+                if (event.button.button == SDL_BUTTON_LEFT)
+                    m_leftClick = true;
+                if (event.button.button == SDL_BUTTON_RIGHT)
+                    m_rightClick = true;
+                break;
+            case SDL_MOUSEBUTTONUP:
+                if (event.button.button == SDL_BUTTON_LEFT)
+                    m_leftClick = false;
+                if (event.button.button == SDL_BUTTON_RIGHT)
+                    m_rightClick = false;
                 break;
             case SDL_CONTROLLERDEVICEADDED:
                 OnGameControllerConnected(&event.cdevice);
@@ -111,9 +119,9 @@ namespace Canis
     void InputManager::SwapMaps()
     {
         m_wasLeftClick = m_leftClick;
-        m_leftClick = false;
+        //m_leftClick = false;
         m_wasRightClick = m_rightClick;
-        m_rightClick = false;
+        //m_rightClick = false;
 
         int index;
         for (int i = 0; i < m_keyVec.size(); i++)
