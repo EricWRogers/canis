@@ -30,7 +30,7 @@ public:
 
     void AddScene(Scene *_scene);
 
-    void Run(std::string _sceneName);
+    void Run( std::string _windowName, std::string _sceneName);
 
 private:
     void Loop();
