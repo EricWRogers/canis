@@ -33,7 +33,7 @@ namespace Canis
         sceneManager.Add(_scene);
     }
 
-    void App::Run(std::string _sceneName)
+    void App::Run( std::string _windowName, std::string _sceneName)
     {
         if (appState == AppState::ON)
 		    FatalError("App already running.");
@@ -47,9 +47,9 @@ namespace Canis
         // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
         if (GetProjectConfig().fullscreen)
-            window.CreateFullScreen("Canis : StopTheSlimes");
+            window.CreateFullScreen(_windowName);
         else
-            window.Create("Canis : StopTheSlimes", GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
+            window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
