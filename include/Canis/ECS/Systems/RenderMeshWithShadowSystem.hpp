@@ -41,6 +41,7 @@ namespace Canis
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
+		Canis::Shader *shadow_mapping_depth_instance_shader;
 		Canis::Shader *depthMapShader;
 		Canis::Shader *shadow_mapping_shader;
 		Canis::Shader *blurShader;
@@ -234,29 +235,62 @@ namespace Canis
 			unsigned int vao = 0;
 			unsigned int size = 0;
 			unsigned int ebo = 0;
+			unsigned int instanceId = 0;
+
+			InstanceMeshAsset* instanceMeshAsset = nullptr;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 
-				if (mesh.id != modelId) {
-					modelId = mesh.id;
+				if (!mesh.useInstance)
+				{
+					if (mesh.id != modelId) {
+						modelId = mesh.id;
+						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+						size = AssetManager::Get<ModelAsset>(modelId)->size;
+						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+
+						shadow_mapping_depth_shader->Use();
+
+						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
+
+						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+					}
+				}
+				else
+				{
+					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.id);
+					modelId = instanceMeshAsset->modelID;
 					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+
+					shadow_mapping_depth_instance_shader->Use();
+
+					shadow_mapping_depth_instance_shader->SetInt("shadowMap", 0);
+
+					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 				}
 
 				if (!mesh.castShadow)
 					continue;
-				
-				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 
 				glBindVertexArray(vao);
 
 				shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 
-				//glDrawArrays(GL_TRIANGLES, 0, size);
-				glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
+				if (!mesh.useInstance)
+					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
+				else
+					glDrawElementsInstanced(GL_TRIANGLES,
+						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+						GL_UNSIGNED_INT,
+						0,
+						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -300,17 +334,32 @@ namespace Canis
 			unsigned int ebo = 0;
 			unsigned int materialInfo = 0u;
 
+			InstanceMeshAsset* instanceMeshAsset = nullptr;
+
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
 				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
 
-				if (mesh.id != modelId) {
-					modelId = mesh.id;
+				if (!mesh.useInstance)
+				{
+					if (mesh.id != modelId) {
+						modelId = mesh.id;
+						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+						size = AssetManager::Get<ModelAsset>(modelId)->size;
+						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+					}
+				}
+				else
+				{
+					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.id);
+					modelId = instanceMeshAsset->modelID;
 					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+
+					//glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
 				}
 
 				if (true){//mesh.material != materialId) {
@@ -433,7 +482,14 @@ namespace Canis
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
 				//glDrawArrays(GL_TRIANGLES, 0, size);
-				glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
+				if (!mesh.useInstance)
+					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
+				else
+					glDrawElementsInstanced(GL_TRIANGLES,
+						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+						GL_UNSIGNED_INT,
+						0,
+						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
 
 				entities_rendered++;
 			}
@@ -580,6 +636,14 @@ namespace Canis
             if(!shadow_mapping_depth_shader->IsLinked())
             {
                 shadow_mapping_depth_shader->Link();
+            }
+
+			id = AssetManager::LoadShader("assets/shaders/shadow_mapping_depth_instance");
+            shadow_mapping_depth_instance_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
+            
+            if(!shadow_mapping_depth_instance_shader->IsLinked())
+            {
+                shadow_mapping_depth_instance_shader->Link();
             }
 
 			id = AssetManager::LoadShader("assets/shaders/blur");

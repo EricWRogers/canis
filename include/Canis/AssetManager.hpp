@@ -69,6 +69,6 @@ namespace Canis
         int LoadShader(const std::string &_pathWithOutExtension);
         int LoadMaterial(const std::string &_path);
         int LoadSpriteAnimation(const std::string &path);
-
+        int LoadInstanceMeshAsset(const std::string &_name, unsigned int _modelID, const std::vector<glm::mat4> &_modelMatrices);
     } // end of AssetManager namespace
 } // end of Canis namespace

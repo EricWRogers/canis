@@ -73,10 +73,12 @@ namespace Canis
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        bool Load(const std::vector<glm::mat4> &_modelMatrices);
+        bool Load(unsigned int _modelID, const std::vector<glm::mat4> &_modelMatrices, unsigned int _vao);
 
         unsigned int buffer;
         unsigned int modelID;
+
+        std::vector<glm::mat4> modelMatrices = {};
     };
 
     class TextAsset : public Asset

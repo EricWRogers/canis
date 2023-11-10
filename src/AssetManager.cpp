@@ -244,7 +244,7 @@ namespace Canis
                 return it->second;
             }
 
-            // create sound
+            // create shader
             Asset *shader = new ShaderAsset();
             shader->Load(_pathWithOutExtension);
             int id = assetLibrary.nextId;
@@ -395,6 +395,35 @@ namespace Canis
 
             // cache id
             assetLibrary.assetPath[_path] = id;
+
+            // increment id
+            assetLibrary.nextId++;
+
+            return id;
+        }
+    
+        int LoadInstanceMeshAsset(const std::string &_name, unsigned int _modelID, const std::vector<glm::mat4> &_modelMatrices)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            std::map<std::string, int>::iterator it;
+            it = assetLibrary.assetPath.find(_name);
+
+            // check if shader already exist
+            if (it != assetLibrary.assetPath.end()) // found
+            {
+                return it->second;
+            }
+
+            // create instance
+            InstanceMeshAsset *meshInstance = new InstanceMeshAsset();
+            meshInstance->Load(_modelID, _modelMatrices, Get<ModelAsset>(_modelID)->vao);
+            int id = assetLibrary.nextId;
+
+            // cache meshInstance
+            assetLibrary.assets[id] = meshInstance;
+
+            // cache id
+            assetLibrary.assetPath[_name] = id;
 
             // increment id
             assetLibrary.nextId++;
