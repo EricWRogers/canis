@@ -198,6 +198,7 @@ namespace Canis
 
     bool InstanceMeshAsset::Free()
     {
+        glDeleteBuffers(1, &buffer);
         return false;
     }
 
