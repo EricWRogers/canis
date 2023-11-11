@@ -507,7 +507,7 @@ namespace Canis
 			// --------------------------------------------------
 			horizontal = true;
 			first_iteration = true;
-			unsigned int amount = 15;
+			unsigned int amount = 6;
 			blurShader->Use();
 			blurShader->SetInt("image", 0);
 			for (unsigned int i = 0; i < amount; i++)
