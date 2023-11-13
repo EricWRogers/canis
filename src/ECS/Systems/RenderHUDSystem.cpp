@@ -88,12 +88,14 @@ namespace Canis
                     offset.y *= scaleY;
                 }
 
-                m_spriteRenderer.Draw(
+                m_spriteRenderer.DrawUI(
                     glm::vec4(rect_transform.position.x + positionAnchor.x + offset.x, rect_transform.position.y + positionAnchor.y + offset.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
                     image.texture,
                     rect_transform.depth,
-                    color);
+                    color,
+                    rect_transform.rotation,
+                    rect_transform.originOffset);
             }
         }
 
