@@ -39,7 +39,12 @@ namespace Canis
         {
             if (rect_transform.active)
             {
-                List::Add(&m_buttons, &entity);
+                ButtonAndDepth bad;
+                bad.entity = entity;
+                bad.depth = rect_transform.depth;
+
+                List::Add(&m_buttons, &bad);
+
                 color.color = button.baseColor;
                 button.mouseOver = false;
                 rect_transform.scale = button.scale;
