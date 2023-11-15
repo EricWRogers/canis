@@ -229,4 +229,10 @@ namespace Canis
             _value = _max;
         }
     }
+
+    void RotatePoint(glm::vec2 &_point, const float &_cosAngle, const float &_sinAngle)
+    {
+        _point.x = _point.x * _cosAngle - _point.y * _sinAngle;
+        _point.y = _point.x * _sinAngle + _point.y * _cosAngle;
+    }
 }

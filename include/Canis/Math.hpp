@@ -51,4 +51,6 @@ namespace Canis
     void Lerp(glm::vec4 &_value, const glm::vec4 &_min, const glm::vec4 &_max, const float &_fraction);
 
     void Clamp(float &_value, float _min, float _max);
+
+    void RotatePoint(glm::vec2 &_point, const float &_cosAngle, const float &_sinAngle);
 } 

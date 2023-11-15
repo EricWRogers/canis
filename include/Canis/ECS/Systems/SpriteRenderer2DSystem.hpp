@@ -52,8 +52,6 @@ namespace Canis
 
         void End();
 
-        inline void RotatePoint(glm::vec2 &point, const float &cAngle, const float &sAngle);
-
         void DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin);
 
         void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin);

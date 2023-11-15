@@ -7,6 +7,8 @@
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 
+#include <Canis/Math.hpp>
+
 namespace Canis
 {
     SpriteRenderer2DSystem::~SpriteRenderer2DSystem()
@@ -124,12 +126,6 @@ namespace Canis
         CreateRenderBatches();
     }
 
-    inline void SpriteRenderer2DSystem::RotatePoint(glm::vec2 &point, const float &cAngle, const float &sAngle)
-    {
-        point.x = point.x * cAngle - point.y * sAngle;
-        point.y = point.x * sAngle + point.y * cAngle;
-    }
-
     void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin)
     {
 
@@ -147,22 +143,15 @@ namespace Canis
 
         glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
 
-        glm::vec2 topLeft(origin.x, origin.y);
+        glm::vec2 topLeft(origin.x, origin.y + destRect.w);
         glm::vec2 bottomLeft(origin.x, origin.y);
-        glm::vec2 bottomRight(origin.x, origin.y);
-        glm::vec2 topRight(origin.x, origin.y);
+        glm::vec2 bottomRight(origin.x + destRect.z, origin.y);
+        glm::vec2 topRight(origin.x + destRect.z, origin.y + destRect.w);
 
         if (angle != 0.0f)
         {
             float cAngle = cos(angle);
             float sAngle = sin(angle);
-
-            glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
-
-            topLeft = glm::vec2(-halfDims.x + origin.x, halfDims.y + origin.y);
-            bottomLeft = glm::vec2(-halfDims.x + origin.x, -halfDims.y + origin.y);
-            bottomRight = glm::vec2(halfDims.x + origin.x, -halfDims.y + origin.y);
-            topRight = glm::vec2(halfDims.x + origin.x, halfDims.y + origin.y);
 
             RotatePoint(topLeft, cAngle, sAngle);
             RotatePoint(bottomLeft, cAngle, sAngle);
@@ -174,23 +163,27 @@ namespace Canis
         newGlyph->depth = depth;
         newGlyph->angle = angle;
 
-        newGlyph->topLeft.position = glm::vec3(destRect.x, destRect.y + destRect.w, depth);
-        newGlyph->topLeft.position += glm::vec3(topLeft,0.0f);
+        newGlyph->topLeft.position.x = topLeft.x + destRect.x;
+        newGlyph->topLeft.position.y = topLeft.y + destRect.y;
+        newGlyph->topLeft.position.z = depth;
         newGlyph->topLeft.color = color.color;
         newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
 
-        newGlyph->bottomLeft.position = glm::vec3(destRect.x, destRect.y, depth);
-        newGlyph->bottomLeft.position += glm::vec3(bottomLeft,0.0f);
+        newGlyph->bottomLeft.position.x = bottomLeft.x + destRect.x;
+        newGlyph->bottomLeft.position.y = bottomLeft.y + destRect.y;
+        newGlyph->bottomLeft.position.z = depth;
         newGlyph->bottomLeft.color = color.color;
         newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
 
-        newGlyph->bottomRight.position = glm::vec3(destRect.x + destRect.z, destRect.y, depth);
-        newGlyph->bottomRight.position += glm::vec3(bottomRight,0.0f);
+        newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
+        newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
+        newGlyph->bottomRight.position.z = depth;
         newGlyph->bottomRight.color = color.color;
         newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
 
-        newGlyph->topRight.position = glm::vec3(destRect.x + destRect.z, destRect.y + destRect.w, depth);
-        newGlyph->topRight.position += glm::vec3(topRight,0.0f);
+        newGlyph->topRight.position.x = topRight.x + destRect.x;
+        newGlyph->topRight.position.y = topRight.y + destRect.y;
+        newGlyph->topRight.position.z = depth;
         newGlyph->topRight.color = color.color;
         newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
 
