@@ -81,6 +81,7 @@ namespace Canis
 		float rotation = 0.0f;
 		float scale = 1.0f;
 		float depth = 1.0f;
-		ScaleWithScreen scaleWithScreen = ScaleWithScreen::NONE; 
+		ScaleWithScreen scaleWithScreen = ScaleWithScreen::NONE;
+		glm::vec2 rotationOriginOffset = glm::vec2(0.0f);
 	};
 } // end of Canis namespace

@@ -70,11 +70,11 @@ namespace Canis
                 float cAngle = cos(-rect_transform.rotation);
                 float sAngle = sin(-rect_transform.rotation);
 
-                glm::vec2 mouseOffset = mouse - (rect_transform.position + rect_transform.originOffset + positionAnchor);
+                glm::vec2 mouseOffset = mouse - (rect_transform.position + rect_transform.originOffset + positionAnchor - rect_transform.rotationOriginOffset);
 
                 RotatePoint(mouseOffset, cAngle, sAngle);
 
-                mouse = mouseOffset + (rect_transform.position + rect_transform.originOffset + positionAnchor);
+                mouse = mouseOffset + (rect_transform.position + rect_transform.originOffset + positionAnchor + rect_transform.rotationOriginOffset);
             }
 
             if (mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&

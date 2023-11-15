@@ -126,7 +126,7 @@ namespace Canis
         CreateRenderBatches();
     }
 
-    void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin)
+    void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset)
     {
 
         Glyph *newGlyph;
@@ -153,10 +153,22 @@ namespace Canis
             float cAngle = cos(angle);
             float sAngle = sin(angle);
 
+            topLeft += rotationOriginOffset;
+            bottomLeft += rotationOriginOffset;
+            bottomRight += rotationOriginOffset;
+            topRight += rotationOriginOffset;
+
+            
+
             RotatePoint(topLeft, cAngle, sAngle);
             RotatePoint(bottomLeft, cAngle, sAngle);
             RotatePoint(bottomRight, cAngle, sAngle);
             RotatePoint(topRight, cAngle, sAngle);
+
+            topLeft -= rotationOriginOffset;
+            bottomLeft -= rotationOriginOffset;
+            bottomRight -= rotationOriginOffset;
+            topRight -= rotationOriginOffset;
         }
 
         newGlyph->textureId = texture.id;

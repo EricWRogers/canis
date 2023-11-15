@@ -95,7 +95,8 @@ namespace Canis
                     rect_transform.depth,
                     color,
                     rect_transform.rotation,
-                    rect_transform.originOffset);
+                    rect_transform.originOffset,
+                    rect_transform.rotationOriginOffset);
             }
         }
 
