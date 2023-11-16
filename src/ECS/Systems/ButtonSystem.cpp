@@ -32,6 +32,7 @@ namespace Canis
         auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
+        bool buttonFound = false;
 
         List::Clear(&m_buttons);
 
@@ -44,10 +45,6 @@ namespace Canis
                 bad.depth = rect_transform.depth;
 
                 List::Add(&m_buttons, &bad);
-
-                color.color = button.baseColor;
-                button.mouseOver = false;
-                rect_transform.scale = button.scale;
             }
         }
 
@@ -70,17 +67,18 @@ namespace Canis
                 float cAngle = cos(-rect_transform.rotation);
                 float sAngle = sin(-rect_transform.rotation);
 
-                glm::vec2 mouseOffset = mouse - (rect_transform.position + rect_transform.originOffset + positionAnchor - rect_transform.rotationOriginOffset);
+                glm::vec2 mouseOffset = mouse - (rect_transform.position + rect_transform.originOffset + positionAnchor);// + rect_transform.rotationOriginOffset);
 
                 RotatePoint(mouseOffset, cAngle, sAngle);
 
-                mouse = mouseOffset + (rect_transform.position + rect_transform.originOffset + positionAnchor + rect_transform.rotationOriginOffset);
+                mouse = mouseOffset + (rect_transform.position + rect_transform.originOffset + positionAnchor);// + rect_transform.rotationOriginOffset);
             }
 
             if (mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&
                 mouse.x < rect_transform.position.x + (rect_transform.size.x * rect_transform.scale) + rect_transform.originOffset.x + positionAnchor.x &&
                 mouse.y > rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y &&
-                mouse.y < rect_transform.position.y + (rect_transform.size.y * rect_transform.scale) + rect_transform.originOffset.y + positionAnchor.y)
+                mouse.y < rect_transform.position.y + (rect_transform.size.y * rect_transform.scale) + rect_transform.originOffset.y + positionAnchor.y &&
+                !buttonFound)
             {
                 color.color = button.hoverColor;
                 button.mouseOver = true;
@@ -100,8 +98,14 @@ namespace Canis
                         button.func(button.instance);
                     }
                 }
-                return;                    
-            }            
+                buttonFound = true;                    
+            } 
+            else
+            {
+                color.color = button.baseColor;
+                button.mouseOver = false;
+                rect_transform.scale = button.scale;
+            }           
         }
     }
 

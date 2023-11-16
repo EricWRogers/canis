@@ -232,7 +232,9 @@ namespace Canis
 
     void RotatePoint(glm::vec2 &_point, const float &_cosAngle, const float &_sinAngle)
     {
-        _point.x = _point.x * _cosAngle - _point.y * _sinAngle;
-        _point.y = _point.x * _sinAngle + _point.y * _cosAngle;
+        float x = _point.x;
+        float y = _point.y;
+        _point.x = x * _cosAngle - y * _sinAngle;
+        _point.y = x * _sinAngle + y * _cosAngle;
     }
 }

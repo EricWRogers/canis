@@ -153,22 +153,20 @@ namespace Canis
             float cAngle = cos(angle);
             float sAngle = sin(angle);
 
-            topLeft += rotationOriginOffset;
-            bottomLeft += rotationOriginOffset;
-            bottomRight += rotationOriginOffset;
-            topRight += rotationOriginOffset;
-
-            
+            topLeft -= rotationOriginOffset;
+            bottomLeft -= rotationOriginOffset;
+            bottomRight -= rotationOriginOffset;
+            topRight -= rotationOriginOffset;
 
             RotatePoint(topLeft, cAngle, sAngle);
             RotatePoint(bottomLeft, cAngle, sAngle);
             RotatePoint(bottomRight, cAngle, sAngle);
             RotatePoint(topRight, cAngle, sAngle);
 
-            topLeft -= rotationOriginOffset;
-            bottomLeft -= rotationOriginOffset;
-            bottomRight -= rotationOriginOffset;
-            topRight -= rotationOriginOffset;
+            topLeft += rotationOriginOffset;
+            bottomLeft += rotationOriginOffset;
+            bottomRight += rotationOriginOffset;
+            topRight += rotationOriginOffset;
         }
 
         newGlyph->textureId = texture.id;
