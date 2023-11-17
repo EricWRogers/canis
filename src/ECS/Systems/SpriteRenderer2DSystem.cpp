@@ -181,23 +181,10 @@ namespace Canis
 
         if (angle != 0.0f)
         {
-            float cAngle = cos(angle);
-            float sAngle = sin(angle);
-
-            topLeft -= rotationOriginOffset;
-            bottomLeft -= rotationOriginOffset;
-            bottomRight -= rotationOriginOffset;
-            topRight -= rotationOriginOffset;
-
-            RotatePoint(topLeft, cAngle, sAngle);
-            RotatePoint(bottomLeft, cAngle, sAngle);
-            RotatePoint(bottomRight, cAngle, sAngle);
-            RotatePoint(topRight, cAngle, sAngle);
-
-            topLeft += rotationOriginOffset;
-            bottomLeft += rotationOriginOffset;
-            bottomRight += rotationOriginOffset;
-            topRight += rotationOriginOffset;
+            RotatePointAroundPivot(topLeft, rotationOriginOffset, angle);
+            RotatePointAroundPivot(bottomLeft, rotationOriginOffset, angle);
+            RotatePointAroundPivot(bottomRight, rotationOriginOffset, angle);
+            RotatePointAroundPivot(topRight, rotationOriginOffset, angle);
         }
 
         newGlyph->textureId = texture.id;
@@ -215,6 +202,9 @@ namespace Canis
         newGlyph->bottomLeft.position.z = depth;
         newGlyph->bottomLeft.color = color.color;
         newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+
+        if (angle == glm::radians(20.0f))
+                Canis::Log("bottomLeft.x " + std::to_string(newGlyph->bottomLeft.position.x) + " bottomLeft.y " + std::to_string(newGlyph->bottomLeft.position.y));
 
         newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
         newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;

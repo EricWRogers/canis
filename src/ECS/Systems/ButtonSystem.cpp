@@ -63,15 +63,13 @@ namespace Canis
             mouse = GetInputManager().mouse;
 
             if (rect_transform.rotation != 0.0f)
-            {
-                float cAngle = cos(-rect_transform.rotation);
-                float sAngle = sin(-rect_transform.rotation);
+            {                
+                RotatePointAroundPivot(mouse,
+                                        rect_transform.position + rect_transform.originOffset + positionAnchor + rect_transform.rotationOriginOffset,
+                                        -rect_transform.rotation);
 
-                glm::vec2 mouseOffset = mouse - (rect_transform.position + rect_transform.originOffset + positionAnchor);// + rect_transform.rotationOriginOffset);
-
-                RotatePoint(mouseOffset, cAngle, sAngle);
-
-                mouse = mouseOffset + (rect_transform.position + rect_transform.originOffset + positionAnchor);// + rect_transform.rotationOriginOffset);
+                if (rect_transform.rotation == glm::radians(20.0f))
+                    Canis::Log("mouse.x " + std::to_string(mouse.x) + " mouse.y " + std::to_string(mouse.y));
             }
 
             if (mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&

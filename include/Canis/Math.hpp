@@ -53,4 +53,6 @@ namespace Canis
     void Clamp(float &_value, float _min, float _max);
 
     void RotatePoint(glm::vec2 &_point, const float &_cosAngle, const float &_sinAngle);
+
+    void RotatePointAroundPivot(glm::vec2 &_point, const glm::vec2 &_pivot, float _radian);
 } 

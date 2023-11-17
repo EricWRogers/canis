@@ -237,4 +237,19 @@ namespace Canis
         _point.x = x * _cosAngle - y * _sinAngle;
         _point.y = x * _sinAngle + y * _cosAngle;
     }
+
+    void RotatePointAroundPivot(glm::vec2 &_point, const glm::vec2 &_pivot, float _radian)
+    {
+        float s = sin(-_radian);
+        float c = cos(-_radian);
+
+        glm::vec2 holder = _point;
+
+        holder -= _pivot;
+
+        _point.x = holder.x * c - holder.y * s;
+        _point.y = holder.x * s + holder.y * c;
+
+        _point += _pivot;
+    }
 }
