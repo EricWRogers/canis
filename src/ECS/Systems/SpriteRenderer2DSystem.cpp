@@ -148,6 +148,37 @@ namespace Canis
         glm::vec2 bottomRight(origin.x + destRect.z, origin.y);
         glm::vec2 topRight(origin.x + destRect.z, origin.y + destRect.w);
 
+         /*
+
+         glm::vec2 topLeft(origin.x, origin.y + destRect.w);
+        glm::vec2 bottomLeft(origin.x, origin.y);
+        glm::vec2 bottomRight(origin.x + destRect.z, origin.y);
+        glm::vec2 topRight(origin.x + destRect.z, origin.y + destRect.w);
+        
+        newGlyph->topLeft.position.x = destRect.x;
+        newGlyph->topLeft.position.y = destRect.y + destRect.w;
+        newGlyph->topLeft.position.z = depth;
+        newGlyph->topLeft.color = color.color;
+        newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
+
+        newGlyph->bottomLeft.position.x = destRect.x;
+        newGlyph->bottomLeft.position.y = destRect.y;
+        newGlyph->bottomLeft.position.z = depth;
+        newGlyph->bottomLeft.color = color.color;
+        newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+
+        newGlyph->bottomRight.position.x = destRect.x + destRect.z;
+        newGlyph->bottomRight.position.y = destRect.y;
+        newGlyph->bottomRight.position.z = depth;
+        newGlyph->bottomRight.color = color.color;
+        newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+
+        newGlyph->topRight.position.x = destRect.x + destRect.z;
+        newGlyph->topRight.position.y = destRect.y + destRect.w;
+        newGlyph->topRight.position.z = depth;
+        newGlyph->topRight.color = color.color;
+        newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);*/
+
         if (angle != 0.0f)
         {
             float cAngle = cos(angle);
@@ -196,6 +227,8 @@ namespace Canis
         newGlyph->topRight.position.z = depth;
         newGlyph->topRight.color = color.color;
         newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+
+       
 
         glyphsCurrentIndex++;
     }

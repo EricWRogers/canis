@@ -89,13 +89,13 @@ namespace Canis
                 }
 
                 m_spriteRenderer.DrawUI(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x + offset.x, rect_transform.position.y + positionAnchor.y + offset.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
+                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
                     image.texture,
                     rect_transform.depth,
                     color,
                     rect_transform.rotation,
-                    rect_transform.originOffset,
+                    offset,
                     rect_transform.rotationOriginOffset);
             }
         }
