@@ -12,15 +12,21 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
 
+#include <Canis/Math.hpp>
+
 namespace Canis
 {
-    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status)
+    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status, float _angle)
     {
         // activate corresponding render state
         shader.Use();
         shader.SetVec4("textColor", color);
         glActiveTexture(GL_TEXTURE0);
         glBindVertexArray(AssetManager::Get<TextAsset>(fontId)->GetVAO());
+
+        glm::vec2 pos = glm::vec2(x,y);
+
+        bool setPivot = false;
 
         if ((_status & BIT::ONE) > 0) { // check if we need to recalculate the size &| alignment
             
@@ -91,17 +97,37 @@ namespace Canis
             float xpos = _textOffset.x + x + ch.bearing.x * scale;
             float ypos = _textOffset.y + y - (ch.size.y - ch.bearing.y) * scale;
 
+            if (setPivot == false)
+            {
+                setPivot = true;
+                pos.x = xpos;
+                pos.y = ypos;
+            }
+
             float w = ch.size.x * scale;
             float h = ch.size.y * scale;
             // update VBO for each character
-            float vertices[6][4] = {
-                {xpos, ypos + h, 0.0f, 0.0f},
-                {xpos, ypos, 0.0f, 1.0f},
-                {xpos + w, ypos, 1.0f, 1.0f},
+            glm::vec2 bottomLeft = glm::vec2(xpos, ypos);
+            glm::vec2 bottomRight = glm::vec2(xpos + w, ypos);
+            glm::vec2 topLeft = glm::vec2(xpos, ypos + h);
+            glm::vec2 topRight = glm::vec2(xpos + w, ypos + h);
 
-                {xpos, ypos + h, 0.0f, 0.0f},
-                {xpos + w, ypos, 1.0f, 1.0f},
-                {xpos + w, ypos + h, 1.0f, 0.0f}};
+            if (_angle != 0.0f)
+            {
+                RotatePointAroundPivot(topLeft, pos, _angle);
+                RotatePointAroundPivot(bottomLeft, pos, _angle);
+                RotatePointAroundPivot(bottomRight, pos, _angle);
+                RotatePointAroundPivot(topRight, pos, _angle);
+            }
+
+            float vertices[6][4] = {
+                {topLeft.x, topLeft.y, 0.0f, 0.0f},
+                {bottomLeft.x, bottomLeft.y, 0.0f, 1.0f},
+                {bottomRight.x, bottomRight.y, 1.0f, 1.0f},
+
+                {topLeft.x, topLeft.y, 0.0f, 0.0f},
+                {bottomRight.x, bottomRight.y, 1.0f, 1.0f},
+                {topRight.x, topRight.y, 1.0f, 0.0f}};
             // render glyph texture over quad
             glBindTexture(GL_TEXTURE_2D, ch.textureID);
             // update content of VBO memory
@@ -166,7 +192,8 @@ namespace Canis
                             text.assetId,
                             text.alignment,
                             transform.originOffset,
-                            text._status);
+                            text._status,
+                            transform.rotation);
             }
         }
 
