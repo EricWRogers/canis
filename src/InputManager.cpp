@@ -102,7 +102,7 @@ namespace Canis
                 it->currentData.leftTrigger     = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_TRIGGERLEFT)/32767.0f;
             }
         }
-
+        
         return true;
     }
 

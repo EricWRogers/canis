@@ -203,9 +203,6 @@ namespace Canis
         newGlyph->bottomLeft.color = color.color;
         newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
 
-        if (angle == glm::radians(20.0f))
-                Canis::Log("bottomLeft.x " + std::to_string(newGlyph->bottomLeft.position.x) + " bottomLeft.y " + std::to_string(newGlyph->bottomLeft.position.y));
-
         newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
         newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
         newGlyph->bottomRight.position.z = depth;

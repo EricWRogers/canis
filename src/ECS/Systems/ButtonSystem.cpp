@@ -67,9 +67,6 @@ namespace Canis
                 RotatePointAroundPivot(mouse,
                                         rect_transform.position + rect_transform.originOffset + positionAnchor + rect_transform.rotationOriginOffset,
                                         -rect_transform.rotation);
-
-                if (rect_transform.rotation == glm::radians(20.0f))
-                    Canis::Log("mouse.x " + std::to_string(mouse.x) + " mouse.y " + std::to_string(mouse.y));
             }
 
             if (mouse.x > rect_transform.position.x + positionAnchor.x + rect_transform.originOffset.x &&

@@ -3,6 +3,8 @@
 
 #include <Canis/ECS/Components/TextComponent.hpp>
 
+#include <SDL_keyboard.h>
+
 namespace Canis
 {
     SceneManager::SceneManager(){}
@@ -295,6 +297,11 @@ namespace Canis
         }
         
         scene->InputUpdate();
+
+        if (inputManager->JustPressedKey(SDLK_F12))
+        {
+            window->ToggleFullScreen();
+        }
     }
 
     void SceneManager::SetDeltaTime(double _deltaTime)

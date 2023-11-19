@@ -21,6 +21,8 @@ namespace Canis
         unsigned int windowFlags = 0;
 	    windowFlags |= WindowFlags::FULLSCREEN;
 
+        m_fullscreen = true;
+
         return Create(_windowName, DM.w, DM.h, windowFlags);
     }
 
@@ -40,7 +42,10 @@ namespace Canis
         //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
         
         if (_currentFlags & WindowFlags::FULLSCREEN)
+        {
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
+            m_fullscreen = true;
+        }
         if (_currentFlags & WindowFlags::BORDERLESS)
             flags |= SDL_WINDOW_BORDERLESS;
 
@@ -147,5 +152,12 @@ namespace Canis
             SDL_CaptureMouse(SDL_FALSE);
             SDL_SetRelativeMouseMode(SDL_FALSE);
         }
+    }
+
+    void Window::ToggleFullScreen()
+    {
+        m_fullscreen = !m_fullscreen;
+
+        SDL_SetWindowFullscreen((SDL_Window*)sdlWindow, m_fullscreen);
     }
 } // end of Canis namespace
