@@ -2,6 +2,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
 #include <memory>
+#include <string.h>
 #include <SDL_mixer.h>
 #include <GL/glew.h>
 #include <unordered_map>
@@ -81,6 +82,13 @@ namespace Canis
 
         size = vertices.size();
 
+        /*
+        bool loaded = LoadOBJ(_path, vertices, indices);
+
+        size = vertices.size();
+
+        return loaded;*/
+
         return LoadWithVertex(vertices);
     }
 
@@ -102,15 +110,16 @@ namespace Canis
         bool found = false;
         unsigned int s = vertices.size();
 
-        for (GLuint i = 0; i < size; i++)
+        for (GLuint i = 0; i < s; i++)
         {
             found = false;
-            s = vertices.size();
+
             for (int v = s - 1; v > -1; v--)
             {
-                if (_vertices[i].position  == vertices[v].position &&
+                /*if (_vertices[i].position  == vertices[v].position &&
                     _vertices[i].normal    == vertices[v].normal &&
-                    _vertices[i].texCoords == vertices[v].texCoords)
+                    _vertices[i].texCoords == vertices[v].texCoords)*/
+                if (memcmp(&_vertices[i], &vertices[v], sizeof(Vertex)) == 0)
                 {
                     indices.push_back(v);
                     found = true;
@@ -121,7 +130,8 @@ namespace Canis
             if (!found)
             {
                 vertices.push_back(_vertices[i]);
-                indices.push_back(vertices.size() - 1);
+                s = vertices.size();
+                indices.push_back(s - 1);
             }
         }
 

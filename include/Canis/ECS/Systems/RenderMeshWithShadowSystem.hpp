@@ -67,6 +67,7 @@ namespace Canis
 		unsigned int hdrFBO;
 		unsigned int colorBuffers[2];
 		unsigned int rboDepth;
+		int skyboxAssetId = 0;
 		bool horizontal = true, first_iteration = true;
 		unsigned int pingpongFBO[2];
 		unsigned int pingpongColorbuffers[2];
@@ -206,8 +207,8 @@ namespace Canis
 			
 			// render
         	// ------
-        	glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        	//glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->Use();
 
@@ -297,7 +298,7 @@ namespace Canis
 
 			// reset viewport
 			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->UnUse();
 			glEnable(GL_CULL_FACE);
@@ -494,6 +495,21 @@ namespace Canis
 				entities_rendered++;
 			}
 
+			// draw skybox as last
+            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->Use();
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("view", glm::mat4(glm::mat3(cameraView)));
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("projection", projection);
+            // skybox cube
+            glBindVertexArray(AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetVAO());
+            //Canis::Log(std::to_string(AssetManager::GetInstance().Get<Skybox>(skyboxAssetId)->GetVAO()));
+            glActiveTexture(GL_TEXTURE0);
+            glBindTexture(GL_TEXTURE_CUBE_MAP, AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetTexture());
+            glDrawArrays(GL_TRIANGLES, 0, 36);
+            glBindVertexArray(0);
+            glDepthFunc(GL_LESS); // set depth function back to default
+            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->UnUse();
+			
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
@@ -528,7 +544,7 @@ namespace Canis
 		{
 			// 3. now render floating point color buffer to 2D quad and tonemap HDR colors to default framebuffer's (clamped) color range
 			// --------------------------------------------------------------------------------------------------------------------------
-			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glClear(GL_COLOR_BUFFER_BIT);
 			bloomFinalShader->Use();
 			bloomFinalShader->SetInt("scene", 0);
 			bloomFinalShader->SetInt("bloomBlur", 1);
@@ -625,6 +641,9 @@ namespace Canis
 		}
 
 		void Create() {
+			skyboxAssetId = AssetManager::LoadSkybox("assets/textures/lowpoly-skybox/");
+			//skyboxAssetId = AssetManager::LoadSkybox("assets/textures/space-nebulas-skybox/");
+
 			if (shadowMapFBO == 0)
 				ConfigureBuffers();
 

@@ -9,6 +9,7 @@
 #include <stb_image.h>
 
 #include "Data/GLTexture.hpp"
+#include "Data/Vertex.hpp"
 #include "External/picoPNG.h"
 #include "Debug.hpp"
 
@@ -25,5 +26,10 @@ namespace Canis
 		std::vector < glm::vec3 > & out_vertices,
 		std::vector < glm::vec2 > & out_uvs,
 		std::vector < glm::vec3 > & out_normals
+	);
+
+	extern bool LoadOBJ(std::string path,
+		std::vector < Vertex > & _vertices,
+		std::vector < unsigned int > & _indices
 	);
 } // end of Canis namespace
