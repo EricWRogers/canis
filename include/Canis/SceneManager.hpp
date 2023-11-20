@@ -9,30 +9,35 @@
 
 namespace Canis
 {
+struct SceneData
+{
+    Scene* scene;
+    bool preloaded = false;
+    bool splashScreen = false;
+    bool splashScreenHasCalledLoadAll = false;
+};
+
 class SceneManager
 {
 private:
-    int index = -1;
+    int m_sceneIndex = -1;
     int patientLoadIndex = -1;
     Scene *scene = nullptr;
-    std::vector<Scene *> scenes;
+    std::vector<SceneData> m_scenes;
     high_resolution_clock::time_point m_updateStart;
     high_resolution_clock::time_point m_updateEnd;
     high_resolution_clock::time_point m_drawStart;
     high_resolution_clock::time_point m_drawEnd;
 
     void Load(int _index);
-
 public:
     SceneManager();
     ~SceneManager();
 
     int Add(Scene *s);
-    void PreLoad(Window *_window,
-                    InputManager *_inputManager,
-                    Time *_time,
-                    Camera *_camera,
-                    unsigned int _seed);
+    int AddSplashScene(Scene *s);
+    void PreLoad(std::string _sceneName);
+    void PreLoadAll();
 
     void ForceLoad(std::string _name);
     void Load(std::string _name);
@@ -48,6 +53,8 @@ public:
     void UnLoad();
 
     void SetDeltaTime(double _deltaTime);
+
+    bool IsSplashScene(std::string _sceneName);
 
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeSystem = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeRenderSystem = {};

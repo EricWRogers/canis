@@ -33,6 +33,11 @@ namespace Canis
         sceneManager.Add(_scene);
     }
 
+    void App::AddSplashScene(Scene *_scene)
+    {
+        sceneManager.AddSplashScene(_scene);
+    }
+
     void App::Run( std::string _windowName, std::string _sceneName)
     {
         if (appState == AppState::ON)
@@ -43,7 +48,6 @@ namespace Canis
         unsigned int windowFlags = 0;
 
         // windowFlags |= Canis::WindowFlags::FULLSCREEN;
-
         // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
         if (GetProjectConfig().fullscreen)
@@ -66,13 +70,20 @@ namespace Canis
 
         camera.override_camera = false;
 
-        sceneManager.PreLoad(
-            &window,
-            &inputManager,
-            &time,
-            &camera,
-            seed
-        );
+        sceneManager.window = &window;
+        sceneManager.inputManager = &inputManager;
+        sceneManager.time = &time;
+        sceneManager.camera = &camera;
+        sceneManager.seed = seed;
+
+        if (sceneManager.IsSplashScene(_sceneName))
+        {
+            sceneManager.PreLoad(_sceneName);
+        }
+        else
+        {
+            sceneManager.PreLoadAll();
+        }
 
         // load first scene
         sceneManager.ForceLoad(_sceneName);

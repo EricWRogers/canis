@@ -90,7 +90,5 @@ namespace Canis
             double deltaTime = 1.0;
             double unscaledDeltaTime = 1.0;
             double timeScale = 1.0;
-
-            bool preLoaded = false;
     };
 } // end of Canis namespace

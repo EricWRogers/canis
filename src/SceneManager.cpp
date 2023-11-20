@@ -11,79 +11,130 @@ namespace Canis
 
     SceneManager::~SceneManager()
     {
-        for(int i = 0; i < scenes.size(); i++)
+        for(int i = 0; i < m_scenes.size(); i++)
         {
-            delete scenes[i];
+            delete m_scenes[i].scene;
         }
 
-        scenes.clear();
+        m_scenes.clear();
     }
 
     int SceneManager::Add(Scene *s)
     {
-        scenes.push_back(s);
+        SceneData sceneData;
+        sceneData.scene = s;
+        m_scenes.push_back(sceneData);
 
-        return scenes.size() - 1;
+        return m_scenes.size() - 1;
     }
 
-    void SceneManager::PreLoad(
-        Window *_window,
-        InputManager *_inputManager,
-        Time *_time,
-        Camera *_camera,
-        unsigned int _seed
-    )
+    int SceneManager::AddSplashScene(Scene *s)
     {
-        window = _window;
-        inputManager = _inputManager;
-        time = _time;
-        camera = _camera;
-        seed = _seed;
+        SceneData sceneData;
+        sceneData.scene = s;
+        sceneData.splashScreen = true;
+        m_scenes.push_back(sceneData);
 
-        for(int i = 0; i < scenes.size(); i++)
+        return m_scenes.size() - 1;
+    }
+
+    void SceneManager::PreLoadAll()
+    {
+        for(int i = 0; i < m_scenes.size(); i++)
         {
-            scenes[i]->window = _window;
-            scenes[i]->inputManager = _inputManager;
-            scenes[i]->sceneManager = (unsigned int *)this;
-            scenes[i]->time = _time;
-            scenes[i]->camera = _camera;
-            scenes[i]->seed = _seed;
+            if (m_scenes[i].preloaded == false)
+            {
+                m_scenes[i].scene->window = window;
+                m_scenes[i].scene->inputManager = inputManager;
+                m_scenes[i].scene->sceneManager = (unsigned int *)this;
+                m_scenes[i].scene->time = time;
+                m_scenes[i].scene->camera = camera;
+                m_scenes[i].scene->seed = seed;
 
-            if (scenes[i]->path != "") {
-                YAML::Node root = YAML::LoadFile(scenes[i]->path);
+                if (m_scenes[i].scene->path != "") {
+                    YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
 
-                scenes[i]->name = root["Scene"].as<std::string>();
+                    m_scenes[i].scene->name = root["Scene"].as<std::string>();
 
-                // serialize systems
-                if(YAML::Node systems = root["Systems"]) {
-                    for(int s = 0;  s < systems.size(); s++) {
-                        std::string name = systems[s].as<std::string>();
-                        for(int d = 0;  d < decodeSystem.size(); d++) {
-                            if (decodeSystem[d](name, scenes[i]))
-                                continue;
+                    // serialize systems
+                    if(YAML::Node systems = root["Systems"]) {
+                        for(int s = 0;  s < systems.size(); s++) {
+                            std::string name = systems[s].as<std::string>();
+                            for(int d = 0;  d < decodeSystem.size(); d++) {
+                                if (decodeSystem[d](name, m_scenes[i].scene))
+                                    continue;
+                            }
+                        }
+                    }
+
+                    // serialize render systems
+                    if(YAML::Node renderSystems = root["RenderSystems"]) {
+                        for(int r = 0;  r < renderSystems.size(); r++) {
+                            std::string name = renderSystems[r].as<std::string>();
+                            for(int d = 0;  d < decodeRenderSystem.size(); d++) {
+                                if (decodeRenderSystem[d](name, m_scenes[i].scene))
+                                    continue;
+                            }
                         }
                     }
                 }
-
-                // serialize render systems
-                if(YAML::Node renderSystems = root["RenderSystems"]) {
-                    for(int r = 0;  r < renderSystems.size(); r++) {
-                        std::string name = renderSystems[r].as<std::string>();
-                        for(int d = 0;  d < decodeRenderSystem.size(); d++) {
-                            if (decodeRenderSystem[d](name, scenes[i]))
-                                continue;
-                        }
-                    }
-                }
+                
+                m_scenes[i].scene->PreLoad();
+                m_scenes[i].preloaded = true;
             }
-            
-            scenes[i]->PreLoad();
+        }
+    }
+
+    void SceneManager::PreLoad(std::string _sceneName)
+    {
+        for(int i = 0; i < m_scenes.size(); i++)
+        {
+            if (m_scenes[i].preloaded == false && m_scenes[i].scene->name == _sceneName)
+            {
+                m_scenes[i].scene->window = window;
+                m_scenes[i].scene->inputManager = inputManager;
+                m_scenes[i].scene->sceneManager = (unsigned int *)this;
+                m_scenes[i].scene->time = time;
+                m_scenes[i].scene->camera = camera;
+                m_scenes[i].scene->seed = seed;
+
+                if (m_scenes[i].scene->path != "") {
+                    YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
+
+                    m_scenes[i].scene->name = root["Scene"].as<std::string>();
+
+                    // serialize systems
+                    if(YAML::Node systems = root["Systems"]) {
+                        for(int s = 0;  s < systems.size(); s++) {
+                            std::string name = systems[s].as<std::string>();
+                            for(int d = 0;  d < decodeSystem.size(); d++) {
+                                if (decodeSystem[d](name, m_scenes[i].scene))
+                                    continue;
+                            }
+                        }
+                    }
+
+                    // serialize render systems
+                    if(YAML::Node renderSystems = root["RenderSystems"]) {
+                        for(int r = 0;  r < renderSystems.size(); r++) {
+                            std::string name = renderSystems[r].as<std::string>();
+                            for(int d = 0;  d < decodeRenderSystem.size(); d++) {
+                                if (decodeRenderSystem[d](name, m_scenes[i].scene))
+                                    continue;
+                            }
+                        }
+                    }
+                }
+                
+                m_scenes[i].scene->PreLoad();
+                m_scenes[i].preloaded = true;
+            }
         }
     }
 
     void SceneManager::Load(int _index)
     {
-        if (scenes.size() < _index)
+        if (m_scenes.size() < _index)
             FatalError("Failed to load scene at index " + std::to_string(_index));
 
         patientLoadIndex = -1;
@@ -118,7 +169,8 @@ namespace Canis
             scene->entityRegistry = entt::registry();
         }
 
-        scene = scenes[_index];
+        scene = m_scenes[_index].scene;
+        m_sceneIndex = _index;
 
         if (!scene->IsPreLoaded())
         {
@@ -181,9 +233,9 @@ namespace Canis
 
     void SceneManager::ForceLoad(std::string _name)
     {
-        for(int i = 0; i < scenes.size(); i++)
+        for(int i = 0; i < m_scenes.size(); i++)
         {
-            if(scenes[i]->name == _name)
+            if(m_scenes[i].scene->name == _name)
             {
                 Load(i);
                 return;
@@ -195,14 +247,27 @@ namespace Canis
 
     void SceneManager::Load(std::string _name)
     {
-        for(int i = 0; i < scenes.size(); i++)
+        for(int i = 0; i < m_scenes.size(); i++)
         {
-            if(scenes[i]->name == _name)
+            if(m_scenes[i].scene->name == _name)
             {
                 patientLoadIndex = i;
                 return;
             }
         }
+    }
+
+    bool SceneManager::IsSplashScene(std::string _sceneName)
+    {
+        for(int i = 0; i < m_scenes.size(); i++)
+        {
+            if(m_scenes[i].scene->name == _sceneName && m_scenes[i].splashScreen == true)
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     void SceneManager::HotReload()
@@ -262,6 +327,12 @@ namespace Canis
         }
 
         scene->LateUpdate();
+
+        if (m_scenes[m_sceneIndex].splashScreenHasCalledLoadAll == false && m_scenes[m_sceneIndex].splashScreen)
+        {
+            PreLoadAll();
+            m_scenes[m_sceneIndex].splashScreenHasCalledLoadAll = true;
+        }
     }
 
     void SceneManager::Draw()

@@ -29,6 +29,7 @@ public:
     void AddDecodeScriptableEntity(std::function<bool(const std::string &_name, Canis::Entity &_entity)> _func);
 
     void AddScene(Scene *_scene);
+    void AddSplashScene(Scene *_scene);
 
     void Run( std::string _windowName, std::string _sceneName);
 

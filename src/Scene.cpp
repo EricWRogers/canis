@@ -22,7 +22,7 @@ namespace Canis
 
     void Scene::PreLoad()
     {
-        preLoaded = true;
+        
     }
 
     void Scene::Load()
