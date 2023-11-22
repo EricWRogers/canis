@@ -104,6 +104,7 @@ namespace Canis
         bool Free() override;
         
         void Play();
+        void Play(float _volume);
     };
 
     class MusicAsset : public Asset
@@ -115,6 +116,7 @@ namespace Canis
         bool Free() override;
         
         void Play(int _loops);
+        void Play(int _loops, float _volume);
         void Stop();
     };
 

@@ -27,6 +27,7 @@ namespace Canis
         std::string word;
         int wholeNumber = 0;
         unsigned int unsignedWholeNumber = 0;
+        float fNumber = 0.0f;
         while(file >> word) {
             if (word == "fullscreen"){
                 if (file >> word) {
@@ -47,6 +48,16 @@ namespace Canis
             if (word == "heigth") {
                 if (file >> wholeNumber) {
                     GetProjectConfig().heigth = wholeNumber;
+                    continue;
+                }
+            }
+            if (word == "volume") {
+                if (file >> fNumber) {
+                    GetProjectConfig().volume = fNumber;
+                    if (GetProjectConfig().volume > 1.5f)
+                        GetProjectConfig().volume = 1.5f;
+                    if (GetProjectConfig().volume < 0.0f)
+                        GetProjectConfig().volume = 0.0f;
                     continue;
                 }
             }

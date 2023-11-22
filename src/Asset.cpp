@@ -1,3 +1,4 @@
+#include <Canis/Canis.hpp>
 #include <Canis/Asset.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
@@ -320,7 +321,13 @@ namespace Canis
 
     void SoundAsset::Play()
     {
-        Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
+        Play(1.0f);
+    }
+
+    void SoundAsset::Play(float _volume)
+    {
+        int channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
+        Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
     }
 
     bool MusicAsset::Load(std::string _path)
@@ -344,7 +351,13 @@ namespace Canis
 
     void MusicAsset::Play(int _loops)
     {
+        Play(_loops, 1.0f);
+    }
+
+    void MusicAsset::Play(int _loops, float _volume)
+    {
         Mix_PlayMusic((Mix_Music *)m_music, _loops);
+        Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
     }
 
     void MusicAsset::Stop()

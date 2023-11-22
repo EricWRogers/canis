@@ -11,6 +11,7 @@ namespace Canis
         int frameLimit = 60;
         bool overrideSeed = false;
         unsigned int seed = 0;
+        float volume = 1.0f;
     };
 
     ProjectConfig& GetProjectConfig();
