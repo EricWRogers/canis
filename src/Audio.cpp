@@ -1,6 +1,8 @@
 #include <Canis/Audio.hpp>
 #include <Canis/Debug.hpp>
 
+// https://wiki.libsdl.org/SDL2/SDL_AudioSpec
+
 namespace Canis
 {
 namespace Audio
@@ -83,7 +85,7 @@ namespace Audio
 
         Uint32 length = (Uint32)streamLength;
         Uint32 lengthLeft = (Uint32)((m_end - m_pos)/pitch);
-        length = (length > lengthLeft ? lengthLeft : length);
+        length = (length > lengthLeft) ? lengthLeft : length;
 
         // TODO: Make this more general
         Sint16* samples = (Sint16*)m_pos;
@@ -92,7 +94,7 @@ namespace Audio
         float factor = (float)info.volume * 1.0f/32768.0f;
         for(Uint32 i = 0; i < length; i++)
         {
-            stream[i] = (samples[(size_t)sampleIndex]) * factor;
+            stream[i] += (samples[(size_t)sampleIndex]) * factor;
             sampleIndex += pitch;
         }
 
