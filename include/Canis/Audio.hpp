@@ -71,9 +71,9 @@ namespace Audio
         virtual size_t GenerateSamples(float* stream, size_t streamLength, size_t pos, const SampleInfo& info);
         virtual size_t GetAudioLength();
     private:
-        u_int8_t* m_pos;
-        u_int8_t* m_start;
-        u_int8_t* m_end;
+        Uint8* m_pos;
+        Uint8* m_start;
+        Uint8* m_end;
         //Uint32 m_length;
 
         SDLWAVAudioData(SDLWAVAudioData& other) { (void)other; }
