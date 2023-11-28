@@ -11,16 +11,6 @@ set(YAML_CPP_BUILD_TESTS            FALSE)
 set(YAML_CPP_BUILD_TOOLS            OFF)
 set(YAML_BUILD_SHARED_LIBS          FALSE)
 set(BUILD_SHARED_LIBS               FALSE)
-set(SDL2MIXER_VENDORED              TRUE)
-set(SDL2MIXER_WAVE                  TRUE)
-set(SDL2MIXER_OGG                   TRUE)
-set(SDL2MIXER_MP3                   TRUE)
-set(SDL2MIXER_OPUS                  FALSE)
-set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
-set(SDL2MIXER_MOD_XMP               FALSE)
-set(SDL2MIXER_MOD                   FALSE)
-set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
-
 
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
@@ -28,7 +18,6 @@ add_subdirectory(external/yaml-cpp)
 add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype2)
-add_subdirectory(external/SDL_mixer)
 
 set(YAML_CPP_BUILD_TOOLS            OFF)
 
@@ -57,7 +46,6 @@ target_link_libraries(${PROJECT_NAME}
     yaml-cpp
     SDL2-static
     SDL2main
-    SDL2_mixer
 )
 #PRIVATE
 #glfw
@@ -70,7 +58,6 @@ target_include_directories(${PROJECT_NAME}
         yaml-cpp
         SDL2-static
         SDL2main
-        SDL2_mixer
         "${PROJECT_SOURCE_DIR}/include"
 )
 

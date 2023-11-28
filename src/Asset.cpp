@@ -4,7 +4,7 @@
 #include <Canis/IOManager.hpp>
 #include <memory>
 #include <string.h>
-#include <SDL_mixer.h>
+//#include <SDL_mixer.h>
 #include <GL/glew.h>
 #include <unordered_map>
 
@@ -302,20 +302,20 @@ namespace Canis
 
     bool SoundAsset::Load(std::string _path)
     {
-        m_chunk = Mix_LoadWAV(_path.c_str());
+        /*m_chunk = Mix_LoadWAV(_path.c_str());
 
         if (m_chunk == nullptr)
         {
             Canis::Warning("Warning failed to load: " + _path);
-        }
+        }*/
 
         return m_chunk != nullptr;
     }
 
     bool SoundAsset::Free()
     {
-        Mix_FreeChunk((Mix_Chunk *)m_chunk);
-        m_chunk = nullptr;
+        /*Mix_FreeChunk((Mix_Chunk *)m_chunk);
+        m_chunk = nullptr;*/
         return true;
     }
 
@@ -326,26 +326,26 @@ namespace Canis
 
     void SoundAsset::Play(float _volume)
     {
-        int channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
-        Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
+        /*int channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
+        Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);*/
     }
 
     bool MusicAsset::Load(std::string _path)
     {
-        m_music = Mix_LoadMUS(_path.c_str());
+        /*m_music = Mix_LoadMUS(_path.c_str());
 
         if (m_music == nullptr)
         {
             Canis::Warning("Warning failed to load: " + _path);
-        }
+        }*/
 
         return m_music != nullptr;
     }
 
     bool MusicAsset::Free()
     {
-        Mix_FreeMusic((Mix_Music *)m_music);
-        m_music = nullptr;
+        //Mix_FreeMusic((Mix_Music *)m_music);
+        //m_music = nullptr;
         return true;
     }
 
@@ -356,13 +356,13 @@ namespace Canis
 
     void MusicAsset::Play(int _loops, float _volume)
     {
-        Mix_PlayMusic((Mix_Music *)m_music, _loops);
-        Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
+        //Mix_PlayMusic((Mix_Music *)m_music, _loops);
+        //Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
     }
 
     void MusicAsset::Stop()
     {
-        Mix_HaltMusic();
+        //Mix_HaltMusic();
     }
 
     bool ShaderAsset::Load(std::string _path)
