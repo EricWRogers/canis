@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <vector>
+#include <Canis/DataStructure/List.hpp>
 
 #include <Canis/External/entt.hpp>
 #include <Canis/Debug.hpp>
@@ -9,6 +10,8 @@ namespace Canis
 {
 namespace QuadTree
 {
+    const unsigned short POINTCAPACITY = 30;
+
     struct QuadPoint
     {
         glm::vec2 position;
@@ -18,15 +21,13 @@ namespace QuadTree
 
     struct QuadNode
     {
-        unsigned short parent = 0;
-        unsigned short top0 = 0;
-        unsigned short top1 = 0;
-        unsigned short bottom0 = 0;
-        unsigned short bottom1 = 0;
+        unsigned int top0 = 0;
+        unsigned int top1 = 0;
+        unsigned int bottom0 = 0;
+        unsigned int bottom1 = 0;
         glm::vec2 center = glm::vec2(0.0f);
         float size;
-        QuadPoint points[100] = {};
-        unsigned short pointsCapacity = 100;
+        QuadPoint points[30] = {};
         unsigned short numOfPoints = 0;
     };
 
@@ -40,7 +41,7 @@ namespace QuadTree
         unsigned int currentNumberOfNodes = 0;
     };
 
-    bool QuadtreeOverlap(QuadTreeData &_quadTreeData, const glm::vec2 &point, const float &radius, unsigned short nodeIndex)
+    bool QuadtreeOverlap(QuadTreeData &_quadTreeData, const glm::vec2 &point, const float &radius, unsigned int nodeIndex)
     {
         if (glm::distance(point, _quadTreeData.quadNodes[nodeIndex].center) < radius + (_quadTreeData.quadNodes[nodeIndex].size * 1.4f))
             return true;
@@ -76,7 +77,45 @@ namespace QuadTree
         }
     }
 
-    bool OctNodeBoundsContains(QuadTreeData &_quadTreeData, const glm::vec2 &point, unsigned short nodeIndex)
+    bool PointsQueryFast(QuadTreeData &_quadTreeData, std::vector<unsigned int> &_queue, const glm::vec2 &center, float radius, std::vector<QuadPoint> &results)
+    {
+        int last = 0;
+        _queue.push_back(0);
+
+        while (_queue.size() > 0)
+        {
+            last = _queue[_queue.size() - 1];
+            
+            _queue.erase(_queue.end() - 1);
+
+            if (_quadTreeData.quadNodes[last].top0 == 0)
+            {
+                for (int i = 0; i < _quadTreeData.quadNodes[last].numOfPoints; i++)
+                {
+                    results.push_back(_quadTreeData.quadNodes[last].points[i]);
+                }
+            }
+            else
+            {
+                if (QuadtreeOverlap(_quadTreeData, center, radius, _quadTreeData.quadNodes[last].top0))
+                    _queue.push_back(_quadTreeData.quadNodes[last].top0);
+                if (QuadtreeOverlap(_quadTreeData, center, radius, _quadTreeData.quadNodes[last].top1))
+                    _queue.push_back(_quadTreeData.quadNodes[last].top1);
+                if (QuadtreeOverlap(_quadTreeData, center, radius, _quadTreeData.quadNodes[last].bottom0))
+                    _queue.push_back(_quadTreeData.quadNodes[last].bottom0);
+                if (QuadtreeOverlap(_quadTreeData, center, radius, _quadTreeData.quadNodes[last].bottom1))
+                    _queue.push_back(_quadTreeData.quadNodes[last].bottom1);
+            }
+        }
+
+        //Canis::Log(std::to_string(_queue.capacity()));
+
+        _queue.clear();
+
+        return (results.size() > 0);
+    }
+
+    bool OctNodeBoundsContains(QuadTreeData &_quadTreeData, const glm::vec2 &point, unsigned int nodeIndex)
     {
         float size = _quadTreeData.quadNodes[nodeIndex].size / 2.0f;
         if (point.x > _quadTreeData.quadNodes[nodeIndex].center.x - size && point.x < _quadTreeData.quadNodes[nodeIndex].center.x + size &&
@@ -126,11 +165,11 @@ namespace QuadTree
         Canis::Log("quad nodes : " + std::to_string(_quadTreeData.quadNodes.size()));
     }
 
-    void AddPoint(QuadTreeData &_quadTreeData, glm::vec2 point, entt::entity entity, glm::vec2 vel, unsigned short nodeIndex = 0)
+    void AddPoint(QuadTreeData &_quadTreeData, glm::vec2 point, entt::entity entity, glm::vec2 vel, unsigned int nodeIndex = 0)
     {
         if (_quadTreeData.quadNodes[nodeIndex].top0 == 0)
         {
-            if (_quadTreeData.quadNodes[nodeIndex].pointsCapacity > _quadTreeData.quadNodes[nodeIndex].numOfPoints)
+            if (POINTCAPACITY > _quadTreeData.quadNodes[nodeIndex].numOfPoints)
             {
                 _quadTreeData.quadNodes[nodeIndex].points[_quadTreeData.quadNodes[nodeIndex].numOfPoints].position = point;
                 _quadTreeData.quadNodes[nodeIndex].points[_quadTreeData.quadNodes[nodeIndex].numOfPoints].entity = entity;
