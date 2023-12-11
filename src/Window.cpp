@@ -109,8 +109,6 @@ namespace Canis
             printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
         }
 
-        Mix_VolumeMusic(20);
-
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels
         // in that buffer
