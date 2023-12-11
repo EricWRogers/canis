@@ -1,6 +1,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Debug.hpp>
+#include <Canis/External/TMXLoader/TMXLoader.h>
 
 namespace Canis
 {
@@ -392,6 +393,47 @@ namespace Canis
 
             // cache animation
             assetLibrary.assets[id] = anim;
+
+            // cache id
+            assetLibrary.assetPath[_path] = id;
+
+            // increment id
+            assetLibrary.nextId++;
+
+            return id;
+        }
+
+        int LoadTiledMap(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            std::map<std::string, int>::iterator it;
+            it = assetLibrary.assetPath.find(_path);
+
+            // check if map already exist
+            if (it != assetLibrary.assetPath.end()) // found
+            {
+                return it->second;
+            }
+
+            // create map
+            Asset* tiledMap = new TiledMapAsset();
+            tiledMap->Load(_path);
+
+            // load image tileset
+            std::vector<std::string> spriteSheetPath = ((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTilesetNames();
+
+            for(std::string s : spriteSheetPath)
+            {
+                // erase the first 3 elements of the string in a hack
+                // Canis TODO make a more robust solution for path problem
+                LoadTexture("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource().erase(0,3));
+                Log("assets/"+((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTileset(s)->getSource().erase(0,3));
+            }
+            
+            int id = assetLibrary.nextId;
+
+            // cache map
+            assetLibrary.assets[id] = tiledMap;
 
             // cache id
             assetLibrary.assetPath[_path] = id;

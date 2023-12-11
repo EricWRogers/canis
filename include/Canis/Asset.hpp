@@ -157,6 +157,25 @@ namespace Canis
         std::vector<SpriteFrame> frames = {};
     };
 
+    class TiledMapAsset : public Asset
+    {
+    public:
+        TiledMapAsset() {}
+
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        unsigned int GetTileWidth();
+        unsigned int GetTileHeight();
+        
+        std::vector<std::vector<unsigned int>> GetTiles(std::string _layer);
+
+        void* GetLoader() { return loader; }
+
+    private:
+        void* loader = nullptr;
+    };
+
     enum MaterialInfo
     {
         HASSHADER                           = 1u,

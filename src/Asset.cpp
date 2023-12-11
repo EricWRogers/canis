@@ -7,6 +7,7 @@
 #include <SDL_mixer.h>
 #include <GL/glew.h>
 #include <unordered_map>
+#include <Canis/External/TMXLoader/TMXLoader.h>
 
 namespace Canis
 {
@@ -387,6 +388,25 @@ namespace Canis
 
     bool SpriteAnimationAsset::Free()
     {
+        return true;
+    }
+
+    bool TiledMapAsset::Load(std::string _path)
+    {
+        if (loader == nullptr)
+            loader = new TMXLoader();
+        
+        ((TMXLoader*)loader)->loadMap("map", _path);
+        //((TMXLoader*)loader)->printMapData("testmap");
+
+        return true;
+    }
+
+    bool TiledMapAsset::Free()
+    {
+        if (loader != nullptr)
+            delete ((TMXLoader*)loader);
+        
         return true;
     }
 } // end of Canis namespace
