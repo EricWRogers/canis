@@ -6,6 +6,7 @@
 #include <glm/ext.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#include <Canis/Scene.hpp>
 #include <Canis/Camera.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
@@ -103,20 +104,7 @@ namespace Canis
 
     void UpdateModelMatrix(TransformComponent &transform)
 	{
-        // TODO : LEARN HOW TO MAKE THIS RIGHT
-        
-        // TODO : this may be bad
-		//const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-		//const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-		//const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f), glm::radians(transform.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-		// Y * X * Z
-		//const glm::mat4 roationMatrix = transformY * transformX * transformZ;
-
 		transform.isDirty = false;
-
-		// translation * rotation * scale (also know as TRS matrix)
-		//transform.modelMatrix = glm::translate(glm::mat4(1.0f), transform.position) * roationMatrix * glm::scale(glm::mat4(1.0f), transform.scale);
 
         glm::mat4 new_transform = glm::mat4(1);
         new_transform = glm::translate(new_transform, transform.position);
@@ -133,6 +121,11 @@ namespace Canis
 
 		return transform.modelMatrix;
 	}
+
+    glm::vec3 GetGlobalPosition(TransformComponent &_transform)
+    {
+        return glm::vec3(_transform.modelMatrix[3]);
+    }
 
     void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset)
     {

@@ -29,7 +29,6 @@ namespace Canis
 	struct RenderEnttRapper {
 		entt::entity e;
 		float value;
-		glm::mat4 transformMat;
 	};
 
 	class RenderMeshWithShadowSystem : public System
@@ -705,11 +704,38 @@ namespace Canis
 
 			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
+			std::vector<entt::entity> hierarchyNodes = GetScene().GetRootChildren();
+
+			while(hierarchyNodes.size())
+			{
+				int index = hierarchyNodes.size() - 1;
+
+				TransformComponent &transform = _registry.get<TransformComponent>(hierarchyNodes[index]);
+
+				UpdateModelMatrix(transform);
+
+				Entity parent = GetScene().GetParent(hierarchyNodes[index]);
+
+				if (parent.entityHandle != entt::null)
+				{
+					transform.modelMatrix *= parent.GetComponent<TransformComponent>().modelMatrix;
+				}
+
+				std::vector<entt::entity> children = GetScene().GetChildren(hierarchyNodes[index]);
+
+				hierarchyNodes.erase(hierarchyNodes.end() - 1);
+
+				for (int i = 0; i < children.size(); i++)
+				{
+					hierarchyNodes.push_back(children[i]);
+				}
+			}
+
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
 			{
-				if (!transform.active || transform.inHierarchy)
+				if (!transform.active)
 					continue;
 
 				glm::mat4 m = Canis::GetModelMatrix(transform);
@@ -719,17 +745,14 @@ namespace Canis
 
 				RenderEnttRapper rer = {};
 				rer.e = entity;
-				rer.transformMat = m;
 				if (sortBy == SortBy::DISTANCE)
-					rer.value = glm::distance(transform.position, camera->Position);
+					rer.value = glm::distance(GetGlobalPosition(transform), camera->Position);
 				if (sortBy == SortBy::HEIGHT)
 					rer.value = transform.position.y;
 
 				sortingEntities.push_back(rer);
 				//Canis::List::Add(&sortingEntitiesList, &rer);
 			}
-
-			std::vector<entt::entity> baseNodes = GetScene().
 
 			//startTime = high_resolution_clock::now();
 			if (sortBy == SortBy::DISTANCE)

@@ -180,7 +180,9 @@ namespace Canis
         {
             if (m_hierarchyNodes[i].entity == _child)
             {
-                e.entityHandle = m_hierarchyNodes[m_hierarchyNodes[i].parent].entity;
+                if (m_hierarchyNodes[i].parent != -1)
+                    e.entityHandle = m_hierarchyNodes[m_hierarchyNodes[i].parent].entity;
+                
                 break;
             }
         }

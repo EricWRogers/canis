@@ -30,6 +30,8 @@ namespace Canis
 
 	glm::mat4 GetModelMatrix(TransformComponent &transform);
 
+    glm::vec3 GetGlobalPosition(TransformComponent &_transform);
+
     void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset);
 
     void SetTransformPosition(TransformComponent &transform, glm::vec3 position);
