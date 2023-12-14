@@ -11,5 +11,6 @@ namespace Canis
 		glm::vec3 scale = glm::vec3(1.0f);
 		glm::mat4 modelMatrix = glm::mat4(1.0f);
 		bool isDirty = true;
+		bool inHierarchy = false;
 	};
 } // end of Canis namespace

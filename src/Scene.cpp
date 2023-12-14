@@ -122,4 +122,119 @@ namespace Canis
         e.entityHandle = e.GetEntityWithTag(_tag);
         return e;
     }
+
+    void Scene::HierarchyAdd(entt::entity _parent, entt::entity _child)
+    {
+        int parentIndex = -1;
+        for (int i = 0; i < m_hierarchyNodes.size(); i++)
+        {
+            if (m_hierarchyNodes[i].entity == _parent)
+            {
+                parentIndex = i;
+                break;
+            }
+        }
+
+        if (parentIndex == -1)
+        {
+            parentIndex = m_hierarchyNodes.size();
+
+            HierarchyNode node;
+            node.entity = _parent;
+            m_hierarchyNodes.push_back(node);
+        }
+
+        HierarchyNode node;
+        node.parent = parentIndex;
+        node.entity = _child;
+        m_hierarchyNodes.push_back(node);
+
+        m_hierarchyNodes[parentIndex].children.push_back(m_hierarchyNodes.size() - 1);
+    }
+
+    void Scene::HierarchyRemove(entt::entity _entity)
+    {
+        std::vector<entt::entity> toRemove;
+
+
+    }
+
+    bool Scene::InHierarchy(entt::entity _entity)
+    {
+        int size = m_hierarchyNodes.size();
+        for (int i = 0; i < size; i++)
+        {
+            if (m_hierarchyNodes[i].entity == _entity)
+                return true;
+        }
+
+        return false;
+    }
+
+    Entity Scene::GetParent(entt::entity _child)
+    {
+        Entity e;
+        e.scene = this;
+
+        for(int i = 0; i < m_hierarchyNodes.size(); i++)
+        {
+            if (m_hierarchyNodes[i].entity == _child)
+            {
+                e.entityHandle = m_hierarchyNodes[m_hierarchyNodes[i].parent].entity;
+                break;
+            }
+        }
+
+        return e;
+    }
+    
+    std::vector<entt::entity> Scene::GetRootChildren()
+    {
+        std::vector<entt::entity> entities;
+
+        for (int i = 0; i < m_hierarchyNodes.size(); i++)
+        {
+            if (m_hierarchyNodes[i].parent == -1)
+            {
+                entities.push_back(m_hierarchyNodes[i].entity);
+            }
+        }
+
+        return entities;
+    }
+
+    std::vector<entt::entity> Scene::GetChildren(entt::entity _entity)
+    {
+        std::vector<entt::entity> entities;
+
+        GetChildren(_entity, entities);
+
+        return entities;
+    }
+
+    void Scene::GetRootChildren(std::vector<entt::entity> &_entities)
+    {
+        for (int i = 0; i < m_hierarchyNodes.size(); i++)
+        {
+            if (m_hierarchyNodes[i].parent == -1)
+            {
+                _entities.push_back(m_hierarchyNodes[i].entity);
+            }
+        }
+    }
+
+    void Scene::GetChildren(entt::entity _entity, std::vector<entt::entity> &_entities)
+    {
+        for (int i = 0; i < m_hierarchyNodes.size(); i++)
+        {
+            if (m_hierarchyNodes[i].entity == _entity)
+            {
+                for(int c = 0; i < m_hierarchyNodes[i].children.size(); i++)
+                {
+                    _entities.push_back(m_hierarchyNodes[m_hierarchyNodes[i].children[c]].entity);
+                }
+                break;
+            }
+        }
+    }
 } // end of Canis namespace

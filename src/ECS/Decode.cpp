@@ -10,6 +10,9 @@
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
+#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/DirectionalLightComponent.hpp>
+
 namespace Canis
 {
 
@@ -149,6 +152,29 @@ namespace Canis
             ccc.radius = circleColliderComponent["radius"].as<float>();
             ccc.layer = (Canis::BIT)circleColliderComponent["layer"].as<unsigned int>();
             ccc.mask = (Canis::BIT)circleColliderComponent["mask"].as<unsigned int>();
+        }
+    }
+
+    void DecodeTransformComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto transformComponent = _n["Canis::TransformComponent"])
+        {
+            auto &tc = _entity.AddComponent<Canis::TransformComponent>();
+            tc.active = transformComponent["active"].as<bool>(true);
+            tc.position = transformComponent["position"].as<glm::vec3>(glm::vec3(1.0f));
+            tc.rotation = transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f));
+            tc.scale = transformComponent["scale"].as<glm::vec3>(glm::vec3(1.0f));
+        }
+    }
+    
+    void DecodeDirectionalLightComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto directionalLightComponent = _n["Canis::DirectionalLightComponent"])
+        {
+            auto &dlc = _entity.AddComponent<Canis::DirectionalLightComponent>();
+            dlc.ambient = directionalLightComponent["ambient"].as<glm::vec3>();
+            dlc.diffuse = directionalLightComponent["diffuse"].as<glm::vec3>();
+            dlc.specular = directionalLightComponent["specular"].as<glm::vec3>();
         }
     }
 };

@@ -29,6 +29,7 @@ namespace Canis
 	struct RenderEnttRapper {
 		entt::entity e;
 		float value;
+		glm::mat4 transformMat;
 	};
 
 	class RenderMeshWithShadowSystem : public System
@@ -708,16 +709,17 @@ namespace Canis
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
 			{
-				if (!transform.active)
+				if (!transform.active || transform.inHierarchy)
 					continue;
 
 				glm::mat4 m = Canis::GetModelMatrix(transform);
 
-				//if (!isOnFrustum(camFrustum, transform, m, sphere))
-				//	continue;
+				if (!isOnFrustum(camFrustum, transform, m, sphere))
+					continue;
 
 				RenderEnttRapper rer = {};
 				rer.e = entity;
+				rer.transformMat = m;
 				if (sortBy == SortBy::DISTANCE)
 					rer.value = glm::distance(transform.position, camera->Position);
 				if (sortBy == SortBy::HEIGHT)
@@ -726,6 +728,8 @@ namespace Canis
 				sortingEntities.push_back(rer);
 				//Canis::List::Add(&sortingEntitiesList, &rer);
 			}
+
+			std::vector<entt::entity> baseNodes = GetScene().
 
 			//startTime = high_resolution_clock::now();
 			if (sortBy == SortBy::DISTANCE)
@@ -753,4 +757,14 @@ namespace Canis
 			glDisable(GL_BLEND);
 		}
 	};
+
+	bool DecodeRenderMeshWithShadowSystem(const std::string &_name, Canis::Scene *_scene)
+	{
+        if (_name == "Canis::RenderMeshWithShadowSystem")
+        {
+            _scene->CreateRenderSystem<RenderMeshWithShadowSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace

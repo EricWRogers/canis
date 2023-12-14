@@ -13,12 +13,22 @@ namespace Canis
 {
     class Entity;
 
+    struct HierarchyNode
+    {
+        entt::entity entity;
+        int parent = -1;
+        std::vector<int> children;
+    };
+
     class Scene {
         private:
             friend class Entity;
 
             std::vector<System*> m_updateSystems = {};
             std::vector<System*> m_renderSystems = {};
+
+            std::vector<HierarchyNode> m_hierarchyNodes = {};
+            
             high_resolution_clock::time_point m_drawStart;
             high_resolution_clock::time_point m_drawEnd;
             float m_drawTime;
@@ -45,6 +55,19 @@ namespace Canis
             Entity CreateEntity();
             Entity CreateEntity(const std::string &_tag);
             Entity FindEntityWithTag(const std::string &_tag);
+
+            void HierarchyAdd(entt::entity _parent, entt::entity _child);
+            void HierarchyRemove(entt::entity _entity);
+            
+            Entity GetParent(entt::entity _child);
+
+            bool InHierarchy(entt::entity _entity);
+
+            std::vector<entt::entity> GetRootChildren();
+            std::vector<entt::entity> GetChildren(entt::entity _entity);
+
+            void GetRootChildren(std::vector<entt::entity> &_entities);
+            void GetChildren(entt::entity _entity, std::vector<entt::entity> &_entities);
 
             template<typename T>
             T* GetSystem() {
