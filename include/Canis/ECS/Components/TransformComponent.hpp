@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <vector>
 
 namespace Canis
 {
@@ -11,6 +12,8 @@ namespace Canis
 		glm::vec3 scale = glm::vec3(1.0f);
 		glm::mat4 modelMatrix = glm::mat4(1.0f);
 		bool isDirty = true;
-		bool inHierarchy = false;
+		entt::entity parent = entt::null;
+		std::vector<entt::entity> children;
+
 	};
 } // end of Canis namespace

@@ -704,33 +704,6 @@ namespace Canis
 
 			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
-			std::vector<entt::entity> hierarchyNodes = GetScene().GetRootChildren();
-
-			while(hierarchyNodes.size())
-			{
-				int index = hierarchyNodes.size() - 1;
-
-				TransformComponent &transform = _registry.get<TransformComponent>(hierarchyNodes[index]);
-
-				UpdateModelMatrix(transform);
-
-				Entity parent = GetScene().GetParent(hierarchyNodes[index]);
-
-				if (parent.entityHandle != entt::null)
-				{
-					transform.modelMatrix *= parent.GetComponent<TransformComponent>().modelMatrix;
-				}
-
-				std::vector<entt::entity> children = GetScene().GetChildren(hierarchyNodes[index]);
-
-				hierarchyNodes.erase(hierarchyNodes.end() - 1);
-
-				for (int i = 0; i < children.size(); i++)
-				{
-					hierarchyNodes.push_back(children[i]);
-				}
-			}
-
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
@@ -738,9 +711,7 @@ namespace Canis
 				if (!transform.active)
 					continue;
 
-				glm::mat4 m = Canis::GetModelMatrix(transform);
-
-				if (!isOnFrustum(camFrustum, transform, m, sphere))
+				if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
 					continue;
 
 				RenderEnttRapper rer = {};

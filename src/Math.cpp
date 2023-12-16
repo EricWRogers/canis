@@ -102,24 +102,47 @@ namespace Canis
 
     }
 
-    void UpdateModelMatrix(TransformComponent &transform)
+    void UpdateModelMatrix(entt::registry &_registry, TransformComponent &_transform)
 	{
-		transform.isDirty = false;
+		_transform.isDirty = false;
 
-        glm::mat4 new_transform = glm::mat4(1);
-        new_transform = glm::translate(new_transform, transform.position);
-        new_transform = glm::rotate(new_transform, glm::radians(transform.rotation.x), glm::vec3(1, 0, 0));
-        new_transform = glm::rotate(new_transform, glm::radians(transform.rotation.y), glm::vec3(0, 1, 0));
-        new_transform = glm::rotate(new_transform, glm::radians(transform.rotation.z), glm::vec3(0, 0, 1));
-        transform.modelMatrix = glm::scale(new_transform, transform.scale);
+        const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
+                            glm::radians(_transform.rotation.x),
+                            glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
+                            glm::radians(_transform.rotation.y),
+                            glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
+                            glm::radians(_transform.rotation.z),
+                            glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // Y * X * Z
+        const glm::mat4 roationMatrix = transformY * transformX * transformZ;
+
+        // translation * rotation * scale (also know as TRS matrix)
+        _transform.modelMatrix = glm::translate(glm::mat4(1.0f), _transform.position) *
+                    roationMatrix *
+                    glm::scale(glm::mat4(1.0f), _transform.scale);
+
+        if (_transform.parent != entt::null)
+        {
+            TransformComponent& parentTransform = _registry.get<TransformComponent>(_transform.parent);
+
+            _transform.modelMatrix = parentTransform.modelMatrix * _transform.modelMatrix;
+        }
+
+
+        for (int i = 0; i < _transform.children.size(); i++)
+        {
+            TransformComponent& childTransform = _registry.get<TransformComponent>(_transform.children[i]);
+
+            UpdateModelMatrix(_registry, childTransform);
+        }
 	}
 
-    glm::mat4 GetModelMatrix(TransformComponent &transform)
+    const glm::mat4& GetModelMatrix(TransformComponent &_transform)
 	{
-		if (transform.isDirty)
-			UpdateModelMatrix(transform);
-
-		return transform.modelMatrix;
+		return _transform.modelMatrix;
 	}
 
     glm::vec3 GetGlobalPosition(TransformComponent &_transform)
@@ -127,38 +150,32 @@ namespace Canis
         return glm::vec3(_transform.modelMatrix[3]);
     }
 
-    void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset)
+    void MoveTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _offset)
     {
-        transform.modelMatrix = glm::translate(transform.modelMatrix,offset);
+        _transform.position += _offset;
 
-        transform.position = glm::vec3(transform.modelMatrix[3]);
+        UpdateModelMatrix(_registry, _transform);
     }
 
-    void SetTransformPosition(TransformComponent &transform, glm::vec3 position)
+    void SetTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _position)
     {
-        transform.position = position;
+        _transform.position = _position;
 
-        transform.isDirty = true;
-
-        UpdateModelMatrix(transform);
+        UpdateModelMatrix(_registry, _transform);
     }
 
-    void RotateTransformRotation(TransformComponent &transform, glm::vec3 rotate)
+    void RotateTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotate)
     {
-        transform.rotation += rotate;
+        _transform.rotation += _rotate;
 
-        transform.isDirty = true;
-
-        UpdateModelMatrix(transform);
+        UpdateModelMatrix(_registry, _transform);
     }
 
-    void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation)
+    void SetTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotation)
     {
-        transform.rotation = rotation;
+        _transform.rotation = _rotation;
 
-        transform.isDirty = true;
-
-        UpdateModelMatrix(transform);
+        UpdateModelMatrix(_registry, _transform);
     }
 
     float RandomFloat(float min, float max)

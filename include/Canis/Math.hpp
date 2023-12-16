@@ -1,6 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
+#include <Canis/External/entt.hpp>
 
 namespace Canis
 {
@@ -26,19 +27,19 @@ namespace Canis
 
     glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest);
 
-    void UpdateModelMatrix(TransformComponent &transform);
+    void UpdateModelMatrix(entt::registry &_registry, TransformComponent &_transform);
 
-	glm::mat4 GetModelMatrix(TransformComponent &transform);
+	const glm::mat4& GetModelMatrix(TransformComponent &_transform);
 
     glm::vec3 GetGlobalPosition(TransformComponent &_transform);
 
-    void MoveTransformPosition(TransformComponent &transform, glm::vec3 offset);
+    void MoveTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _offset);
 
-    void SetTransformPosition(TransformComponent &transform, glm::vec3 position);
+    void SetTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _position);
 
-    void RotateTransformRotation(TransformComponent &transform, glm::vec3 rotate);
+    void RotateTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotate);
 
-    void SetTransformRotation(TransformComponent &transform, glm::vec3 rotation);
+    void SetTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotation);
 
     float RandomFloat(float min, float max);
 
