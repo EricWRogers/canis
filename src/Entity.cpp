@@ -118,4 +118,58 @@ void Entity::AddChild(entt::entity _child)
     }
 }
 
+void Entity::SetPosition(glm::vec3 _postion)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        SetTransformPosition(scene->entityRegistry, transform, _postion);
+    }
+}
+
+void Entity::MovePosition(glm::vec3 _delta)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        MoveTransformPosition(scene->entityRegistry, transform, _delta);
+    }
+}
+
+void Entity::SetRotation(glm::vec3 _radians)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        SetTransformRotation(scene->entityRegistry, transform, _radians);
+    }
+}
+
+void Entity::Rotate(glm::vec3 _radians)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        RotateTransformRotation(scene->entityRegistry, transform, _radians);
+    }
+}
+
+void Entity::SetScale(glm::vec3 _scale)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        transform.scale = _scale;
+        UpdateModelMatrix(scene->entityRegistry, transform);
+    }
+}
+
+glm::vec3 Entity::GetGlobalPosition()
+{
+    if (HasComponent<TransformComponent>())
+    {
+        TransformComponent& transform = GetComponent<TransformComponent>();
+        return glm::vec3(transform.modelMatrix[3]);
+    }
+}
 } // end of Canis namespace

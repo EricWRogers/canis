@@ -294,7 +294,7 @@ namespace Canis
         {
             if (!_scriptComponent.Instance) {
                 _scriptComponent.Instance = _scriptComponent.InstantiateScript();
-                _scriptComponent.Instance->m_Entity = Entity { _entity,  this->scene };
+                _scriptComponent.Instance->entity = Entity { _entity,  this->scene };
                 _scriptComponent.Instance->OnCreate();
             }
         }

@@ -10,7 +10,7 @@ class ScriptableEntity
 {    
 public:
     virtual ~ScriptableEntity() {}
-    Entity m_Entity;
+    Entity entity;
     bool isOnReadyCalled = false;
 
     virtual void OnCreate() {}
@@ -21,17 +21,17 @@ public:
     template<typename T>
     T& GetComponent()
     {
-        return m_Entity.GetComponent<T>();
+        return entity.GetComponent<T>();
     }
 
-    Entity CreateEntity() { return m_Entity.scene->CreateEntity(); }
-    Entity CreateEntity(const std::string &_tag) { return m_Entity.scene->CreateEntity(_tag); }
-    Window& GetWindow() { return *m_Entity.scene->window; }
-    InputManager& GetInputManager() { return *m_Entity.scene->inputManager; }
-    Camera& GetCamera() { return *m_Entity.scene->camera; }
-    Scene& GetScene() { return *m_Entity.scene; }
+    Entity CreateEntity() { return entity.scene->CreateEntity(); }
+    Entity CreateEntity(const std::string &_tag) { return entity.scene->CreateEntity(_tag); }
+    Window& GetWindow() { return *entity.scene->window; }
+    InputManager& GetInputManager() { return *entity.scene->inputManager; }
+    Camera& GetCamera() { return *entity.scene->camera; }
+    Scene& GetScene() { return *entity.scene; }
 
     template<typename T>
-    T* GetSystem() { return m_Entity.scene->GetSystem<T>(); }
+    T* GetSystem() { return entity.scene->GetSystem<T>(); }
 };
 } // end of Canis namespace

@@ -67,6 +67,16 @@ public:
     void SetParent(entt::entity _parent);
     void AddChild(entt::entity _child);
 
+    void SetPosition(glm::vec3 _postion);
+    void MovePosition(glm::vec3 _delta);
+
+    void SetRotation(glm::vec3 _radians);
+    void Rotate(glm::vec3 _radians);
+
+    void SetScale(glm::vec3 _scale);
+
+    glm::vec3 GetGlobalPosition();
+
     operator bool() const { return entityHandle != entt::null; }
     operator entt::entity() const { return entityHandle; }
     operator uint32_t() const { return (uint32_t)entityHandle; }
