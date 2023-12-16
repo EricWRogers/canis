@@ -60,56 +60,12 @@ public:
         scene->entityRegistry.remove<T>(entityHandle);
     }
 
-    Entity GetEntityWithTag(std::string _tag)
-    {
-        Entity e = {};
-        e.scene = scene;
+    bool TagEquals(const char a[20], const char b[20]);
+    Entity GetEntityWithTag(std::string _tag);
+    std::vector<Entity> GetEntitiesWithTag(std::string _tag);
 
-        char tag[20] = "";
-
-        int i = 0;
-        while(i < 20-1 && i < _tag.size())
-        {
-            tag[i] = _tag[i];
-            i++;
-        }
-        tag[i] = '\0';
-
-        auto view = scene->entityRegistry.view<TagComponent>();
-
-		for(auto [entity, tagComponent] : view.each())
-        {
-            if(TagEquals(tagComponent.tag, tag))
-            {
-                e.entityHandle = entity;
-                break;
-            }
-        }
-
-        return e;
-    }
-
-    std::vector<Entity> GetEntitiesWithTag(std::string _tag)
-    {
-        std::vector<Entity> entities = {};
-        char tag[20] = "";
-
-        int i = 0;
-        while(i < 20-1 && i < _tag.size())
-        {
-            tag[i] = _tag[i];
-            i++;
-        }
-        tag[i] = '\0';
-
-        auto view = scene->entityRegistry.view<const TagComponent>();
-
-		for(auto [entity, tagComponent] : view.each())
-            if(TagEquals(tagComponent.tag, tag))
-                entities.push_back(Entity(entity, scene));
-
-        return entities;
-    }
+    void SetParent(entt::entity _parent);
+    void AddChild(entt::entity _child);
 
     operator bool() const { return entityHandle != entt::null; }
     operator entt::entity() const { return entityHandle; }
@@ -126,19 +82,6 @@ public:
     bool operator!=(const Entity& other) const
     {
         return !(*this == other);
-    }
-
-    bool TagEquals(const char a[20], const char b[20])
-    {
-        int i = 0;
-        while(i < 20)
-        {
-            if ((int)a[i] - (int)b[i] != 0)
-                return false;
-            
-            i++;
-        }
-        return true;
     }
 };
 } // end of Canis namespace

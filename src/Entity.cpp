@@ -1,0 +1,121 @@
+#include <Canis/Entity.hpp>
+#include <Canis/Scene.hpp>
+#include <Canis/Math.hpp>
+
+#include <Canis/ECS/Components/TransformComponent.hpp>
+
+namespace Canis
+{
+Entity Entity::GetEntityWithTag(std::string _tag)
+{
+    Entity e = {};
+    e.scene = scene;
+
+    char tag[20] = "";
+
+    int i = 0;
+    while(i < 20-1 && i < _tag.size())
+    {
+        tag[i] = _tag[i];
+        i++;
+    }
+    tag[i] = '\0';
+
+    auto view = scene->entityRegistry.view<TagComponent>();
+
+    for(auto [entity, tagComponent] : view.each())
+    {
+        if(TagEquals(tagComponent.tag, tag))
+        {
+            e.entityHandle = entity;
+            break;
+        }
+    }
+
+    return e;
+}
+
+std::vector<Entity> Entity::GetEntitiesWithTag(std::string _tag)
+{
+    std::vector<Entity> entities = {};
+    char tag[20] = "";
+
+    int i = 0;
+    while(i < 20-1 && i < _tag.size())
+    {
+        tag[i] = _tag[i];
+        i++;
+    }
+    tag[i] = '\0';
+
+    auto view = scene->entityRegistry.view<const TagComponent>();
+
+    for(auto [entity, tagComponent] : view.each())
+        if(TagEquals(tagComponent.tag, tag))
+            entities.push_back(Entity(entity, scene));
+
+    return entities;
+}
+
+bool Entity::TagEquals(const char a[20], const char b[20])
+{
+    int i = 0;
+    while(i < 20)
+    {
+        if ((int)a[i] - (int)b[i] != 0)
+            return false;
+        
+        i++;
+    }
+    return true;
+}
+
+void Entity::SetParent(entt::entity _parent)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        if (scene->entityRegistry.all_of<TransformComponent>(_parent))
+        {
+            TransformComponent& transform = GetComponent<TransformComponent>();
+
+            if (transform.parent != entt::null)
+            {
+                TransformComponent& parentTransform = scene->entityRegistry.get<TransformComponent>(transform.parent);
+
+                for (int i = 0; i < parentTransform.children.size(); i++)
+                {
+                    if (parentTransform.children[i] == entityHandle)
+                    {
+                        parentTransform.children.erase(parentTransform.children.begin() + i);
+                        break;
+                    }
+                }
+            }
+
+            transform.parent = _parent;
+
+            TransformComponent& parentTransform = scene->entityRegistry.get<TransformComponent>(transform.parent);
+
+            parentTransform.children.push_back(entityHandle);
+
+            UpdateModelMatrix(scene->entityRegistry, transform);
+        }
+    }
+}
+
+void Entity::AddChild(entt::entity _child)
+{
+    if (HasComponent<TransformComponent>())
+    {
+        if (scene->entityRegistry.all_of<TransformComponent>(_child))
+        {
+            TransformComponent& transform = GetComponent<TransformComponent>();
+
+            transform.children.push_back(_child);
+
+            UpdateModelMatrix(scene->entityRegistry, transform);
+        }
+    }
+}
+
+} // end of Canis namespace
