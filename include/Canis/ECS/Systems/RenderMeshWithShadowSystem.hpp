@@ -21,6 +21,7 @@
 #include "../Components/SphereColliderComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
 
+#include <Canis/Asset.hpp>
 #include <Canis/DataStructure/List.hpp>
 #include <Canis/Time.hpp>
 
@@ -363,111 +364,109 @@ namespace Canis
 					//glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
 				}
 
-				if (true){//mesh.material != materialId) {
-					materialId = mesh.material;
-					MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
-					materialInfo = material->info;
+				materialId = mesh.material;
+				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
+				materialInfo = material->info;
 
-					shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
-						material->shaderId
-					)->GetShader();
+				shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
+					material->shaderId
+				)->GetShader();
 
-					if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
-					{
-						//glFinish();
-						glDisable(GL_BLEND);
+				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
+				{
+					//glFinish();
+					glDisable(GL_BLEND);
 
-						glBindFramebuffer(GL_FRAMEBUFFER, 0);
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-						glFlush();
+					glFlush();
 
-						glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
-						glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-						screenSpaceCopyShader->Use();
-						glActiveTexture(GL_TEXTURE0);
-						glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
-						
-						screenSpaceCopyShader->SetInt("image", 0);
-						renderQuad();
-						screenSpaceCopyShader->UnUse();
-
-
-						glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-					}
-					else
-					{
-						glEnable(GL_BLEND);
-					}
-
-					// activate shader
-					shadow_mapping_shader->Use();
-
-					// directional light
-					int numDirLights = 0;
-
-					auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
-
-					for (auto [entity, transform, directionalLight] : viewDirLight.each())
-					{
-						if (transform.active)
-						{
-							numDirLights++;
-							shadow_mapping_shader->SetVec3("dirLight.direction", transform.rotation);
-							shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
-							shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
-							shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
-						}
-						break;
-					}
-
-					shadow_mapping_shader->SetInt("numDirLights", numDirLights);
-
-					// material
-					shadow_mapping_shader->SetInt("material.diffuse", 0);
-					shadow_mapping_shader->SetInt("material.specular", 1);
-					shadow_mapping_shader->SetInt("material.emission", 2);
-					shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
-
-					shadow_mapping_shader->SetInt("hdr", true);
-					shadow_mapping_shader->SetFloat("exposure", 3.1f);
-
-					shadow_mapping_shader->SetInt("shadowMap", 3);
-					shadow_mapping_shader->SetVec3("viewPos", camera->Position);
-					shadow_mapping_shader->SetVec3("lightPos", lightPos);
-					shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
-					shadow_mapping_shader->SetMat4("view", cameraView);
-					shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-					diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
-					specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
-					emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
-
+					glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
+					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+					screenSpaceCopyShader->Use();
 					glActiveTexture(GL_TEXTURE0);
-					glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+					glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+					
+					screenSpaceCopyShader->SetInt("image", 0);
+					renderQuad();
+					screenSpaceCopyShader->UnUse();
 
-					glActiveTexture(GL_TEXTURE1);
-					glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
 
-					glActiveTexture(GL_TEXTURE2);
-					glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
+					glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+				}
+				else
+				{
+					glEnable(GL_BLEND);
+				}
 
-					glActiveTexture(GL_TEXTURE3);
-					glBindTexture(GL_TEXTURE_2D, shadowMap);
+				// activate shader
+				shadow_mapping_shader->Use();
 
-					glActiveTexture(GL_TEXTURE4);
-					glBindTexture(GL_TEXTURE_2D, screenSpace);
-					shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+				// directional light
+				int numDirLights = 0;
 
-					if ( (material->info | MaterialInfo::HASNOISE) == material->info )
+				auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+
+				for (auto [entity, transform, directionalLight] : viewDirLight.each())
+				{
+					if (transform.active)
 					{
-						//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
-						glActiveTexture(GL_TEXTURE5);
-						glBindTexture(GL_TEXTURE_2D,
-							AssetManager::Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
-						);
-						shadow_mapping_shader->SetInt("NOISE", 5);
-						
+						numDirLights++;
+						shadow_mapping_shader->SetVec3("dirLight.direction", transform.rotation);
+						shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
+						shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
+						shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
 					}
+					break;
+				}
+
+				shadow_mapping_shader->SetInt("numDirLights", numDirLights);
+
+				// material
+				shadow_mapping_shader->SetInt("material.diffuse", 0);
+				shadow_mapping_shader->SetInt("material.specular", 1);
+				shadow_mapping_shader->SetInt("material.emission", 2);
+				shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
+
+				shadow_mapping_shader->SetInt("hdr", true);
+				shadow_mapping_shader->SetFloat("exposure", 3.1f);
+
+				shadow_mapping_shader->SetInt("shadowMap", 3);
+				shadow_mapping_shader->SetVec3("viewPos", camera->Position);
+				shadow_mapping_shader->SetVec3("lightPos", lightPos);
+				shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
+				shadow_mapping_shader->SetMat4("view", cameraView);
+				shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+				diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
+				specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
+				emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
+
+				glActiveTexture(GL_TEXTURE0);
+				glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+
+				glActiveTexture(GL_TEXTURE1);
+				glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
+
+				glActiveTexture(GL_TEXTURE3);
+				glBindTexture(GL_TEXTURE_2D, shadowMap);
+
+				glActiveTexture(GL_TEXTURE4);
+				glBindTexture(GL_TEXTURE_2D, screenSpace);
+				shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
+
+				if ( (material->info | MaterialInfo::HASNOISE) == material->info )
+				{
+					//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
+					glActiveTexture(GL_TEXTURE5);
+					glBindTexture(GL_TEXTURE_2D,
+						AssetManager::Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
+					);
+					shadow_mapping_shader->SetInt("NOISE", 5);
+					
 				}
 
 				
@@ -479,6 +478,7 @@ namespace Canis
 				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
 
 				shadow_mapping_shader->SetVec4(colorKey, color.color);
+				shadow_mapping_shader->SetBool("USEEMISSION", material->info & MaterialInfo::HASEMISSION);
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
