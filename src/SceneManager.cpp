@@ -255,6 +255,8 @@ namespace Canis
                 return;
             }
         }
+
+        Warning("SceneManager: " + _name + " NOT FOUND");
     }
 
     bool SceneManager::IsSplashScene(std::string _sceneName)
