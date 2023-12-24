@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <vector>
+#include <SDL_keyboard.h>
 
 #include <Canis/Entity.hpp>
 
@@ -51,6 +52,16 @@ namespace Canis
     void RenderHUDSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         elements.clear();
+
+        if (GetInputManager().JustPressedKey(SDLK_F2))
+        {
+            m_hide = !m_hide;
+        }
+
+        if (m_hide)
+        {
+            return;
+        }
 
         // Draw
         auto viewUIImage = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();

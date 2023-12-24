@@ -21,7 +21,7 @@ namespace Canis
         RenderTextSystem m_textRenderer;
         GlyphSortType m_glyphSortType = GlyphSortType::FRONT_TO_BACK;
         std::vector<HUDElementDepth> elements = {};
-
+        bool m_hide = false;
     public:
         RenderHUDSystem() : System() {}
 
