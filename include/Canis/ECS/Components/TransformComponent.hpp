@@ -6,6 +6,7 @@ namespace Canis
 {
 	struct TransformComponent
 	{
+		entt::registry* registry = nullptr;
 		bool active = true;
 		glm::vec3 position = glm::vec3(0.0f);
 		glm::vec3 rotation = glm::vec3(0.0f);
@@ -14,6 +15,5 @@ namespace Canis
 		bool isDirty = true;
 		entt::entity parent = entt::null;
 		std::vector<entt::entity> children;
-
 	};
 } // end of Canis namespace

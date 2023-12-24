@@ -711,6 +711,9 @@ namespace Canis
 				if (!transform.active)
 					continue;
 
+				if (transform.isDirty)
+					UpdateModelMatrix(transform);
+
 				if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
 					continue;
 

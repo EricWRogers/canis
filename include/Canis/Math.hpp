@@ -27,19 +27,27 @@ namespace Canis
 
     glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest);
 
-    void UpdateModelMatrix(entt::registry &_registry, TransformComponent &_transform);
+    void UpdateModelMatrix(TransformComponent &_transform);
 
 	const glm::mat4& GetModelMatrix(TransformComponent &_transform);
 
     glm::vec3 GetGlobalPosition(TransformComponent &_transform);
 
-    void MoveTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _offset);
+    void MoveTransformPosition(TransformComponent &_transform, glm::vec3 _offset);
 
-    void SetTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _position);
+    void SetTransformPosition(TransformComponent &_transform, glm::vec3 _position);
 
-    void RotateTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotate);
+    void Rotate(TransformComponent &_transform, glm::vec3 _rotate);
 
-    void SetTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotation);
+    void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation);
+
+    glm::vec3 GetTransformForward(TransformComponent &_transform);
+
+    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _forward);
+
+    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3& _target, float _rotationSpeed, float _deltaTime);
+
+    glm::vec3 AngleBetweenPositions( const glm::vec3 &_position, const glm::vec3 &_targetPosition, const glm::vec3 &_forward);
 
     float RandomFloat(float min, float max);
 

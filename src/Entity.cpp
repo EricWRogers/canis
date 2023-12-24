@@ -98,7 +98,7 @@ void Entity::SetParent(entt::entity _parent)
 
             parentTransform.children.push_back(entityHandle);
 
-            UpdateModelMatrix(scene->entityRegistry, transform);
+            UpdateModelMatrix(transform);
         }
     }
 }
@@ -113,7 +113,7 @@ void Entity::AddChild(entt::entity _child)
 
             transform.children.push_back(_child);
 
-            UpdateModelMatrix(scene->entityRegistry, transform);
+            UpdateModelMatrix(transform);
         }
     }
 }
@@ -123,7 +123,7 @@ void Entity::SetPosition(glm::vec3 _postion)
     if (HasComponent<TransformComponent>())
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
-        SetTransformPosition(scene->entityRegistry, transform, _postion);
+        SetTransformPosition(transform, _postion);
     }
 }
 
@@ -132,7 +132,7 @@ void Entity::MovePosition(glm::vec3 _delta)
     if (HasComponent<TransformComponent>())
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
-        MoveTransformPosition(scene->entityRegistry, transform, _delta);
+        MoveTransformPosition(transform, _delta);
     }
 }
 
@@ -141,7 +141,7 @@ void Entity::SetRotation(glm::vec3 _radians)
     if (HasComponent<TransformComponent>())
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
-        SetTransformRotation(scene->entityRegistry, transform, _radians);
+        SetTransformRotation(transform, _radians);
     }
 }
 
@@ -150,7 +150,7 @@ void Entity::Rotate(glm::vec3 _radians)
     if (HasComponent<TransformComponent>())
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
-        RotateTransformRotation(scene->entityRegistry, transform, _radians);
+        Canis::Rotate(transform, _radians);
     }
 }
 
@@ -160,7 +160,7 @@ void Entity::SetScale(glm::vec3 _scale)
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
         transform.scale = _scale;
-        UpdateModelMatrix(scene->entityRegistry, transform);
+        UpdateModelMatrix(transform);
     }
 }
 
@@ -171,5 +171,7 @@ glm::vec3 Entity::GetGlobalPosition()
         TransformComponent& transform = GetComponent<TransformComponent>();
         return glm::vec3(transform.modelMatrix[3]);
     }
+
+    return glm::vec3(0.0f);
 }
 } // end of Canis namespace

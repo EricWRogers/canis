@@ -18,31 +18,32 @@ namespace Canis
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager)
     {
         glm::vec4 lRayStart_NDC(
-            ((float)inputManager.mouse.x/(float)window.GetScreenWidth()  - 0.5f) * 2.0f,
-            ((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.x / (float)window.GetScreenWidth() - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.y / (float)window.GetScreenHeight() - 0.5f) * 2.0f,
             -1.0, // The near plane maps to Z=-1 in Normalized Device Coordinates
-            1.0f
-        );
+            1.0f);
         glm::vec4 lRayEnd_NDC(
-            ((float)inputManager.mouse.x/(float)window.GetScreenWidth()  - 0.5f) * 2.0f,
-            ((float)inputManager.mouse.y/(float)window.GetScreenHeight()  - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.x / (float)window.GetScreenWidth() - 0.5f) * 2.0f,
+            ((float)inputManager.mouse.y / (float)window.GetScreenHeight() - 0.5f) * 2.0f,
             0.0,
-            1.0f
-        );
+            1.0f);
 
         glm::mat4 projection = glm::perspective(camera.FOV, (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
 
         glm::mat4 M = glm::inverse(projection * camera.GetViewMatrix());
-        glm::vec4 lRayStart_world = M * lRayStart_NDC; lRayStart_world/=lRayStart_world.w;
-        glm::vec4 lRayEnd_world   = M * lRayEnd_NDC  ; lRayEnd_world  /=lRayEnd_world.w;
+        glm::vec4 lRayStart_world = M * lRayStart_NDC;
+        lRayStart_world /= lRayStart_world.w;
+        glm::vec4 lRayEnd_world = M * lRayEnd_NDC;
+        lRayEnd_world /= lRayEnd_world.w;
 
         glm::vec3 lRayDir_world(lRayEnd_world - lRayStart_world);
         lRayDir_world = glm::normalize(lRayDir_world);
 
-        return Ray { lRayStart_world, lRayDir_world };
+        return Ray{lRayStart_world, lRayDir_world};
     }
 
-    glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position) {
+    glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position)
+    {
         // Calculate the projection matrix
         glm::mat4 projectionMatrix = glm::perspective(_camera.FOV, _window.GetScreenWidth() / (float)_window.GetScreenHeight(), _camera.nearPlane, _camera.farPlane);
 
@@ -62,12 +63,13 @@ namespace Canis
         glm::vec3 oc = ray.origin - center;
         float a = glm::dot(ray.direction, ray.direction);
         float b = 2.0f * glm::dot(oc, ray.direction);
-        float c = glm::dot(oc,oc) - radius*radius;
-        float discriminant = b*b - 4*a*c;
-        return (discriminant>0);
+        float c = glm::dot(oc, oc) - radius * radius;
+        float discriminant = b * b - 4 * a * c;
+        return (discriminant > 0);
     }
 
-    glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest){
+    glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest)
+    {
         start = glm::normalize(start);
         dest = glm::normalize(dest);
 
@@ -79,7 +81,7 @@ namespace Canis
             rotationAxis = glm::cross(glm::vec3(0.0f, 0.0f, 1.0f), start);
             float normalLength2 = glm::length2(glm::normalize(rotationAxis));
 
-            if (normalLength2 < 0.01 ) // parallel
+            if (normalLength2 < 0.01) // parallel
             {
                 rotationAxis = glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), start);
             }
@@ -90,106 +92,191 @@ namespace Canis
 
         rotationAxis = glm::cross(start, dest);
 
-        float s = sqrt( (1+cosTheta)*2 );
+        float s = sqrt((1 + cosTheta) * 2);
         float invs = 1 / s;
 
         return glm::quat(
-            s * 0.5f, 
+            s * 0.5f,
             rotationAxis.x * invs,
             rotationAxis.y * invs,
-            rotationAxis.z * invs
-        );
-
+            rotationAxis.z * invs);
     }
 
-    void UpdateModelMatrix(entt::registry &_registry, TransformComponent &_transform)
-	{
-		_transform.isDirty = false;
+    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3& _target, float _rotationSpeed, float _deltaTime) {
+        const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.x),
+                                                 glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.y),
+                                                 glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.z),
+                                                 glm::vec3(0.0f, 0.0f, 1.0f));
+
+        // Y * X * Z
+        const glm::mat4 roationMatrix = transformY * transformX * transformZ;
+        
+        // Calculate the direction towards the target
+        glm::vec3 currentForward = glm::normalize(glm::vec3(roationMatrix[2]));
+        glm::vec3 targetDirection = glm::normalize(_target - glm::vec3(roationMatrix[3]));
+
+        // Calculate the rotation axis
+        glm::vec3 rotationAxis = glm::cross(currentForward, targetDirection);
+
+        // Calculate the rotation angle
+        float rotationAngle = _rotationSpeed * _deltaTime;
+
+        // Create a quaternion for the rotation
+        glm::quat rotationQuat = glm::angleAxis(rotationAngle, rotationAxis);
+        return glm::degrees(glm::eulerAngles(rotationQuat));
+    }
+
+    void UpdateModelMatrix(TransformComponent &_transform)
+    {
+        _transform.isDirty = false;
+
+        if (_transform.registry == nullptr)
+        {
+            Canis::Warning("Transform registry MISSING");
+            return;
+        }
 
         const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
-                            glm::radians(_transform.rotation.x),
-                            glm::vec3(1.0f, 0.0f, 0.0f));
+                                                 glm::radians(_transform.rotation.x),
+                                                 glm::vec3(1.0f, 0.0f, 0.0f));
         const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
-                            glm::radians(_transform.rotation.y),
-                            glm::vec3(0.0f, 1.0f, 0.0f));
+                                                 glm::radians(_transform.rotation.y),
+                                                 glm::vec3(0.0f, 1.0f, 0.0f));
         const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
-                            glm::radians(_transform.rotation.z),
-                            glm::vec3(0.0f, 0.0f, 1.0f));
+                                                 glm::radians(_transform.rotation.z),
+                                                 glm::vec3(0.0f, 0.0f, 1.0f));
 
         // Y * X * Z
         const glm::mat4 roationMatrix = transformY * transformX * transformZ;
 
         // translation * rotation * scale (also know as TRS matrix)
         _transform.modelMatrix = glm::translate(glm::mat4(1.0f), _transform.position) *
-                    roationMatrix *
-                    glm::scale(glm::mat4(1.0f), _transform.scale);
+                                 roationMatrix *
+                                 glm::scale(glm::mat4(1.0f), _transform.scale);
+
+        /*glm::mat4 new_transform = glm::mat4(1);
+        new_transform = glm::translate(new_transform, _transform.position);
+        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.x), glm::vec3(1, 0, 0));
+        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.y), glm::vec3(0, 1, 0));
+        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.z), glm::vec3(0, 0, 1));
+        _transform.modelMatrix = glm::scale(new_transform, _transform.scale);*/
 
         if (_transform.parent != entt::null)
         {
-            TransformComponent& parentTransform = _registry.get<TransformComponent>(_transform.parent);
+            TransformComponent &parentTransform = _transform.registry->get<TransformComponent>(_transform.parent);
 
             _transform.modelMatrix = parentTransform.modelMatrix * _transform.modelMatrix;
         }
 
-
         for (int i = 0; i < _transform.children.size(); i++)
         {
-            TransformComponent& childTransform = _registry.get<TransformComponent>(_transform.children[i]);
+            TransformComponent &childTransform = _transform.registry->get<TransformComponent>(_transform.children[i]);
 
-            UpdateModelMatrix(_registry, childTransform);
+            UpdateModelMatrix(childTransform);
         }
-	}
+    }
 
-    const glm::mat4& GetModelMatrix(TransformComponent &_transform)
-	{
-		return _transform.modelMatrix;
-	}
+    const glm::mat4 &GetModelMatrix(TransformComponent &_transform)
+    {
+        return _transform.modelMatrix;
+    }
 
     glm::vec3 GetGlobalPosition(TransformComponent &_transform)
     {
         return glm::vec3(_transform.modelMatrix[3]);
     }
 
-    void MoveTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _offset)
+    void MoveTransformPosition(TransformComponent &_transform, glm::vec3 _offset)
     {
         _transform.position += _offset;
 
-        UpdateModelMatrix(_registry, _transform);
+        UpdateModelMatrix(_transform);
     }
 
-    void SetTransformPosition(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _position)
+    void SetTransformPosition(TransformComponent &_transform, glm::vec3 _position)
     {
         _transform.position = _position;
 
-        UpdateModelMatrix(_registry, _transform);
+        UpdateModelMatrix(_transform);
     }
 
-    void RotateTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotate)
+    glm::vec3 GetTransformForward(TransformComponent &_transform)
+    {
+        glm::mat4 rx = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
+        glm::mat4 ry = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
+        glm::mat4 rz = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
+
+        glm::mat3 rotationMatrix = glm::mat3(rz * ry * rx);
+
+        return glm::normalize(glm::column(rotationMatrix, 2));
+    }
+
+    void Rotate(TransformComponent &_transform, glm::vec3 _rotate)
     {
         _transform.rotation += _rotate;
 
-        UpdateModelMatrix(_registry, _transform);
+        UpdateModelMatrix(_transform);
     }
 
-    void SetTransformRotation(entt::registry &_registry, TransformComponent &_transform, glm::vec3 _rotation)
+    void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation)
     {
         _transform.rotation = _rotation;
 
-        UpdateModelMatrix(_registry, _transform);
+        UpdateModelMatrix(_transform);
+    }
+
+    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _forward)
+    {
+        glm::vec3 direction = glm::normalize(_target - _transform.position);
+
+        // Calculate the rotation axis using cross product
+        glm::vec3 rotationAxis = glm::cross(_forward, direction);
+
+        // Calculate the rotation angle using dot product
+        float dotProduct = glm::dot(_forward, direction);
+        float rotationAngle = glm::acos(dotProduct);
+
+        // Create the rotation matrix
+        glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, rotationAxis);
+
+        _transform.rotation = glm::vec3(rotationMatrix * glm::vec4(_forward, 0.0f));
+
+        _transform.rotation.x = glm::degrees(_transform.rotation.x);
+        _transform.rotation.y = glm::degrees(_transform.rotation.y);
+        _transform.rotation.z = glm::degrees(_transform.rotation.z);
+
+        UpdateModelMatrix(_transform);
+    }
+
+    glm::vec3 AngleBetweenPositions(const glm::vec3 &_position, const glm::vec3 &_targetPosition, const glm::vec3 &_forward)
+    {
+        // Calculate the forward vector from source to target
+        glm::vec3 direction = glm::normalize(_targetPosition - _position);
+
+        // Create a quaternion that rotates the forward vector to align with the target direction
+        glm::quat rotationQuat = glm::quatLookAt(direction, glm::vec3(0.0f, -1.0f, 0.0f));
+
+        return glm::vec3(1.0f, 1.0f, 1.0f) * glm::degrees(glm::eulerAngles(RotationBetweenVectors(glm::vec3(0.0f, 0.0f, 1.0f), glm::normalize(_position - _targetPosition))));
     }
 
     float RandomFloat(float min, float max)
     {
-        if (max > min) {
-            float random = ((float) rand()) / (float) RAND_MAX;
-            float range = max - min;  
-            return (random*range) + min;
+        if (max > min)
+        {
+            float random = ((float)rand()) / (float)RAND_MAX;
+            float range = max - min;
+            return (random * range) + min;
         }
 
         if (min == max)
             return min;
-        
-        return RandomFloat(max, min);        
+
+        return RandomFloat(max, min);
     }
 
     glm::vec4 HexToRGBA(unsigned int _RRGGBBAA)
@@ -197,7 +284,7 @@ namespace Canis
         glm::vec4 color = glm::vec4(0.0f);
         color.r = ((_RRGGBBAA >> 24) & 0xFF) / 255.0f;
         color.g = ((_RRGGBBAA >> 16) & 0xFF) / 255.0f;
-        color.b = ((_RRGGBBAA >>  8) & 0xFF) / 255.0f;
+        color.b = ((_RRGGBBAA >> 8) & 0xFF) / 255.0f;
         color.a = ((_RRGGBBAA) & 0xFF) / 255.0f;
         return color;
     }
