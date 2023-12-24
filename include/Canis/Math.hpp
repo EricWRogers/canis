@@ -43,11 +43,7 @@ namespace Canis
 
     glm::vec3 GetTransformForward(TransformComponent &_transform);
 
-    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _forward);
-
-    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3& _target, float _rotationSpeed, float _deltaTime);
-
-    glm::vec3 AngleBetweenPositions( const glm::vec3 &_position, const glm::vec3 &_targetPosition, const glm::vec3 &_forward);
+    void LookAt(TransformComponent &_transform, glm::vec3 _target);
 
     float RandomFloat(float min, float max);
 

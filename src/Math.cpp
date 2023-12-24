@@ -102,7 +102,8 @@ namespace Canis
             rotationAxis.z * invs);
     }
 
-    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3& _target, float _rotationSpeed, float _deltaTime) {
+    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3 &_target, float _rotationSpeed, float _deltaTime)
+    {
         const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
                                                  glm::radians(_transform.rotation.x),
                                                  glm::vec3(1.0f, 0.0f, 0.0f));
@@ -115,7 +116,7 @@ namespace Canis
 
         // Y * X * Z
         const glm::mat4 roationMatrix = transformY * transformX * transformZ;
-        
+
         // Calculate the direction towards the target
         glm::vec3 currentForward = glm::normalize(glm::vec3(roationMatrix[2]));
         glm::vec3 targetDirection = glm::normalize(_target - glm::vec3(roationMatrix[3]));
@@ -230,38 +231,24 @@ namespace Canis
         UpdateModelMatrix(_transform);
     }
 
-    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _forward)
+    void LookAt(TransformComponent &_transform, glm::vec3 _target)
     {
         glm::vec3 direction = glm::normalize(_target - _transform.position);
 
-        // Calculate the rotation axis using cross product
-        glm::vec3 rotationAxis = glm::cross(_forward, direction);
+        _transform.rotation.y = atan2(direction.x, direction.z);
 
-        // Calculate the rotation angle using dot product
-        float dotProduct = glm::dot(_forward, direction);
-        float rotationAngle = glm::acos(dotProduct);
+        if (direction.z >= 0.0f)
+            _transform.rotation.x = -atan2(direction.y * cos(_transform.rotation.y), direction.z);
+        else
+            _transform.rotation.x = atan2(direction.y * cos(_transform.rotation.y), -direction.z);
 
-        // Create the rotation matrix
-        glm::mat4 rotationMatrix = glm::rotate(glm::mat4(1.0f), rotationAngle, rotationAxis);
+        _transform.rotation.z = atan2(cos(_transform.rotation.x), sin(_transform.rotation.x) * sin(_transform.rotation.y));
 
-        _transform.rotation = glm::vec3(rotationMatrix * glm::vec4(_forward, 0.0f));
+        _transform.rotation = glm::degrees(_transform.rotation);
 
-        _transform.rotation.x = glm::degrees(_transform.rotation.x);
-        _transform.rotation.y = glm::degrees(_transform.rotation.y);
-        _transform.rotation.z = glm::degrees(_transform.rotation.z);
+        _transform.rotation.z -= 90;
 
         UpdateModelMatrix(_transform);
-    }
-
-    glm::vec3 AngleBetweenPositions(const glm::vec3 &_position, const glm::vec3 &_targetPosition, const glm::vec3 &_forward)
-    {
-        // Calculate the forward vector from source to target
-        glm::vec3 direction = glm::normalize(_targetPosition - _position);
-
-        // Create a quaternion that rotates the forward vector to align with the target direction
-        glm::quat rotationQuat = glm::quatLookAt(direction, glm::vec3(0.0f, -1.0f, 0.0f));
-
-        return glm::vec3(1.0f, 1.0f, 1.0f) * glm::degrees(glm::eulerAngles(RotationBetweenVectors(glm::vec3(0.0f, 0.0f, 1.0f), glm::normalize(_position - _targetPosition))));
     }
 
     float RandomFloat(float min, float max)
