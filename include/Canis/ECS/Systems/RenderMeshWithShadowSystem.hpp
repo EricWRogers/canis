@@ -259,6 +259,8 @@ namespace Canis
 						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
 
 						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+
+						shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 					}
 				}
 				else
@@ -274,16 +276,12 @@ namespace Canis
 					shadow_mapping_depth_instance_shader->SetInt("shadowMap", 0);
 
 					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 				}
 
 				if (!mesh.castShadow)
 					continue;
 
 				glBindVertexArray(vao);
-
-				shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 
 				if (!mesh.useInstance)
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
