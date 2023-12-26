@@ -20,6 +20,8 @@ set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
 set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
+set(FT_DISABLE_PNG                  TRUE)
+set(FT_DISABLE_HARFBUZZ             TRUE)
 
 
 add_subdirectory(external/GL)
@@ -38,15 +40,8 @@ include_directories("${PROJECT_SOURCE_DIR}/include")
 file(GLOB_RECURSE SRC_SOURCES src/*.c*)
 file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
 
-add_library(${PROJECT_NAME} ${SRC_SOURCES} ${SRC_HEADERS})
+add_library(${PROJECT_NAME} STATIC ${SRC_SOURCES} ${SRC_HEADERS})
 
-#file(GLOB_RECURSE SRC_SOURCES src/*.c*)
-#file(GLOB_RECURSE SRC_HEADERS src/*.h*)
-
-#add_executable(${PROJECT_NAME} ${SRC_SOURCES} ${SRC_HEADERS})
-
-#glfw
-#glad 
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
     $<INSTALL_INTERFACE:include>
@@ -59,9 +54,7 @@ target_link_libraries(${PROJECT_NAME}
     SDL2main
     SDL2_mixer
 )
-#PRIVATE
-#glfw
-#glad
+
 target_include_directories(${PROJECT_NAME}
     PUBLIC
         glm
