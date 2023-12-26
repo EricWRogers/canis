@@ -259,9 +259,9 @@ namespace Canis
 						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
 
 						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-
-						shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 					}
+
+					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
 				}
 				else
 				{
