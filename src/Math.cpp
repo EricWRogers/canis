@@ -231,6 +231,13 @@ namespace Canis
         UpdateModelMatrix(_transform);
     }
 
+    void SetTransformScale(TransformComponent &_transform, glm::vec3 _scale)
+    {
+        _transform.scale = _scale;
+
+        UpdateModelMatrix(_transform);
+    }
+
     void LookAt(TransformComponent &_transform, glm::vec3 _target)
     {
         glm::vec3 direction = glm::normalize(_target - _transform.position);

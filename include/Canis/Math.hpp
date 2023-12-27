@@ -41,6 +41,8 @@ namespace Canis
 
     void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation);
 
+    void SetTransformScale(TransformComponent &_transform, glm::vec3 _scale);
+
     glm::vec3 GetTransformForward(TransformComponent &_transform);
 
     void LookAt(TransformComponent &_transform, glm::vec3 _target);
