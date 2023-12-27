@@ -310,7 +310,7 @@ namespace Canis
 
     void AnimationBellCurve(float &_value, const float &_min, const float &_max, const float &_fraction)
     {
-        _value = _min + ((sin(2 * Canis::PI * (_fraction - 1/4)) + 1) / 2) * (_max - _min);
+        _value = _min + sin(Canis::PI * _fraction) * (_max - _min);
     }
 
     void Clamp(float &_value, float _min, float _max)
