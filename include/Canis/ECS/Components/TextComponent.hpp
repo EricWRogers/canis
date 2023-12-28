@@ -27,4 +27,15 @@ namespace Text {
 		_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
 	}
 }
+
+inline void RemoveTrialingZeros(std::string &_word)
+{
+	while(_word.size() > 0)
+	{
+		if (_word[_word.size() - 1] == '0')
+			_word.pop_back();
+		else
+			return;
+	}
+}
 } // end of Canis namespace
