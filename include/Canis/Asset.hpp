@@ -6,6 +6,7 @@
 
 #include <map>
 
+#include <Canis/Yaml.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>
@@ -205,5 +206,16 @@ namespace Canis
         glm::vec4 color;
         glm::vec3 emissionColor;
         float emissionUsingAlbedoPlusIntesity;
+    };
+
+    class PrefabAsset : public Asset
+    {
+        private:
+            YAML::Node m_node;
+        public:
+            bool Load(const std::string _path);
+            bool Free();
+
+            YAML::Node& GetNode();
     };
 } // end of Canis namespace

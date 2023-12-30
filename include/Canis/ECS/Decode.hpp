@@ -28,5 +28,9 @@ namespace Canis
 
     extern void DecodeTransformComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
 
+    extern void DecodeMeshComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
+
+    extern void DecodeSphereColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
+
     extern void DecodeDirectionalLightComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
 };

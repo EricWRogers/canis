@@ -59,6 +59,41 @@ namespace Canis
             return GetTexture(LoadTexture(_path));
         }
 
+        int LoadPrefab(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+
+            std::map<std::string, int>::iterator it;
+            it = assetLibrary.assetPath.find(_path);
+
+            // check if prefab already exist
+            if (it != assetLibrary.assetPath.end()) // found
+            {
+                return it->second;
+            }
+
+            // create texture
+            Asset *prefab = new PrefabAsset();
+            prefab->Load(_path);
+            int id = assetLibrary.nextId;
+
+            // cache prefab
+            assetLibrary.assets[id] = prefab;
+
+            // cache id
+            assetLibrary.assetPath[_path] = id;
+
+            // increment id
+            assetLibrary.nextId++;
+
+            return id;
+        }
+
+        PrefabAsset& GetPrefab(const std::string &_path)
+        {
+            return *(PrefabAsset *)GetAssetLibrary().assets[LoadPrefab(_path)];
+        }
+
         int LoadSkybox(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();

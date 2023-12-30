@@ -1,5 +1,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
+#include <Canis/Yaml.hpp>
+#include <Canis/SceneManager.hpp>
 
 namespace Canis
 {
@@ -121,5 +123,46 @@ namespace Canis
         Canis::Entity e(this);
         e.entityHandle = e.GetEntityWithTag(_tag);
         return e;
+    }
+
+    std::vector<Canis::Entity> Scene::Instantiate(const std::string &_path)
+    {
+        std::vector<Canis::Entity> entitiesReturn = {};
+        YAML::Node& root = AssetManager::GetPrefab(_path).GetNode();
+
+        auto entities = root["Entities"];
+
+        if(entities)
+        {
+            for(auto e : entities)
+            {
+                Canis::Entity entity = CreateEntity();
+                entitiesReturn.push_back(entity);
+
+                for(int d = 0;  d < ((SceneManager*)sceneManager)->decodeEntity.size(); d++) {
+                    ((SceneManager*)sceneManager)->decodeEntity[d](e, entity, ((SceneManager*)sceneManager));
+                }
+
+                if (auto scriptComponent = e["Canis::ScriptComponent"])
+                {
+                    std::string secomponent = scriptComponent.as<std::string>();
+                    for (int d = 0; d < ((SceneManager*)sceneManager)->decodeScriptableEntity.size(); d++)
+                        if (((SceneManager*)sceneManager)->decodeScriptableEntity[d](secomponent, entity))
+                            continue;
+                }
+            }
+        }
+
+        return entitiesReturn;
+    }
+
+    std::vector<Canis::Entity> Scene::Instantiate(const std::string &_path, glm::vec3 _position)
+    {
+        std::vector<Canis::Entity> entities = Instantiate(_path);
+
+        for(auto e : entities)
+            e.SetPosition(_position);
+        
+        return entities;
     }
 } // end of Canis namespace

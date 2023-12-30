@@ -60,6 +60,9 @@ namespace Canis
         TextureAsset* GetTexture(const std::string &_path);
         TextureAsset* GetTexture(const int _textureID);
 
+        int LoadPrefab(const std::string &_path);
+        PrefabAsset& GetPrefab(const std::string &_path);
+
         int LoadSkybox(const std::string &_path);
         int LoadModel(const std::string &_path);
         int LoadModel(const std::string &_name, const std::vector<Canis::Vertex> &_vertices);

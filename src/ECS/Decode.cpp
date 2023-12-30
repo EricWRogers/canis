@@ -11,6 +11,8 @@
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
 #include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/MeshComponent.hpp>
+#include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/DirectionalLightComponent.hpp>
 
 namespace Canis
@@ -68,7 +70,9 @@ namespace Canis
         if (auto colorComponent = _n["Canis::ColorComponent"])
         {
             auto &cc = _entity.AddComponent<Canis::ColorComponent>();
-            cc.color = colorComponent["color"].as<glm::vec4>();
+            cc.color = colorComponent["color"].as<glm::vec4>(cc.color);
+            cc.emission = colorComponent["emission"].as<glm::vec3>(cc.emission);
+            cc.emissionUsingAlbedoIntesity = colorComponent["emissionUsingAlbedoIntesity"].as<float>(cc.emissionUsingAlbedoIntesity);
         }
     }
 
@@ -160,10 +164,45 @@ namespace Canis
         if (auto transformComponent = _n["Canis::TransformComponent"])
         {
             auto &tc = _entity.AddComponent<Canis::TransformComponent>();
+            tc.registry = &(_entity.scene->entityRegistry);
             tc.active = transformComponent["active"].as<bool>(true);
             tc.position = transformComponent["position"].as<glm::vec3>(glm::vec3(1.0f));
             tc.rotation = transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f));
             tc.scale = transformComponent["scale"].as<glm::vec3>(glm::vec3(1.0f));
+        }
+    }
+
+    void DecodeMeshComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto meshComponent = _n["Canis::MeshComponent"])
+        {
+            auto &mc = _entity.AddComponent<Canis::MeshComponent>();
+            mc.castShadow = meshComponent["castShadow"].as<bool>(mc.castShadow);
+            mc.useInstance = meshComponent["useInstance"].as<bool>(mc.useInstance);
+
+            std::string modelPath = meshComponent["modelPath"].as<std::string>("");
+            if (modelPath == "")
+                Canis::FatalError("Decode mesh component: modelPath was empty");
+            
+            mc.id = AssetManager::LoadModel(modelPath);
+
+            std::string materialPath = meshComponent["materialPath"].as<std::string>("");
+            if (materialPath == "")
+                Canis::FatalError("Decode mesh component: materialPath was empty");
+            
+            mc.material = AssetManager::LoadMaterial(materialPath);
+        }
+    }
+
+    void DecodeSphereColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto sphereColliderComponent = _n["Canis::SphereColliderComponent"])
+        {
+            auto &scc = _entity.AddComponent<SphereColliderComponent>();
+            scc.center = sphereColliderComponent["center"].as<glm::vec3>(scc.center);
+            scc.radius = sphereColliderComponent["radius"].as<float>(scc.radius);
+            scc.layer = sphereColliderComponent["layer"].as<unsigned int>(scc.layer);
+            scc.mask = sphereColliderComponent["mask"].as<unsigned int>(scc.mask);
         }
     }
     

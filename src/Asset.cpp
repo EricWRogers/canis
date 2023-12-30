@@ -8,6 +8,7 @@
 #include <GL/glew.h>
 #include <unordered_map>
 #include <Canis/External/TMXLoader/TMXLoader.h>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -408,5 +409,21 @@ namespace Canis
             delete ((TMXLoader*)loader);
         
         return true;
+    }
+
+    bool PrefabAsset::Load(const std::string _path)
+    {
+        m_node = YAML::LoadFile(_path);
+        return true;
+    }
+
+    bool PrefabAsset::Free()
+    {
+        return true;
+    }
+
+    YAML::Node& PrefabAsset::GetNode()
+    {
+        return m_node;
     }
 } // end of Canis namespace

@@ -47,6 +47,9 @@ namespace Canis
             Entity CreateEntity(const std::string &_tag);
             Entity FindEntityWithTag(const std::string &_tag);
 
+            std::vector<Canis::Entity> Instantiate(const std::string &_path);
+            std::vector<Canis::Entity> Instantiate(const std::string &_path, glm::vec3 _position);
+
             template<typename T>
             T* GetSystem() {
                 T* castedSystem = nullptr;
