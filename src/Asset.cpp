@@ -68,31 +68,91 @@ namespace Canis
 
     bool ModelAsset::Load(std::string _path)
     {
-        std::vector<glm::vec3> modelVertices;
-        std::vector<glm::vec2> uvs;
-        std::vector<glm::vec3> normals;
+        std::string binFileName = _path + ".bin";
+        SDL_RWops* file = SDL_RWFromFile( binFileName.c_str(), "r+b" );
 
-        Canis::LoadOBJ(_path, modelVertices, uvs, normals);
-
-        for (int i = 0; i < modelVertices.size(); i++)
+        if (file == nullptr)
         {
-            Canis::Vertex v = {};
-            v.position = modelVertices[i];
-            v.normal = normals[i];
-            v.texCoords = uvs[i];
-            vertices.push_back(v);
+            std::vector<glm::vec3> modelVertices;
+            std::vector<glm::vec2> uvs;
+            std::vector<glm::vec3> normals;
+
+            Canis::LoadOBJ(_path, modelVertices, uvs, normals);
+
+            for (int i = 0; i < modelVertices.size(); i++)
+            {
+                Canis::Vertex v = {};
+                v.position = modelVertices[i];
+                v.normal = normals[i];
+                v.texCoords = uvs[i];
+                vertices.push_back(v);
+            }
+
+            size = vertices.size();
+
+            LoadWithVertex(vertices);
+
+            // save data
+            file = SDL_RWFromFile( binFileName.c_str(), "w+b" );
+            // write indices size
+            size_t indicesSize = indices.size();
+            SDL_RWwrite( file, &indicesSize, sizeof(size_t), 1 );
+            // write indices
+            SDL_RWwrite( file, indices.data(), sizeof(unsigned int), indicesSize);
+            // write vertices size
+            size_t verticesSize = vertices.size();
+            SDL_RWwrite( file, &verticesSize, sizeof(size_t), 1 );
+            // write vertices
+            SDL_RWwrite( file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
+        }
+        else
+        {
+            size_t indicesSize = 0;
+            SDL_RWread( file, &indicesSize, sizeof(size_t), 1 );
+            indices.reserve(indicesSize);
+            indices.resize(indicesSize);
+            SDL_RWread( file, indices.data(), sizeof(unsigned int), indicesSize);
+
+            size_t verticesSize = 0;
+            SDL_RWread( file, &verticesSize, sizeof(size_t), 1 );
+            vertices.reserve(verticesSize);
+            vertices.resize(verticesSize);
+            SDL_RWread( file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
+
+            size = vertices.size();
+
+            glGenVertexArrays(1, &vao);
+            glGenBuffers(1, &vbo);
+
+            // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
+            glBindVertexArray(vao);
+
+            glBindBuffer(GL_ARRAY_BUFFER, vbo);
+            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
+
+            // position attribute
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+            glEnableVertexAttribArray(0);
+            // normal attribute
+            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
+            glEnableVertexAttribArray(1);
+            // texture coords
+            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+            glEnableVertexAttribArray(2);
+
+            glGenBuffers(1, &ebo);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
+            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
+
+            // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
+            glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+            glBindVertexArray(0);
         }
 
-        size = vertices.size();
+        SDL_RWclose(file);
 
-        /*
-        bool loaded = LoadOBJ(_path, vertices, indices);
-
-        size = vertices.size();
-
-        return loaded;*/
-
-        return LoadWithVertex(vertices);
+        return true;
     }
 
     bool ModelAsset::Free()
