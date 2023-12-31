@@ -179,6 +179,7 @@ namespace Canis
             auto &mc = _entity.AddComponent<Canis::MeshComponent>();
             mc.castShadow = meshComponent["castShadow"].as<bool>(mc.castShadow);
             mc.useInstance = meshComponent["useInstance"].as<bool>(mc.useInstance);
+            mc.castDepth = meshComponent["castDepth"].as<bool>(mc.castDepth);
 
             std::string modelPath = meshComponent["modelPath"].as<std::string>("");
             if (modelPath == "")

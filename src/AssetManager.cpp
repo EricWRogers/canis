@@ -372,6 +372,12 @@ namespace Canis
                     material->info |= MaterialInfo::HASSCREENTEXTURE;
             }
 
+            if (YAML::Node screenNode = root["depth"])
+            {
+                if (screenNode.as<std::string>() == "true")
+                    material->info |= MaterialInfo::HASDEPTH;
+            }
+
             int id = assetLibrary.nextId;
 
             // cache material

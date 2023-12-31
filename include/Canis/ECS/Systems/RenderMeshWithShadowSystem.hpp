@@ -63,6 +63,8 @@ namespace Canis
 		const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
 		unsigned int shadowMapFBO = 0;
 		unsigned int shadowMap;
+		unsigned int depthMapFBO = 0;
+		unsigned int depthMap;
 		unsigned int screenSpaceFBO;
 		unsigned int screenSpace;
 		unsigned int hdrFBO;
@@ -75,6 +77,8 @@ namespace Canis
 		float lightProjectionSize = 20.0f;
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
+		glm::mat4 depthProjection, depthView;
+		glm::mat4 depthSpaceMatrix;
 		float m_time = 0.0f;
 
 		bool bloom = true;
@@ -304,6 +308,112 @@ namespace Canis
 			glCullFace(GL_BACK);
 		}
 
+		void DepthPass(float deltaTime, entt::registry &registry)
+		{
+			glDisable(GL_CULL_FACE); 
+			
+			// render
+        	// ------
+        	//glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+        	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			shadow_mapping_depth_shader->Use();
+
+			shadow_mapping_depth_shader->SetInt("shadowMap", 0);
+
+			// 1. render depth of scene to texture (from light's perspective)
+			// --------------------------------------------------------------
+			
+			// create transformations
+			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
+			glm::mat4 projection = glm::mat4(1.0f);
+			glm::mat4 spaceMatrix = glm::mat4(1.0f);
+			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
+			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
+			cameraView = camera->GetViewMatrix();
+			spaceMatrix = projection*cameraView;
+			
+			shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
+
+			glViewport(0, 0, SHADOW_WIDTH, SHADOW_HEIGHT);
+			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+			glClear(GL_DEPTH_BUFFER_BIT);
+			glActiveTexture(GL_TEXTURE0);
+			
+			// render scene
+			std::string modelKey = "model";
+
+			unsigned int modelId = 0;
+			unsigned int vao = 0;
+			unsigned int size = 0;
+			unsigned int ebo = 0;
+			unsigned int instanceId = 0;
+
+			InstanceMeshAsset* instanceMeshAsset = nullptr;
+
+			for (RenderEnttRapper rer : sortingEntities)
+			{
+				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+
+				if (!mesh.useInstance)
+				{
+					if (mesh.id != modelId) {
+						modelId = mesh.id;
+						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+						size = AssetManager::Get<ModelAsset>(modelId)->size;
+						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+
+						shadow_mapping_depth_shader->Use();
+
+						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
+
+						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
+					}
+
+					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
+				}
+				else
+				{
+					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.id);
+					modelId = instanceMeshAsset->modelID;
+					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+					size = AssetManager::Get<ModelAsset>(modelId)->size;
+					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+
+					shadow_mapping_depth_instance_shader->Use();
+
+					shadow_mapping_depth_instance_shader->SetInt("shadowMap", 0);
+
+					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
+				}
+
+				if (!mesh.castDepth)
+					continue;
+
+				glBindVertexArray(vao);
+
+				if (!mesh.useInstance)
+					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
+				else
+					glDrawElementsInstanced(GL_TRIANGLES,
+						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+						GL_UNSIGNED_INT,
+						0,
+						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
+			}
+
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// reset viewport
+			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
+			//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+			shadow_mapping_depth_shader->UnUse();
+			glEnable(GL_CULL_FACE);
+			glCullFace(GL_BACK);
+		}
+
 		void DrawMesh(float deltaTime, entt::registry &registry)
 		{
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
@@ -467,7 +577,13 @@ namespace Canis
 					
 				}
 
-				
+				if ( (material->info | MaterialInfo::HASDEPTH) == material->info )
+				{
+					//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
+					glActiveTexture(GL_TEXTURE6);
+					glBindTexture(GL_TEXTURE_2D, depthMap);
+					shadow_mapping_shader->SetInt("DEPTHTEXTURE", 6);
+				}
 
 				shadow_mapping_shader->SetFloat("TIME", m_time);
 
@@ -572,6 +688,25 @@ namespace Canis
 			// attach depth texture as FBO's depth buffer
 			glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
+			glDrawBuffer(GL_NONE);
+			glReadBuffer(GL_NONE);
+			glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+			// configure depth map FBO
+			// -----------------------
+			glGenFramebuffers(1, &depthMapFBO);
+			// create depth texture
+			glGenTextures(1, &depthMap);
+			glBindTexture(GL_TEXTURE_2D, depthMap);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+			// attach depth texture as FBO's depth buffer
+			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
 			glDrawBuffer(GL_NONE);
 			glReadBuffer(GL_NONE);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -740,6 +875,14 @@ namespace Canis
 			//std::cout << "MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
 			ShadowDepthPass(_deltaTime, _registry);
+
+			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_ALPHA);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDepthFunc(GL_LESS);
+			glEnable(GL_CULL_FACE);
+
+			DepthPass(_deltaTime, _registry);
 			glEnable(GL_BLEND);
 			DrawMesh(_deltaTime, _registry);
 			glDisable(GL_BLEND);

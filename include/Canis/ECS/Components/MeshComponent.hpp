@@ -8,5 +8,6 @@ namespace Canis
 		bool castShadow = false;
 		int material = 0;
 		bool useInstance = false;
+		bool castDepth = true;
 	};
 } // end of Canis namespace

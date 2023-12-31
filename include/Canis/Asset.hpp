@@ -187,7 +187,8 @@ namespace Canis
         HASSCREENTEXTURE                    = 32u,
         HASCOLOR                            = 64u,
         HASEMISSIONCOLOR                    = 128u,
-        HASEMISSIONUSINGALEDOPLUSINTESITY   = 256u
+        HASEMISSIONUSINGALEDOPLUSINTESITY   = 256u,
+        HASDEPTH                            = 512u
     };
     
     /*
