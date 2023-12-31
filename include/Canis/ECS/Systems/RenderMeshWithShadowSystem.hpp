@@ -545,6 +545,8 @@ namespace Canis
 				shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
 				shadow_mapping_shader->SetMat4("view", cameraView);
 				shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+				shadow_mapping_shader->SetFloat("NEARPLANE", camera->nearPlane);
+				shadow_mapping_shader->SetFloat("FARPLANE", camera->farPlane);
 
 				diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
 				specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
