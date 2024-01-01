@@ -451,6 +451,7 @@ namespace Canis
 				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
 				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
 				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
+				unsigned int textureCount = 0;
 
 				if (!mesh.useInstance)
 				{
@@ -492,10 +493,13 @@ namespace Canis
 					glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
 					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 					screenSpaceCopyShader->Use();
-					glActiveTexture(GL_TEXTURE0);
+
+					glActiveTexture(GL_TEXTURE0+textureCount);
+					screenSpaceCopyShader->SetInt("image", textureCount);
+					textureCount++;
+
 					glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
 					
-					screenSpaceCopyShader->SetInt("image", 0);
 					renderQuad();
 					screenSpaceCopyShader->UnUse();
 
@@ -530,16 +534,11 @@ namespace Canis
 
 				shadow_mapping_shader->SetInt("numDirLights", numDirLights);
 
-				// material
-				shadow_mapping_shader->SetInt("material.diffuse", 0);
-				shadow_mapping_shader->SetInt("material.specular", 1);
-				shadow_mapping_shader->SetInt("material.emission", 2);
 				shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
 
 				shadow_mapping_shader->SetInt("hdr", true);
 				shadow_mapping_shader->SetFloat("exposure", 3.1f);
 
-				shadow_mapping_shader->SetInt("shadowMap", 3);
 				shadow_mapping_shader->SetVec3("viewPos", camera->Position);
 				shadow_mapping_shader->SetVec3("lightPos", lightPos);
 				shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
@@ -552,39 +551,45 @@ namespace Canis
 				specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
 				emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
 
-				glActiveTexture(GL_TEXTURE0);
+				glActiveTexture(GL_TEXTURE0+textureCount);
 				glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+				shadow_mapping_shader->SetInt("material.diffuse", textureCount);
+				textureCount++;
 
-				glActiveTexture(GL_TEXTURE1);
+				glActiveTexture(GL_TEXTURE0+textureCount);
 				glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+				shadow_mapping_shader->SetInt("material.specular", textureCount);
+				textureCount++;
 
-				glActiveTexture(GL_TEXTURE2);
+				glActiveTexture(GL_TEXTURE0+textureCount);
 				glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
+				shadow_mapping_shader->SetInt("material.emission", textureCount);
+				textureCount++;
 
-				glActiveTexture(GL_TEXTURE3);
+				glActiveTexture(GL_TEXTURE0+textureCount);
 				glBindTexture(GL_TEXTURE_2D, shadowMap);
+				shadow_mapping_shader->SetInt("shadowMap", textureCount);
+				textureCount++;
 
-				glActiveTexture(GL_TEXTURE4);
+				glActiveTexture(GL_TEXTURE0+textureCount);
 				glBindTexture(GL_TEXTURE_2D, screenSpace);
-				shadow_mapping_shader->SetInt("SCREENTEXTURE", 4);
-
-				if ( (material->info | MaterialInfo::HASNOISE) == material->info )
-				{
-					//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
-					glActiveTexture(GL_TEXTURE5);
-					glBindTexture(GL_TEXTURE_2D,
-						AssetManager::Get<Canis::TextureAsset>(material->noiseId)->GetPointerToTexture()->id
-					);
-					shadow_mapping_shader->SetInt("NOISE", 5);
-					
-				}
+				shadow_mapping_shader->SetInt("SCREENTEXTURE", textureCount);
+				textureCount++;
 
 				if ( (material->info | MaterialInfo::HASDEPTH) == material->info )
 				{
-					//Canis::Log("Noise ID: " + std::to_string(material->noiseId));
-					glActiveTexture(GL_TEXTURE6);
+					glActiveTexture(GL_TEXTURE0+textureCount);
 					glBindTexture(GL_TEXTURE_2D, depthMap);
-					shadow_mapping_shader->SetInt("DEPTHTEXTURE", 6);
+					shadow_mapping_shader->SetInt("DEPTHTEXTURE", textureCount);
+					textureCount++;
+				}
+
+				for(int i = 0; i < material->texNames.size(); i++)
+				{
+					glActiveTexture(GL_TEXTURE0+textureCount);
+					glBindTexture(GL_TEXTURE_2D, material->texId[i]);
+					shadow_mapping_shader->SetInt(material->texNames[i].c_str(), textureCount);
+					textureCount++;
 				}
 
 				shadow_mapping_shader->SetFloat("TIME", m_time);

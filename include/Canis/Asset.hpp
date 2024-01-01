@@ -183,12 +183,11 @@ namespace Canis
         HASALBEDO                           = 2u,
         HASSPECULAR                         = 4u,
         HASEMISSION                         = 8u,
-        HASNOISE                            = 16u,
-        HASSCREENTEXTURE                    = 32u,
-        HASCOLOR                            = 64u,
-        HASEMISSIONCOLOR                    = 128u,
-        HASEMISSIONUSINGALEDOPLUSINTESITY   = 256u,
-        HASDEPTH                            = 512u
+        HASSCREENTEXTURE                    = 16u,
+        HASCOLOR                            = 32u,
+        HASEMISSIONCOLOR                    = 64u,
+        HASEMISSIONUSINGALEDOPLUSINTESITY   = 128u,
+        HASDEPTH                            = 256u
     };
     
     /*
@@ -203,10 +202,11 @@ namespace Canis
         unsigned int albedoId;
         unsigned int specularId;
         unsigned int emissionId;
-        unsigned int noiseId;
         glm::vec4 color;
         glm::vec3 emissionColor;
         float emissionUsingAlbedoPlusIntesity;
+        std::vector<std::string> texNames;
+        std::vector<unsigned int> texId;
     };
 
     class PrefabAsset : public Asset

@@ -328,6 +328,8 @@ namespace Canis
                 }
 
                 material->info |= MaterialInfo::HASSHADER;
+
+                root.remove("shader");
             }
 
             if (YAML::Node albedoNode = root["albedo"])
@@ -337,6 +339,8 @@ namespace Canis
                 material->albedoId = LoadTexture(albedoPath);
 
                 material->info |= MaterialInfo::HASALBEDO;
+
+                root.remove("albedo");
             }
 
             if (YAML::Node specularNode = root["specular"])
@@ -346,6 +350,8 @@ namespace Canis
                 material->specularId = LoadTexture(specularPath);
 
                 material->info |= MaterialInfo::HASSPECULAR;
+
+                root.remove("specular");
             }
 
             if (YAML::Node emissionNode = root["emission"])
@@ -355,27 +361,32 @@ namespace Canis
                 material->emissionId = LoadTexture(emissionPath);
 
                 material->info |= MaterialInfo::HASEMISSION;
-            }
 
-            if (YAML::Node noiseNode = root["noise"])
-            {
-                std::string noisePath = noiseNode.as<std::string>();
-
-                material->noiseId = LoadTexture(noisePath);
-
-                material->info |= MaterialInfo::HASNOISE;
+                root.remove("emission");
             }
 
             if (YAML::Node screenNode = root["screen"])
             {
                 if (screenNode.as<std::string>() == "true")
                     material->info |= MaterialInfo::HASSCREENTEXTURE;
+
+                root.remove("screen");
             }
 
             if (YAML::Node screenNode = root["depth"])
             {
                 if (screenNode.as<std::string>() == "true")
                     material->info |= MaterialInfo::HASDEPTH;
+                
+                root.remove("depth");
+            }
+
+            for (const auto& node : root)
+            {
+                std::string name = node.first.as<std::string>();
+                
+                material->texNames.push_back(name);
+                material->texId.push_back(GetTexture(root[name].as<std::string>())->GetTexture().id);
             }
 
             int id = assetLibrary.nextId;
