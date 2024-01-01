@@ -524,7 +524,7 @@ namespace Canis
 					if (transform.active)
 					{
 						numDirLights++;
-						shadow_mapping_shader->SetVec3("dirLight.direction", transform.rotation);
+						shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(transform.rotation));
 						shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
 						shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
 						shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
@@ -885,11 +885,12 @@ namespace Canis
 
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
 
 			DepthPass(_deltaTime, _registry);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glEnable(GL_BLEND);
 			DrawMesh(_deltaTime, _registry);
 			glDisable(GL_BLEND);
