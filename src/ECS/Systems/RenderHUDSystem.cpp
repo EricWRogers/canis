@@ -216,7 +216,7 @@ namespace Canis
 
                     m_textRenderer.RenderText(&e,
                                m_textRenderer.textShader,
-                               *text.text,
+                               text.text,
                                rect_transform.position.x + positionAnchor.x,
                                rect_transform.position.y + positionAnchor.y,
                                rect_transform.scale,

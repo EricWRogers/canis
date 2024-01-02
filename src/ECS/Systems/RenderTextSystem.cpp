@@ -184,7 +184,7 @@ namespace Canis
                 
                 RenderText(&e,
                             textShader,
-                            *text.text,
+                            text.text,
                             transform.position.x + positionAnchor.x,
                             transform.position.y + positionAnchor.y,
                             transform.scale,

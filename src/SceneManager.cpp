@@ -151,15 +151,6 @@ namespace Canis
                         scriptComponent.Instance->OnDestroy();
                     }
                 });
-
-                // Clean up TextComponent pointer
-                scene->entityRegistry.view<TextComponent>().each([](auto entity, auto& textComponent)
-                {
-                    if (textComponent.text != nullptr)
-                    {
-                        delete textComponent.text;
-                    }
-                });
             }
 
             // swap maps
@@ -271,8 +262,13 @@ namespace Canis
             
 			if (!entity)
 				return;
+
+            if (!entity.HasComponent<IDComponent>())
+                return;
             
             out << YAML::BeginMap;
+
+            out << YAML::Key << "Entity" << YAML::Value << entity.GetUUID();
 
             for(int i = 0; i < encodeEntity.size(); i++)
                 encodeEntity[i](out, entity);

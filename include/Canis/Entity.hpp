@@ -3,6 +3,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/External/entt.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
+#include <Canis/ECS/Components/IDComponent.hpp>
 
 namespace Canis
 {
@@ -81,7 +82,7 @@ public:
     operator entt::entity() const { return entityHandle; }
     operator uint32_t() const { return (uint32_t)entityHandle; }
 
-    //UUID GetUUID() { return GetComponent<IDComponent>().ID; }
+    UUID GetUUID() { return GetComponent<IDComponent>().ID; }
     //const std::string& GetName() { return GetComponent<TagComponent>().Tag; }
 
     bool operator==(const Entity& other) const

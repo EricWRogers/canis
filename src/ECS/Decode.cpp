@@ -88,8 +88,7 @@ namespace Canis
                     asset["path"].as<std::string>(),
                     asset["size"].as<unsigned int>());
             }
-            tc.text = new std::string;
-            (*tc.text) = textComponent["text"].as<std::string>();
+            tc.text = textComponent["text"].as<std::string>("");
             tc.alignment = textComponent["alignment"].as<unsigned int>();
         }
     }

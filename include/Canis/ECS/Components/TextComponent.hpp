@@ -7,7 +7,7 @@ namespace Canis
 struct TextComponent
 {
 	int assetId = 0;
-	std::string *text = nullptr; // FIX : memory leak
+	std::string text = {}; // FIX : memory leak
 	unsigned int alignment = 0; // 0 is left align | 1 is right align | 2 is center align
 	unsigned int _status = BIT::ONE; // this will make the RenderTextSystem recalculate rect size &| alignment
 };
@@ -22,7 +22,7 @@ namespace Text {
 	const unsigned int CENTER = 2u;
 
 	inline void Set(TextComponent &_textComponent, RectTransformComponent &_rectComponent, std::string _text) {
-		(*_textComponent.text) = _text;
+		_textComponent.text = _text;
 		_rectComponent.originOffset = glm::vec2(0.0f);
 		_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
 	}
