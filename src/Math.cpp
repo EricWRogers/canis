@@ -150,13 +150,6 @@ namespace Canis
                                  roationMatrix *
                                  glm::scale(glm::mat4(1.0f), _transform.scale);
 
-        /*glm::mat4 new_transform = glm::mat4(1);
-        new_transform = glm::translate(new_transform, _transform.position);
-        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.x), glm::vec3(1, 0, 0));
-        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.y), glm::vec3(0, 1, 0));
-        new_transform = glm::rotate(new_transform, glm::radians(_transform.rotation.z), glm::vec3(0, 0, 1));
-        _transform.modelMatrix = glm::scale(new_transform, _transform.scale);*/
-
         if (_transform.parent != entt::null)
         {
             TransformComponent &parentTransform = _transform.registry->get<TransformComponent>(_transform.parent);
