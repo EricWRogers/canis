@@ -259,6 +259,33 @@ namespace Canis
         Warning("SceneManager: " + _name + " NOT FOUND");
     }
 
+    void SceneManager::Save()
+    {
+        YAML::Emitter out;
+        out << YAML::BeginMap;
+        out << YAML::Key << "Scene" << YAML::Value << scene->name;
+		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
+        scene->entityRegistry.each([&](auto _entityHandle)
+		{
+			Entity entity = { _entityHandle, scene };
+            
+			if (!entity)
+				return;
+            
+            out << YAML::BeginMap;
+
+            for(int i = 0; i < encodeEntity.size(); i++)
+                encodeEntity[i](out, entity);
+            
+            out << YAML::EndMap;
+		});
+		out << YAML::EndSeq;
+		out << YAML::EndMap;
+
+		std::ofstream fout(scene->name);
+		fout << out.c_str();
+    }
+
     bool SceneManager::IsSplashScene(std::string _sceneName)
     {
         for(int i = 0; i < m_scenes.size(); i++)

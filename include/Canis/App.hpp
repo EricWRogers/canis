@@ -28,6 +28,8 @@ public:
     void AddDecodeComponent(std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)> _func);
     void AddDecodeScriptableEntity(std::function<bool(const std::string &_name, Canis::Entity &_entity)> _func);
 
+    void AddEncodeComponent(std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)> _func);
+
     void AddScene(Scene *_scene);
     void AddSplashScene(Scene *_scene);
 

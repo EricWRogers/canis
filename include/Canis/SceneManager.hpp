@@ -40,7 +40,10 @@ public:
 
     void ForceLoad(std::string _name);
     void Load(std::string _name);
+
     void HotReload();
+
+    void Save();
 
     void Update();
     void LateUpdate();
@@ -57,6 +60,8 @@ public:
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeRenderSystem = {};
     std::vector<std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)>> decodeEntity = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Entity &_entity)>> decodeScriptableEntity = {};
+
+    std::vector<std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)>> encodeEntity = {};
 
     Window *window;
     InputManager *inputManager;

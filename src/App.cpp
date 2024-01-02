@@ -28,6 +28,11 @@ namespace Canis
         sceneManager.decodeScriptableEntity.push_back(_func);
     }
 
+    void App::AddEncodeComponent(std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)> _func)
+    {
+        sceneManager.encodeEntity.push_back(_func);
+    }
+
     void App::AddScene(Scene *_scene)
     {
         sceneManager.Add(_scene);
