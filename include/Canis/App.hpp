@@ -29,6 +29,7 @@ public:
     void AddDecodeScriptableEntity(std::function<bool(const std::string &_name, Canis::Entity &_entity)> _func);
 
     void AddEncodeComponent(std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)> _func);
+    void AddEncodeScriptableEntity(std::function<bool(YAML::Emitter &_out, Canis::ScriptableEntity* _scriptableEntity)> _func);
 
     void AddScene(Scene *_scene);
     void AddSplashScene(Scene *_scene);

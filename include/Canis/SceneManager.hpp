@@ -62,6 +62,7 @@ public:
     std::vector<std::function<bool(const std::string &_name, Canis::Entity &_entity)>> decodeScriptableEntity = {};
 
     std::vector<std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)>> encodeEntity = {};
+    std::vector<std::function<bool(YAML::Emitter &_out, Canis::ScriptableEntity* _scriptableEntity)>> encodeScriptableEntity = {};
 
     Window *window;
     InputManager *inputManager;

@@ -270,8 +270,13 @@ namespace Canis
 
             out << YAML::Key << "Entity" << YAML::Value << entity.GetUUID();
 
-            for(int i = 0; i < encodeEntity.size(); i++)
+            for (int i = 0; i < encodeEntity.size(); i++)
                 encodeEntity[i](out, entity);
+            
+            if (entity.HasComponent<ScriptComponent>())
+                for (int i = 0; i < encodeScriptableEntity.size(); i++)
+                    if (encodeScriptableEntity[i](out, entity.GetComponent<ScriptComponent>().Instance))
+                        break;
             
             out << YAML::EndMap;
 		});

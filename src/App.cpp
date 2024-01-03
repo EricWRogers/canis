@@ -33,6 +33,11 @@ namespace Canis
         sceneManager.encodeEntity.push_back(_func);
     }
 
+    void App::AddEncodeScriptableEntity(std::function<bool(YAML::Emitter &_out, Canis::ScriptableEntity* _scriptableEntity)> _func)
+    {
+        sceneManager.encodeScriptableEntity.push_back(_func);
+    }
+
     void App::AddScene(Scene *_scene)
     {
         sceneManager.Add(_scene);
