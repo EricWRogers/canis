@@ -7,6 +7,7 @@
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
+#include <Canis/ECS/Components/TagComponent.hpp>
 
 namespace Canis
 {
@@ -130,5 +131,15 @@ namespace Canis
 
             _out << YAML::EndMap;
         }
+	}
+
+	void EncodeTagComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	{
+		if (_entity.HasComponent<TagComponent>())
+		{
+			TagComponent& tc = _entity.GetComponent<TagComponent>();
+
+            _out << YAML::Key << "Canis::TagComponent" << YAML::Value << std::string(tc.tag);
+		}
 	}
 }
