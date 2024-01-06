@@ -15,4 +15,6 @@ namespace Canis
     extern void EncodeTextComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 
     extern void EncodeTagComponent(YAML::Emitter &_out, Canis::Entity &_entity);
+
+    extern void EncodeMeshComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 }

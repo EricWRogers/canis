@@ -8,6 +8,7 @@
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
+#include <Canis/ECS/Components/MeshComponent.hpp>
 
 namespace Canis
 {
@@ -140,6 +141,26 @@ namespace Canis
 			TagComponent& tc = _entity.GetComponent<TagComponent>();
 
             _out << YAML::Key << "Canis::TagComponent" << YAML::Value << std::string(tc.tag);
+		}
+	}
+
+	void EncodeMeshComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	{
+		if (_entity.HasComponent<MeshComponent>())
+		{
+			MeshComponent& mc = _entity.GetComponent<MeshComponent>();
+
+			_out << YAML::Key << "Canis::MeshComponent";
+            _out << YAML::BeginMap;
+
+			_out << YAML::Key << "modelPath" << YAML::Value << AssetManager::GetPath(mc.id);
+			_out << YAML::Key << "materialPath" << YAML::Value << AssetManager::GetPath(mc.material);
+            _out << YAML::Key << "castShadow" << YAML::Value << mc.castShadow;
+			_out << YAML::Key << "useInstance" << YAML::Value << mc.useInstance;
+			_out << YAML::Key << "castDepth" << YAML::Value << mc.castDepth;
+			
+
+            _out << YAML::EndMap;
 		}
 	}
 }

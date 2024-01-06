@@ -31,13 +31,26 @@ public:
         {
             // check if the particles system is seen by camera
 
+            Canis::UpdateModelMatrix(transform);
+
             // init particles
             if (emitter.particles.size() == 0) {
                 emitter.time = emitter.lifeTime;
                 // load particles
                 for(int i = 0; i < emitter.numOfParticle; i++) {
                     TransformComponent transformComponent = {};
-                    transformComponent = transform;
+                    transformComponent.registry = &(scene->entityRegistry);
+                    
+                    if (emitter.state & ParticleEmitterState::LOCAL)
+                    {
+                        transformComponent = transform;
+                    }
+                    else
+                    {
+                        transformComponent.position = Canis::GetGlobalPosition(transform);
+                        transformComponent.scale = Canis::GetGlobalScale(transform);
+                    }
+
                     transformComponent.active = false;
                     ParticleComponent particleComponent = {};
 
@@ -74,7 +87,15 @@ public:
                     ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
                     ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
-                    t = transform;
+                    if (emitter.state & ParticleEmitterState::LOCAL)
+                    {
+                        t = transform;
+                    }
+                    else
+                    {
+                        t.position = Canis::GetGlobalPosition(transform);
+                        t.scale = Canis::GetGlobalScale(transform);
+                    }
                     c.color = emitter.colorStart;
                     float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
                     t.scale = transform.scale*scaleMul;

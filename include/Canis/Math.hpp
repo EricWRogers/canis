@@ -33,6 +33,10 @@ namespace Canis
 
     glm::vec3 GetGlobalPosition(TransformComponent &_transform);
 
+    glm::vec3 GetGlobalRotation(TransformComponent &_transform);
+
+    glm::vec3 GetGlobalScale(TransformComponent &_transform);
+
     void MoveTransformPosition(TransformComponent &_transform, glm::vec3 _offset);
 
     void SetTransformPosition(TransformComponent &_transform, glm::vec3 _position);

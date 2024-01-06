@@ -142,8 +142,21 @@ namespace Canis
             return;
         }
 
+        const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.x),
+                                                 glm::vec3(1.0f, 0.0f, 0.0f));
+        const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.y),
+                                                 glm::vec3(0.0f, 1.0f, 0.0f));
+        const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
+                                                 glm::radians(_transform.rotation.z),
+                                                 glm::vec3(0.0f, 0.0f, 1.0f));
+
         // Y * X * Z
-        const glm::mat4 roationMatrix = glm::toMat4(glm::quat(_transform.rotation));
+        const glm::mat4 roationMatrix = transformY * transformX * transformZ;
+
+        // Y * X * Z
+        //const glm::mat4 roationMatrix = glm::toMat4(glm::quat(_transform.rotation));
 
         // translation * rotation * scale (also know as TRS matrix)
         _transform.modelMatrix = glm::translate(glm::mat4(1.0f), _transform.position) *
@@ -173,6 +186,20 @@ namespace Canis
     glm::vec3 GetGlobalPosition(TransformComponent &_transform)
     {
         return glm::vec3(_transform.modelMatrix[3]);
+    }
+
+    glm::vec3 GetGlobalRotation(TransformComponent &_transform)
+    {
+        return glm::vec3(_transform.modelMatrix[3]);
+    }
+
+    glm::vec3 GetGlobalScale(TransformComponent &_transform)
+    {
+        glm::vec3 size;
+        size.x = glm::length(glm::vec3(_transform.modelMatrix[0])); // Basis vector X
+        size.y = glm::length(glm::vec3(_transform.modelMatrix[1])); // Basis vector Y
+        size.z = glm::length(glm::vec3(_transform.modelMatrix[2])); // Basis vector Z
+        return size;
     }
 
     void MoveTransformPosition(TransformComponent &_transform, glm::vec3 _offset)

@@ -13,6 +13,7 @@ namespace Canis
         PAUSED          = 8,
         COLORLERP       = 16,
         DESTROYONEND    = 32,
+        LOCAL           = 64
     };
 
     struct ParticleEmitterComponent
