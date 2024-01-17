@@ -15,16 +15,16 @@ namespace Canis {
     };
 }
 
-namespace std {
+/*namespace std {
 	template <typename T> struct hash;
 
 	template<>
 	struct hash<Canis::UUID>
 	{
-		std::size_t operator()(const Canis::UUID& _uuid) const
+		size_t operator()(const Canis::UUID& _uuid) const
 		{
 			return (uint64_t)_uuid;
 		}
 	};
 
-}
+}*/
