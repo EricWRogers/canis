@@ -15,7 +15,7 @@ namespace Canis
         void Mute();
         void UnMute();
 
-        void PlaySound(const std::string &_path);
-        void PlaySound(const std::string &_path, float _volume);
+        void Play(const std::string &_path);
+        void Play(const std::string &_path, float _volume);
     }
 }

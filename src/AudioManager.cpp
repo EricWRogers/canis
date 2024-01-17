@@ -90,12 +90,12 @@ namespace Canis
             asset->UnMute();
         }
         
-        void PlaySound(const std::string &_path)
+        void Play(const std::string &_path)
         {
-            PlaySound(_path, 1.0f);
+            Play(_path, 1.0f);
         }
         
-        void PlaySound(const std::string &_path, float _volume)
+        void Play(const std::string &_path, float _volume)
         {
             if (GetProjectConfig().mute)
                 return;
