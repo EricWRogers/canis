@@ -12,6 +12,7 @@ namespace Canis
         bool overrideSeed = false;
         unsigned int seed = 0;
         float volume = 1.0f;
+        bool mute = false;
     };
 
     ProjectConfig& GetProjectConfig();

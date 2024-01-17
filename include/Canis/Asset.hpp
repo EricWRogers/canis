@@ -99,7 +99,8 @@ namespace Canis
     class SoundAsset : public Asset
     {
     private:
-        void *m_chunk;
+        void *m_chunk = nullptr;
+        float m_volume = 0.0f;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
@@ -112,12 +113,15 @@ namespace Canis
     {
     private:
         void *m_music = nullptr;
+        float m_volume = 0.0f;
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         
         void Play(int _loops);
         void Play(int _loops, float _volume);
+        void Mute();
+        void UnMute();
         void Stop();
     };
 

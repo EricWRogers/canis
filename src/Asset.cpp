@@ -388,6 +388,7 @@ namespace Canis
 
     void SoundAsset::Play(float _volume)
     {
+        m_volume = _volume;
         int channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
         Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
     }
@@ -418,8 +419,23 @@ namespace Canis
 
     void MusicAsset::Play(int _loops, float _volume)
     {
+        m_volume = _volume;
         Mix_PlayMusic((Mix_Music *)m_music, _loops);
-        Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
+        
+        if (GetProjectConfig().mute)
+            Mix_VolumeMusic(0.0f);
+        else
+            Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
+    }
+
+    void MusicAsset::Mute()
+    {
+        Mix_VolumeMusic(0.0f);
+    }
+
+    void MusicAsset::UnMute()
+    {
+        Mix_VolumeMusic(128 * m_volume * GetProjectConfig().volume);
     }
 
     void MusicAsset::Stop()
