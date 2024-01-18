@@ -16,9 +16,20 @@ namespace Canis
         LOCAL           = 64
     };
 
+    enum EmitterShape
+    {
+        POINT,
+        CIRCLE,
+        SQUARE,
+        BOX,
+        SPHERE
+    };
+
     struct ParticleEmitterComponent
     {
         unsigned int state = ParticleEmitterState::NONE;
+        EmitterShape shape = EmitterShape::POINT;
+        float shapeScale = 1.0f;
         int numOfParticle = 100;
         std::vector<entt::entity> particles = {};
         int currentParticleIndex = 0;
