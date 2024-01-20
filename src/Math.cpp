@@ -2,9 +2,11 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/norm.hpp>
 #include <glm/gtx/string_cast.hpp>
 #include <glm/ext.hpp>
-#include <glm/gtx/quaternion.hpp>
 
 #include <Canis/Scene.hpp>
 #include <Canis/Camera.hpp>
@@ -70,27 +72,26 @@ namespace Canis
 
     glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest)
     {
-        start = glm::normalize(start);
-        dest = glm::normalize(dest);
+        start = normalize(start);
+        dest = normalize(dest);
 
-        float cosTheta = glm::dot(start, dest);
+        float cosTheta = dot(start, dest);
         glm::vec3 rotationAxis;
 
         if (cosTheta < -1 + 0.001f)
         {
+            // special case when vectors in opposite directions:
+            // there is no "ideal" rotation axis
+            // So guess one; any will do as long as it's perpendicular to start
             rotationAxis = glm::cross(glm::vec3(0.0f, 0.0f, 1.0f), start);
-            float normalLength2 = glm::length2(glm::normalize(rotationAxis));
-
-            if (normalLength2 < 0.01) // parallel
-            {
+            if (glm::length2(rotationAxis) < 0.01) // bad luck, they were parallel, try again!
                 rotationAxis = glm::cross(glm::vec3(1.0f, 0.0f, 0.0f), start);
-            }
 
             rotationAxis = glm::normalize(rotationAxis);
             return glm::angleAxis(glm::radians(180.0f), rotationAxis);
         }
 
-        rotationAxis = glm::cross(start, dest);
+        rotationAxis = cross(start, dest);
 
         float s = sqrt((1 + cosTheta) * 2);
         float invs = 1 / s;
@@ -100,36 +101,6 @@ namespace Canis
             rotationAxis.x * invs,
             rotationAxis.y * invs,
             rotationAxis.z * invs);
-    }
-
-    glm::vec3 RotateTowardsTarget(TransformComponent &_transform, const glm::vec3 &_target, float _rotationSpeed, float _deltaTime)
-    {
-        const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.x),
-                                                 glm::vec3(1.0f, 0.0f, 0.0f));
-        const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.y),
-                                                 glm::vec3(0.0f, 1.0f, 0.0f));
-        const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.z),
-                                                 glm::vec3(0.0f, 0.0f, 1.0f));
-
-        // Y * X * Z
-        const glm::mat4 roationMatrix = transformY * transformX * transformZ;
-
-        // Calculate the direction towards the target
-        glm::vec3 currentForward = glm::normalize(glm::vec3(roationMatrix[2]));
-        glm::vec3 targetDirection = glm::normalize(_target - glm::vec3(roationMatrix[3]));
-
-        // Calculate the rotation axis
-        glm::vec3 rotationAxis = glm::cross(currentForward, targetDirection);
-
-        // Calculate the rotation angle
-        float rotationAngle = _rotationSpeed * _deltaTime;
-
-        // Create a quaternion for the rotation
-        glm::quat rotationQuat = glm::angleAxis(rotationAngle, rotationAxis);
-        return glm::degrees(glm::eulerAngles(rotationQuat));
     }
 
     void UpdateModelMatrix(TransformComponent &_transform)
@@ -142,21 +113,8 @@ namespace Canis
             return;
         }
 
-        const glm::mat4 transformX = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.x),
-                                                 glm::vec3(1.0f, 0.0f, 0.0f));
-        const glm::mat4 transformY = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.y),
-                                                 glm::vec3(0.0f, 1.0f, 0.0f));
-        const glm::mat4 transformZ = glm::rotate(glm::mat4(1.0f),
-                                                 glm::radians(_transform.rotation.z),
-                                                 glm::vec3(0.0f, 0.0f, 1.0f));
-
         // Y * X * Z
-        const glm::mat4 roationMatrix = transformY * transformX * transformZ;
-
-        // Y * X * Z
-        //const glm::mat4 roationMatrix = glm::toMat4(glm::quat(_transform.rotation));
+        const glm::mat4 roationMatrix = glm::toMat4(_transform.rotation);
 
         // translation * rotation * scale (also know as TRS matrix)
         _transform.modelMatrix = glm::translate(glm::mat4(1.0f), _transform.position) *
@@ -218,23 +176,26 @@ namespace Canis
 
     glm::vec3 GetTransformForward(TransformComponent &_transform)
     {
-        glm::mat4 rx = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.x), glm::vec3(1.0f, 0.0f, 0.0f));
-        glm::mat4 ry = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.y), glm::vec3(0.0f, 1.0f, 0.0f));
-        glm::mat4 rz = glm::rotate(glm::mat4(1.0f), glm::radians(_transform.rotation.z), glm::vec3(0.0f, 0.0f, 1.0f));
-
-        glm::mat3 rotationMatrix = glm::mat3(rz * ry * rx);
+        glm::mat3 rotationMatrix = glm::toMat3(_transform.rotation);
 
         return glm::normalize(glm::column(rotationMatrix, 2));
     }
 
     void Rotate(TransformComponent &_transform, glm::vec3 _rotate)
     {
-        _transform.rotation += _rotate;
+        _transform.rotation = glm::quat(_rotate) * _transform.rotation;
 
         UpdateModelMatrix(_transform);
     }
 
     void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation)
+    {
+        _transform.rotation = glm::quat(_rotation);
+
+        UpdateModelMatrix(_transform);
+    }
+
+    void SetTransformRotation(TransformComponent &_transform, glm::quat _rotation)
     {
         _transform.rotation = _rotation;
 
@@ -248,23 +209,63 @@ namespace Canis
         UpdateModelMatrix(_transform);
     }
 
-    void LookAt(TransformComponent &_transform, glm::vec3 _target)
+    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up)
     {
         glm::vec3 direction = glm::normalize(_target - _transform.position);
+        _transform.rotation = glm::quatLookAt(direction, _up);
+        UpdateModelMatrix(_transform);
+    }
 
-        _transform.rotation.y = atan2(direction.x, direction.z);
+    // Like SLERP, but forbids rotation greater than maxAngle (in radians)
+    // In conjunction to LookAt, can make your characters
+    glm::quat RotateTowards(glm::quat _q1, glm::quat _q2, float _maxAngle)
+    {
 
-        if (direction.z >= 0.0f)
-            _transform.rotation.x = -atan2(direction.y * cos(_transform.rotation.y), direction.z);
-        else
-            _transform.rotation.x = atan2(direction.y * cos(_transform.rotation.y), -direction.z);
+        if (_maxAngle < 0.001f)
+        {
+            // No rotation allowed. Prevent dividing by 0 later.
+            return _q1;
+        }
 
-        _transform.rotation.z = atan2(cos(_transform.rotation.x), sin(_transform.rotation.x) * sin(_transform.rotation.y));
+        float cosTheta = dot(_q1, _q2);
 
-        _transform.rotation = glm::degrees(_transform.rotation);
+        // q1 and q2 are already equal.
+        // Force q2 just to be sure
+        if (cosTheta > 0.9999f)
+        {
+            return _q2;
+        }
 
-        _transform.rotation.z -= 90;
+        // Avoid taking the long path around the sphere
+        if (cosTheta < 0)
+        {
+            _q1 = _q1 * -1.0f;
+            cosTheta *= -1.0f;
+        }
 
+        float angle = acos(cosTheta);
+
+        // If there is only a 2° difference, and we are allowed 5°,
+        // then we arrived.
+        if (angle < _maxAngle)
+        {
+            return _q2;
+        }
+
+        // This is just like slerp(), but with a custom t
+        float t = _maxAngle / angle;
+        angle = _maxAngle;
+
+        glm::quat res = (glm::sin((1.0f - t) * angle) * _q1 + glm::sin(t * angle) * _q2) / glm::sin(angle);
+        res = normalize(res);
+        return res;
+    }
+
+    void RotateTowardsLookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up, float _maxAngle)
+    {
+        glm::vec3 direction = glm::normalize(_target - _transform.position);
+        glm::quat targetQuat = glm::quatLookAt(direction, _up);
+        _transform.rotation = RotateTowards(_transform.rotation, targetQuat, _maxAngle);
         UpdateModelMatrix(_transform);
     }
 

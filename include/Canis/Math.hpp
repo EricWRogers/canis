@@ -45,11 +45,17 @@ namespace Canis
 
     void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation);
 
+    void SetTransformRotation(TransformComponent &_transform, glm::quat _rotation);
+
     void SetTransformScale(TransformComponent &_transform, glm::vec3 _scale);
 
     glm::vec3 GetTransformForward(TransformComponent &_transform);
 
-    void LookAt(TransformComponent &_transform, glm::vec3 _target);
+    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up);
+
+    glm::quat RotateTowards(glm::quat _q1, glm::quat _q2, float _maxAngle);
+
+    void RotateTowardsLookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up, float _maxAngle);
 
     float RandomFloat(float min, float max);
 

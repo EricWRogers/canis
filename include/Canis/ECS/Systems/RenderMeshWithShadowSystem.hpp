@@ -524,7 +524,7 @@ namespace Canis
 					if (transform.active)
 					{
 						numDirLights++;
-						shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(transform.rotation));
+						shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(glm::eulerAngles(transform.rotation)));
 						shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
 						shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
 						shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
