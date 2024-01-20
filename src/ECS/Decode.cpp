@@ -166,7 +166,7 @@ namespace Canis
             tc.registry = &(_entity.scene->entityRegistry);
             tc.active = transformComponent["active"].as<bool>(true);
             tc.position = transformComponent["position"].as<glm::vec3>(glm::vec3(0.0f));
-            tc.rotation = glm::quat(transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f)));
+            tc.rotation = glm::quat(glm::degrees(transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f))));
             tc.scale = transformComponent["scale"].as<glm::vec3>(glm::vec3(1.0f));
         }
     }

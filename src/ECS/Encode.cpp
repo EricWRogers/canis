@@ -44,7 +44,7 @@ namespace Canis
 
             _out << YAML::Key << "active" << YAML::Value << tc.active;
             _out << YAML::Key << "position" << YAML::Value << tc.position;
-            _out << YAML::Key << "rotation" << YAML::Value << glm::eulerAngles(tc.rotation);
+            _out << YAML::Key << "rotation" << YAML::Value << glm::degrees(glm::eulerAngles(tc.rotation));
             _out << YAML::Key << "scale" << YAML::Value << tc.scale;
 
             _out << YAML::EndMap;

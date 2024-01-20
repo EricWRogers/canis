@@ -3,6 +3,8 @@
 #include <glm/glm.hpp>
 #include <Canis/External/entt.hpp>
 
+using namespace glm;
+
 namespace Canis
 {
     class Camera;
@@ -11,8 +13,8 @@ namespace Canis
     class TransformComponent;
     struct Ray
     {
-        glm::vec3 origin;
-        glm::vec3 direction;
+        vec3 origin;
+        vec3 direction;
     };
 
     const float PI = 3.14159265f;
@@ -21,59 +23,59 @@ namespace Canis
 
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
 
-    glm::vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, glm::vec3 _position);
+    vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, vec3 _position);
 
-    bool HitSphere(glm::vec3 center, float radius, Ray ray);
+    bool HitSphere(vec3 center, float radius, Ray ray);
 
-    glm::quat RotationBetweenVectors(glm::vec3 start, glm::vec3 dest);
+    quat RotationBetweenVectors(vec3 start, vec3 dest);
 
     void UpdateModelMatrix(TransformComponent &_transform);
 
-	const glm::mat4& GetModelMatrix(TransformComponent &_transform);
+	const mat4& GetModelMatrix(TransformComponent &_transform);
 
-    glm::vec3 GetGlobalPosition(TransformComponent &_transform);
+    vec3 GetGlobalPosition(TransformComponent &_transform);
 
-    glm::vec3 GetGlobalRotation(TransformComponent &_transform);
+    vec3 GetGlobalRotation(TransformComponent &_transform);
 
-    glm::vec3 GetGlobalScale(TransformComponent &_transform);
+    vec3 GetGlobalScale(TransformComponent &_transform);
 
-    void MoveTransformPosition(TransformComponent &_transform, glm::vec3 _offset);
+    void MoveTransformPosition(TransformComponent &_transform, vec3 _offset);
 
-    void SetTransformPosition(TransformComponent &_transform, glm::vec3 _position);
+    void SetTransformPosition(TransformComponent &_transform, vec3 _position);
 
-    void Rotate(TransformComponent &_transform, glm::vec3 _rotate);
+    void Rotate(TransformComponent &_transform, vec3 _rotate);
 
-    void SetTransformRotation(TransformComponent &_transform, glm::vec3 _rotation);
+    void SetTransformRotation(TransformComponent &_transform, vec3 _rotation);
 
-    void SetTransformRotation(TransformComponent &_transform, glm::quat _rotation);
+    void SetTransformRotation(TransformComponent &_transform, quat _rotation);
 
-    void SetTransformScale(TransformComponent &_transform, glm::vec3 _scale);
+    void SetTransformScale(TransformComponent &_transform, vec3 _scale);
 
-    glm::vec3 GetTransformForward(TransformComponent &_transform);
+    vec3 GetTransformForward(TransformComponent &_transform);
 
-    void LookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up);
+    void LookAt(TransformComponent &_transform, vec3 _target, vec3 _up);
 
-    glm::quat RotateTowards(glm::quat _q1, glm::quat _q2, float _maxAngle);
+    quat RotateTowards(quat _q1, quat _q2, float _maxAngle);
 
-    void RotateTowardsLookAt(TransformComponent &_transform, glm::vec3 _target, glm::vec3 _up, float _maxAngle);
+    void RotateTowardsLookAt(TransformComponent &_transform, vec3 _target, vec3 _up, float _maxAngle);
 
     float RandomFloat(float min, float max);
 
-    glm::vec4 HexToRGBA(unsigned int _RRGGBBAA);
+    vec4 HexToRGBA(unsigned int _RRGGBBAA);
 
-    glm::vec4 UIntToRGBA(unsigned int _red, unsigned int _green, unsigned int _blue, unsigned int _alpha);
+    vec4 UIntToRGBA(unsigned int _red, unsigned int _green, unsigned int _blue, unsigned int _alpha);
 
     void Lerp(float &_value, const float &_min, const float &_max, const float &_fraction);
 
-    void Lerp(glm::vec3 &_value, const glm::vec3 &_min, const glm::vec3 &_max, const float &_fraction);
+    void Lerp(vec3 &_value, const vec3 &_min, const vec3 &_max, const float &_fraction);
 
-    void Lerp(glm::vec4 &_value, const glm::vec4 &_min, const glm::vec4 &_max, const float &_fraction);
+    void Lerp(vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction);
 
     void AnimationBellCurve(float &_value, const float &_min, const float &_max, const float &_fraction);
 
     void Clamp(float &_value, float _min, float _max);
 
-    void RotatePoint(glm::vec2 &_point, const float &_cosAngle, const float &_sinAngle);
+    void RotatePoint(vec2 &_point, const float &_cosAngle, const float &_sinAngle);
 
-    void RotatePointAroundPivot(glm::vec2 &_point, const glm::vec2 &_pivot, float _radian);
+    void RotatePointAroundPivot(vec2 &_point, const vec2 &_pivot, float _radian);
 } 
