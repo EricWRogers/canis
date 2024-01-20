@@ -1,8 +1,10 @@
 #pragma once
-#include <Canis/ScriptableEntity.hpp>
+//#include <Canis/ScriptableEntity.hpp>
 
 namespace Canis
 {
+    class ScriptableEntity;
+
     struct ScriptComponent
     {
         ScriptableEntity* Instance = nullptr;

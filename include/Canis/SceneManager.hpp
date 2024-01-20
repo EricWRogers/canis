@@ -5,6 +5,7 @@
 
 #include <functional>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
+#include <Canis/ScriptableEntity.hpp>
 
 namespace Canis
 {

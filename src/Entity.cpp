@@ -2,10 +2,22 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Math.hpp>
 
+#include <Canis/ScriptableEntity.hpp>
+#include <Canis/ECS/Components/ScriptComponent.hpp>
 #include <Canis/ECS/Components/TransformComponent.hpp>
 
 namespace Canis
 {
+void* Entity::InitScriptableComponent()
+{
+    Canis::ScriptComponent& sc = GetComponent<Canis::ScriptComponent>();
+    sc.Instance = sc.InstantiateScript();
+    sc.Instance->entity.entityHandle = entityHandle;
+    sc.Instance->entity.scene = scene;
+    sc.Instance->OnCreate();
+    return sc.Instance;
+}
+
 Entity Entity::GetEntityWithTag(std::string _tag)
 {
     Entity e = {};

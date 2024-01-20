@@ -2,8 +2,9 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/External/entt.hpp>
-#include <Canis/ECS/Components/TagComponent.hpp>
 #include <Canis/ECS/Components/IDComponent.hpp>
+#include <Canis/ECS/Components/TagComponent.hpp>
+#include <Canis/ECS/Components/ScriptComponent.hpp>
 
 namespace Canis
 {
@@ -11,6 +12,8 @@ class Entity
 {
 private:
     friend class Scene;
+
+    void* InitScriptableComponent();
 public:
     entt::entity entityHandle{ entt::null };
     Canis::Scene *scene = nullptr;
@@ -59,6 +62,20 @@ public:
         if(!HasComponent<T>())
             FatalError("Entity does not have component!");
         scene->entityRegistry.remove<T>(entityHandle);
+    }
+
+    template<typename T>
+    T& AddScript()
+    {
+        if (HasComponent<ScriptComponent>())
+        {
+            FatalError("Entity already has script component");
+        }
+
+        Canis::ScriptComponent& sc = AddComponent<Canis::ScriptComponent>();
+        sc.Bind<T>();
+
+        return *(T*)InitScriptableComponent();
     }
 
     bool TagEquals(const char a[20], const char b[20]);
