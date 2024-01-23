@@ -45,6 +45,23 @@ file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
 
 add_library(${PROJECT_NAME} STATIC ${SRC_SOURCES} ${SRC_HEADERS})
 
+target_precompile_headers(${PROJECT_NAME}
+    PUBLIC
+    <vector>
+    <unordered_map>
+    <string>
+    <functional>
+    <map>
+    <fstream>
+    <cstdint>
+    <memory>
+    <string.h>
+    <chrono>
+    <stdio.h>
+    <cstring>
+    <iostream>
+)
+
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
     $<INSTALL_INTERFACE:include>

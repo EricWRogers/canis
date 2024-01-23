@@ -19,12 +19,18 @@ namespace Canis
     {
         if (m_buttons != nullptr)
             List::Free(&m_buttons);
+        
+        if (m_buttonListeners != nullptr)
+            List::Free(&m_buttonListeners);
     }
 
     void ButtonSystem::Create()
     {
         if (m_buttons == nullptr)
             List::Init(&m_buttons, 10, sizeof(ButtonAndDepth));
+
+        if (m_buttonListeners == nullptr)
+            List::Init(&m_buttonListeners, 10, sizeof(ButtonListener));
     }
 
     void ButtonSystem::Update(entt::registry &_registry, float _deltaTime)
@@ -102,6 +108,19 @@ namespace Canis
                 rect_transform.scale = button.scale;
             }           
         }
+    }
+
+    void Update(entt::registry &_registry, float _deltaTime)
+    {
+        
+    }
+
+    ButtonListener* AddButtonListener(
+        std::string _name,
+        void* _data,
+        std::function<void(void* _data)> func)
+    {
+        return nullptr;
     }
 
     bool DecodeButtonSystem(const std::string &_name, Canis::Scene *_scene)
