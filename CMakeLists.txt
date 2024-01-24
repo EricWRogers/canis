@@ -5,12 +5,20 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(BUILD_TESTING                   FALSE)
 set(glew-cmake_BUILD_SHARED         FALSE)
+
 set(SDL_TEST_ENABLED_BY_DEFAULT     FALSE)
 set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
-set(YAML_CPP_BUILD_TESTS            FALSE)
-set(YAML_CPP_BUILD_TOOLS            OFF)
-set(YAML_BUILD_SHARED_LIBS          FALSE)
+
 set(BUILD_SHARED_LIBS               FALSE)
+
+set(YAML_CPP_BUILD_TOOLS            FALSE)
+set(YAML_CPP_BUILD_TESTS            FALSE)
+set(YAML_CPP_BUILD_TOOLS            FALSE)
+set(YAML_BUILD_SHARED_LIBS          FALSE)
+
+set(FT_DISABLE_PNG                  TRUE)
+set(FT_DISABLE_HARFBUZZ             TRUE)
+
 set(SDL2MIXER_VENDORED              TRUE)
 set(SDL2MIXER_WAVE                  TRUE)
 set(SDL2MIXER_OGG                   TRUE)
@@ -20,8 +28,8 @@ set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
 set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
-set(FT_DISABLE_PNG                  ON)
-set(FT_DISABLE_HARFBUZZ             ON)
+
+
 
 set(rc_flags "-i --use-temp-file")
 set(CMAKE_RC_FLAGS ${rc_flags})
@@ -34,11 +42,6 @@ add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
-
-set(YAML_CPP_BUILD_TOOLS            OFF)
-set(YAML_CPP_BUILD_TESTS            FALSE)
-set(YAML_CPP_BUILD_TOOLS            OFF)
-set(YAML_BUILD_SHARED_LIBS          FALSE)
 
 
 
