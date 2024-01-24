@@ -34,6 +34,9 @@ set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
 set(rc_flags "-i --use-temp-file")
 set(CMAKE_RC_FLAGS ${rc_flags})
 
+if (MSVC)
+    add_compile_options(-Wimplicit-function-declaration)
+endif()
 
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
