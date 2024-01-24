@@ -20,8 +20,11 @@ set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
 set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
-set(FT_DISABLE_PNG                  TRUE)
-set(FT_DISABLE_HARFBUZZ             TRUE)
+set(FT_DISABLE_PNG                  ON)
+set(FT_DISABLE_HARFBUZZ             ON)
+
+set(rc_flags "-i --use-temp-file")
+set(CMAKE_RC_FLAGS ${rc_flags})
 
 
 add_subdirectory(external/GL)
@@ -29,7 +32,7 @@ add_subdirectory(external/glm)
 add_subdirectory(external/yaml-cpp)
 add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
-add_subdirectory(external/freetype2)
+add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
 
 set(YAML_CPP_BUILD_TOOLS            OFF)
@@ -37,7 +40,9 @@ set(YAML_CPP_BUILD_TESTS            FALSE)
 set(YAML_CPP_BUILD_TOOLS            OFF)
 set(YAML_BUILD_SHARED_LIBS          FALSE)
 
-include_directories("${PROJECT_SOURCE_DIR}/external/freetype2/include")
+
+
+include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
 file(GLOB_RECURSE SRC_SOURCES src/*.c*)
