@@ -29,15 +29,6 @@ set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
 
-
-
-set(rc_flags "-i --use-temp-file")
-set(CMAKE_RC_FLAGS ${rc_flags})
-
-if (MSVC)
-    add_compile_options(-Wimplicit-function-declaration)
-endif()
-
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
 add_subdirectory(external/yaml-cpp)
@@ -45,7 +36,6 @@ add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
-
 
 
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
