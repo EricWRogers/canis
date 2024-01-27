@@ -10,9 +10,6 @@
 [submodule "external/GL"]
 	path = external/GL
 	url = https://github.com/Perlmint/glew-cmake
-[submodule "external/freetype2"]
-	path = external/freetype2
-	url = https://github.com/aseprite/freetype2.git
 [submodule "external/SDL_mixer"]
 	path = external/SDL_mixer
 	url = https://github.com/libsdl-org/SDL_mixer
