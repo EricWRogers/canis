@@ -854,8 +854,8 @@ namespace Canis
 				if (transform.isDirty)
 					UpdateModelMatrix(transform);
 
-				if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
-					continue;
+				//if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
+				//	continue;
 
 				RenderEnttRapper rer = {};
 				rer.e = entity;
