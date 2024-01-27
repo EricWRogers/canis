@@ -24,15 +24,22 @@ namespace Canis
         TransformComponent& transform = _entity.GetComponent<TransformComponent>();
         MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
         ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.id);
+
         bool didHit = false;
         float closestDistance = 0.0f;
+
+        glm::mat4 inverseModelMatrix = glm::inverse(transform.modelMatrix);
+
+        // Transform the ray into local space
+        _ray.origin = inverseModelMatrix * vec4(_ray.origin, 1.0f);
+        _ray.direction = inverseModelMatrix * vec4(_ray.direction, 0.0f);
 
         for (size_t i = 0; i < model.indices.size(); i += 3)
         {
             // Assuming vertices are organized as triangles (groups of three)
-            const glm::vec3 v0(transform.modelMatrix * vec4(model.vertices[model.indices[i]].position, 1.0f));
-            const glm::vec3 v1(transform.modelMatrix * vec4(model.vertices[model.indices[i+1]].position, 1.0f));
-            const glm::vec3 v2(transform.modelMatrix * vec4(model.vertices[model.indices[i+2]].position, 1.0f));
+            const glm::vec3 v0(model.vertices[model.indices[i]].position);
+            const glm::vec3 v1(model.vertices[model.indices[i+1]].position);
+            const glm::vec3 v2(model.vertices[model.indices[i+2]].position);
 
             // Calculate the normal of the triangle
             glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);
@@ -86,10 +93,11 @@ namespace Canis
 
         if (didHit)
         {
+            _hit.position = transform.modelMatrix * vec4(_hit.position, 1.0f);
             _hit.entity = _entity;
         }
 
-        return didHit; // Ray does not intersect with any triangle
+        return didHit;
     }
 
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager)
