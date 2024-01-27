@@ -2,6 +2,7 @@
 
 #include <glm/glm.hpp>
 #include <Canis/External/entt.hpp>
+#include <Canis/Entity.hpp>
 
 using namespace glm;
 
@@ -11,15 +12,30 @@ namespace Canis
     class Window;
     class InputManager;
     class TransformComponent;
+
     struct Ray
     {
         vec3 origin;
         vec3 direction;
+
+        Ray(vec3 _origin, vec3 _direction)
+        {
+            origin = _origin;
+            direction = _direction;
+        }
+    };
+
+    struct Hit
+    {
+        Entity entity;
+        vec3 position;
     };
 
     const float PI = 3.14159265f;
 
     const float RAD2DEG = 180.0f / PI;
+
+    bool CheckRay(Entity _entity, Ray _ray, Hit &_hit);
 
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
 

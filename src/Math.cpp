@@ -12,11 +12,86 @@
 #include <Canis/Camera.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/AssetManager.hpp>
 
+#include <Canis/ECS/Components/MeshComponent.hpp>
 #include <Canis/ECS/Components/TransformComponent.hpp>
 
 namespace Canis
 {
+    bool CheckRay(Entity _entity, Ray _ray, Hit &_hit)
+    {
+        TransformComponent& transform = _entity.GetComponent<TransformComponent>();
+        MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
+        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.id);
+        bool didHit = false;
+        float closestDistance = 0.0f;
+
+        for (size_t i = 0; i < model.indices.size(); i += 3)
+        {
+            // Assuming vertices are organized as triangles (groups of three)
+            const glm::vec3 v0(transform.modelMatrix * vec4(model.vertices[model.indices[i]].position, 1.0f));
+            const glm::vec3 v1(transform.modelMatrix * vec4(model.vertices[model.indices[i+1]].position, 1.0f));
+            const glm::vec3 v2(transform.modelMatrix * vec4(model.vertices[model.indices[i+2]].position, 1.0f));
+
+            // Calculate the normal of the triangle
+            glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);
+
+            // Check if the ray and the triangle are parallel
+            float dotNormalRay = glm::dot(normal, _ray.direction);
+            if (std::abs(dotNormalRay) < 1e-6)
+            {
+                continue; // Ray and triangle are parallel, no intersection
+            }
+
+            // Calculate the distance along the ray to the point of intersection with the triangle
+            float t = glm::dot(v0 - _ray.origin, normal) / dotNormalRay;
+
+            // Check if the point of intersection is in front of the ray's origin
+            if (t < 0.0f)
+            {
+                continue; // Intersection point is behind the ray's origin
+            }
+
+            // Calculate the point of intersection with the triangle
+            glm::vec3 intersectionPoint = _ray.origin + t * _ray.direction;
+
+            // Check if the intersection point is inside the triangle
+            glm::vec3 edge0 = v1 - v0;
+            glm::vec3 edge1 = v2 - v1;
+            glm::vec3 edge2 = v0 - v2;
+
+            glm::vec3 c0 = glm::cross(v0 - intersectionPoint, edge0);
+            glm::vec3 c1 = glm::cross(v1 - intersectionPoint, edge1);
+            glm::vec3 c2 = glm::cross(v2 - intersectionPoint, edge2);
+
+            if (glm::dot(normal, c0) >= 0 && glm::dot(normal, c1) >= 0 && glm::dot(normal, c2) >= 0)
+            {
+                if (didHit == false)
+                {
+                    _hit.position = intersectionPoint;
+                    closestDistance = distance(_ray.origin, _hit.position);
+                }
+                else
+                {
+                    if (closestDistance > distance(_ray.origin, intersectionPoint))
+                    {
+                        _hit.position = intersectionPoint;
+                        closestDistance = distance(_ray.origin, intersectionPoint);
+                    }
+                }
+                didHit = true;
+            }
+        }
+
+        if (didHit)
+        {
+            _hit.entity = _entity;
+        }
+
+        return didHit; // Ray does not intersect with any triangle
+    }
+
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager)
     {
         vec4 lRayStart_NDC(
