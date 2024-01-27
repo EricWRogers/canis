@@ -53,6 +53,8 @@ namespace Canis
 
     vec3 GetTransformForward(TransformComponent &_transform);
 
+    vec3 GetTransformRight(TransformComponent &_transform);
+
     void LookAt(TransformComponent &_transform, vec3 _target, vec3 _up);
 
     quat RotateTowards(quat _q1, quat _q2, float _maxAngle);

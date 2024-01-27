@@ -176,9 +176,12 @@ namespace Canis
 
     vec3 GetTransformForward(TransformComponent &_transform)
     {
-        mat3 rotationMatrix = toMat3(_transform.rotation);
+        return normalize(rotate(inverse(_transform.rotation), vec3(0.0f, 0.0f, 1.0f)));
+    }
 
-        return normalize(column(rotationMatrix, 2));
+    vec3 GetTransformRight(TransformComponent &_transform)
+    {
+        return normalize(rotate(inverse(_transform.rotation), vec3(1.0f, 0.0f, 0.0f)));
     }
 
     void Rotate(TransformComponent &_transform, vec3 _rotate)
@@ -263,7 +266,7 @@ namespace Canis
 
     void RotateTowardsLookAt(TransformComponent &_transform, vec3 _target, vec3 _up, float _maxAngle)
     {
-        vec3 direction = normalize(_target - _transform.position);
+        vec3 direction = normalize(_transform.position - _target);
         quat targetQuat = quatLookAt(direction, _up);
         _transform.rotation = RotateTowards(_transform.rotation, targetQuat, _maxAngle);
         UpdateModelMatrix(_transform);
