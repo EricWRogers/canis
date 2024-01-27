@@ -193,15 +193,18 @@ namespace Canis
                 {
                     Canis::Entity entity = scene->CreateEntity();
 
-                    for(int d = 0;  d < decodeEntity.size(); d++) {
+                    for(int d = 0;  d < decodeEntity.size(); d++)
                         decodeEntity[d](e, entity, this);
-                    }
 
                     if (auto scriptComponent = e["Canis::ScriptComponent"])
-                    {
                         for (int d = 0; d < decodeScriptableEntity.size(); d++)
                             if (decodeScriptableEntity[d](scriptComponent.as<std::string>(), entity))
                                 continue;
+                    
+                    if (auto prefab = e["Prefab"])
+                    {
+                        Log(prefab.as<std::string>());
+                        scene->Instantiate(prefab.as<std::string>());
                     }
                 }
             }
