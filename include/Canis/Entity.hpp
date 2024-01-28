@@ -78,6 +78,8 @@ public:
         return *(T*)InitScriptableComponent();
     }
 
+    void SetTag(std::string _tag);
+
     bool TagEquals(const char a[20], const char b[20]);
     Entity GetEntityWithTag(std::string _tag);
     std::vector<Entity> GetEntitiesWithTag(std::string _tag);

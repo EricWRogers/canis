@@ -112,7 +112,7 @@ namespace Canis
             const glm::vec3 v2(model.vertices[model.indices[i+2]].position);
 
             // Calculate the normal of the triangle
-            glm::vec3 normal = normalize(model.vertices[model.indices[i]].normal);//glm::cross(v1 - v0, v2 - v0);
+            glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);//model.vertices[model.indices[i]].normal);//glm::cross(v1 - v0, v2 - v0);
 
             // Check if the ray and the triangle are parallel
             float dotNormalRay = glm::dot(normal, _ray.direction);

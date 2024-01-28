@@ -18,6 +18,26 @@ void* Entity::InitScriptableComponent()
     return sc.Instance;
 }
 
+void Entity::SetTag(std::string _tag)
+{
+    if (HasComponent<TagComponent>() == false)
+        AddComponent<TagComponent>();
+    
+    TagComponent& tagComponent = GetComponent<TagComponent>();
+
+    char tag[20] = "";
+
+    int i = 0;
+    while(i < 20-1 && i < _tag.size())
+    {
+        tag[i] = _tag[i];
+        i++;
+    }
+    tag[i] = '\0';
+
+    strcpy(tagComponent.tag, tag);
+}
+
 Entity Entity::GetEntityWithTag(std::string _tag)
 {
     Entity e = {};

@@ -128,6 +128,7 @@ namespace Canis
             uisc.minUVX = uiSliderComponent["minUVX"].as<float>();
             uisc.maxUVX = uiSliderComponent["maxUVX"].as<float>();
             uisc.value = uiSliderComponent["value"].as<float>();
+            uisc.targetValue = uisc.value;
         }
     }
 
