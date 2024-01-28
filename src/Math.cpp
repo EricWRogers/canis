@@ -32,7 +32,7 @@ namespace Canis
 
         // Transform the ray into local space
         _ray.origin = inverseModelMatrix * vec4(_ray.origin, 1.0f);
-        _ray.direction = inverseModelMatrix * vec4(_ray.direction, 0.0f);
+        //_ray.direction = normalize(vec3(inverseModelMatrix * vec4(_ray.direction, 0.0f)));
 
         for (size_t i = 0; i < model.indices.size(); i += 3)
         {
@@ -42,11 +42,11 @@ namespace Canis
             const glm::vec3 v2(model.vertices[model.indices[i+2]].position);
 
             // Calculate the normal of the triangle
-            glm::vec3 normal = glm::cross(v1 - v0, v2 - v0);
+            glm::vec3 normal = normalize(model.vertices[model.indices[i]].normal);//glm::cross(v1 - v0, v2 - v0);
 
             // Check if the ray and the triangle are parallel
             float dotNormalRay = glm::dot(normal, _ray.direction);
-            if (std::abs(dotNormalRay) < 1e-6)
+            if (std::abs(dotNormalRay) < 1e-8)
             {
                 continue; // Ray and triangle are parallel, no intersection
             }
