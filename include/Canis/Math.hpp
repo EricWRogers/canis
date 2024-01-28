@@ -35,6 +35,8 @@ namespace Canis
 
     const float RAD2DEG = 180.0f / PI;
 
+    bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit);
+
     bool CheckRay(Entity _entity, Ray _ray, Hit &_hit);
 
     Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);

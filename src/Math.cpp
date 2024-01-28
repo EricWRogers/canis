@@ -19,6 +19,76 @@
 
 namespace Canis
 {
+    bool IntersectRayTriangle(
+            const Ray& _ray,
+            const Vertex& _vertex0,
+            const Vertex& _vertex1,
+            const Vertex& _vertex2,
+            float& _t) {
+        const float EPSILON = 0.00000001f;
+        vec3 edge1, edge2, h, s, q;
+        float a,f,u,v;
+        edge1 = _vertex1.position - _vertex0.position;
+        edge2 = _vertex2.position - _vertex0.position;
+        h = cross(_ray.direction, edge2);
+        a = dot(edge1, h);
+        if (a > -EPSILON && a < EPSILON)
+            return false;    // This ray is parallel to this triangle.
+        f = 1.0/a;
+        s = _ray.origin - _vertex0.position;
+        u = f * dot(s, h);
+        if (u < 0.0 || u > 1.0)
+            return false;
+        q = cross(s, edge1);
+        v = f * dot(_ray.direction, q);
+        if (v < 0.0 || u + v > 1.0)
+            return false;
+        // At this stage we can compute t to find out where the intersection point is on the line.
+        _t = f * dot(edge2, q);
+        if (_t > EPSILON) // ray intersection
+            return true;
+        else // This means that there is a line intersection but not a ray intersection.
+            return false;
+    }
+
+    bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit) {
+        TransformComponent& transform = _entity.GetComponent<TransformComponent>();
+        MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
+        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.id);
+
+        float min_t = std::numeric_limits<float>::max();
+        bool hit = false;
+
+        glm::mat4 inverseModelMatrix = glm::inverse(transform.modelMatrix);
+
+        // Transform the ray into local space
+        _ray.origin = inverseModelMatrix * vec4(_ray.origin, 1.0f);
+        _ray.direction = glm::mat3(inverseModelMatrix) * _ray.direction;
+
+        for (size_t i = 0; i < model.indices.size(); i += 3) {
+            float t = 0;
+            if (IntersectRayTriangle(
+                _ray,
+                model.vertices[model.indices[i]],
+                model.vertices[model.indices[i+1]],
+                model.vertices[model.indices[i+2]],
+                 t)) {
+                if (t < min_t) {
+                    min_t = t;
+                    hit = true;
+                }
+            }
+        }
+
+        if (hit) {
+            _hit.position = _ray.origin + _ray.direction * min_t;
+            _hit.position = transform.modelMatrix * vec4(_hit.position, 1.0f);
+            _hit.entity = _entity;
+        }
+
+        return hit;
+    }
+
     bool CheckRay(Entity _entity, Ray _ray, Hit &_hit)
     {
         TransformComponent& transform = _entity.GetComponent<TransformComponent>();
@@ -32,7 +102,7 @@ namespace Canis
 
         // Transform the ray into local space
         _ray.origin = inverseModelMatrix * vec4(_ray.origin, 1.0f);
-        //_ray.direction = normalize(vec3(inverseModelMatrix * vec4(_ray.direction, 0.0f)));
+        _ray.direction = normalize(mat3(inverseModelMatrix) * _ray.direction);
 
         for (size_t i = 0; i < model.indices.size(); i += 3)
         {
@@ -46,7 +116,7 @@ namespace Canis
 
             // Check if the ray and the triangle are parallel
             float dotNormalRay = glm::dot(normal, _ray.direction);
-            if (std::abs(dotNormalRay) < 1e-8)
+            if (std::abs(dotNormalRay) < 1e-9)
             {
                 continue; // Ray and triangle are parallel, no intersection
             }
