@@ -203,7 +203,6 @@ namespace Canis
                     
                     if (auto prefab = e["Prefab"])
                     {
-                        Log(prefab.as<std::string>());
                         scene->Instantiate(prefab.as<std::string>());
                     }
                 }
