@@ -139,14 +139,7 @@ void Entity::AddChild(entt::entity _child)
 {
     if (HasComponent<TransformComponent>())
     {
-        if (scene->entityRegistry.all_of<TransformComponent>(_child))
-        {
-            TransformComponent& transform = GetComponent<TransformComponent>();
-
-            transform.children.push_back(_child);
-
-            UpdateModelMatrix(transform);
-        }
+        SetParent(_child);
     }
 }
 
