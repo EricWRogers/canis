@@ -10,6 +10,12 @@
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
 
+#define TINYGLTF_IMPLEMENTATION
+#define STB_IMAGE_IMPLEMENTATION
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
+#include <Canis/External/TinyGLTF.hpp>
+
 namespace Canis
 {
     Asset::Asset() {}
@@ -66,18 +72,208 @@ namespace Canis
         return true;
     }
 
+    void LoadMeshData(const tinygltf::Model     &_model,
+                      std::vector<glm::vec3>    &_positions,
+                      std::vector<glm::vec3>    &_normals,
+                      std::vector<glm::vec2>    &_texCoords,
+                      std::vector<unsigned int> &_indices)
+    {
+        unsigned int indicesOffset = 0;
+        for (const tinygltf::Mesh &mesh : _model.meshes)
+        {
+            for (const tinygltf::Primitive &primitive : mesh.primitives)
+            {
+                const auto &attributes = primitive.attributes;
+                indicesOffset = _positions.size();
+
+                // Indices
+                if (primitive.indices > 0)
+                {
+                    const tinygltf::Accessor &indexAccessor = _model.accessors[primitive.indices];
+                    const tinygltf::BufferView &bufferView = _model.bufferViews[indexAccessor.bufferView];
+                    const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
+
+                    const void *dataPtr = &(buffer.data[bufferView.byteOffset + indexAccessor.byteOffset]);
+
+                    // Depending on the component type, the indices can be byte, short or unsigned int
+                    switch (indexAccessor.componentType)
+                    {
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_INT:
+                    {
+                        const unsigned int *buf = static_cast<const unsigned int *>(dataPtr);
+                        for (size_t index = 0; index < indexAccessor.count; ++index)
+                        {
+                            _indices.push_back(buf[index] + indicesOffset);
+                        }
+                        break;
+                    }
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT:
+                    {
+                        const unsigned short *buf = static_cast<const unsigned short *>(dataPtr);
+                        for (size_t index = 0; index < indexAccessor.count; ++index)
+                        {
+                            _indices.push_back(buf[index] + indicesOffset);
+                        }
+                        break;
+                    }
+                    case TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE:
+                    {
+                        const unsigned char *buf = static_cast<const unsigned char *>(dataPtr);
+                        for (size_t index = 0; index < indexAccessor.count; ++index)
+                        {
+                            _indices.push_back(buf[index] + indicesOffset);
+                        }
+                        break;
+                    }
+                    }
+                }
+
+                // Positions
+                if (attributes.find("POSITION") != attributes.end())
+                {
+                    const tinygltf::Accessor &accessor = _model.accessors[attributes.at("POSITION")];
+                    const tinygltf::BufferView &bufferView = _model.bufferViews[accessor.bufferView];
+                    const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
+                    const float *bufferPos = reinterpret_cast<const float *>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
+
+                    for (size_t i = 0; i < accessor.count; i++)
+                    {
+                        _positions.push_back(glm::vec3(bufferPos[i * 3], bufferPos[i * 3 + 1], bufferPos[i * 3 + 2]));
+                    }
+                }
+
+                // Normals
+                if (attributes.find("NORMAL") != attributes.end())
+                {
+                    const tinygltf::Accessor &accessor = _model.accessors[attributes.at("NORMAL")];
+                    const tinygltf::BufferView &bufferView = _model.bufferViews[accessor.bufferView];
+                    const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
+                    const float *bufferNormals = reinterpret_cast<const float *>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
+
+                    for (size_t i = 0; i < accessor.count; i++)
+                    {
+                        _normals.push_back(glm::vec3(bufferNormals[i * 3], bufferNormals[i * 3 + 1], bufferNormals[i * 3 + 2]));
+                    }
+                }
+
+                // Texture Coordinates
+                if (attributes.find("TEXCOORD_0") != attributes.end())
+                {
+                    const tinygltf::Accessor &accessor = _model.accessors[attributes.at("TEXCOORD_0")];
+                    const tinygltf::BufferView &bufferView = _model.bufferViews[accessor.bufferView];
+                    const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
+                    const float *bufferTexCoords = reinterpret_cast<const float *>(&buffer.data[accessor.byteOffset + bufferView.byteOffset]);
+
+                    for (size_t i = 0; i < accessor.count; i++)
+                    {
+                        _texCoords.push_back(glm::vec2(bufferTexCoords[i * 2], bufferTexCoords[i * 2 + 1]));
+                    }
+                }
+            }
+        }
+    }
+
     bool ModelAsset::Load(std::string _path)
     {
-        std::string binFileName = _path + ".bin";
-        SDL_RWops* file = SDL_RWFromFile( binFileName.c_str(), "r+b" );
+        std::string extention = _path;
 
-        if (file == nullptr)
+        while (extention.size() > 4)
         {
+            extention.erase(extention.begin());
+        }
+
+        if (extention == ".obj")
+        {
+            std::string binFileName = _path + ".bin";
+            SDL_RWops *file = SDL_RWFromFile(binFileName.c_str(), "r+b");
+
+            if (file == nullptr)
+            {
+                std::vector<glm::vec3> modelVertices;
+                std::vector<glm::vec2> uvs;
+                std::vector<glm::vec3> normals;
+
+                Canis::LoadOBJ(_path, modelVertices, uvs, normals);
+
+                for (int i = 0; i < modelVertices.size(); i++)
+                {
+                    Canis::Vertex v = {};
+                    v.position = modelVertices[i];
+                    v.normal = normals[i];
+                    v.texCoords = uvs[i];
+                    vertices.push_back(v);
+                }
+
+                size = vertices.size();
+
+                CalculateIndicesFromVertices(vertices);
+
+                // save data
+                file = SDL_RWFromFile(binFileName.c_str(), "w+b");
+                // write indices size
+                size_t indicesSize = indices.size();
+                SDL_RWwrite(file, &indicesSize, sizeof(size_t), 1);
+                // write indices
+                SDL_RWwrite(file, indices.data(), sizeof(unsigned int), indicesSize);
+                // write vertices size
+                size_t verticesSize = vertices.size();
+                SDL_RWwrite(file, &verticesSize, sizeof(size_t), 1);
+                // write vertices
+                SDL_RWwrite(file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
+            }
+            else
+            {
+                size_t indicesSize = 0;
+                SDL_RWread(file, &indicesSize, sizeof(size_t), 1);
+                indices.reserve(indicesSize);
+                indices.resize(indicesSize);
+                SDL_RWread(file, indices.data(), sizeof(unsigned int), indicesSize);
+
+                size_t verticesSize = 0;
+                SDL_RWread(file, &verticesSize, sizeof(size_t), 1);
+                vertices.reserve(verticesSize);
+                vertices.resize(verticesSize);
+                SDL_RWread(file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
+            }
+
+            SDL_RWclose(file);
+        }
+        else if (".glb" == extention || "gltf" == extention)
+        {
+            using namespace tinygltf;
+
+            Model model;
+            TinyGLTF loader;
+            std::string err;
+            std::string warn;
+            bool ret = false;
+
+            if (".glb" == extention)
+                ret = loader.LoadBinaryFromFile(&model, &err, &warn, _path);
+            else
+                ret = loader.LoadASCIIFromFile(&model, &err, &warn, _path);
+
+            if (!warn.empty())
+            {
+                printf("Warn: %s\n", warn.c_str());
+            }
+
+            if (!err.empty())
+            {
+                printf("Err: %s\n", err.c_str());
+            }
+
+            if (!ret)
+            {
+                printf("Failed to parse glTF\n");
+                return -1;
+            }
+
             std::vector<glm::vec3> modelVertices;
             std::vector<glm::vec2> uvs;
             std::vector<glm::vec3> normals;
 
-            Canis::LoadOBJ(_path, modelVertices, uvs, normals);
+            LoadMeshData(model, modelVertices, normals, uvs, indices);
 
             for (int i = 0; i < modelVertices.size(); i++)
             {
@@ -89,115 +285,19 @@ namespace Canis
             }
 
             size = vertices.size();
-
-            LoadWithVertex(vertices);
-
-            // save data
-            file = SDL_RWFromFile( binFileName.c_str(), "w+b" );
-            // write indices size
-            size_t indicesSize = indices.size();
-            SDL_RWwrite( file, &indicesSize, sizeof(size_t), 1 );
-            // write indices
-            SDL_RWwrite( file, indices.data(), sizeof(unsigned int), indicesSize);
-            // write vertices size
-            size_t verticesSize = vertices.size();
-            SDL_RWwrite( file, &verticesSize, sizeof(size_t), 1 );
-            // write vertices
-            SDL_RWwrite( file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
         }
         else
         {
-            size_t indicesSize = 0;
-            SDL_RWread( file, &indicesSize, sizeof(size_t), 1 );
-            indices.reserve(indicesSize);
-            indices.resize(indicesSize);
-            SDL_RWread( file, indices.data(), sizeof(unsigned int), indicesSize);
-
-            size_t verticesSize = 0;
-            SDL_RWread( file, &verticesSize, sizeof(size_t), 1 );
-            vertices.reserve(verticesSize);
-            vertices.resize(verticesSize);
-            SDL_RWread( file, vertices.data(), sizeof(Canis::Vertex), verticesSize);
-
-            size = vertices.size();
-
-            glGenVertexArrays(1, &vao);
-            glGenBuffers(1, &vbo);
-
-            // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
-            glBindVertexArray(vao);
-
-            glBindBuffer(GL_ARRAY_BUFFER, vbo);
-            glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
-
-            // position attribute
-            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
-            glEnableVertexAttribArray(0);
-            // normal attribute
-            glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
-            glEnableVertexAttribArray(1);
-            // texture coords
-            glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
-            glEnableVertexAttribArray(2);
-
-            glGenBuffers(1, &ebo);
-            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
-            glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
-
-            // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-
-            glBindVertexArray(0);
+            Warning("Model type not supported: " + _path);
         }
 
-        SDL_RWclose(file);
+        Bind();
 
         return true;
     }
 
-    bool ModelAsset::Free()
+    void ModelAsset::Bind()
     {
-        vertices.resize(0);
-        glBindBuffer(GL_ARRAY_BUFFER, vbo);
-        glDeleteBuffers(1, &vbo);
-        glDeleteBuffers(1, &ebo);
-        glDeleteVertexArrays(1, &vao);
-
-        return true;
-    }
-
-    bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
-    {
-        size = _vertices.size();
-
-        bool found = false;
-        unsigned int s = vertices.size();
-
-        for (GLuint i = 0; i < s; i++)
-        {
-            found = false;
-
-            for (int v = s - 1; v > -1; v--)
-            {
-                /*if (_vertices[i].position  == vertices[v].position &&
-                    _vertices[i].normal    == vertices[v].normal &&
-                    _vertices[i].texCoords == vertices[v].texCoords)*/
-                if (memcmp(&_vertices[i], &vertices[v], sizeof(Vertex)) == 0)
-                {
-                    indices.push_back(v);
-                    found = true;
-                    break;
-                }
-            }
-
-            if (!found)
-            {
-                vertices.push_back(_vertices[i]);
-                s = vertices.size();
-                indices.push_back(s - 1);
-            }
-        }
-
         size = vertices.size();
 
         glGenVertexArrays(1, &vao);
@@ -227,6 +327,54 @@ namespace Canis
         glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         glBindVertexArray(0);
+    }
+
+    void ModelAsset::CalculateIndicesFromVertices(const std::vector<Canis::Vertex> &_vertices)
+    {
+        size = _vertices.size();
+
+        bool found = false;
+        unsigned int s = vertices.size();
+
+        for (GLuint i = 0; i < s; i++)
+        {
+            found = false;
+
+            for (int v = s - 1; v > -1; v--)
+            {
+                if (memcmp(&_vertices[i], &vertices[v], sizeof(Vertex)) == 0)
+                {
+                    indices.push_back(v);
+                    found = true;
+                    break;
+                }
+            }
+
+            if (!found)
+            {
+                vertices.push_back(_vertices[i]);
+                s = vertices.size();
+                indices.push_back(s - 1);
+            }
+        }
+    }
+
+    bool ModelAsset::Free()
+    {
+        vertices.resize(0);
+        glBindBuffer(GL_ARRAY_BUFFER, vbo);
+        glDeleteBuffers(1, &vbo);
+        glDeleteBuffers(1, &ebo);
+        glDeleteVertexArrays(1, &vao);
+
+        return true;
+    }
+
+    bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
+    {
+        CalculateIndicesFromVertices(_vertices);
+
+        Bind();
 
         return true;
     }
@@ -251,13 +399,13 @@ namespace Canis
         glBindVertexArray(_vao);
         // set attribute pointers for matrix (4 times vec4)
         glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)0);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)0);
         glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(sizeof(glm::vec4)));
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(sizeof(glm::vec4)));
         glEnableVertexAttribArray(5);
-        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(2 * sizeof(glm::vec4)));
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(2 * sizeof(glm::vec4)));
         glEnableVertexAttribArray(6);
-        glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void*)(3 * sizeof(glm::vec4)));
+        glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(3 * sizeof(glm::vec4)));
 
         glVertexAttribDivisor(3, 1);
         glVertexAttribDivisor(4, 1);
@@ -421,7 +569,7 @@ namespace Canis
     {
         m_volume = _volume;
         Mix_PlayMusic((Mix_Music *)m_music, _loops);
-        
+
         if (GetProjectConfig().mute)
             Mix_VolumeMusic(0.0f);
         else
@@ -472,8 +620,8 @@ namespace Canis
     {
         if (loader == nullptr)
             loader = new TMXLoader();
-        
-        ((TMXLoader*)loader)->loadMap("map", _path);
+
+        ((TMXLoader *)loader)->loadMap("map", _path);
         //((TMXLoader*)loader)->printMapData("testmap");
 
         return true;
@@ -482,8 +630,8 @@ namespace Canis
     bool TiledMapAsset::Free()
     {
         if (loader != nullptr)
-            delete ((TMXLoader*)loader);
-        
+            delete ((TMXLoader *)loader);
+
         return true;
     }
 
@@ -498,7 +646,7 @@ namespace Canis
         return true;
     }
 
-    YAML::Node& PrefabAsset::GetNode()
+    YAML::Node &PrefabAsset::GetNode()
     {
         return m_node;
     }

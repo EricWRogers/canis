@@ -67,6 +67,9 @@ namespace Canis
         unsigned int vbo;
         unsigned int ebo;
         int size;
+    private:
+        void Bind();
+        void CalculateIndicesFromVertices(const std::vector<Canis::Vertex> &_vertices);
     };
 
     class InstanceMeshAsset : public Asset
