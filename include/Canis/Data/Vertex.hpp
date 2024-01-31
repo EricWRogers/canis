@@ -5,11 +5,10 @@ namespace Canis
 {
 	struct Vertex
 	{
-		// position
-        glm::vec3 position;
-        // normal
-        glm::vec3 normal;
-        // texCoords
-        glm::vec2 texCoords;
+        glm::vec3   position;
+        glm::vec3   normal;
+        glm::vec2   texCoords;
+        glm::ivec4  boneIDs;
+        glm::vec4   weights;
 	};
 }

@@ -9,6 +9,8 @@
 #include <unordered_map>
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
+#include <glm/glm.hpp>
+#include <glm/gtc/type_ptr.hpp>
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -72,11 +74,50 @@ namespace Canis
         return true;
     }
 
-    void LoadMeshData(const tinygltf::Model     &_model,
-                      std::vector<glm::vec3>    &_positions,
-                      std::vector<glm::vec3>    &_normals,
-                      std::vector<glm::vec2>    &_texCoords,
-                      std::vector<unsigned int> &_indices)
+    int FindParentBoneIndex(const tinygltf::Model &_model, int _childIndex)
+    {
+        // Check if the child index is valid
+        if (_childIndex < 0 || _childIndex >= static_cast<int>(_model.nodes.size()))
+        {
+            return -1; // Invalid child index
+        }
+
+        // Iterate through all nodes to find the parent of the child node
+        for (size_t i = 0; i < _model.nodes.size(); ++i)
+        {
+            const tinygltf::Node &node = _model.nodes[i];
+            for (int child : node.children)
+            {
+                if (child == _childIndex)
+                {
+                    // Node 'i' is the parent of 'childIndex'
+
+                    // Now check if this parent node is a joint in any of the skins
+                    for (const auto &skin : _model.skins)
+                    {
+                        for (size_t j = 0; j < skin.joints.size(); ++j)
+                        {
+                            if (skin.joints[j] == static_cast<int>(i))
+                            {
+                                return static_cast<int>(j); // Found the parent bone index
+                            }
+                        }
+                    }
+                    return -1; // Parent is not a joint
+                }
+            }
+        }
+
+        return -1; // No parent found
+    }
+
+    void LoadMeshData(const tinygltf::Model &_model,
+                      std::vector<glm::vec3> &_positions,
+                      std::vector<glm::vec3> &_normals,
+                      std::vector<glm::vec2> &_texCoords,
+                      std::vector<unsigned int> &_indices,
+                      std::vector<AnimationClip> &_animationClips,
+                      std::vector<Bone> &_bones)
     {
         unsigned int indicesOffset = 0;
         for (const tinygltf::Mesh &mesh : _model.meshes)
@@ -169,6 +210,94 @@ namespace Canis
                         _texCoords.push_back(glm::vec2(bufferTexCoords[i * 2], bufferTexCoords[i * 2 + 1]));
                     }
                 }
+            }
+        }
+
+        for (const tinygltf::Animation &gltfAnim : _model.animations)
+        {
+            AnimationClip clip;
+            clip.name = gltfAnim.name;
+            clip.duration = 0.0f;
+
+            for (const tinygltf::AnimationChannel &channel : gltfAnim.channels)
+            {
+                AnimationChannel animChannel;
+                animChannel.targetNode = channel.target_node;
+                animChannel.property = channel.target_path;
+
+                const tinygltf::AnimationSampler &sampler = gltfAnim.samplers[channel.sampler];
+                const tinygltf::Accessor &inputAccessor = _model.accessors[sampler.input];
+                const tinygltf::BufferView &inputView = _model.bufferViews[inputAccessor.bufferView];
+                const tinygltf::Buffer &inputBuffer = _model.buffers[inputView.buffer];
+                const float *inputData = reinterpret_cast<const float *>(&inputBuffer.data[inputView.byteOffset + inputAccessor.byteOffset]);
+
+                const tinygltf::Accessor &outputAccessor = _model.accessors[sampler.output];
+                const tinygltf::BufferView &outputView = _model.bufferViews[outputAccessor.bufferView];
+                const tinygltf::Buffer &outputBuffer = _model.buffers[outputView.buffer];
+
+                for (size_t i = 0; i < inputAccessor.count; i++)
+                {
+                    Keyframe keyframe;
+                    keyframe.time = inputData[i];
+
+                    if (channel.target_path == "translation")
+                    {
+                        const glm::vec3 *outputData = reinterpret_cast<const glm::vec3 *>(&outputBuffer.data[outputView.byteOffset + outputAccessor.byteOffset]);
+                        keyframe.translation = outputData[i];
+                    }
+                    else if (channel.target_path == "rotation")
+                    {
+                        const glm::quat *outputData = reinterpret_cast<const glm::quat *>(&outputBuffer.data[outputView.byteOffset + outputAccessor.byteOffset]);
+                        keyframe.rotation = glm::normalize(outputData[i]);
+                    }
+                    else if (channel.target_path == "scale")
+                    {
+                        const glm::vec3 *outputData = reinterpret_cast<const glm::vec3 *>(&outputBuffer.data[outputView.byteOffset + outputAccessor.byteOffset]);
+                        keyframe.scale = outputData[i];
+                    }
+
+                    animChannel.keyframes.push_back(keyframe);
+
+                    // Update the clip duration
+                    if (keyframe.time > clip.duration)
+                    {
+                        clip.duration = keyframe.time;
+                    }
+                }
+
+                clip.channels.push_back(animChannel);
+            }
+
+            _animationClips.push_back(clip);
+        }
+
+        for (const tinygltf::Skin &skin : _model.skins)
+        {
+            // Load inverse bind matrices
+            std::vector<glm::mat4> inverseBindMatrices;
+            const tinygltf::Accessor &accessor = _model.accessors[skin.inverseBindMatrices];
+            const tinygltf::BufferView &bufferView = _model.bufferViews[accessor.bufferView];
+            const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
+            const float *matrixData = reinterpret_cast<const float *>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
+
+            for (size_t i = 0; i < accessor.count; i++)
+            {
+                glm::mat4 matrix = glm::make_mat4(&matrixData[i * 16]); // 16 floats per matrix
+                inverseBindMatrices.push_back(matrix);
+            }
+
+            // Build bone hierarchy and store bone data
+            for (size_t i = 0; i < skin.joints.size(); i++)
+            {
+                int jointIndex = skin.joints[i];
+                const tinygltf::Node &node = _model.nodes[jointIndex];
+
+                Bone bone;
+                bone.inverseBindMatrix = inverseBindMatrices[i];
+                bone.parent = FindParentBoneIndex(_model, jointIndex); // Implement this function based on the node hierarchy
+
+                // Additional bone properties from the node can be set here
+                _bones.push_back(bone);
             }
         }
     }
@@ -272,8 +401,10 @@ namespace Canis
             std::vector<glm::vec3> modelVertices;
             std::vector<glm::vec2> uvs;
             std::vector<glm::vec3> normals;
+            std::vector<glm::ivec4> boneIDs;
+            std::vector<glm::vec4> weights;
 
-            LoadMeshData(model, modelVertices, normals, uvs, indices);
+            LoadMeshData(model, modelVertices, normals, uvs, indices, animationClips, bones);
 
             for (int i = 0; i < modelVertices.size(); i++)
             {

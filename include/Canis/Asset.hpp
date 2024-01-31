@@ -6,6 +6,8 @@
 
 #include <map>
 
+#include <glm/gtc/quaternion.hpp>
+
 #include <Canis/Yaml.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
@@ -54,6 +56,30 @@ namespace Canis
         Canis::Shader* GetShader() { return m_skyboxShader; }
     };
 
+    struct Bone {
+        glm::mat4 inverseBindMatrix;
+        int parent; // Index of the parent bone, -1 if root bone
+    };
+    
+    struct Keyframe {
+        float time;
+        glm::vec3 translation;
+        glm::quat rotation;
+        glm::vec3 scale;
+    };
+
+    struct AnimationChannel {
+        std::vector<Keyframe> keyframes;
+        int targetNode;  // The node this channel affects
+        std::string property; // "translation", "rotation", or "scale"
+    };
+
+    struct AnimationClip {
+        std::string name;
+        float duration;
+        std::vector<AnimationChannel> channels;
+    };
+    
     class ModelAsset : public Asset
     {
     public:
@@ -63,6 +89,8 @@ namespace Canis
 
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
+        std::vector<AnimationClip> animationClips;
+        std::vector<Bone> bones;
         unsigned int vao;
         unsigned int vbo;
         unsigned int ebo;
