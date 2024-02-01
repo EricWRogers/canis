@@ -288,7 +288,7 @@ namespace Canis
 
 					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
 					{
-						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], 0.0f);
 					}
 
 					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);
@@ -412,7 +412,7 @@ namespace Canis
 
 					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
 					{
-						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], 0.0f);
 					}
 
 					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);
@@ -521,7 +521,7 @@ namespace Canis
 
 					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
 					{
-						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], 0.0f);
 					}
 
 					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);

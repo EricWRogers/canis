@@ -420,7 +420,7 @@ namespace Canis
         return transMat * rotMat * scaleMat; // Order might vary based on your coordinate system
     }
 
-    void ModelAsset::UpdateBones(std::vector<Bone> &bones, const AnimationClip &clip, float currentTime)
+    void ModelAsset::UpdateBones(std::vector<Bone> &_bones, const AnimationClip &clip, float currentTime)
     {
         for (const auto &channel : clip.channels)
         {
@@ -447,13 +447,13 @@ namespace Canis
             glm::mat4 boneTransform = ComputeBoneTransformation(targetBone.translation, targetBone.rotation, targetBone.scale);
             if (targetBone.parent != -1)
             {
-                boneTransform = bones[targetBone.parent].globalTransform * boneTransform;
+                boneTransform = _bones[targetBone.parent].globalTransform * boneTransform;
             }
             targetBone.globalTransform = boneTransform;
         }
 
         // Apply inverse bind matrix
-        for (auto &bone : bones)
+        for (auto &bone : _bones)
         {
             bone.inverseBindMatrix = bone.globalTransform * bone.inverseBindMatrix;
         }
@@ -487,7 +487,7 @@ namespace Canis
                     v.position = modelVertices[i];
                     v.normal = normals[i];
                     v.texCoords = uvs[i];
-                    v.boneIDs = glm::ivec4(-1);
+                    v.boneIDs = glm::ivec4(-1,-1,-1,-1);
                     vertices.push_back(v);
                 }
 
