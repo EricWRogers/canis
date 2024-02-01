@@ -9,8 +9,16 @@
 #include <unordered_map>
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
-#include <glm/glm.hpp>
+#include <Canis/Math.hpp>
+
+#include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtc/quaternion.hpp>
+#include <glm/gtx/quaternion.hpp>
+#include <glm/gtx/euler_angles.hpp>
+#include <glm/gtx/norm.hpp>
+#include <glm/gtx/string_cast.hpp>
+#include <glm/ext.hpp>
 
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
@@ -117,7 +125,9 @@ namespace Canis
                       std::vector<glm::vec2> &_texCoords,
                       std::vector<unsigned int> &_indices,
                       std::vector<AnimationClip> &_animationClips,
-                      std::vector<Bone> &_bones)
+                      std::vector<Bone> &_bones,
+                      std::vector<glm::ivec4> &_jointIndices,
+                      std::vector<glm::vec4> &_boneWeights)
     {
         unsigned int indicesOffset = 0;
         for (const tinygltf::Mesh &mesh : _model.meshes)
@@ -208,6 +218,57 @@ namespace Canis
                     for (size_t i = 0; i < accessor.count; i++)
                     {
                         _texCoords.push_back(glm::vec2(bufferTexCoords[i * 2], bufferTexCoords[i * 2 + 1]));
+                    }
+                }
+
+                // JOINTS_0 (Bone Indices)
+                if (attributes.find("JOINTS_0") != attributes.end())
+                {
+                    const tinygltf::Accessor &jointsAccessor = _model.accessors[attributes.at("JOINTS_0")];
+                    const tinygltf::BufferView &jointsBufferView = _model.bufferViews[jointsAccessor.bufferView];
+                    const tinygltf::Buffer &jointsBuffer = _model.buffers[jointsBufferView.buffer];
+                    const uint8_t *bufferJoints = reinterpret_cast<const uint8_t *>(&jointsBuffer.data[jointsAccessor.byteOffset + jointsBufferView.byteOffset]);
+
+                    for (size_t i = 0; i < jointsAccessor.count; i++)
+                    {
+                        glm::ivec4 jointIndices;
+                        if (jointsAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
+                        {
+                            // Assuming the JOINTS_0 type is unsigned byte
+                            for (int j = 0; j < 4; ++j)
+                            {
+                                jointIndices[j] = bufferJoints[i * 4 + j];
+                            }
+                        }
+                        else if (jointsAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
+                        {
+                            // Assuming the JOINTS_0 type is unsigned short
+                            const uint16_t *bufferJointsShort = reinterpret_cast<const uint16_t *>(bufferJoints);
+                            for (int j = 0; j < 4; ++j)
+                            {
+                                jointIndices[j] = bufferJointsShort[i * 4 + j];
+                            }
+                        }
+                        _jointIndices.push_back(jointIndices);
+                    }
+                }
+
+                // WEIGHTS_0 (Bone Weights)
+                if (attributes.find("WEIGHTS_0") != attributes.end())
+                {
+                    const tinygltf::Accessor &weightsAccessor = _model.accessors[attributes.at("WEIGHTS_0")];
+                    const tinygltf::BufferView &weightsBufferView = _model.bufferViews[weightsAccessor.bufferView];
+                    const tinygltf::Buffer &weightsBuffer = _model.buffers[weightsBufferView.buffer];
+                    const uint8_t *bufferWeights = reinterpret_cast<const uint8_t *>(&weightsBuffer.data[weightsAccessor.byteOffset + weightsBufferView.byteOffset]);
+
+                    for (size_t i = 0; i < weightsAccessor.count; i++)
+                    {
+                        glm::vec4 weights;
+                        for (int j = 0; j < 4; ++j)
+                        {
+                            weights[j] = bufferWeights[i * 4 + j] / 255.0f; // Assuming weights are stored as normalized unsigned bytes
+                        }
+                        _boneWeights.push_back(weights); // Assuming _boneWeights is a suitable container
                     }
                 }
             }
@@ -302,6 +363,102 @@ namespace Canis
         }
     }
 
+    Keyframe InterpolateKeyframes(const std::vector<Keyframe> &keyframes, float currentTime)
+    {
+        Keyframe result;
+
+        if (keyframes.empty())
+        {
+            return result; // Return default keyframe if no keyframes are available
+        }
+
+        if (keyframes.size() == 1)
+        {
+            return keyframes[0]; // Return the only keyframe if there's just one
+        }
+
+        // Find keyframes surrounding the current time
+        const Keyframe *previousKeyframe = &keyframes[0];
+        const Keyframe *nextKeyframe = nullptr;
+        for (size_t i = 1; i < keyframes.size(); ++i)
+        {
+            if (keyframes[i].time > currentTime)
+            {
+                nextKeyframe = &keyframes[i];
+                break;
+            }
+            previousKeyframe = &keyframes[i];
+        }
+
+        // If we don't find a next keyframe, use the last keyframe
+        if (!nextKeyframe)
+        {
+            return *previousKeyframe;
+        }
+
+        // Calculate the interpolation factor
+        float totalTime = nextKeyframe->time - previousKeyframe->time;
+        float factor = totalTime == 0 ? 0 : (currentTime - previousKeyframe->time) / totalTime;
+
+        // Interpolate translation
+        result.translation = glm::mix(previousKeyframe->translation, nextKeyframe->translation, factor);
+
+        // Interpolate rotation using SLERP
+        result.rotation = glm::slerp(previousKeyframe->rotation, nextKeyframe->rotation, factor);
+
+        // Interpolate scale
+        result.scale = glm::mix(previousKeyframe->scale, nextKeyframe->scale, factor);
+
+        return result;
+    }
+
+    glm::mat4 ComputeBoneTransformation(const glm::vec3 &translation, const glm::quat &rotation, const glm::vec3 &scale)
+    {
+        glm::mat4 transMat = glm::translate(glm::mat4(1.0f), translation);
+        glm::mat4 rotMat = glm::toMat4(rotation);
+        glm::mat4 scaleMat = glm::scale(glm::mat4(1.0f), scale);
+        return transMat * rotMat * scaleMat; // Order might vary based on your coordinate system
+    }
+
+    void ModelAsset::UpdateBones(std::vector<Bone> &bones, const AnimationClip &clip, float currentTime)
+    {
+        for (const auto &channel : clip.channels)
+        {
+            // Interpolate keyframe for the current time
+            Keyframe interpolatedKeyframe = InterpolateKeyframes(channel.keyframes, currentTime);
+
+            // Apply transformation to the target bone
+            Bone &targetBone = bones[channel.targetNode];
+
+            if (channel.property == "translation")
+            {
+                targetBone.translation = interpolatedKeyframe.translation;
+            }
+            else if (channel.property == "rotation")
+            {
+                targetBone.rotation = interpolatedKeyframe.rotation;
+            }
+            else if (channel.property == "scale")
+            {
+                targetBone.scale = interpolatedKeyframe.scale;
+            }
+
+            // Compute final bone transformation
+            glm::mat4 boneTransform = ComputeBoneTransformation(targetBone.translation, targetBone.rotation, targetBone.scale);
+            if (targetBone.parent != -1)
+            {
+                boneTransform = bones[targetBone.parent].globalTransform * boneTransform;
+            }
+            targetBone.globalTransform = boneTransform;
+        }
+
+        // Apply inverse bind matrix
+        for (auto &bone : bones)
+        {
+            bone.inverseBindMatrix = bone.globalTransform * bone.inverseBindMatrix;
+        }
+    }
+
     bool ModelAsset::Load(std::string _path)
     {
         std::string extention = _path;
@@ -330,6 +487,7 @@ namespace Canis
                     v.position = modelVertices[i];
                     v.normal = normals[i];
                     v.texCoords = uvs[i];
+                    v.boneIDs = glm::ivec4(-1);
                     vertices.push_back(v);
                 }
 
@@ -403,8 +561,10 @@ namespace Canis
             std::vector<glm::vec3> normals;
             std::vector<glm::ivec4> boneIDs;
             std::vector<glm::vec4> weights;
+            std::vector<glm::ivec4> jointIndices;
+            std::vector<glm::vec4> boneWeight;
 
-            LoadMeshData(model, modelVertices, normals, uvs, indices, animationClips, bones);
+            LoadMeshData(model, modelVertices, normals, uvs, indices, animationClips, bones, jointIndices, boneWeight);
 
             for (int i = 0; i < modelVertices.size(); i++)
             {
@@ -412,6 +572,16 @@ namespace Canis
                 v.position = modelVertices[i];
                 v.normal = normals[i];
                 v.texCoords = uvs[i];
+                if (jointIndices.size() == modelVertices.size())
+                {
+                    v.boneIDs = jointIndices[i];
+                    v.weights = boneWeight[i];
+                }
+                else
+                {
+                    v.boneIDs = glm::ivec4(-1);
+                }
+
                 vertices.push_back(v);
             }
 
@@ -441,14 +611,20 @@ namespace Canis
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
 
         // position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)0);
         glEnableVertexAttribArray(0);
         // normal attribute
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(3 * sizeof(float)));
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(3 * sizeof(float)));
         glEnableVertexAttribArray(1);
         // texture coords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, 8 * sizeof(float), (void *)(6 * sizeof(float)));
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(6 * sizeof(float)));
         glEnableVertexAttribArray(2);
+        // texture coords
+        glVertexAttribPointer(3, 4, GL_INT, GL_FALSE, sizeof(Canis::Vertex), (void *)(8 * sizeof(float)));
+        glEnableVertexAttribArray(3);
+        // texture coords
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)((8 * sizeof(float)) + (4 * sizeof(int))));
+        glEnableVertexAttribArray(4);
 
         glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
@@ -529,19 +705,19 @@ namespace Canis
 
         glBindVertexArray(_vao);
         // set attribute pointers for matrix (4 times vec4)
-        glEnableVertexAttribArray(3);
-        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)0);
-        glEnableVertexAttribArray(4);
-        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(sizeof(glm::vec4)));
         glEnableVertexAttribArray(5);
-        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(2 * sizeof(glm::vec4)));
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)0);
         glEnableVertexAttribArray(6);
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(sizeof(glm::vec4)));
+        glEnableVertexAttribArray(7);
+        glVertexAttribPointer(5, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(2 * sizeof(glm::vec4)));
+        glEnableVertexAttribArray(8);
         glVertexAttribPointer(6, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)(3 * sizeof(glm::vec4)));
 
-        glVertexAttribDivisor(3, 1);
-        glVertexAttribDivisor(4, 1);
         glVertexAttribDivisor(5, 1);
         glVertexAttribDivisor(6, 1);
+        glVertexAttribDivisor(7, 1);
+        glVertexAttribDivisor(8, 1);
 
         glBindVertexArray(0);
 

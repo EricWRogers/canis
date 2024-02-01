@@ -282,6 +282,23 @@ namespace Canis
 					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 				}
 
+				//if (AssetManager::Get<ModelAsset>(modelId)->bones.size() > 0)
+				//{
+					std::vector<Bone> bones = AssetManager::Get<ModelAsset>(modelId)->bones;
+
+					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
+					{
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+					}
+
+					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);
+
+					for (int i = 0; i < bones.size(); i++)
+						b[i] = bones[i].inverseBindMatrix;
+					
+					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+				//}
+
 				if (!mesh.castShadow)
 					continue;
 
@@ -388,6 +405,23 @@ namespace Canis
 					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
 				}
 
+				//if (AssetManager::Get<ModelAsset>(modelId)->bones.size() > 0)
+				//{
+					std::vector<Bone> bones = AssetManager::Get<ModelAsset>(modelId)->bones;
+
+					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
+					{
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+					}
+
+					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);
+
+					for (int i = 0; i < bones.size(); i++)
+						b[i] = bones[i].inverseBindMatrix;
+					
+					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+				//}
+
 				if (!mesh.castDepth)
 					continue;
 
@@ -469,9 +503,24 @@ namespace Canis
 					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
-
-					//glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
 				}
+
+				//if (AssetManager::Get<ModelAsset>(modelId)->bones.size() > 0)
+				//{
+					std::vector<Bone> bones = AssetManager::Get<ModelAsset>(modelId)->bones;
+
+					if (AssetManager::Get<ModelAsset>(modelId)->animationClips.size() > 0)
+					{
+						AssetManager::Get<ModelAsset>(modelId)->UpdateBones(bones, AssetManager::Get<ModelAsset>(modelId)->animationClips[0], m_time);
+					}
+
+					std::vector<glm::mat4> b = std::vector<glm::mat4>(32);
+
+					for (int i = 0; i < bones.size(); i++)
+						b[i] = bones[i].inverseBindMatrix;
+					
+					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+				//}
 
 				materialId = mesh.material;
 				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);

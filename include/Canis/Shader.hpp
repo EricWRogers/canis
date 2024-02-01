@@ -27,6 +27,7 @@ namespace Canis
         void SetMat2(const std::string &_name, const glm::mat2 &_mat) const;
         void SetMat3(const std::string &_name, const glm::mat3 &_mat) const;
         void SetMat4(const std::string &_name, const glm::mat4 &_mat) const;
+        void SetMat4(const std::string &_name, const std::vector<glm::mat4> &_mat) const;
 
         bool IsLinked() { return m_isLinked; }
         int GetUniformLocation(const std::string &uniformName);

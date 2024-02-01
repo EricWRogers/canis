@@ -58,7 +58,11 @@ namespace Canis
 
     struct Bone {
         glm::mat4 inverseBindMatrix;
-        int parent; // Index of the parent bone, -1 if root bone
+        int parent;
+        glm::vec3 translation = glm::vec3(0.0f);
+        glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+        glm::vec3 scale = glm::vec3(1.0f);
+        glm::mat4 globalTransform = glm::mat4(1.0f);
     };
     
     struct Keyframe {
@@ -86,6 +90,8 @@ namespace Canis
         bool Load(std::string _path) override;
         bool Free() override;
         bool LoadWithVertex(const std::vector<Canis::Vertex> &_vertices);
+
+        void UpdateBones(std::vector<Bone>& bones, const AnimationClip& clip, float currentTime);
 
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
