@@ -296,7 +296,8 @@ namespace Canis
 					for (int i = 0; i < bones.size(); i++)
 						b[i] = bones[i].inverseBindMatrix;
 					
-					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+					for (int i = 0; i < b.size(); ++i)
+            			shadow_mapping_depth_shader->SetMat4("boneTransforms[" + std::to_string(i) + "]", b[i]);
 				//}
 
 				if (!mesh.castShadow)
@@ -419,7 +420,8 @@ namespace Canis
 					for (int i = 0; i < bones.size(); i++)
 						b[i] = bones[i].inverseBindMatrix;
 					
-					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+					for (int i = 0; i < b.size(); ++i)
+            			shadow_mapping_depth_shader->SetMat4("boneTransforms[" + std::to_string(i) + "]", b[i]);
 				//}
 
 				if (!mesh.castDepth)
@@ -505,6 +507,14 @@ namespace Canis
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 				}
 
+				materialId = mesh.material;
+				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
+				materialInfo = material->info;
+
+				shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
+					material->shaderId
+				)->GetShader();
+
 				//if (AssetManager::Get<ModelAsset>(modelId)->bones.size() > 0)
 				//{
 					std::vector<Bone> bones = AssetManager::Get<ModelAsset>(modelId)->bones;
@@ -519,16 +529,10 @@ namespace Canis
 					for (int i = 0; i < bones.size(); i++)
 						b[i] = bones[i].inverseBindMatrix;
 					
-					shadow_mapping_depth_shader->SetMat4("boneTransforms", b);
+					for (int i = 0; i < b.size(); ++i)
+            			shadow_mapping_shader->SetMat4("boneTransforms[" + std::to_string(i) + "]", b[i]);
+
 				//}
-
-				materialId = mesh.material;
-				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
-				materialInfo = material->info;
-
-				shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
-					material->shaderId
-				)->GetShader();
 
 				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
 				{

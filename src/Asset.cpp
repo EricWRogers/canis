@@ -623,7 +623,7 @@ namespace Canis
         glVertexAttribPointer(3, 4, GL_INT, GL_FALSE, sizeof(Canis::Vertex), (void *)(8 * sizeof(float)));
         glEnableVertexAttribArray(3);
         // texture coords
-        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)((8 * sizeof(float)) + (4 * sizeof(int))));
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)((8 * sizeof(float)) + (sizeof(glm::ivec4))));
         glEnableVertexAttribArray(4);
 
         glGenBuffers(1, &ebo);
