@@ -63,6 +63,7 @@ namespace Canis
         glm::quat rotation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
         glm::vec3 scale = glm::vec3(1.0f);
         glm::mat4 globalTransform = glm::mat4(1.0f);
+        glm::mat4 finalMatrix = glm::mat4(1.0f);
     };
     
     struct Keyframe {

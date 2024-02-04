@@ -36,6 +36,7 @@ add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
+add_subdirectory(external/assimp)
 
 
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
@@ -74,6 +75,7 @@ target_link_libraries(${PROJECT_NAME}
     SDL2-static
     SDL2main
     SDL2_mixer
+    assimp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -85,6 +87,7 @@ target_include_directories(${PROJECT_NAME}
         SDL2-static
         SDL2main
         SDL2_mixer
+        assimp
         "${PROJECT_SOURCE_DIR}/include"
 )
 

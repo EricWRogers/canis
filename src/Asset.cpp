@@ -126,7 +126,7 @@ namespace Canis
                       std::vector<unsigned int> &_indices,
                       std::vector<AnimationClip> &_animationClips,
                       std::vector<Bone> &_bones,
-                      std::vector<glm::ivec4> &_jointIndices,
+                      std::vector<glm::vec4> &_jointIndices,
                       std::vector<glm::vec4> &_boneWeights)
     {
         unsigned int indicesOffset = 0;
@@ -231,13 +231,13 @@ namespace Canis
 
                     for (size_t i = 0; i < jointsAccessor.count; i++)
                     {
-                        glm::ivec4 jointIndices;
+                        glm::vec4 jointIndices;
                         if (jointsAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE)
                         {
                             // Assuming the JOINTS_0 type is unsigned byte
                             for (int j = 0; j < 4; ++j)
                             {
-                                jointIndices[j] = bufferJoints[i * 4 + j];
+                                jointIndices[j] = bufferJoints[i * 4 + j] + 0.0f;
                             }
                         }
                         else if (jointsAccessor.componentType == TINYGLTF_COMPONENT_TYPE_UNSIGNED_SHORT)
@@ -246,7 +246,7 @@ namespace Canis
                             const uint16_t *bufferJointsShort = reinterpret_cast<const uint16_t *>(bufferJoints);
                             for (int j = 0; j < 4; ++j)
                             {
-                                jointIndices[j] = bufferJointsShort[i * 4 + j];
+                                jointIndices[j] = bufferJointsShort[i * 4 + j] + 0.0f;
                             }
                         }
                         _jointIndices.push_back(jointIndices);
@@ -266,9 +266,9 @@ namespace Canis
                         glm::vec4 weights;
                         for (int j = 0; j < 4; ++j)
                         {
-                            weights[j] = bufferWeights[i * 4 + j] / 255.0f; // Assuming weights are stored as normalized unsigned bytes
+                            weights[j] = bufferWeights[i * 4 + j] / 255.0f;
                         }
-                        _boneWeights.push_back(weights); // Assuming _boneWeights is a suitable container
+                        _boneWeights.push_back(normalize(weights));
                     }
                 }
             }
@@ -341,10 +341,14 @@ namespace Canis
             const tinygltf::Buffer &buffer = _model.buffers[bufferView.buffer];
             const float *matrixData = reinterpret_cast<const float *>(&buffer.data[bufferView.byteOffset + accessor.byteOffset]);
 
-            for (size_t i = 0; i < accessor.count; i++)
+            const unsigned char* bufferData = _model.buffers[bufferView.buffer].data.data();
+	        const unsigned char* walker = bufferData + bufferView.byteOffset + accessor.byteOffset;
+
+            int stride = accessor.ByteStride(bufferView);
+            for (int i = 0; i < (int)accessor.count; ++i, walker += stride)
             {
-                glm::mat4 matrix = glm::make_mat4(&matrixData[i * 16]); // 16 floats per matrix
-                inverseBindMatrices.push_back(matrix);
+                const glm::mat4 *mtx = reinterpret_cast<const glm::mat4 *>(walker);
+                inverseBindMatrices.push_back(*mtx);
             }
 
             // Build bone hierarchy and store bone data
@@ -420,14 +424,31 @@ namespace Canis
         return transMat * rotMat * scaleMat; // Order might vary based on your coordinate system
     }
 
+    void UpdateGlobalTransform(std::vector<Bone> &bones, size_t boneIndex)
+    {
+        Bone &bone = bones[boneIndex];
+        glm::mat4 localTransform = glm::translate(glm::mat4(1.0f), bone.translation) * glm::toMat4(bone.rotation) * glm::scale(glm::mat4(1.0f), bone.scale);
+
+        if (bone.parent == -1)
+        { // Root bone
+            bone.globalTransform = localTransform;
+        }
+        else
+        { // Child bone
+            bone.globalTransform = bones[bone.parent].globalTransform * localTransform;
+        }
+
+        // Apply inverse bind matrix to get the final bone matrix
+        // This final matrix is often what's sent to the shader for skinning
+        bone.finalMatrix = bone.globalTransform * bone.inverseBindMatrix;
+    }
+
     void ModelAsset::UpdateBones(std::vector<Bone> &_bones, const AnimationClip &clip, float currentTime)
     {
+        // Update local transformations based on the animation clip
         for (const auto &channel : clip.channels)
         {
-            // Interpolate keyframe for the current time
             Keyframe interpolatedKeyframe = InterpolateKeyframes(channel.keyframes, currentTime);
-
-            // Apply transformation to the target bone
             Bone &targetBone = bones[channel.targetNode];
 
             if (channel.property == "translation")
@@ -442,20 +463,12 @@ namespace Canis
             {
                 targetBone.scale = interpolatedKeyframe.scale;
             }
-
-            // Compute final bone transformation
-            glm::mat4 boneTransform = ComputeBoneTransformation(targetBone.translation, targetBone.rotation, targetBone.scale);
-            if (targetBone.parent != -1)
-            {
-                boneTransform = _bones[targetBone.parent].globalTransform * boneTransform;
-            }
-            targetBone.globalTransform = boneTransform;
         }
 
-        // Apply inverse bind matrix
-        for (auto &bone : _bones)
+        // Compute global transformations
+        for (size_t i = 0; i < _bones.size(); ++i)
         {
-            bone.inverseBindMatrix = bone.globalTransform * bone.inverseBindMatrix;
+            UpdateGlobalTransform(_bones, i);
         }
     }
 
@@ -487,7 +500,7 @@ namespace Canis
                     v.position = modelVertices[i];
                     v.normal = normals[i];
                     v.texCoords = uvs[i];
-                    v.boneIDs = glm::ivec4(-1,-1,-1,-1);
+                    v.boneIDs = glm::vec4(-1, -1, -1, -1);
                     vertices.push_back(v);
                 }
 
@@ -559,9 +572,7 @@ namespace Canis
             std::vector<glm::vec3> modelVertices;
             std::vector<glm::vec2> uvs;
             std::vector<glm::vec3> normals;
-            std::vector<glm::ivec4> boneIDs;
-            std::vector<glm::vec4> weights;
-            std::vector<glm::ivec4> jointIndices;
+            std::vector<glm::vec4> jointIndices;
             std::vector<glm::vec4> boneWeight;
 
             LoadMeshData(model, modelVertices, normals, uvs, indices, animationClips, bones, jointIndices, boneWeight);
@@ -603,6 +614,7 @@ namespace Canis
 
         glGenVertexArrays(1, &vao);
         glGenBuffers(1, &vbo);
+        glGenBuffers(1, &ebo);
 
         // bind the Vertex Array Object first, then bind and set vertex buffer(s), and then configure vertex attributes(s).
         glBindVertexArray(vao);
@@ -610,28 +622,27 @@ namespace Canis
         glBindBuffer(GL_ARRAY_BUFFER, vbo);
         glBufferData(GL_ARRAY_BUFFER, vertices.size() * sizeof(Canis::Vertex), &vertices[0], GL_STATIC_DRAW);
 
-        // position attribute
-        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)0);
-        glEnableVertexAttribArray(0);
-        // normal attribute
-        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(3 * sizeof(float)));
-        glEnableVertexAttribArray(1);
-        // texture coords
-        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(6 * sizeof(float)));
-        glEnableVertexAttribArray(2);
-        // texture coords
-        glVertexAttribPointer(3, 4, GL_INT, GL_FALSE, sizeof(Canis::Vertex), (void *)(8 * sizeof(float)));
-        glEnableVertexAttribArray(3);
-        // texture coords
-        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)((8 * sizeof(float)) + (sizeof(glm::ivec4))));
-        glEnableVertexAttribArray(4);
-
-        glGenBuffers(1, &ebo);
         glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, ebo);
         glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(unsigned int), &indices[0], GL_STATIC_DRAW);
 
+        // position attribute
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)0);
+        // normal attribute
+        glEnableVertexAttribArray(1);
+        glVertexAttribPointer(1, 3, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(3 * sizeof(float)));
+        // texture coords
+        glEnableVertexAttribArray(2);
+        glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(6 * sizeof(float)));
+        // bone ids
+        glEnableVertexAttribArray(3);
+        glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(offsetof(Vertex, boneIDs)));
+        // weights
+        glEnableVertexAttribArray(4);
+        glVertexAttribPointer(4, 4, GL_FLOAT, GL_FALSE, sizeof(Canis::Vertex), (void *)(offsetof(Vertex, weights)));
+
         // note that this is allowed, the call to glVertexAttribPointer registered VBO as the vertex attribute's bound vertex buffer object so afterwards we can safely unbind
-        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        //glBindBuffer(GL_ARRAY_BUFFER, 0);
 
         glBindVertexArray(0);
     }
