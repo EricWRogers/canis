@@ -329,12 +329,12 @@ namespace Canis
 
     vec3 GetTransformForward(TransformComponent &_transform)
     {
-        return normalize(rotate(inverse(_transform.rotation), vec3(0.0f, 0.0f, 1.0f)));
+        return normalize(_transform.rotation * vec3(0.0f, 0.0f, 1.0f));
     }
 
     vec3 GetTransformRight(TransformComponent &_transform)
     {
-        return normalize(rotate(inverse(_transform.rotation), vec3(1.0f, 0.0f, 0.0f)));
+        return normalize(_transform.rotation * vec3(1.0f, 0.0f, 0.0f));
     }
 
     void Rotate(TransformComponent &_transform, vec3 _rotate)
