@@ -137,9 +137,14 @@ public:
                             c.color = emitter.colorStart;
 
                             t.active = true;
-                            t.rotation.x = RandomFloat(emitter.minRotation.x,emitter.maxRotation.x);
-                            t.rotation.y = RandomFloat(emitter.minRotation.y,emitter.maxRotation.y);
-                            t.rotation.z = RandomFloat(emitter.minRotation.z,emitter.maxRotation.z);
+                            SetTransformRotation(t,
+                                glm::vec3(
+                                    RandomFloat(emitter.minRotation.x,emitter.maxRotation.x),
+                                    RandomFloat(emitter.minRotation.y,emitter.maxRotation.y),
+                                    RandomFloat(emitter.minRotation.z,emitter.maxRotation.z)
+                                )
+                            );
+
                             float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
                             t.scale = transform.scale*scaleMul;
                             t.isDirty = true;
