@@ -903,14 +903,4 @@ namespace Canis
 			glDisable(GL_BLEND);
 		}
 	};
-
-	bool DecodeRenderMeshWithShadowSystem(const std::string &_name, Canis::Scene *_scene)
-	{
-        if (_name == "Canis::RenderMeshWithShadowSystem")
-        {
-            _scene->CreateRenderSystem<RenderMeshWithShadowSystem>();
-            return true;
-        }
-        return false;
-    }
 } // end of Canis namespace

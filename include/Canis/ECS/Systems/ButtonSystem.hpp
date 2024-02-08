@@ -41,6 +41,4 @@ namespace Canis
 
         void RemoveButtonListener(ButtonListener* _listener);
     };
-
-    extern bool DecodeButtonSystem(const std::string &_name, Canis::Scene *_scene);
 } // end of Canis namespace

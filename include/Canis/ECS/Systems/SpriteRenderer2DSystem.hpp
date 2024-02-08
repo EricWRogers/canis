@@ -68,6 +68,4 @@ namespace Canis
 
         void Update(entt::registry &_registry, float _deltaTime);
     };
-
-    extern bool DecodeSpriteRenderer2DSystem(const std::string &_name, Canis::Scene *_scene);
 } // end of Canis namespace

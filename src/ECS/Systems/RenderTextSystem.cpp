@@ -203,14 +203,4 @@ namespace Canis
         glDisable(GL_ALPHA);
         glDisable(GL_BLEND);
     }
-
-    bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene)
-    {
-        if (_name == "Canis::RenderTextSystem")
-        {
-            _scene->CreateRenderSystem<RenderTextSystem>();
-            return true;
-        }
-        return false;
-    }
 } // end of Canis namespace

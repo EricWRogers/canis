@@ -15,6 +15,12 @@
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/DirectionalLightComponent.hpp>
 
+#include <Canis/ECS/Systems/RenderMeshWithShadowSystem.hpp>
+#include <Canis/ECS/Systems/ButtonSystem.hpp>
+#include <Canis/ECS/Systems/RenderHUDSystem.hpp>
+#include <Canis/ECS/Systems/RenderTextSystem.hpp>
+#include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
+
 namespace Canis
 {
 
@@ -216,5 +222,55 @@ namespace Canis
             dlc.diffuse = directionalLightComponent["diffuse"].as<glm::vec3>();
             dlc.specular = directionalLightComponent["specular"].as<glm::vec3>();
         }
+    }
+
+    bool DecodeRenderMeshWithShadowSystem(const std::string &_name, Canis::Scene *_scene)
+	{
+        if (_name == "Canis::RenderMeshWithShadowSystem")
+        {
+            _scene->CreateRenderSystem<RenderMeshWithShadowSystem>();
+            return true;
+        }
+        return false;
+    }
+
+    bool DecodeButtonSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::ButtonSystem")
+        {
+            _scene->CreateSystem<ButtonSystem>();
+            return true;
+        }
+        return false;
+    }
+
+    bool DecodeRenderHUDSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::RenderHUDSystem")
+        {
+            _scene->CreateRenderSystem<RenderHUDSystem>();
+            return true;
+        }
+        return false;
+    }
+
+    bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::RenderTextSystem")
+        {
+            _scene->CreateRenderSystem<RenderTextSystem>();
+            return true;
+        }
+        return false;
+    }
+
+    bool DecodeSpriteRenderer2DSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::SpriteRenderer2DSystem")
+        {
+            _scene->CreateRenderSystem<SpriteRenderer2DSystem>();
+            return true;
+        }
+        return false;
     }
 };

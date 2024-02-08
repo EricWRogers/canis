@@ -246,14 +246,4 @@ namespace Canis
             glDisable(GL_BLEND);
         }
     }
-
-    bool DecodeRenderHUDSystem(const std::string &_name, Canis::Scene *_scene)
-    {
-        if (_name == "Canis::RenderHUDSystem")
-        {
-            _scene->CreateRenderSystem<RenderHUDSystem>();
-            return true;
-        }
-        return false;
-    }
 } // end of Canis namespace

@@ -28,8 +28,6 @@ namespace Canis
 
     private:
     };
-
-    extern bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene);
 } // end of Canis namespace
 
 

@@ -31,6 +31,4 @@ namespace Canis
         void Ready() {}
         void Update(entt::registry &_registry, float _deltaTime);
     };
-
-    extern bool DecodeRenderHUDSystem(const std::string &_name, Canis::Scene *_scene);
 } // end of Canis namespace
