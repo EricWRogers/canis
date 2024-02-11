@@ -1,6 +1,7 @@
 #pragma once
 #include <Canis/ECS/Systems/System.hpp>
 #include <Canis/External/entt.hpp>
+#include <Canis/Entity.hpp>
 #include <functional>
 
 namespace Canis
@@ -8,7 +9,7 @@ namespace Canis
     class Scene;
 
     struct ButtonAndDepth {
-        entt::entity entity;
+        Entity entity;
         float depth;
     };
 

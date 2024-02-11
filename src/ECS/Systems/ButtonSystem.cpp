@@ -38,7 +38,7 @@ namespace Canis
         auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
-        bool buttonFound = false;
+        Entity targetButton;
 
         List::Clear(&m_buttons);
 
@@ -47,7 +47,7 @@ namespace Canis
             if (rect_transform.active)
             {
                 ButtonAndDepth bad;
-                bad.entity = entity;
+                bad.entity = Entity(entity, scene);
                 bad.depth = rect_transform.depth;
 
                 List::Add(&m_buttons, &bad);
@@ -58,9 +58,9 @@ namespace Canis
 
         for (int i = 0; i < List::GetCount(&m_buttons); i++)
         {
-            RectTransformComponent& rect_transform = _registry.get<RectTransformComponent>(m_buttons[i].entity);
-            ColorComponent& color = _registry.get<ColorComponent>(m_buttons[i].entity);
-            ButtonComponent& button = _registry.get<ButtonComponent>(m_buttons[i].entity);
+            RectTransformComponent& rect_transform = m_buttons[i].entity.GetComponent<RectTransformComponent>();
+            ColorComponent& color = m_buttons[i].entity.GetComponent<ColorComponent>();
+            ButtonComponent& button = m_buttons[i].entity.GetComponent<ButtonComponent>();
 
             positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
                                         (float)window->GetScreenWidth(),
@@ -79,27 +79,12 @@ namespace Canis
                 mouse.x < rect_transform.position.x + (rect_transform.size.x * rect_transform.scale) + rect_transform.originOffset.x + positionAnchor.x &&
                 mouse.y > rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y &&
                 mouse.y < rect_transform.position.y + (rect_transform.size.y * rect_transform.scale) + rect_transform.originOffset.y + positionAnchor.y &&
-                !buttonFound)
+                !targetButton)
             {
                 color.color = button.hoverColor;
                 button.mouseOver = true;
                 rect_transform.scale = button.hoverScale;
-
-                if (button.action == 0u)
-                {
-                    if (inputManager->JustLeftClicked())
-                    {
-                        button.func(button.instance);
-                    }
-                }
-                else if (button.action == 1u)
-                {
-                    if (inputManager->LeftClickReleased())
-                    {
-                        button.func(button.instance);
-                    }
-                }
-                buttonFound = true;                    
+                targetButton = m_buttons[i].entity;               
             } 
             else
             {
@@ -107,6 +92,25 @@ namespace Canis
                 button.mouseOver = false;
                 rect_transform.scale = button.scale;
             }           
+        }
+
+        if (targetButton)
+        {
+            ButtonComponent& button = targetButton.GetComponent<ButtonComponent>();
+            if (button.action == 0u)
+            {
+                if (inputManager->JustLeftClicked())
+                {
+                    button.func(button.instance);
+                }
+            }
+            else if (button.action == 1u)
+            {
+                if (inputManager->LeftClickReleased())
+                {
+                    button.func(button.instance);
+                }
+            }
         }
     }
 
