@@ -8,6 +8,17 @@
 
 namespace Canis
 {
+void Entity::Destroy()
+{
+    if (scene != nullptr)
+    {
+        if (scene->entityRegistry.valid(entityHandle))
+        {
+            scene->entityRegistry.destroy(entityHandle);
+        }
+    }
+}
+
 void* Entity::InitScriptableComponent()
 {
     Canis::ScriptComponent& sc = GetComponent<Canis::ScriptComponent>();

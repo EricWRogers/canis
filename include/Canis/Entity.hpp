@@ -23,6 +23,8 @@ public:
     Entity(entt::entity _handle, Scene* _scene) : entityHandle(_handle), scene(_scene) {};
     Entity(const Entity& _other) = default;
 
+    void Destroy();
+
     template<typename T, typename... Args>
     T& AddComponent(Args&&... args)
     {
