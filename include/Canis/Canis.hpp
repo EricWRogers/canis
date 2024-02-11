@@ -13,6 +13,7 @@ namespace Canis
         unsigned int seed = 0;
         float volume = 1.0f;
         bool mute = false;
+        bool log = false;
     };
 
     ProjectConfig& GetProjectConfig();

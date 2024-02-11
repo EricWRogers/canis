@@ -93,6 +93,14 @@ namespace Canis
                     continue;
                 }
             }
+            if (word == "log")
+            {
+                if (file >> word)
+                {
+                    GetProjectConfig().log = (word == "true");
+                    continue;
+                }
+            }
         }
 
         file.close();
