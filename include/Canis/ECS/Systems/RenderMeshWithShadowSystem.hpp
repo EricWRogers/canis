@@ -865,7 +865,6 @@ namespace Canis
 					rer.value = transform.position.y;
 
 				sortingEntities.push_back(rer);
-				//Canis::List::Add(&sortingEntitiesList, &rer);
 			}
 
 			//startTime = high_resolution_clock::now();

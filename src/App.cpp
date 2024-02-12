@@ -3,6 +3,8 @@
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
 
+#include <SDL_mixer.h>
+
 namespace Canis
 {
     App::App(){}
@@ -64,6 +66,12 @@ namespace Canis
             window.CreateFullScreen(_windowName);
         else
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
+        
+        //Initialize SDL_mixer
+        if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
+        {
+            printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
+        }
         
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
