@@ -129,6 +129,16 @@ namespace Canis
         // get the old buffer to start drawing our next frame to
         SDL_GL_SwapWindow((SDL_Window*)sdlWindow);
     }
+    
+    void Window::CenterMouse()
+    {
+      SetMousePosition(screenWidth/2, screenHeight/2);
+    }
+
+    void Window::SetMousePosition(int _x, int _y)
+    {
+      SDL_WarpMouseInWindow((SDL_Window*)sdlWindow, _x, screenHeight - _y);
+    }
 
     void Window::MouseLock(bool _isLocked)
     {

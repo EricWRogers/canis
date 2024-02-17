@@ -22,6 +22,8 @@ namespace Canis
         void SetWindowName(std::string _windowName);
 
         void SwapBuffer();
+        void CenterMouse();
+        void SetMousePosition(int _x, int _y);
         void MouseLock(bool _isLocked);
         bool GetMouseLock() { return mouseLock; }
 
