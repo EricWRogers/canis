@@ -37,6 +37,7 @@ namespace Canis
                     mouse.y = _screenHeight - event.motion.y;
                     mouseRel.x = event.motion.xrel;
                     mouseRel.y = event.motion.yrel;
+                    m_lastInputDeviceType = InputDevice::MOUSE;
                     //camera.ProcessMouseMovement(event.motion.xrel, -event.motion.yrel);
                 break;
             case SDL_KEYUP:
@@ -45,7 +46,7 @@ namespace Canis
                 break;
             case SDL_KEYDOWN:
                 PressKey(event.key.keysym.sym);
-                //Canis::Log("DOWN");
+                m_lastInputDeviceType = InputDevice::KEYBOARD;
                 break;
             case SDL_MOUSEBUTTONDOWN:
                 if (event.button.button == SDL_BUTTON_LEFT)
@@ -64,6 +65,9 @@ namespace Canis
                 break;
             case SDL_CONTROLLERDEVICEREMOVED:
                 OnGameControllerDisconnect(&event.cdevice);
+                break;
+            case SDL_CONTROLLERBUTTONDOWN:
+                m_lastInputDeviceType = InputDevice::GAMEPAD;
                 break;
             }
         }
@@ -100,6 +104,9 @@ namespace Canis
 
                 it->currentData.rightTrigger    = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_TRIGGERRIGHT)/32767.0f;
                 it->currentData.leftTrigger     = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_TRIGGERLEFT)/32767.0f;
+            
+                if (it->currentData.leftStick != glm::vec2(0.0f) || it->currentData.rightStick != glm::vec2(0.0f))
+                  m_lastInputDeviceType = InputDevice::GAMEPAD;
             }
         }
         

@@ -5,6 +5,13 @@
 
 namespace Canis
 {
+    enum class InputDevice
+    {
+      MOUSE,
+      KEYBOARD,
+      GAMEPAD
+    };
+
     enum ControllerButton
     {
         A               = 1u,
@@ -72,6 +79,8 @@ namespace Canis
         bool GetRightClick() { return  m_rightClick; }
         bool RightClickReleased() { return  m_rightClick == false && m_wasRightClick == true; }
         bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false; }
+        
+        InputDevice GetLastDeviceType() { return m_lastInputDeviceType; }
 
         glm::vec2 mouse = glm::vec2(0,0);
         glm::vec2 mouseRel = glm::vec2(0);
@@ -99,5 +108,7 @@ namespace Canis
         bool m_rightClick = false;
         bool m_wasLeftClick = false;
         bool m_wasRightClick = false;
+
+        InputDevice m_lastInputDeviceType = InputDevice::MOUSE;
     };
 } // end of Canis namespace
