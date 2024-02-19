@@ -170,22 +170,22 @@ namespace Canis
         return didHit;
     }
 
-    Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager)
+    Ray RayFromScreen(Camera &_camera, Window &_window, const glm::vec2 &_screenPoint)
     {
         vec4 lRayStart_NDC(
-            ((float)inputManager.mouse.x / (float)window.GetScreenWidth() - 0.5f) * 2.0f,
-            ((float)inputManager.mouse.y / (float)window.GetScreenHeight() - 0.5f) * 2.0f,
+            (_screenPoint.x / (float)_window.GetScreenWidth() - 0.5f) * 2.0f,
+            (_screenPoint.y / (float)_window.GetScreenHeight() - 0.5f) * 2.0f,
             -1.0, // The near plane maps to Z=-1 in Normalized Device Coordinates
             1.0f);
         vec4 lRayEnd_NDC(
-            ((float)inputManager.mouse.x / (float)window.GetScreenWidth() - 0.5f) * 2.0f,
-            ((float)inputManager.mouse.y / (float)window.GetScreenHeight() - 0.5f) * 2.0f,
+            (_screenPoint.x / (float)_window.GetScreenWidth() - 0.5f) * 2.0f,
+            (_screenPoint.y / (float)_window.GetScreenHeight() - 0.5f) * 2.0f,
             0.0,
             1.0f);
 
-        mat4 projection = perspective(camera.FOV, (float)window.GetScreenWidth() / (float)window.GetScreenHeight(), 0.1f, 100.0f);
+        mat4 projection = perspective(_camera.FOV, (float)_window.GetScreenWidth() / (float)_window.GetScreenHeight(), _camera.nearPlane, _camera.farPlane);
 
-        mat4 M = inverse(projection * camera.GetViewMatrix());
+        mat4 M = inverse(projection * _camera.GetViewMatrix());
         vec4 lRayStart_world = M * lRayStart_NDC;
         lRayStart_world /= lRayStart_world.w;
         vec4 lRayEnd_world = M * lRayEnd_NDC;

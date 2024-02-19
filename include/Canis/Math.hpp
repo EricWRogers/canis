@@ -39,7 +39,7 @@ namespace Canis
 
     bool CheckRay(Entity _entity, Ray _ray, Hit &_hit);
 
-    Ray RayFromMouse(Camera &camera, Window &window, InputManager &inputManager);
+    Ray RayFromScreen(Camera &_camera, Window &_window, const glm::vec2 &_screenPoint);
 
     vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, vec3 _position);
 
