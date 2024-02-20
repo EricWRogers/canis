@@ -6,7 +6,6 @@
 #include <string>
 #include <glm/glm.hpp>
 #include <SDL.h>
-#include <stb_image.h>
 
 #include "Data/GLTexture.hpp"
 #include "Data/Vertex.hpp"
