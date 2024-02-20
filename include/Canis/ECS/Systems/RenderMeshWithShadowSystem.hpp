@@ -477,6 +477,27 @@ namespace Canis
 				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
 				materialInfo = material->info;
 
+				if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+				{
+					continue;
+					//glEnable(GL_CULL_FACE);
+					//glCullFace(GL_FRONT_AND_BACK);
+				}
+				else if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+				{
+					glEnable(GL_CULL_FACE);
+					glCullFace(GL_BACK);
+				}
+				else if ((materialInfo | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+				{
+					glEnable(GL_CULL_FACE);
+					glCullFace(GL_FRONT);
+				}
+				else
+				{
+					glDisable(GL_CULL_FACE);
+				}
+
 				shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
 					material->shaderId
 				)->GetShader();

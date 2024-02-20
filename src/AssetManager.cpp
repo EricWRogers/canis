@@ -381,6 +381,22 @@ namespace Canis
                 root.remove("depth");
             }
 
+            if (YAML::Node node = root["backFaceCulling"])
+            {
+                if (node.as<std::string>() == "true")
+                    material->info |= MaterialInfo::HASBACKFACECULLING;
+                
+                root.remove("backFaceCulling");
+            }
+
+            if (YAML::Node node = root["frontFaceCulling"])
+            {
+                if (node.as<std::string>() == "true")
+                    material->info |= MaterialInfo::HASFRONTFACECULLING;
+                
+                root.remove("frontFaceCulling");
+            }
+
             for (const auto& node : root)
             {
                 std::string name = node.first.as<std::string>();

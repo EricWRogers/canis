@@ -194,7 +194,9 @@ namespace Canis
         HASCOLOR                            = 32u,
         HASEMISSIONCOLOR                    = 64u,
         HASEMISSIONUSINGALEDOPLUSINTESITY   = 128u,
-        HASDEPTH                            = 256u
+        HASDEPTH                            = 256u,
+        HASBACKFACECULLING                  = 512u,
+        HASFRONTFACECULLING                 = 1024u,
     };
     
     /*
