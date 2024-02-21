@@ -43,6 +43,7 @@ namespace Canis
         auto view = _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
+        bool mouseLook = window->GetMouseLock();
         Entity targetButton;
 
         List::Clear(&m_buttons);
@@ -72,6 +73,7 @@ namespace Canis
                                         (float)window->GetScreenHeight());
 
             mouse = GetInputManager().mouse;
+            
 
             if (rect_transform.rotation != 0.0f)
             {                
@@ -84,7 +86,7 @@ namespace Canis
                 mouse.x < rect_transform.position.x + (rect_transform.size.x * rect_transform.scale) + rect_transform.originOffset.x + positionAnchor.x &&
                 mouse.y > rect_transform.position.y + positionAnchor.y + rect_transform.originOffset.y &&
                 mouse.y < rect_transform.position.y + (rect_transform.size.y * rect_transform.scale) + rect_transform.originOffset.y + positionAnchor.y &&
-                !targetButton)
+                !targetButton && !mouseLook)
             {
                 color.color = button.hoverColor;
                 button.mouseOver = true;
