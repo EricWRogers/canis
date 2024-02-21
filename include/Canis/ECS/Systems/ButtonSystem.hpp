@@ -22,6 +22,7 @@ namespace Canis
     class ButtonSystem : public System
     {
     private:
+        InputDevice m_lastInputDevice = InputDevice::MOUSE;
         ButtonAndDepth* m_buttons = nullptr;
         ButtonListener* m_buttonListeners = nullptr;
     public:

@@ -479,11 +479,12 @@ namespace Canis
 
 				if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
 				{
+					Log("BAD");
 					continue;
 					//glEnable(GL_CULL_FACE);
 					//glCullFace(GL_FRONT_AND_BACK);
 				}
-				else if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+				else if ((materialInfo | MaterialInfo::HASBACKFACECULLING) == materialInfo)
 				{
 					glEnable(GL_CULL_FACE);
 					glCullFace(GL_BACK);

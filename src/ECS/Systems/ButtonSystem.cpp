@@ -31,6 +31,11 @@ namespace Canis
 
         if (m_buttonListeners == nullptr)
             List::Init(&m_buttonListeners, 10, sizeof(ButtonListener));
+
+        if (GetInputManager().GetLastDeviceType() != InputDevice::MOUSE)
+        {
+
+        }    
     }
 
     void ButtonSystem::Update(entt::registry &_registry, float _deltaTime)
@@ -112,11 +117,6 @@ namespace Canis
                 }
             }
         }
-    }
-
-    void Update(entt::registry &_registry, float _deltaTime)
-    {
-        
     }
 
     ButtonListener* AddButtonListener(

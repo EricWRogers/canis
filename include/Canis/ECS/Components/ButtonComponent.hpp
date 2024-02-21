@@ -3,6 +3,8 @@
 
 namespace Canis
 {
+    class Entity;
+
     struct ButtonComponent
     {
         void (*func)(void*) = nullptr;
@@ -13,5 +15,10 @@ namespace Canis
         bool mouseOver = false;
         float scale = 1.0f;
         float hoverScale = 1.0f;
+        Entity up;
+        Entity down;
+        Entity left;
+        Entity right;
+        bool defaultSelected = false;
     };
 } // end of Canis namespace
