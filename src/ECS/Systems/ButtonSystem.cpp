@@ -65,11 +65,21 @@ namespace Canis
                     (button.up || button.down || button.left || button.right))
                     defaultButton.entityHandle = entity;
 
+
+                color.color = button.baseColor;
+                button.mouseOver = false;
+                rect_transform.scale = button.scale;
+
                 List::Add(&m_buttons, &bad);
             }
         }
 
-        if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD)
+        if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD &&
+            (inputManager->LastButtonsPressed(0, ControllerButton::DPAD_UP) ||
+            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_DOWN) ||
+            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_LEFT) ||
+            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_RIGHT) ||
+            inputManager->LastButtonsPressed(0, ControllerButton::A)))
         {
             if (!targetButton && defaultButton)
             {

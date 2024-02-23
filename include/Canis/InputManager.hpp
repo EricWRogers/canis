@@ -45,6 +45,7 @@ namespace Canis
         GameControllerData currentData = {};
         GameControllerData oldData = {};
         float deadZone = 0.15f;
+        unsigned int lastButtonsPressed = 0;
     };
     struct InputData
     {
@@ -66,6 +67,8 @@ namespace Canis
         bool GetButton(unsigned int _gameControllerId, unsigned int _buttonId);
         bool JustPressedButton(unsigned int _gameControllerId, unsigned int _buttonId);
         bool JustReleasedButton(unsigned int _gameControllerId, unsigned int _buttonId);
+
+        bool LastButtonsPressed(unsigned int _gameControllerId, unsigned int _buttonId);
 
         glm::vec2 GetLeftStick(unsigned int _gameControllerId);
         glm::vec2 GetRightStick(unsigned int _gameControllerId);

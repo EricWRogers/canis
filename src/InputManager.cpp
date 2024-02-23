@@ -90,6 +90,9 @@ namespace Canis
                     it->currentData.buttons |= ((1 << i) * SDL_GameControllerGetButton((SDL_GameController*)it->controller, (SDL_GameControllerButton)i));
                 }
 
+                if (it->currentData.buttons != 0)
+                    it->lastButtonsPressed = it->currentData.buttons;
+
                 it->currentData.leftStick.x     = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTX)/32767.0f;
                 it->currentData.leftStick.x     = (abs(it->currentData.leftStick.x) < it->deadZone) ? 0.0f : it->currentData.leftStick.x;
 
@@ -106,7 +109,10 @@ namespace Canis
                 it->currentData.leftTrigger     = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_TRIGGERLEFT)/32767.0f;
             
                 if (it->currentData.leftStick != glm::vec2(0.0f) || it->currentData.rightStick != glm::vec2(0.0f))
-                  m_lastInputDeviceType = InputDevice::GAMEPAD;
+                {
+                    m_lastInputDeviceType = InputDevice::GAMEPAD;
+                    it->lastButtonsPressed = 0u;
+                }
             }
         }
         
@@ -180,6 +186,16 @@ namespace Canis
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) == 0 &&
             (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) > 0);
+        }
+
+        return false;
+    }
+
+    bool InputManager::LastButtonsPressed(unsigned int _gameControllerId, unsigned int _buttonId)
+    {
+        if (m_gameControllers.size() > _gameControllerId)
+        {
+            return m_gameControllers[_gameControllerId].lastButtonsPressed & _buttonId;
         }
 
         return false;
