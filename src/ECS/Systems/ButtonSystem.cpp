@@ -75,11 +75,11 @@ namespace Canis
         }
 
         if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD &&
-            (inputManager->LastButtonsPressed(0, ControllerButton::DPAD_UP) ||
-            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_DOWN) ||
-            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_LEFT) ||
-            inputManager->LastButtonsPressed(0, ControllerButton::DPAD_RIGHT) ||
-            inputManager->LastButtonsPressed(0, ControllerButton::A)))
+            (inputManager->LastButtonsPressed(ControllerButton::DPAD_UP) ||
+            inputManager->LastButtonsPressed(ControllerButton::DPAD_DOWN) ||
+            inputManager->LastButtonsPressed(ControllerButton::DPAD_LEFT) ||
+            inputManager->LastButtonsPressed(ControllerButton::DPAD_RIGHT) ||
+            inputManager->LastButtonsPressed(ControllerButton::A)))
         {
             if (!targetButton && defaultButton)
             {
@@ -90,25 +90,25 @@ namespace Canis
                 return;
 
             Entity lastTargetButton = Entity(scene);
-            if (inputManager->JustPressedButton(0, ControllerButton::DPAD_UP) &&
+            if (inputManager->JustPressedButton(ControllerButton::DPAD_UP) &&
                 targetButton.GetComponent<ButtonComponent>().up)
             {
                 lastTargetButton = targetButton;
                 targetButton = targetButton.GetComponent<ButtonComponent>().up;
             }
-            else if (inputManager->JustPressedButton(0, ControllerButton::DPAD_DOWN) &&
+            else if (inputManager->JustPressedButton(ControllerButton::DPAD_DOWN) &&
                      targetButton.GetComponent<ButtonComponent>().down)
             {
                 lastTargetButton = targetButton;
                 targetButton = targetButton.GetComponent<ButtonComponent>().down;
             }
-            else if (inputManager->JustPressedButton(0, ControllerButton::DPAD_LEFT) &&
+            else if (inputManager->JustPressedButton(ControllerButton::DPAD_LEFT) &&
                      targetButton.GetComponent<ButtonComponent>().left)
             {
                 lastTargetButton = targetButton;
                 targetButton = targetButton.GetComponent<ButtonComponent>().left;
             }
-            else if (inputManager->JustPressedButton(0, ControllerButton::DPAD_RIGHT) &&
+            else if (inputManager->JustPressedButton(ControllerButton::DPAD_RIGHT) &&
                      targetButton.GetComponent<ButtonComponent>().right)
             {
                 lastTargetButton = targetButton;
@@ -187,11 +187,11 @@ namespace Canis
             ButtonComponent &button = targetButton.GetComponent<ButtonComponent>();
             if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD)
             {
-                if (button.action == 0u && inputManager->JustPressedButton(0, ControllerButton::A))
+                if (button.action == 0u && inputManager->JustPressedButton(ControllerButton::A))
                 {
                     button.func(button.instance);
                 }
-                else if (button.action == 1u && inputManager->JustReleasedButton(0, ControllerButton::A))
+                else if (button.action == 1u && inputManager->JustReleasedButton(ControllerButton::A))
                 {
                     button.func(button.instance);
                 }

@@ -63,11 +63,10 @@ namespace Canis
         bool GetKey(unsigned int _keyID);
         bool JustPressedKey(unsigned int _keyID);
         bool JustReleasedKey(unsigned int _keyID);
-        
+
         bool GetButton(unsigned int _gameControllerId, unsigned int _buttonId);
         bool JustPressedButton(unsigned int _gameControllerId, unsigned int _buttonId);
         bool JustReleasedButton(unsigned int _gameControllerId, unsigned int _buttonId);
-
         bool LastButtonsPressed(unsigned int _gameControllerId, unsigned int _buttonId);
 
         glm::vec2 GetLeftStick(unsigned int _gameControllerId);
@@ -84,6 +83,16 @@ namespace Canis
         bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false; }
         
         InputDevice GetLastDeviceType() { return m_lastInputDeviceType; }
+
+        bool GetButton(unsigned int _buttonId) { return GetButton(m_lastControllerID, _buttonId); }
+        bool JustPressedButton(unsigned int _buttonId) { return JustPressedButton(m_lastControllerID, _buttonId); }
+        bool JustReleasedButton(unsigned int _buttonId) { return JustReleasedButton(m_lastControllerID, _buttonId); }
+        bool LastButtonsPressed(unsigned int _buttonId) { return LastButtonsPressed(m_lastControllerID, _buttonId); }
+
+        glm::vec2 GetLeftStick() { return GetLeftStick(m_lastControllerID); }
+        glm::vec2 GetRightStick() { return GetRightStick(m_lastControllerID); }
+        float GetLeftTrigger() { return GetLeftTrigger(m_lastControllerID); }
+        float GetRightTrigger() { return GetRightTrigger(m_lastControllerID); }
 
         glm::vec2 mouse = glm::vec2(0,0);
         glm::vec2 mouseRel = glm::vec2(0);
@@ -111,6 +120,8 @@ namespace Canis
         bool m_rightClick = false;
         bool m_wasLeftClick = false;
         bool m_wasRightClick = false;
+
+        unsigned int m_lastControllerID = 0u;
 
         InputDevice m_lastInputDeviceType = InputDevice::MOUSE;
     };

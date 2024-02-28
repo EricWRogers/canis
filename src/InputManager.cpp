@@ -73,6 +73,7 @@ namespace Canis
         }
 
         // update controllers
+        int controllerID = 0;
         for(auto it = m_gameControllers.begin(); it != m_gameControllers.end(); it++)
         {
             if (it->controller)
@@ -91,7 +92,10 @@ namespace Canis
                 }
 
                 if (it->currentData.buttons != 0)
+                {
                     it->lastButtonsPressed = it->currentData.buttons;
+                    m_lastControllerID = controllerID;
+                }
 
                 it->currentData.leftStick.x     = SDL_GameControllerGetAxis((SDL_GameController*)it->controller, SDL_GameControllerAxis::SDL_CONTROLLER_AXIS_LEFTX)/32767.0f;
                 it->currentData.leftStick.x     = (abs(it->currentData.leftStick.x) < it->deadZone) ? 0.0f : it->currentData.leftStick.x;
@@ -112,7 +116,10 @@ namespace Canis
                 {
                     m_lastInputDeviceType = InputDevice::GAMEPAD;
                     it->lastButtonsPressed = 0u;
+                    m_lastControllerID = controllerID;
                 }
+
+                controllerID++;
             }
         }
         
