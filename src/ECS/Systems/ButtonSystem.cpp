@@ -66,9 +66,12 @@ namespace Canis
                     defaultButton.entityHandle = entity;
 
 
-                color.color = button.baseColor;
-                button.mouseOver = false;
-                rect_transform.scale = button.scale;
+                if (inputManager->GetLastDeviceType() != InputDevice::MOUSE)
+                {
+                    color.color = button.baseColor;
+                    button.mouseOver = false;
+                    rect_transform.scale = button.scale;
+                }
 
                 List::Add(&m_buttons, &bad);
             }
