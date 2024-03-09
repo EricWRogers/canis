@@ -115,7 +115,7 @@ namespace Canis
                 it->currentData.buttons         = 0u;
                 it->currentData.leftStick       = glm::vec2(0.0f);
                 it->currentData.rightStick      = glm::vec2(0.0f);
-                it->currentData.leftTrigger    = 0.0f;
+                it->currentData.leftTrigger     = 0.0f;
                 it->currentData.rightTrigger    = 0.0f;
 
                 for (unsigned int i = 0; i < 15; i++) // 14 is the last button i care about for now
@@ -149,9 +149,9 @@ namespace Canis
                 if (it->currentData.leftStick != glm::vec2(0.0f) || it->currentData.rightStick != glm::vec2(0.0f))
                 {
                     //Log("left x: " + std::to_string(it->currentData.leftStick.x));
-                    //Log("left x: " + std::to_string(it->currentData.leftStick.y));
+                    //Log("left y: " + std::to_string(it->currentData.leftStick.y));
                     //Log("right x: " + std::to_string(it->currentData.rightStick.x));
-                    //Log("right x: " + std::to_string(it->currentData.rightStick.y));
+                    //Log("right y: " + std::to_string(it->currentData.rightStick.y));
                     m_lastInputDeviceType = InputDevice::GAMEPAD;
                     it->lastButtonsPressed = 0u;
                     m_lastControllerID = controllerID;
