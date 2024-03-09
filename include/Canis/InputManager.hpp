@@ -2,6 +2,7 @@
 #include <glm/glm.hpp>
 #include <unordered_map>
 #include <vector>
+#include <SDL_gamecontroller.h>
 
 namespace Canis
 {
@@ -40,11 +41,12 @@ namespace Canis
     };
     struct GameController
     {
-        void *controller = nullptr; // SDL_GameController
+        SDL_GameController *controller = nullptr;
         unsigned int index = 0;
+        SDL_JoystickID joyId;
         GameControllerData currentData = {};
         GameControllerData oldData = {};
-        float deadZone = 0.15f;
+        float deadZone = 0.7f;
         unsigned int lastButtonsPressed = 0;
     };
     struct InputData

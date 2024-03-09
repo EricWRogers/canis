@@ -38,11 +38,9 @@ namespace Canis
                     mouseRel.x = event.motion.xrel;
                     mouseRel.y = event.motion.yrel;
                     m_lastInputDeviceType = InputDevice::MOUSE;
-                    //camera.ProcessMouseMovement(event.motion.xrel, -event.motion.yrel);
                 break;
             case SDL_KEYUP:
                 ReleasedKey(event.key.keysym.sym);
-                //Canis::Log("UP" + std::to_string(event.key.keysym.sym));
                 break;
             case SDL_KEYDOWN:
                 PressKey(event.key.keysym.sym);
@@ -72,6 +70,41 @@ namespace Canis
             }
         }
 
+        std::vector<SDL_GameController*> currentControllers;
+
+        // find active controllers
+        for (int i = 0; i < SDL_NumJoysticks(); i++) {
+            if (SDL_IsGameController(i)) {
+                SDL_GameController *controller = SDL_GameControllerOpen(i);
+                currentControllers.push_back(controller);
+            }
+        }
+
+        // remove unactive controllers
+        for (int i = 0; i < m_gameControllers.size(); i++)
+        {
+            bool found = false;
+
+            for (int x = 0; x < currentControllers.size(); x++)
+            {
+                if (m_gameControllers[i].controller == currentControllers[x])
+                {
+                    found = true;
+                }
+            }
+
+            if (!found)
+            {
+                m_gameControllers.erase( m_gameControllers.begin() + i );
+            }
+        }
+
+        // reorder controller order
+        for (int i = 0; i < m_gameControllers.size(); i++)
+        {
+            SDL_GameControllerSetPlayerIndex(m_gameControllers[i].controller, i);
+        }
+
         // update controllers
         int controllerID = 0;
         for(auto it = m_gameControllers.begin(); it != m_gameControllers.end(); it++)
@@ -93,6 +126,7 @@ namespace Canis
 
                 if (it->currentData.buttons != 0)
                 {
+                    m_lastInputDeviceType = InputDevice::GAMEPAD;
                     it->lastButtonsPressed = it->currentData.buttons;
                     m_lastControllerID = controllerID;
                 }
@@ -114,6 +148,10 @@ namespace Canis
             
                 if (it->currentData.leftStick != glm::vec2(0.0f) || it->currentData.rightStick != glm::vec2(0.0f))
                 {
+                    //Log("left x: " + std::to_string(it->currentData.leftStick.x));
+                    //Log("left x: " + std::to_string(it->currentData.leftStick.y));
+                    //Log("right x: " + std::to_string(it->currentData.rightStick.x));
+                    //Log("right x: " + std::to_string(it->currentData.rightStick.y));
                     m_lastInputDeviceType = InputDevice::GAMEPAD;
                     it->lastButtonsPressed = 0u;
                     m_lastControllerID = controllerID;
@@ -325,10 +363,11 @@ namespace Canis
             gameController.controller = SDL_GameControllerOpen(device.which);
             if (gameController.controller)
             {
-                gameController.index = device.which;
+                SDL_Joystick* j = SDL_GameControllerGetJoystick((SDL_GameController*)gameController.controller);
+                gameController.joyId = SDL_JoystickInstanceID(j);
                 m_gameControllers.push_back(gameController);
 
-                Log("Game Controller Connected");
+                Log("Game Controller Connected Joy ID: " + std::to_string(gameController.joyId));
             }
         }
     }
@@ -336,18 +375,52 @@ namespace Canis
     void InputManager::OnGameControllerDisconnect(void *_device)
     {
         SDL_ControllerDeviceEvent& device = (*(SDL_ControllerDeviceEvent*)(_device));
-        int index = device.which;
+        SDL_GameController * controller;
+        SDL_JoystickID joyID = 0;
 
-        for(int i = 0; i < m_gameControllers.size(); i++)
+        std::vector<SDL_GameController*> currentControllers;
+
+        // find active controllers
+        for (int i = 0; i < SDL_NumJoysticks(); i++) {
+            if (SDL_IsGameController(i)) {
+                controller = SDL_GameControllerOpen(i);
+                SDL_Joystick * js = SDL_GameControllerGetJoystick(controller);
+                if (device.which == SDL_JoystickInstanceID(js)) {
+                    SDL_GameControllerClose(controller);
+                    joyID = device.which;
+                }
+                else
+                {
+                    currentControllers.push_back(controller);
+                }
+            }
+        }
+
+        // remove unactive controllers
+        for (int i = 0; i < m_gameControllers.size(); i++)
         {
-            if (m_gameControllers[i].index == index)
+            bool found = false;
+
+            for (int x = 0; x < currentControllers.size(); x++)
             {
-                SDL_GameControllerClose((SDL_GameController*)m_gameControllers[i].controller);
+                if (m_gameControllers[i].controller == currentControllers[x])
+                {
+                    found = true;
+                }
+            }
+
+            if (!found)
+            {
                 m_gameControllers.erase( m_gameControllers.begin() + i );
 
                 Log("Game Controller Disconnected");
-                return;
             }
+        }
+
+        // reorder controller order
+        for (int i = 0; i < m_gameControllers.size(); i++)
+        {
+            SDL_GameControllerSetPlayerIndex(m_gameControllers[i].controller, i);
         }
     }
 
