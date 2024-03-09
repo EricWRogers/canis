@@ -46,7 +46,7 @@ namespace Canis
         SDL_JoystickID joyId;
         GameControllerData currentData = {};
         GameControllerData oldData = {};
-        float deadZone = 0.7f;
+        float deadZone = 0.15f;
         unsigned int lastButtonsPressed = 0;
     };
     struct InputData
