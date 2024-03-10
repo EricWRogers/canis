@@ -59,6 +59,7 @@ namespace Canis
                     m_rightClick = false;
                 break;
             case SDL_CONTROLLERDEVICEADDED:
+                m_lastInputDeviceType = InputDevice::GAMEPAD;
                 OnGameControllerConnected(&event.cdevice);
                 break;
             case SDL_CONTROLLERDEVICEREMOVED:
