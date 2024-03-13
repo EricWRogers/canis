@@ -510,6 +510,8 @@ namespace Canis
 						material->shaderId
 					)->GetShader();
 
+					shadow_mapping_shader->SetVec2("TEXELSHADOWSIZE", 1.0f / glm::vec2((float)SHADOW_WIDTH, (float)SHADOW_HEIGHT));
+
 					if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
 					{
 						//glFinish();

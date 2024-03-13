@@ -300,6 +300,7 @@ namespace Canis
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
         spriteShader->Use();
+        spriteShader->SetFloat("TIME", m_time);
         glBindVertexArray(vao);
         glm::mat4 projection = glm::mat4(1.0f);
 
@@ -378,6 +379,8 @@ namespace Canis
 
     void SpriteRenderer2DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
+        m_time += _deltaTime;
+        
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_ALPHA);
         glEnable(GL_BLEND);

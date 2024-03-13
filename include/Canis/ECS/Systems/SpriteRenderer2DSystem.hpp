@@ -67,5 +67,7 @@ namespace Canis
         void Ready() {}
 
         void Update(entt::registry &_registry, float _deltaTime);
+    private:
+        float m_time = 0.0f;
     };
 } // end of Canis namespace
