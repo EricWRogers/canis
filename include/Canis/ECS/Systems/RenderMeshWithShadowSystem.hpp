@@ -428,9 +428,11 @@ namespace Canis
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 			glm::mat4 projection = glm::mat4(1.0f);
+			glm::mat4 projectionCameraView = glm::mat4(1.0f);
 			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
 			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 			cameraView = camera->GetViewMatrix();
+			projectionCameraView = projection*cameraView;
 			
 			std::string modelKey = "MODEL";
 			std::string colorKey = "COLOR";
@@ -443,6 +445,7 @@ namespace Canis
 			unsigned int size = 0;
 			unsigned int ebo = 0;
 			unsigned int materialInfo = 0u;
+			MaterialAsset* material = nullptr;
 
 			InstanceMeshAsset* instanceMeshAsset = nullptr;
 
@@ -474,152 +477,162 @@ namespace Canis
 				}
 
 				materialId = mesh.material;
-				MaterialAsset* material = AssetManager::Get<MaterialAsset>(materialId);
-				materialInfo = material->info;
+				MaterialAsset* currentMaterial = AssetManager::Get<MaterialAsset>(materialId);
 
-				if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+				if (currentMaterial != material)
 				{
-					Log("BAD");
-					continue;
-					//glEnable(GL_CULL_FACE);
-					//glCullFace(GL_FRONT_AND_BACK);
-				}
-				else if ((materialInfo | MaterialInfo::HASBACKFACECULLING) == materialInfo)
-				{
-					glEnable(GL_CULL_FACE);
-					glCullFace(GL_BACK);
-				}
-				else if ((materialInfo | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
-				{
-					glEnable(GL_CULL_FACE);
-					glCullFace(GL_FRONT);
-				}
-				else
-				{
-					glDisable(GL_CULL_FACE);
-				}
+					material = currentMaterial;
+					materialInfo = material->info;
 
-				shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
-					material->shaderId
-				)->GetShader();
-
-				if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
-				{
-					//glFinish();
-					glDisable(GL_BLEND);
-
-					glBindFramebuffer(GL_FRAMEBUFFER, 0);
-
-					glFlush();
-
-					glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
-					glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-					screenSpaceCopyShader->Use();
-
-					glActiveTexture(GL_TEXTURE0+textureCount);
-					screenSpaceCopyShader->SetInt("image", textureCount);
-					textureCount++;
-
-					glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
-					
-					renderQuad();
-					screenSpaceCopyShader->UnUse();
-
-
-					glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-				}
-				else
-				{
-					glEnable(GL_BLEND);
-				}
-
-				// activate shader
-				shadow_mapping_shader->Use();
-
-				// directional light
-				int numDirLights = 0;
-
-				auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
-
-				for (auto [entity, transform, directionalLight] : viewDirLight.each())
-				{
-					if (transform.active)
+					if ((materialInfo | MaterialInfo::HASBACKFACECULLING | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
 					{
-						numDirLights++;
-						shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(glm::eulerAngles(transform.rotation)));
-						shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
-						shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
-						shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
+						Log("BAD");
+						continue;
+						//glEnable(GL_CULL_FACE);
+						//glCullFace(GL_FRONT_AND_BACK);
 					}
-					break;
-				}
+					else if ((materialInfo | MaterialInfo::HASBACKFACECULLING) == materialInfo)
+					{
+						glEnable(GL_CULL_FACE);
+						glCullFace(GL_BACK);
+					}
+					else if ((materialInfo | MaterialInfo::HASFRONTFACECULLING) == materialInfo)
+					{
+						glEnable(GL_CULL_FACE);
+						glCullFace(GL_FRONT);
+					}
+					else
+					{
+						glDisable(GL_CULL_FACE);
+					}
 
-				shadow_mapping_shader->SetInt("numDirLights", numDirLights);
+					shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
+						material->shaderId
+					)->GetShader();
 
-				shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
+					if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
+					{
+						//glFinish();
+						glDisable(GL_BLEND);
 
-				shadow_mapping_shader->SetInt("hdr", true);
-				shadow_mapping_shader->SetFloat("exposure", 3.1f);
+						glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
-				shadow_mapping_shader->SetVec3("viewPos", camera->Position);
-				shadow_mapping_shader->SetVec3("lightPos", lightPos);
-				shadow_mapping_shader->SetMat4("projection", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
-				shadow_mapping_shader->SetMat4("view", cameraView);
-				shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
-				shadow_mapping_shader->SetFloat("NEARPLANE", camera->nearPlane);
-				shadow_mapping_shader->SetFloat("FARPLANE", camera->farPlane);
+						glFlush();
 
-				diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
-				specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
-				emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
+						glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
+						glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+						screenSpaceCopyShader->Use();
 
-				glActiveTexture(GL_TEXTURE0+textureCount);
-				glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
-				shadow_mapping_shader->SetInt("material.diffuse", textureCount);
-				textureCount++;
+						glActiveTexture(GL_TEXTURE0+textureCount);
+						screenSpaceCopyShader->SetInt("image", textureCount);
+						textureCount++;
 
-				glActiveTexture(GL_TEXTURE0+textureCount);
-				glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
-				shadow_mapping_shader->SetInt("material.specular", textureCount);
-				textureCount++;
+						glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+						
+						renderQuad();
+						screenSpaceCopyShader->UnUse();
 
-				glActiveTexture(GL_TEXTURE0+textureCount);
-				glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
-				shadow_mapping_shader->SetInt("material.emission", textureCount);
-				textureCount++;
 
-				glActiveTexture(GL_TEXTURE0+textureCount);
-				glBindTexture(GL_TEXTURE_2D, shadowMap);
-				shadow_mapping_shader->SetInt("shadowMap", textureCount);
-				textureCount++;
+						glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
+					}
+					else
+					{
+						glEnable(GL_BLEND);
+					}
 
-				glActiveTexture(GL_TEXTURE0+textureCount);
-				glBindTexture(GL_TEXTURE_2D, screenSpace);
-				shadow_mapping_shader->SetInt("SCREENTEXTURE", textureCount);
-				textureCount++;
+					// activate shader
+					shadow_mapping_shader->Use();
 
-				if ( (material->info | MaterialInfo::HASDEPTH) == material->info )
-				{
+					// directional light
+					int numDirLights = 0;
+
+					auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+
+					for (auto [entity, transform, directionalLight] : viewDirLight.each())
+					{
+						if (transform.active)
+						{
+							numDirLights++;
+							shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(glm::eulerAngles(transform.rotation)));
+							shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
+							shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
+							shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
+						}
+						break;
+					}
+
+					shadow_mapping_shader->SetInt("numDirLights", numDirLights);
+
+					shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
+
+					shadow_mapping_shader->SetInt("hdr", true);
+					shadow_mapping_shader->SetFloat("exposure", 3.1f);
+
+					shadow_mapping_shader->SetVec3("viewPos", camera->Position);
+					shadow_mapping_shader->SetVec3("lightPos", lightPos);
+					shadow_mapping_shader->SetMat4("PROJECTION", projection); // note: currently we set the projection matrix each frame, but since the projection matrix rarely changes it's often best practice to set it outside the main loop only once.
+					shadow_mapping_shader->SetMat4("VIEW", cameraView);
+					shadow_mapping_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+					shadow_mapping_shader->SetFloat("NEARPLANE", camera->nearPlane);
+					shadow_mapping_shader->SetFloat("FARPLANE", camera->farPlane);
+
+					diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
+					specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
+					emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
+
 					glActiveTexture(GL_TEXTURE0+textureCount);
-					glBindTexture(GL_TEXTURE_2D, depthMap);
-					shadow_mapping_shader->SetInt("DEPTHTEXTURE", textureCount);
+					glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
+					shadow_mapping_shader->SetInt("material.diffuse", textureCount);
 					textureCount++;
-				}
 
-				for(int i = 0; i < material->texNames.size(); i++)
-				{
 					glActiveTexture(GL_TEXTURE0+textureCount);
-					glBindTexture(GL_TEXTURE_2D, material->texId[i]);
-					shadow_mapping_shader->SetInt(material->texNames[i].c_str(), textureCount);
+					glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
+					shadow_mapping_shader->SetInt("material.specular", textureCount);
 					textureCount++;
+
+					glActiveTexture(GL_TEXTURE0+textureCount);
+					glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
+					shadow_mapping_shader->SetInt("material.emission", textureCount);
+					textureCount++;
+
+					glActiveTexture(GL_TEXTURE0+textureCount);
+					glBindTexture(GL_TEXTURE_2D, shadowMap);
+					shadow_mapping_shader->SetInt("shadowMap", textureCount);
+					textureCount++;
+
+					glActiveTexture(GL_TEXTURE0+textureCount);
+					glBindTexture(GL_TEXTURE_2D, screenSpace);
+					shadow_mapping_shader->SetInt("SCREENTEXTURE", textureCount);
+					textureCount++;
+
+					if ( (material->info | MaterialInfo::HASDEPTH) == material->info )
+					{
+						glActiveTexture(GL_TEXTURE0+textureCount);
+						glBindTexture(GL_TEXTURE_2D, depthMap);
+						shadow_mapping_shader->SetInt("DEPTHTEXTURE", textureCount);
+						textureCount++;
+					}
+
+					for(int i = 0; i < material->texNames.size(); i++)
+					{
+						glActiveTexture(GL_TEXTURE0+textureCount);
+						glBindTexture(GL_TEXTURE_2D, material->texId[i]);
+						shadow_mapping_shader->SetInt(material->texNames[i].c_str(), textureCount);
+						textureCount++;
+					}
+
+					shadow_mapping_shader->SetFloat("TIME", m_time);
 				}
-
-				shadow_mapping_shader->SetFloat("TIME", m_time);
-
+				
 				glBindVertexArray(vao);
 
 				shadow_mapping_shader->SetMat4(modelKey, transform.modelMatrix);
 
+				if (mesh.useInstance)
+					shadow_mapping_shader->SetMat4("PV", projectionCameraView);
+				else
+					shadow_mapping_shader->SetMat4("PVM", projectionCameraView * transform.modelMatrix);
+				
 				shadow_mapping_shader->SetVec4(colorKey, color.color);
 				shadow_mapping_shader->SetBool("USEEMISSION", material->info & MaterialInfo::HASEMISSION);
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
@@ -746,17 +759,27 @@ namespace Canis
 			glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 			// create 2 floating point color buffers (1 for normal rendering, other for brightness threshold values)
 			glGenTextures(2, colorBuffers);
-			for (unsigned int i = 0; i < 2; i++)
-			{
-				glBindTexture(GL_TEXTURE_2D, colorBuffers[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-				// attach texture to framebuffer
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0 + i, GL_TEXTURE_2D, colorBuffers[i], 0);
-			}
+
+			/////////////////////////////////////
+			glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+			// attach texture to framebuffer
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffers[0], 0);
+
+			/////////////////////////////////////
+			glBindTexture(GL_TEXTURE_2D, colorBuffers[1]);
+			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+			// attach texture to framebuffer
+			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, colorBuffers[1], 0);
+			
 			// create and attach depth buffer (renderbuffer)
 			glGenRenderbuffers(1, &rboDepth);
 			glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
@@ -777,7 +800,7 @@ namespace Canis
 			{
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
 				glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
@@ -859,6 +882,10 @@ namespace Canis
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
 
+			// timing float sort, shadowPass, depthPass, drawMesh, blur, bloomCombine;
+
+			// timing startTime = high_resolution_clock::now();
+
 			m_time += _deltaTime;
 
 			sortingEntities.clear();
@@ -899,29 +926,63 @@ namespace Canis
 
 			//startTime = high_resolution_clock::now();
 			//Canis::List::MergeSort(&sortingEntitiesList, Canis::DoubleAscending);
-			//endTime = high_resolution_clock::now();
-			//std::cout << "MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
+			// timing endTime = high_resolution_clock::now();
+			// timing sort = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
+			// timing startTime = high_resolution_clock::now();
+			// timing glFlush();
 			ShadowDepthPass(_deltaTime, _registry);
+			// timing glFinish();
+			// timing endTime = high_resolution_clock::now();
+			// timing shadowPass = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
+			// timing startTime = high_resolution_clock::now();
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
-			
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
-
+			// timing glFlush();
 			DepthPass(_deltaTime, _registry);
+			// timing glFinish();
+			// timing endTime = high_resolution_clock::now();
+			// timing depthPass = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
+
+			// timing startTime = high_resolution_clock::now();
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glEnable(GL_BLEND);
+			// timing glFlush();
 			DrawMesh(_deltaTime, _registry);
+			// timing glFinish();
+			// timing endTime = high_resolution_clock::now();
+			// timing drawMesh = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
+
+			// timing startTime = high_resolution_clock::now();
 			glDisable(GL_BLEND);
+			// timing glFlush();
 			Blur(_deltaTime, _registry);
+			// timing glFinish();
+			// timing endTime = high_resolution_clock::now();
+			// timing blur = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
+
+			// timing startTime = high_resolution_clock::now();
+			// timing glFlush();
 			BloomCombine(_deltaTime, _registry);
+			// timing glFinish();
+			// timing endTime = high_resolution_clock::now();
+			// timing bloomCombine = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
 			glDisable(GL_CULL_FACE);
 			glDisable(GL_DEPTH_TEST);
 			glDisable(GL_ALPHA);
 			glDisable(GL_BLEND);
+
+			// timing Log("////////////////////////");
+			// timing Log("sort: " + std::to_string(sort));
+			// timing Log("shadowPass: " + std::to_string(shadowPass));
+			// timing Log("depthPass: " + std::to_string(depthPass));
+			// timing Log("drawMesh: " + std::to_string(drawMesh));
+			// timing Log("blur: " + std::to_string(blur));
+			// timing Log("bloomCombine: " + std::to_string(bloomCombine));
 		}
 	};
 } // end of Canis namespace
