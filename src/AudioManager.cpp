@@ -93,19 +93,29 @@ namespace Canis
         
         void Play(const std::string &_path)
         {
-            Play(_path, 1.0f);
+            int channel = Play(_path, 1.0f, false);
         }
         
         void Play(const std::string &_path, float _volume)
         {
+            int channel = Play(_path, _volume, false);
+        }
+
+        int Play(const std::string &_path, float _volume, bool _loop)
+        {
             if (GetProjectConfig().mute)
-                return;
+                return -1;
 
             int id = AssetManager::LoadSound(_path);
 
             SoundAsset* asset = AssetManager::Get<SoundAsset>(id);
 
-            asset->Play(_volume);
+            return asset->Play(_volume, _loop);
+        }
+
+        void StopSound(int _channel)
+        {
+            Mix_HaltChannel(_channel);
         }
         
         void StopAllSounds()

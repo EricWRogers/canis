@@ -531,14 +531,26 @@ namespace Canis
 
     void SoundAsset::Play()
     {
-        Play(1.0f);
+        int channel = Play(1.0f, false);
     }
 
     void SoundAsset::Play(float _volume)
     {
+        int channel = Play(_volume, false);
+    }
+
+    int SoundAsset::Play(float _volume, bool _loop)
+    {
         m_volume = _volume;
-        int channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
+        int channel = -1;
+
+        if (_loop)
+            channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, -1);
+        else
+            channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
+        
         Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
+        return channel;
     }
 
     bool MusicAsset::Load(std::string _path)

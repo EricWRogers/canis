@@ -110,6 +110,7 @@ namespace Canis
         
         void Play();
         void Play(float _volume);
+        int Play(float _volume, bool _loop);
     };
 
     class MusicAsset : public Asset
