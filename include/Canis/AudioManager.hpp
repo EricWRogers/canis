@@ -17,5 +17,7 @@ namespace Canis
 
         void Play(const std::string &_path);
         void Play(const std::string &_path, float _volume);
+
+        void StopAllSounds();
     }
 }

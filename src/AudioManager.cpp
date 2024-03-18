@@ -1,6 +1,7 @@
 #include <Canis/AudioManager.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/Canis.hpp>
+#include <SDL_mixer.h>
 
 namespace Canis
 {
@@ -107,5 +108,9 @@ namespace Canis
             asset->Play(_volume);
         }
         
+        void StopAllSounds()
+        {
+            Mix_HaltChannel(-1);
+        }
     }
 }
