@@ -1,5 +1,4 @@
 #pragma once
-//#include <Canis/ScriptableEntity.hpp>
 
 namespace Canis
 {

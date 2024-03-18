@@ -80,6 +80,47 @@ public:
         return *(T*)InitScriptableComponent();
     }
 
+    template<typename T>
+    bool HasScript()
+    {
+        if (!HasComponent<ScriptComponent>())
+            return false;
+        
+        Canis::ScriptComponent& sc = GetComponent<Canis::ScriptComponent>();
+        T* scriptableEntity = nullptr;
+        
+        if ((scriptableEntity = dynamic_cast<T*>(sc.Instance)) != nullptr)
+        {
+            return true;
+        }
+        else
+        {
+            return false;
+        }
+    }
+
+    template<typename T>
+    T& GetScript()
+    {
+        if (!HasComponent<ScriptComponent>())
+        {
+            FatalError("Entity does not script component");
+        }
+
+        Canis::ScriptComponent& sc = GetComponent<Canis::ScriptComponent>();
+        T* scriptableEntity = nullptr;
+        
+        if ((scriptableEntity = dynamic_cast<T*>(sc.Instance)) != nullptr)
+        {
+            return *scriptableEntity;
+        }
+        else
+        {
+            FatalError("Entity does not have that component");
+            return *static_cast<T*>(sc.Instance);
+        }
+    }
+
     void SetTag(std::string _tag);
 
     bool TagEquals(const char a[20], const char b[20]);
