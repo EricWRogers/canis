@@ -7,7 +7,11 @@
 
 namespace Canis
 {
-    App::App(){}
+    App::App()
+    {
+        Canis::Init();
+    }
+
     App::~App(){}
 
     void App::AddDecodeSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func)
@@ -52,11 +56,6 @@ namespace Canis
 
     void App::Run( std::string _windowName, std::string _sceneName)
     {
-        if (appState == AppState::ON)
-		    FatalError("App already running.");
-
-        Canis::Init();
-
         unsigned int windowFlags = 0;
 
         // windowFlags |= Canis::WindowFlags::FULLSCREEN;
