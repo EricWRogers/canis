@@ -139,6 +139,9 @@ namespace Canis
             sceneManager.InputUpdate();
 
             window.fps = time.endFrame(); 
+
+            if (sceneManager.running == false)
+                appState = AppState::OFF;
         }
     }
 }

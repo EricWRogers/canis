@@ -74,6 +74,7 @@ public:
     float drawTime = 0.0f;
 
     unsigned int seed = 0;
+    bool running = true;
 
     std::unordered_map<std::string, std::string> message = {};
     std::unordered_map<std::string, std::string> nextMessage = {};
