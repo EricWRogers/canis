@@ -113,6 +113,11 @@ namespace Canis
             return asset->Play(_volume, _loop);
         }
 
+        void SetVolume(int _channel, float _volume)
+        {
+            Mix_Volume(_channel, 128 * _volume * GetProjectConfig().volume);
+        }
+
         void StopSound(int _channel)
         {
             Mix_HaltChannel(_channel);
