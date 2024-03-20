@@ -16,6 +16,7 @@ namespace Canis
         extern bool GetBool(const std::string &_key, bool _defaultValue);
         extern void SetBool(const std::string &_key, bool _value);
 
+        extern void Init(const std::string &_organization, const std::string &_app);
         extern void LoadFromFile();
         extern void SaveToFile();
     }

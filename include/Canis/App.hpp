@@ -20,7 +20,7 @@ enum AppState
 class App
 {
 public:
-    App();
+    App(const std::string &_organization, const std::string &_app);
     ~App();
 
     void AddDecodeSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func);

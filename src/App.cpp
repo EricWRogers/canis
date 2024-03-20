@@ -8,9 +8,10 @@
 
 namespace Canis
 {
-    App::App()
+    App::App(const std::string &_organization, const std::string &_app)
     {
         Init();
+        PlayerPrefs::Init(_organization, _app);
         PlayerPrefs::LoadFromFile();
     }
 

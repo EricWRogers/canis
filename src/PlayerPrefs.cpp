@@ -1,13 +1,14 @@
 #include <Canis/PlayerPrefs.hpp>
 #include <Canis/Debug.hpp>
 #include <map>
+#include <SDL2/SDL_filesystem.h>
 #include <SDL2/SDL_rwops.h>
 
 namespace Canis
 {
     namespace PlayerPrefs
     {
-        const std::string PLAYERDATAPATH = "assets/player.data";
+        static std::string PLAYERDATAPATH = "";
 
         std::map<std::string,std::string> &GetPlayerData()
         {
@@ -113,7 +114,7 @@ namespace Canis
 
             std::map<std::string,std::string>& playerData = GetPlayerData();
 
-            SDL_RWops* file = SDL_RWFromFile(PLAYERDATAPATH.c_str(), "r");
+            SDL_RWops* file = SDL_RWFromFile((PLAYERDATAPATH+"player.data").c_str(), "r");
 
             if (file == nullptr) {
                 Canis::Log("Player Data Not Found.");
@@ -155,7 +156,7 @@ namespace Canis
 
             std::map<std::string,std::string>& playerData = GetPlayerData();
 
-            SDL_RWops *file = SDL_RWFromFile(PLAYERDATAPATH.c_str(), "w+");
+            SDL_RWops *file = SDL_RWFromFile((PLAYERDATAPATH+"player.data").c_str(), "w+");
 
             if (file == nullptr)
             {
@@ -170,6 +171,11 @@ namespace Canis
             }
 
             SDL_RWclose(file);
+        }
+
+        void Init(const std::string &_organization, const std::string &_app)
+        {
+            PLAYERDATAPATH = std::string(SDL_GetPrefPath(_organization.c_str(), _app.c_str()));
         }
     }
 }
