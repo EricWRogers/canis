@@ -2,6 +2,7 @@
 
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
+#include <Canis/PlayerPrefs.hpp>
 
 #include <SDL_mixer.h>
 
@@ -9,10 +10,14 @@ namespace Canis
 {
     App::App()
     {
-        Canis::Init();
+        Init();
+        PlayerPrefs::LoadFromFile();
     }
 
-    App::~App(){}
+    App::~App()
+    {
+        PlayerPrefs::SaveToFile();
+    }
 
     void App::AddDecodeSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func)
     {
