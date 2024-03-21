@@ -51,7 +51,7 @@ namespace Canis
 
 	const mat4& GetModelMatrix(TransformComponent &_transform);
 
-    vec3 GetGlobalPosition(TransformComponent &_transform);
+    vec3 GetGlobalPosition(const TransformComponent &_transform);
 
     vec3 GetGlobalRotation(TransformComponent &_transform);
 

@@ -19,6 +19,7 @@
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
+#include "../Components/PointLightComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
 
 #include <Canis/Asset.hpp>
@@ -564,6 +565,32 @@ namespace Canis
 					}
 
 					shadow_mapping_shader->SetInt("numDirLights", numDirLights);
+
+					// point light 1
+					int numPointLights = 0;
+					int maxPointLights = 8;
+					
+					auto viewPointLight = registry.view<const Canis::TransformComponent, const Canis::PointLightComponent>();
+
+					for (auto [entity, t, pointLight] : viewPointLight.each())
+					{
+						if (numPointLights > maxPointLights)
+							break;
+						
+						if (t.active)
+						{
+							shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].position", t.position);
+							shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].ambient", pointLight.ambient);
+							shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].diffuse", pointLight.diffuse);
+							shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].specular", pointLight.specular);
+							shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].constant", pointLight.constant);
+							shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].linear", pointLight.linear);
+							shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].quadratic", pointLight.quadratic);
+							numPointLights++;
+						}
+					}
+
+					shadow_mapping_shader->SetInt("numPointLights", numPointLights);
 
 					shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
 

@@ -294,7 +294,7 @@ namespace Canis
         return _transform.modelMatrix;
     }
 
-    vec3 GetGlobalPosition(TransformComponent &_transform)
+    vec3 GetGlobalPosition(const TransformComponent &_transform)
     {
         return vec3(_transform.modelMatrix[3]);
     }
