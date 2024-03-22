@@ -480,6 +480,11 @@ namespace Canis
         _value = _min + sin(Canis::PI * _fraction) * (_max - _min);
     }
 
+    void AnimationBellCurve(vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction)
+    {
+        _value = _min + sin(Canis::PI * _fraction) * (_max - _min);
+    }
+
     void Clamp(float &_value, float _min, float _max)
     {
         if (_value < _min)
