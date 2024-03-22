@@ -412,7 +412,7 @@ namespace Canis
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
-        scene->deltaTime       = _deltaTime * scene->timeScale;
         scene->unscaledDeltaTime = _deltaTime;
+        scene->deltaTime         = _deltaTime * scene->timeScale;
     }
 } // end of Canis namespace
