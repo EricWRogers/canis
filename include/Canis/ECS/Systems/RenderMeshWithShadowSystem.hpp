@@ -645,7 +645,7 @@ namespace Canis
 					float attenuation = 1.0 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
 
 					if (attenuation <= 0.0001)
-						break;
+						continue;
 					
 					if (t.active)
 					{
