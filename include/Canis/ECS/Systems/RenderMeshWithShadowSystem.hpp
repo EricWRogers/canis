@@ -632,13 +632,13 @@ namespace Canis
 
 				// point light
 				int numPointLights = 0;
-				int maxPointLights = 8;
+				int maxPointLights = 10;
 				
 				auto viewPointLight = registry.view<const Canis::TransformComponent, const Canis::PointLightComponent>();
 
 				for (auto [entity, t, pointLight] : viewPointLight.each())
 				{
-					if (numPointLights > maxPointLights)
+					if (numPointLights >= maxPointLights)
 						break;
 
 					float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
