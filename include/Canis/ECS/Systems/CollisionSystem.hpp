@@ -279,6 +279,18 @@ namespace Canis
         {
             if (hits.contains(_entity))
             {
+                int i = 0;
+                while (i < hits[_entity].size())
+                {
+                    if (hits[_entity][i] == entt::tombstone || !GetScene().entityRegistry.valid(hits[_entity][i]))
+                    {
+                        hits[_entity].erase(hits[_entity].begin() + i);
+                    }
+                    else
+                    {
+                        i++;
+                    }
+                }
                 return hits[_entity];
             }
 
