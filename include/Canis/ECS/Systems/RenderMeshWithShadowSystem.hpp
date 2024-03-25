@@ -942,10 +942,12 @@ namespace Canis
 				//if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
 				//	continue;
 
+				glm::vec3 pos = Canis::GetGlobalPosition(transform);
+
 				RenderEnttRapper rer = {};
 				rer.e = entity;
 				if (sortBy == SortBy::DISTANCE)
-					rer.value = glm::distance(GetGlobalPosition(transform), camera->Position);
+					rer.value = glm::distance( pos, camera->Position);
 				if (sortBy == SortBy::HEIGHT)
 					rer.value = transform.position.y;
 

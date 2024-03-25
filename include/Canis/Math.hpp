@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <Canis/External/entt.hpp>
 #include <Canis/Entity.hpp>
+#include <Canis/ECS/Components/TransformComponent.hpp>
 
 using namespace glm;
 
@@ -51,7 +52,7 @@ namespace Canis
 
 	const mat4& GetModelMatrix(TransformComponent &_transform);
 
-    vec3 GetGlobalPosition(const TransformComponent &_transform);
+    extern glm::vec3 GetGlobalPosition(const TransformComponent &_transform);
 
     vec3 GetGlobalRotation(TransformComponent &_transform);
 
