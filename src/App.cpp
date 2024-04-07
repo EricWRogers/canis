@@ -87,9 +87,9 @@ namespace Canis
         Canis::Log("seed : " + std::to_string(seed));
 
         if(GetProjectConfig().useFrameLimit)
-            time.init(GetProjectConfig().frameLimit+0.0f);
+            time.Init(GetProjectConfig().frameLimit+0.0f);
         else
-            time.init(100000);
+            time.Init(100000);
 
         camera.override_camera = false;
 
@@ -120,7 +120,7 @@ namespace Canis
     {
         while (appState == AppState::ON)
         {
-            deltaTime = time.startFrame();
+            deltaTime = time.StartFrame();
 
             sceneManager.SetDeltaTime(deltaTime);
 
@@ -138,7 +138,7 @@ namespace Canis
             
             sceneManager.InputUpdate();
 
-            window.fps = time.endFrame(); 
+            window.fps = time.EndFrame(); 
 
             if (sceneManager.running == false)
                 appState = AppState::OFF;

@@ -17,7 +17,7 @@ namespace Canis
 
         void Play(const std::string &_path);
         void Play(const std::string &_path, float _volume);
-        int Play(const std::string &_path, float _volume, bool _loop);
+        int  Play(const std::string &_path, float _volume, bool _loop);
 
         void SetVolume(int _channel, float _volume);
 

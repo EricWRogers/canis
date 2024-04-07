@@ -11,42 +11,40 @@ namespace Canis
     {
     }
 
-    void Time::init(float maxFPS)
+    void Time::Init(float _targetFPS)
     {
-        setTargetFPS(maxFPS);
-        _previousTime = high_resolution_clock::now();
+        SetTargetFPS(_targetFPS);
+        previousTime = high_resolution_clock::now();
     }
 
-    void Time::setTargetFPS(float maxFPS)
+    void Time::SetTargetFPS(float _targetFPS)
     {
-        _maxFPS = maxFPS;
+        maxFPS = _targetFPS;
     }
 
-    float Time::startFrame()
+    float Time::StartFrame()
     {
-        _startTicks = SDL_GetTicks();
+        startTicks = SDL_GetTicks();
 
-        _currentTime = high_resolution_clock::now();
-        _nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(_currentTime - _previousTime).count();
-        _deltaTime = _nanoSecondsDeltaTime / 1000000000.0f;
-        _previousTime = _currentTime;
+        currentTime = high_resolution_clock::now();
+        nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count();
+        deltaTime = nanoSecondsDeltaTime / 1000000000.0;
+        previousTime = currentTime;
 
-        return _deltaTime;
+        return deltaTime;
     }
 
-    void Time::calculateFPS()
+    void Time::CalculateFPS()
     {
-        static const int NUM_SAMPLES = 50;
-        static float frameTimes[NUM_SAMPLES];
+        static const int NUM_SAMPLES = 60;
+        static double frameTimes[NUM_SAMPLES];
         static int currentFrame = 0;
 
-        static float prevTicks = SDL_GetTicks();
-
-        float currentTicks;
+        double currentTicks;
         currentTicks = SDL_GetTicks();
 
-        _frameTime = currentTicks - prevTicks;
-        frameTimes[currentFrame % NUM_SAMPLES] = _frameTime;
+        frameTime = currentTicks - prevTicks;
+        frameTimes[currentFrame % NUM_SAMPLES] = deltaTime * 1000;
 
         prevTicks = currentTicks;
 
@@ -61,7 +59,7 @@ namespace Canis
             count = NUM_SAMPLES;
         }
 
-        float frameTimeAverage = 0;
+        double frameTimeAverage = 0;
         for (int i = 0; i < count; i++)
         {
             frameTimeAverage += frameTimes[i];
@@ -71,24 +69,29 @@ namespace Canis
 
         if (frameTimeAverage > 0)
         {
-            _fps = 1000.0f / frameTimeAverage;
+            fps = 1000.0f / frameTimeAverage;
         }
         else
         {
-            _fps = 60.0f;
+            fps = 60.0f;
         }
     }
 
-    float Time::endFrame()
+    float Time::EndFrame()
     {
-        calculateFPS();
+        CalculateFPS();
         
-        float frameTicks = SDL_GetTicks() - _startTicks;
-        if (1000.0f / _maxFPS > frameTicks)
+        double frameTicks = SDL_GetTicks() - startTicks;
+
+        if ( (1000.0f / maxFPS) > frameTicks)
         {
-            SDL_Delay(1000.0f / _maxFPS - frameTicks);
+            SDL_Delay((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay);
         }
 
-        return _fps;
+        carryOverFrameDelay = ((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay) - ((int)((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay));
+
+        //Log("frame delay: " + std::to_string(carryOverFrameDelay));
+
+        return fps;
     }
 } // end of Canis namespace
