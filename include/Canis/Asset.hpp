@@ -198,20 +198,17 @@ namespace Canis
         HASDEPTH                            = 256u,
         HASBACKFACECULLING                  = 512u,
         HASFRONTFACECULLING                 = 1024u,
+        HASCUSTOMDEPTHSHADER                = 2048u,
     };
     
-    /*
-    color: [1.0, 1.0, 1.0, 1.0]
-    emission_color: [0.0, 0.0, 0.0]
-    emission_using_albedo_plus_intesity: 0.0
-    */
     struct MaterialAsset
     {
-        unsigned int info;
-        unsigned int shaderId;
-        unsigned int albedoId;
-        unsigned int specularId;
-        unsigned int emissionId;
+        unsigned int info = 0u;
+        unsigned int shaderId = 0u;
+        unsigned int depthShaderId = 0u;
+        unsigned int albedoId = 0u;
+        unsigned int specularId = 0u;
+        unsigned int emissionId = 0u;
         glm::vec4 color;
         glm::vec3 emissionColor;
         float emissionUsingAlbedoPlusIntesity;

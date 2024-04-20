@@ -332,6 +332,24 @@ namespace Canis
                 root.remove("shader");
             }
 
+            if (YAML::Node shaderNode = root["depth_shader"])
+            {
+                std::string shaderPath = shaderNode.as<std::string>();
+
+                material->depthShaderId = LoadShader(shaderPath);
+
+                ShaderAsset *shaderAsset = Get<ShaderAsset>(material->depthShaderId);
+
+                if (shaderAsset->GetShader()->IsLinked() == false)
+                {
+                    shaderAsset->GetShader()->Link();
+                }
+
+                material->info |= MaterialInfo::HASCUSTOMDEPTHSHADER;
+
+                root.remove("depth_shader");
+            }
+
             if (YAML::Node albedoNode = root["albedo"])
             {
                 std::string albedoPath = albedoNode.as<std::string>();

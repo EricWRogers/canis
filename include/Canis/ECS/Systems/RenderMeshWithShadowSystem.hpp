@@ -28,7 +28,8 @@
 
 namespace Canis
 {
-	struct RenderEnttRapper {
+	struct RenderEnttRapper
+	{
 		entt::entity e;
 		float value;
 	};
@@ -37,9 +38,9 @@ namespace Canis
 	{
 	private:
 		std::vector<RenderEnttRapper> sortingEntities = {};
-		RenderEnttRapper* sortingEntitiesList = nullptr;
+		RenderEnttRapper *sortingEntitiesList = nullptr;
 		high_resolution_clock::time_point startTime;
-    	high_resolution_clock::time_point endTime;
+		high_resolution_clock::time_point endTime;
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
@@ -56,12 +57,12 @@ namespace Canis
 
 		int entities_rendered = 0;
 		glm::vec3 lightPos = glm::vec3(0.0f, 30.0f, 30.0f);
-		glm::vec3 lightLookAt = glm::vec3(12.0f,0.0f,15.0f);
+		glm::vec3 lightLookAt = glm::vec3(12.0f, 0.0f, 15.0f);
 		float nearPlane = 1.0f;
 		float farPlane = 40.0f;
 		unsigned int quadVAO = 0;
 		unsigned int quadVBO;
-		const unsigned int SHADOW_WIDTH = 1024*4, SHADOW_HEIGHT = 1024*4;
+		const unsigned int SHADOW_WIDTH = 1024 * 4, SHADOW_HEIGHT = 1024 * 4;
 		unsigned int shadowMapFBO = 0;
 		unsigned int shadowMap;
 		unsigned int depthMapFBO = 0;
@@ -85,18 +86,20 @@ namespace Canis
 		bool bloom = true;
 		float exposure = 1.0f;
 
-		enum SortBy{
+		enum SortBy
+		{
 			DISTANCE,
 			HEIGHT
 		};
 
 		SortBy sortBy = SortBy::DISTANCE;
 
-		RenderMeshWithShadowSystem() : System() {
-			
+		RenderMeshWithShadowSystem() : System()
+		{
 		}
 
-		~RenderMeshWithShadowSystem() {
+		~RenderMeshWithShadowSystem()
+		{
 			Canis::List::Free(&sortingEntitiesList);
 		}
 
@@ -173,11 +176,11 @@ namespace Canis
 
 			// Check Firstly the result that have the most chance to faillure to avoid to call all functions.
 			return (isOnOrForwardPlan(camFrustum.leftFace, globalSphere) &&
-				isOnOrForwardPlan(camFrustum.rightFace, globalSphere) &&
-				isOnOrForwardPlan(camFrustum.farFace, globalSphere) &&
-				isOnOrForwardPlan(camFrustum.nearFace, globalSphere) &&
-				isOnOrForwardPlan(camFrustum.topFace, globalSphere) &&
-				isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
+					isOnOrForwardPlan(camFrustum.rightFace, globalSphere) &&
+					isOnOrForwardPlan(camFrustum.farFace, globalSphere) &&
+					isOnOrForwardPlan(camFrustum.nearFace, globalSphere) &&
+					isOnOrForwardPlan(camFrustum.topFace, globalSphere) &&
+					isOnOrForwardPlan(camFrustum.bottomFace, globalSphere));
 		};
 
 		void renderQuad()
@@ -186,10 +189,26 @@ namespace Canis
 			{
 				float quadVertices[] = {
 					// positions        // texture Coords
-					-1.0f,  1.0f, 0.0f, 0.0f, 1.0f,
-					-1.0f, -1.0f, 0.0f, 0.0f, 0.0f,
-					1.0f,  1.0f, 0.0f, 1.0f, 1.0f,
-					1.0f, -1.0f, 0.0f, 1.0f, 0.0f,
+					-1.0f,
+					1.0f,
+					0.0f,
+					0.0f,
+					1.0f,
+					-1.0f,
+					-1.0f,
+					0.0f,
+					0.0f,
+					0.0f,
+					1.0f,
+					1.0f,
+					0.0f,
+					1.0f,
+					1.0f,
+					1.0f,
+					-1.0f,
+					0.0f,
+					1.0f,
+					0.0f,
 				};
 				// setup plane VAO
 				glGenVertexArrays(1, &quadVAO);
@@ -198,9 +217,9 @@ namespace Canis
 				glBindBuffer(GL_ARRAY_BUFFER, quadVBO);
 				glBufferData(GL_ARRAY_BUFFER, sizeof(quadVertices), &quadVertices, GL_STATIC_DRAW);
 				glEnableVertexAttribArray(0);
-				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)0);
+				glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)0);
 				glEnableVertexAttribArray(1);
-				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void*)(3 * sizeof(float)));
+				glVertexAttribPointer(1, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), (void *)(3 * sizeof(float)));
 			}
 			glBindVertexArray(quadVAO);
 			glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -209,12 +228,12 @@ namespace Canis
 
 		void ShadowDepthPass(float deltaTime, entt::registry &registry)
 		{
-			glDisable(GL_CULL_FACE); 
-			
+			glDisable(GL_CULL_FACE);
+
 			// render
-        	// ------
-        	//glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			// ------
+			// glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+			// glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->Use();
 
@@ -222,8 +241,8 @@ namespace Canis
 
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
-			
-			//lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
+
+			// lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
 			lightProjection = glm::ortho(-lightProjectionSize, lightProjectionSize, -lightProjectionSize, lightProjectionSize, nearPlane, farPlane);
 			lightView = glm::lookAt(lightPos, lightLookAt, glm::vec3(0.0, 1.0, 0.0));
 			lightSpaceMatrix = lightProjection * lightView;
@@ -234,7 +253,7 @@ namespace Canis
 			glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
 			glClear(GL_DEPTH_BUFFER_BIT);
 			glActiveTexture(GL_TEXTURE0);
-			
+
 			// render scene
 			std::string modelKey = "model";
 
@@ -244,29 +263,36 @@ namespace Canis
 			unsigned int ebo = 0;
 			unsigned int instanceId = 0;
 
-			InstanceMeshAsset* instanceMeshAsset = nullptr;
+			InstanceMeshAsset *instanceMeshAsset = nullptr;
+			Shader *depthShader = shadow_mapping_depth_instance_shader;
+			MaterialAsset *material = nullptr;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
-				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
+				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+
+				if (!mesh.castShadow)
+					continue;
 
 				if (!mesh.useInstance)
 				{
-					if (mesh.id != modelId) {
+					if (mesh.id != modelId)
+					{
 						modelId = mesh.id;
 						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 						size = AssetManager::Get<ModelAsset>(modelId)->size;
 						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-						shadow_mapping_depth_shader->Use();
+						material = AssetManager::Get<MaterialAsset>(mesh.material);
 
-						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
+						depthShader = shadow_mapping_depth_shader;
 
-						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+						if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+							depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
 					}
 
-					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
+					depthShader->SetMat4(modelKey, transform.modelMatrix);
 				}
 				else
 				{
@@ -276,15 +302,17 @@ namespace Canis
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-					shadow_mapping_depth_instance_shader->Use();
+					material = AssetManager::Get<MaterialAsset>(mesh.material);
 
-					shadow_mapping_depth_instance_shader->SetInt("shadowMap", 0);
+					depthShader = shadow_mapping_depth_instance_shader;
 
-					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
+					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
 				}
 
-				if (!mesh.castShadow)
-					continue;
+				depthShader->Use();
+				depthShader->SetInt("shadowMap", 0);
+				depthShader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 
 				glBindVertexArray(vao);
 
@@ -292,17 +320,17 @@ namespace Canis
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
-						GL_UNSIGNED_INT,
-						0,
-						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
+											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											GL_UNSIGNED_INT,
+											0,
+											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			// reset viewport
 			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			// glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->UnUse();
 			glEnable(GL_CULL_FACE);
@@ -311,12 +339,12 @@ namespace Canis
 
 		void DepthPass(float deltaTime, entt::registry &registry)
 		{
-			glDisable(GL_CULL_FACE); 
-			
+			glDisable(GL_CULL_FACE);
+
 			// render
-        	// ------
-        	//glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
-        	//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			// ------
+			// glClearColor(0.1f, 0.1f, 0.1f, 1.0f);
+			// glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->Use();
 
@@ -324,7 +352,7 @@ namespace Canis
 
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
-			
+
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
 			glm::mat4 projection = glm::mat4(1.0f);
@@ -332,15 +360,15 @@ namespace Canis
 			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
 			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 			cameraView = camera->GetViewMatrix();
-			spaceMatrix = projection*cameraView;
-			
+			spaceMatrix = projection * cameraView;
+
 			shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
 
 			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
 			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 			glClear(GL_DEPTH_BUFFER_BIT);
 			glActiveTexture(GL_TEXTURE0);
-			
+
 			// render scene
 			std::string modelKey = "model";
 
@@ -350,29 +378,40 @@ namespace Canis
 			unsigned int ebo = 0;
 			unsigned int instanceId = 0;
 
-			InstanceMeshAsset* instanceMeshAsset = nullptr;
+			InstanceMeshAsset *instanceMeshAsset = nullptr;
+			Shader *depthShader = shadow_mapping_depth_instance_shader;
+			MaterialAsset *material = nullptr;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
-				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
+				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
+				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+
+				if (!mesh.castDepth)
+					continue;
 
 				if (!mesh.useInstance)
 				{
-					if (mesh.id != modelId) {
+					if (mesh.id != modelId)
+					{
 						modelId = mesh.id;
 						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 						size = AssetManager::Get<ModelAsset>(modelId)->size;
 						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-						shadow_mapping_depth_shader->Use();
+						material = AssetManager::Get<MaterialAsset>(mesh.material);
 
-						shadow_mapping_depth_shader->SetInt("shadowMap", 0);
+						depthShader = shadow_mapping_depth_shader;
 
-						shadow_mapping_depth_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
+						if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+							depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
+
+						depthShader->Use();
+						depthShader->SetInt("shadowMap", 0);
+						depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
 					}
 
-					shadow_mapping_depth_shader->SetMat4(modelKey, transform.modelMatrix);
+					depthShader->SetMat4(modelKey, transform.modelMatrix);
 				}
 				else
 				{
@@ -382,15 +421,17 @@ namespace Canis
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-					shadow_mapping_depth_instance_shader->Use();
+					material = AssetManager::Get<MaterialAsset>(mesh.material);
 
-					shadow_mapping_depth_instance_shader->SetInt("shadowMap", 0);
+					depthShader = shadow_mapping_depth_instance_shader;
 
-					shadow_mapping_depth_instance_shader->SetMat4("lightSpaceMatrix", spaceMatrix);
+					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
+					
+					depthShader->Use();
+					depthShader->SetInt("shadowMap", 0);
+					depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
 				}
-
-				if (!mesh.castDepth)
-					continue;
 
 				glBindVertexArray(vao);
 
@@ -398,17 +439,17 @@ namespace Canis
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
-						GL_UNSIGNED_INT,
-						0,
-						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
+											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											GL_UNSIGNED_INT,
+											0,
+											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
 			}
 
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			// reset viewport
 			glViewport(0, 0, window->GetScreenWidth(), window->GetScreenHeight());
-			//glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			// glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
 			shadow_mapping_depth_shader->UnUse();
 			glEnable(GL_CULL_FACE);
@@ -418,13 +459,13 @@ namespace Canis
 		void DrawMesh(float deltaTime, entt::registry &registry)
 		{
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
-        	glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			// reset viewport
 			glDepthFunc(GL_LESS);
 
-			entities_rendered = 0;    		
+			entities_rendered = 0;
 
 			// create transformations
 			glm::mat4 cameraView = glm::mat4(1.0f); // make sure to initialize matrix to identity matrix first
@@ -433,8 +474,8 @@ namespace Canis
 			projection = glm::perspective(camera->FOV, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), 0.05f, 100.0f);
 			// projection = glm::ortho(0.1f, static_cast<float>(window->GetScreenWidth()), 100.0f, static_cast<float>(window->GetScreenHeight()));
 			cameraView = camera->GetViewMatrix();
-			projectionCameraView = projection*cameraView;
-			
+			projectionCameraView = projection * cameraView;
+
 			std::string modelKey = "MODEL";
 			std::string colorKey = "COLOR";
 			std::string emissionKey = "EMISSION";
@@ -446,21 +487,22 @@ namespace Canis
 			unsigned int size = 0;
 			unsigned int ebo = 0;
 			unsigned int materialInfo = 0u;
-			MaterialAsset* material = nullptr;
+			MaterialAsset *material = nullptr;
 
-			InstanceMeshAsset* instanceMeshAsset = nullptr;
+			InstanceMeshAsset *instanceMeshAsset = nullptr;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const TransformComponent& transform = registry.get<const TransformComponent>(rer.e);
-				const ColorComponent& color = registry.get<const ColorComponent>(rer.e);
-				const MeshComponent& mesh = registry.get<const MeshComponent>(rer.e);
-				const SphereColliderComponent& sphere = registry.get<const SphereColliderComponent>(rer.e);
+				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+				const ColorComponent &color = registry.get<const ColorComponent>(rer.e);
+				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
+				const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
 				unsigned int textureCount = 0;
 
 				if (!mesh.useInstance)
 				{
-					if (mesh.id != modelId) {
+					if (mesh.id != modelId)
+					{
 						modelId = mesh.id;
 						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 						size = AssetManager::Get<ModelAsset>(modelId)->size;
@@ -475,11 +517,11 @@ namespace Canis
 					size = AssetManager::Get<ModelAsset>(modelId)->size;
 					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-					//glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
+					// glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
 				}
 
 				materialId = mesh.material;
-				MaterialAsset* currentMaterial = AssetManager::Get<MaterialAsset>(materialId);
+				MaterialAsset *currentMaterial = AssetManager::Get<MaterialAsset>(materialId);
 
 				if (currentMaterial != material)
 				{
@@ -490,8 +532,8 @@ namespace Canis
 					{
 						Log("BAD");
 						continue;
-						//glEnable(GL_CULL_FACE);
-						//glCullFace(GL_FRONT_AND_BACK);
+						// glEnable(GL_CULL_FACE);
+						// glCullFace(GL_FRONT_AND_BACK);
 					}
 					else if ((materialInfo | MaterialInfo::HASBACKFACECULLING) == materialInfo)
 					{
@@ -509,14 +551,14 @@ namespace Canis
 					}
 
 					shadow_mapping_shader = AssetManager::Get<ShaderAsset>(
-						material->shaderId
-					)->GetShader();
+												material->shaderId)
+												->GetShader();
 
 					shadow_mapping_shader->SetVec2("TEXELSHADOWSIZE", 1.0f / glm::vec2((float)SHADOW_WIDTH, (float)SHADOW_HEIGHT));
 
-					if ( (materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo )
+					if ((materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo)
 					{
-						//glFinish();
+						// glFinish();
 						glDisable(GL_BLEND);
 
 						glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -527,15 +569,14 @@ namespace Canis
 						glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 						screenSpaceCopyShader->Use();
 
-						glActiveTexture(GL_TEXTURE0+textureCount);
+						glActiveTexture(GL_TEXTURE0 + textureCount);
 						screenSpaceCopyShader->SetInt("image", textureCount);
 						textureCount++;
 
 						glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
-						
+
 						renderQuad();
 						screenSpaceCopyShader->UnUse();
-
 
 						glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 					}
@@ -584,42 +625,42 @@ namespace Canis
 					specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
 					emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
 
-					glActiveTexture(GL_TEXTURE0+textureCount);
+					glActiveTexture(GL_TEXTURE0 + textureCount);
 					glBindTexture(GL_TEXTURE_2D, diffuseColorPaletteTexture->id);
 					shadow_mapping_shader->SetInt("material.diffuse", textureCount);
 					textureCount++;
 
-					glActiveTexture(GL_TEXTURE0+textureCount);
+					glActiveTexture(GL_TEXTURE0 + textureCount);
 					glBindTexture(GL_TEXTURE_2D, specularColorPaletteTexture->id);
 					shadow_mapping_shader->SetInt("material.specular", textureCount);
 					textureCount++;
 
-					glActiveTexture(GL_TEXTURE0+textureCount);
+					glActiveTexture(GL_TEXTURE0 + textureCount);
 					glBindTexture(GL_TEXTURE_2D, emissionColorPaletteTexture->id);
 					shadow_mapping_shader->SetInt("material.emission", textureCount);
 					textureCount++;
 
-					glActiveTexture(GL_TEXTURE0+textureCount);
+					glActiveTexture(GL_TEXTURE0 + textureCount);
 					glBindTexture(GL_TEXTURE_2D, shadowMap);
 					shadow_mapping_shader->SetInt("shadowMap", textureCount);
 					textureCount++;
 
-					glActiveTexture(GL_TEXTURE0+textureCount);
+					glActiveTexture(GL_TEXTURE0 + textureCount);
 					glBindTexture(GL_TEXTURE_2D, screenSpace);
 					shadow_mapping_shader->SetInt("SCREENTEXTURE", textureCount);
 					textureCount++;
 
-					if ( (material->info | MaterialInfo::HASDEPTH) == material->info )
+					if ((material->info | MaterialInfo::HASDEPTH) == material->info)
 					{
-						glActiveTexture(GL_TEXTURE0+textureCount);
+						glActiveTexture(GL_TEXTURE0 + textureCount);
 						glBindTexture(GL_TEXTURE_2D, depthMap);
 						shadow_mapping_shader->SetInt("DEPTHTEXTURE", textureCount);
 						textureCount++;
 					}
 
-					for(int i = 0; i < material->texNames.size(); i++)
+					for (int i = 0; i < material->texNames.size(); i++)
 					{
-						glActiveTexture(GL_TEXTURE0+textureCount);
+						glActiveTexture(GL_TEXTURE0 + textureCount);
 						glBindTexture(GL_TEXTURE_2D, material->texId[i]);
 						shadow_mapping_shader->SetInt(material->texNames[i].c_str(), textureCount);
 						textureCount++;
@@ -627,13 +668,13 @@ namespace Canis
 
 					shadow_mapping_shader->SetFloat("TIME", m_time);
 				}
-				
+
 				glBindVertexArray(vao);
 
 				// point light
 				int numPointLights = 0;
 				int maxPointLights = 10;
-				
+
 				auto viewPointLight = registry.view<const Canis::TransformComponent, const Canis::PointLightComponent>();
 
 				for (auto [entity, t, pointLight] : viewPointLight.each())
@@ -646,16 +687,16 @@ namespace Canis
 
 					if (attenuation <= 0.0001)
 						continue;
-					
+
 					if (t.active)
 					{
-						shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].position", t.position);
-						shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].ambient", pointLight.ambient);
-						shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].diffuse", pointLight.diffuse);
-						shadow_mapping_shader->SetVec3("pointLights["+std::to_string(numPointLights)+"].specular", pointLight.specular);
-						shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].constant", pointLight.constant);
-						shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].linear", pointLight.linear);
-						shadow_mapping_shader->SetFloat("pointLights["+std::to_string(numPointLights)+"].quadratic", pointLight.quadratic);
+						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].position", t.position);
+						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].ambient", pointLight.ambient);
+						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].diffuse", pointLight.diffuse);
+						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].specular", pointLight.specular);
+						shadow_mapping_shader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].constant", pointLight.constant);
+						shadow_mapping_shader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].linear", pointLight.linear);
+						shadow_mapping_shader->SetFloat("pointLights[" + std::to_string(numPointLights) + "].quadratic", pointLight.quadratic);
 						numPointLights++;
 					}
 				}
@@ -668,50 +709,50 @@ namespace Canis
 					shadow_mapping_shader->SetMat4("PV", projectionCameraView);
 				else
 					shadow_mapping_shader->SetMat4("PVM", projectionCameraView * transform.modelMatrix);
-				
+
 				shadow_mapping_shader->SetVec4(colorKey, color.color);
 				shadow_mapping_shader->SetBool("USEEMISSION", material->info & MaterialInfo::HASEMISSION);
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
-				//glDrawArrays(GL_TRIANGLES, 0, size);
+				// glDrawArrays(GL_TRIANGLES, 0, size);
 				if (!mesh.useInstance)
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-						static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
-						GL_UNSIGNED_INT,
-						0,
-						static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
+											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											GL_UNSIGNED_INT,
+											0,
+											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
 
 				entities_rendered++;
 			}
 
 			// draw skybox as last
-            glDepthFunc(GL_LEQUAL);  // change depth function so depth test passes when values are equal to depth buffer's content
-            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->Use();
-            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("view", glm::mat4(glm::mat3(cameraView)));
-            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("projection", projection);
-            // skybox cube
-            glBindVertexArray(AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetVAO());
-            //Canis::Log(std::to_string(AssetManager::GetInstance().Get<Skybox>(skyboxAssetId)->GetVAO()));
-            glActiveTexture(GL_TEXTURE0);
-            glBindTexture(GL_TEXTURE_CUBE_MAP, AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetTexture());
-            glDrawArrays(GL_TRIANGLES, 0, 36);
-            glBindVertexArray(0);
-            glDepthFunc(GL_LESS); // set depth function back to default
-            AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->UnUse();
-			
+			glDepthFunc(GL_LEQUAL); // change depth function so depth test passes when values are equal to depth buffer's content
+			AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->Use();
+			AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("view", glm::mat4(glm::mat3(cameraView)));
+			AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->SetMat4("projection", projection);
+			// skybox cube
+			glBindVertexArray(AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetVAO());
+			// Canis::Log(std::to_string(AssetManager::GetInstance().Get<Skybox>(skyboxAssetId)->GetVAO()));
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_CUBE_MAP, AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetTexture());
+			glDrawArrays(GL_TRIANGLES, 0, 36);
+			glBindVertexArray(0);
+			glDepthFunc(GL_LESS); // set depth function back to default
+			AssetManager::Get<SkyboxAsset>(skyboxAssetId)->GetShader()->UnUse();
+
 			glBindVertexArray(0);
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			shadow_mapping_shader->UnUse();
 		}
-		
+
 		void Blur(float deltaTime, entt::registry &registry)
 		{
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
-			// 2. blur bright fragments with two-pass Gaussian Blur 
+			// 2. blur bright fragments with two-pass Gaussian Blur
 			// --------------------------------------------------
 			horizontal = true;
 			first_iteration = true;
@@ -723,7 +764,7 @@ namespace Canis
 				glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[horizontal]);
 				blurShader->SetInt("horizontal", horizontal);
 				glActiveTexture(GL_TEXTURE0);
-				glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]);  // bind texture of other framebuffer (or scene if first iteration)
+				glBindTexture(GL_TEXTURE_2D, first_iteration ? colorBuffers[1] : pingpongColorbuffers[!horizontal]); // bind texture of other framebuffer (or scene if first iteration)
 				renderQuad();
 				horizontal = !horizontal;
 				if (first_iteration)
@@ -749,7 +790,8 @@ namespace Canis
 			renderQuad();
 		}
 
-		void ConfigureBuffers() {
+		void ConfigureBuffers()
+		{
 			// configure depth map FBO
 			// -----------------------
 			glGenFramebuffers(1, &shadowMapFBO);
@@ -761,7 +803,7 @@ namespace Canis
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-			float borderColor[] = { 1.0, 1.0, 1.0, 1.0 };
+			float borderColor[] = {1.0, 1.0, 1.0, 1.0};
 			glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
 			// attach depth texture as FBO's depth buffer
 			glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
@@ -801,7 +843,7 @@ namespace Canis
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 			// attach texture to framebuffer
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffers[0], 0);
@@ -811,18 +853,18 @@ namespace Canis
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 			// attach texture to framebuffer
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, colorBuffers[1], 0);
-			
+
 			// create and attach depth buffer (renderbuffer)
 			glGenRenderbuffers(1, &rboDepth);
 			glBindRenderbuffer(GL_RENDERBUFFER, rboDepth);
 			glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH_COMPONENT32F, window->GetScreenWidth(), window->GetScreenHeight());
 			glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_RENDERBUFFER, rboDepth);
-			// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering 
-			unsigned int attachments[2] = { GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1 };
+			// tell OpenGL which color attachments we'll use (of this framebuffer) for rendering
+			unsigned int attachments[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
 			glDrawBuffers(2, attachments);
 			// finally check if framebuffer is complete
 			if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -855,52 +897,53 @@ namespace Canis
 			glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT);  // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
 			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-			
+
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenSpace, 0);
 		}
 
-		void Create() {
+		void Create()
+		{
 			skyboxAssetId = AssetManager::LoadSkybox("assets/textures/lowpoly-skybox/");
-			//skyboxAssetId = AssetManager::LoadSkybox("assets/textures/space-nebulas-skybox/");
+			// skyboxAssetId = AssetManager::LoadSkybox("assets/textures/space-nebulas-skybox/");
 
 			if (shadowMapFBO == 0)
 				ConfigureBuffers();
 
-			Canis::List::Init(&sortingEntitiesList,100,sizeof(RenderEnttRapper));
+			Canis::List::Init(&sortingEntitiesList, 100, sizeof(RenderEnttRapper));
 
 			int id = AssetManager::LoadShader("assets/shaders/shadow_mapping_depth");
-            shadow_mapping_depth_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
-            
-            if(!shadow_mapping_depth_shader->IsLinked())
-            {
-                shadow_mapping_depth_shader->Link();
-            }
+			shadow_mapping_depth_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
+
+			if (!shadow_mapping_depth_shader->IsLinked())
+			{
+				shadow_mapping_depth_shader->Link();
+			}
 
 			id = AssetManager::LoadShader("assets/shaders/shadow_mapping_depth_instance");
-            shadow_mapping_depth_instance_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
-            
-            if(!shadow_mapping_depth_instance_shader->IsLinked())
-            {
-                shadow_mapping_depth_instance_shader->Link();
-            }
+			shadow_mapping_depth_instance_shader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
+
+			if (!shadow_mapping_depth_instance_shader->IsLinked())
+			{
+				shadow_mapping_depth_instance_shader->Link();
+			}
 
 			id = AssetManager::LoadShader("assets/shaders/blur");
-            blurShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
-            
-            if(!blurShader->IsLinked())
-            {
-                blurShader->Link();
-            }
-			
+			blurShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
+
+			if (!blurShader->IsLinked())
+			{
+				blurShader->Link();
+			}
+
 			id = AssetManager::LoadShader("assets/shaders/bloom_final");
-            bloomFinalShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
-            
-            if(!bloomFinalShader->IsLinked())
-            {
-                bloomFinalShader->Link();
-            }
+			bloomFinalShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
+
+			if (!bloomFinalShader->IsLinked())
+			{
+				bloomFinalShader->Link();
+			}
 
 			id = AssetManager::LoadShader("assets/shaders/screen_space_copy");
 			screenSpaceCopyShader = AssetManager::Get<Canis::ShaderAsset>(id)->GetShader();
@@ -909,8 +952,8 @@ namespace Canis
 				screenSpaceCopyShader->Link();
 			}
 		}
-    	void Ready() {}
-    	void Update(entt::registry &_registry, float _deltaTime)
+		void Ready() {}
+		void Update(entt::registry &_registry, float _deltaTime)
 		{
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
@@ -939,7 +982,7 @@ namespace Canis
 				if (transform.isDirty)
 					UpdateModelMatrix(transform);
 
-				//if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
+				// if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
 				//	continue;
 
 				glm::vec3 pos = Canis::GetGlobalPosition(transform);
@@ -947,25 +990,27 @@ namespace Canis
 				RenderEnttRapper rer = {};
 				rer.e = entity;
 				if (sortBy == SortBy::DISTANCE)
-					rer.value = glm::distance( pos, camera->Position);
+					rer.value = glm::distance(pos, camera->Position);
 				if (sortBy == SortBy::HEIGHT)
 					rer.value = transform.position.y;
 
 				sortingEntities.push_back(rer);
 			}
 
-			//startTime = high_resolution_clock::now();
+			// startTime = high_resolution_clock::now();
 			if (sortBy == SortBy::DISTANCE)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.value > b.value); });
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+								 { return (a.value > b.value); });
 			if (sortBy == SortBy::HEIGHT)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper& a, const RenderEnttRapper& b){ return (a.value < b.value); });
-			//endTime = high_resolution_clock::now();
-			//std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+								 { return (a.value < b.value); });
+			// endTime = high_resolution_clock::now();
+			// std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
 
-			//startTime = high_resolution_clock::now();
-			//Canis::List::MergeSort(&sortingEntitiesList, Canis::DoubleAscending);
-			// timing endTime = high_resolution_clock::now();
-			// timing sort = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
+			// startTime = high_resolution_clock::now();
+			// Canis::List::MergeSort(&sortingEntitiesList, Canis::DoubleAscending);
+			//  timing endTime = high_resolution_clock::now();
+			//  timing sort = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
 			// timing startTime = high_resolution_clock::now();
 			// timing glFlush();
