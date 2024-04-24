@@ -409,6 +409,7 @@ namespace Canis
 						depthShader->Use();
 						depthShader->SetInt("shadowMap", 0);
 						depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
+						depthShader->SetFloat("TIME", m_time);
 					}
 
 					depthShader->SetMat4(modelKey, transform.modelMatrix);
@@ -431,6 +432,7 @@ namespace Canis
 					depthShader->Use();
 					depthShader->SetInt("shadowMap", 0);
 					depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
+					depthShader->SetFloat("TIME", m_time);
 				}
 
 				glBindVertexArray(vao);
