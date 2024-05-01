@@ -18,6 +18,10 @@ namespace Canis
 {
     void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status, float _angle)
     {
+        // stop crashes that happen when string empty
+        if (t.size() == 0)
+            return;
+        
         // activate corresponding render state
         shader.Use();
         shader.SetVec4("textColor", color);
