@@ -277,8 +277,8 @@ namespace Canis
 
 				if (!mesh.useInstance)
 				{
-					if (mesh.id != modelId)
-					{
+					//if (mesh.id != modelId)
+					//{
 						modelId = mesh.id;
 						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
 						size = AssetManager::Get<ModelAsset>(modelId)->size;
@@ -290,8 +290,8 @@ namespace Canis
 
 						if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
 							depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
-					}
-
+					//}
+					depthShader->Use();
 					depthShader->SetMat4(modelKey, transform.modelMatrix);
 				}
 				else
@@ -308,9 +308,11 @@ namespace Canis
 
 					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
 						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
+					
+					depthShader->Use();
 				}
 
-				depthShader->Use();
+				
 				depthShader->SetInt("shadowMap", 0);
 				depthShader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 
