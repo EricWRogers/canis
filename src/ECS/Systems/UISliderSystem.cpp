@@ -16,11 +16,6 @@ namespace Canis
         {
             if (slider.value != slider.targetValue)
             {
-                /*
-                slider._time += (slider.value < slider.targetValue) ? _deltaTime : -_deltaTime;
-                Lerp(slider.value, 0, 1, slider._time/slider.timeToMoveFullBar);
-                Clamp(slider.value, 0.0f, 1.0f);
-                */
                 if (slider.value < slider.targetValue)
                 {
                     slider._time += _deltaTime;
@@ -36,7 +31,6 @@ namespace Canis
                     if (slider.value < slider.targetValue)
                         slider.value = slider.targetValue;
                 }
-                
             }
 
             slider.value = (slider.value < 0.0f) ? 0.0f : slider.value;
