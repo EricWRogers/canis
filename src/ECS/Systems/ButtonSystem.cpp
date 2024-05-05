@@ -188,6 +188,10 @@ namespace Canis
         if (targetButton)
         {
             ButtonComponent &button = targetButton.GetComponent<ButtonComponent>();
+
+            if (button.func == nullptr)
+                return;
+
             if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD)
             {
                 if (button.action == 0u && inputManager->JustPressedButton(ControllerButton::A))
