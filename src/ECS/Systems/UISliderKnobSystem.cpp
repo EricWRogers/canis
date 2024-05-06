@@ -20,6 +20,9 @@ namespace Canis
         {
             if (!knob.slider)
                 return;
+            
+            if (mouseDown == false)
+                knob.grabbed = false;
 
             UISliderComponent& slider = knob.slider.GetComponent<UISliderComponent>();
             RectTransformComponent& sliderRect = knob.slider.GetComponent<RectTransformComponent>();
@@ -29,21 +32,19 @@ namespace Canis
                 (rect.size.y * rect.scale) / 2.0f
             };
             
-            if (slider.targetValue != knob.value)
-                SetUISliderTarget(slider, knob.value);
+            SetUISliderTarget(slider, knob.value, 0.0f);
             
             rect.anchor = sliderRect.anchor;
             rect.position.x = sliderRect.position.x + (knob.value * slider.maxWidth) - halfSize.x;
             rect.position.y = (sliderRect.position.y + (sliderRect.size.y * sliderRect.scale) / 2.0f) - halfSize.y;
-            
-            //if (!knob.grabbed)
-            //    return;
 
             if (mouseDown == false)
                 return;
 
-            if (!button.mouseOver)
+            if (!button.mouseOver && !knob.grabbed)
                 return;
+
+            knob.grabbed = true;
 
             rect.position.x = GetInputManager().mouse.x - (rect.size.x * rect.scale) / 2.0f;
             rect.position.x -= GetAnchor(
