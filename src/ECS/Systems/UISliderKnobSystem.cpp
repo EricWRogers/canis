@@ -23,13 +23,18 @@ namespace Canis
 
             UISliderComponent& slider = knob.slider.GetComponent<UISliderComponent>();
             RectTransformComponent& sliderRect = knob.slider.GetComponent<RectTransformComponent>();
+
+            vec2 halfSize {
+                (rect.size.x * rect.scale) / 2.0f,
+                (rect.size.y * rect.scale) / 2.0f
+            };
             
             if (slider.targetValue != knob.value)
                 SetUISliderTarget(slider, knob.value);
             
             rect.anchor = sliderRect.anchor;
-            rect.position.x = sliderRect.position.x + (knob.value * slider.maxWidth);
-            rect.position.y = sliderRect.position.y;
+            rect.position.x = sliderRect.position.x + (knob.value * slider.maxWidth) - halfSize.x;
+            rect.position.y = (sliderRect.position.y + (sliderRect.size.y * sliderRect.scale) / 2.0f) - halfSize.y;
             
             //if (!knob.grabbed)
             //    return;
@@ -40,20 +45,14 @@ namespace Canis
             if (!button.mouseOver)
                 return;
 
-            Log("mouse.x: " + std::to_string(rect.position.x));
-
             rect.position.x = GetInputManager().mouse.x - (rect.size.x * rect.scale) / 2.0f;
-
-            Log("mouse.x: " + std::to_string(rect.position.x));
             rect.position.x -= GetAnchor(
                 (RectAnchor)rect.anchor,
                 GetWindow().GetScreenWidth(),
                 GetWindow().GetScreenHeight()).x;
-
-            Log("mouse.x: " + std::to_string(rect.position.x));
             
-            Clamp(rect.position.x, sliderRect.position.x, sliderRect.position.x + slider.maxWidth);
-            knob.value = (rect.position.x - sliderRect.position.x) / slider.maxWidth;
+            Clamp(rect.position.x, sliderRect.position.x - halfSize.x, (sliderRect.position.x + slider.maxWidth) - halfSize.x);
+            knob.value = (rect.position.x - sliderRect.position.x + halfSize.x) / slider.maxWidth;
             
             if (knob.OnChanged)
             {

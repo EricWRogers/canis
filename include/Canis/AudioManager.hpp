@@ -10,6 +10,8 @@ namespace Canis
         void PlayMusic(const std::string &_path, float _volume);
         void PlayMusic(const std::string &_path, int _loops, float _volume);
 
+        void UpdateMusicVolume();
+
         void StopMusic();
 
         void Mute();

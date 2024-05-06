@@ -124,6 +124,7 @@ namespace Canis
         
         void Play(int _loops);
         void Play(int _loops, float _volume);
+        void UpdateVolume();
         void Mute();
         void UnMute();
         void Stop();

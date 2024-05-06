@@ -51,16 +51,6 @@ namespace Canis
                     continue;
                 }
             }
-            if (word == "volume") {
-                if (file >> fNumber) {
-                    GetProjectConfig().volume = fNumber;
-                    if (GetProjectConfig().volume > 1.5f)
-                        GetProjectConfig().volume = 1.5f;
-                    if (GetProjectConfig().volume < 0.0f)
-                        GetProjectConfig().volume = 0.0f;
-                    continue;
-                }
-            }
             if(word == "use_frame_limit")
             {
                 if(file >> word)

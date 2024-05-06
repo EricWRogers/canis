@@ -13,6 +13,9 @@ namespace Canis
         Init();
         PlayerPrefs::Init(_organization, _app);
         PlayerPrefs::LoadFromFile();
+
+        // set default audio
+        GetProjectConfig().volume = PlayerPrefs::GetInt("master_volume", 128) / 128.0f;
     }
 
     App::~App()

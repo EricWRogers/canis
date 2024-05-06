@@ -48,7 +48,18 @@ namespace Canis
 
             asset->Play(_loops, _volume);
         }
-        
+
+        void UpdateMusicVolume()
+        {
+            auto& audioManagerData = GetAudioManagerData();
+
+            if (audioManagerData.musicId != -1)
+            {
+                MusicAsset* asset = AssetManager::Get<MusicAsset>(audioManagerData.musicId);
+
+                asset->UpdateVolume();
+            }
+        }        
 
         void StopMusic()
         {

@@ -72,10 +72,10 @@ namespace Canis
         return true;
     }
 
-    void LoadMeshData(const tinygltf::Model     &_model,
-                      std::vector<glm::vec3>    &_positions,
-                      std::vector<glm::vec3>    &_normals,
-                      std::vector<glm::vec2>    &_texCoords,
+    void LoadMeshData(const tinygltf::Model &_model,
+                      std::vector<glm::vec3> &_positions,
+                      std::vector<glm::vec3> &_normals,
+                      std::vector<glm::vec2> &_texCoords,
                       std::vector<unsigned int> &_indices)
     {
         unsigned int indicesOffset = 0;
@@ -548,7 +548,7 @@ namespace Canis
             channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, -1);
         else
             channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
-        
+
         Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
         return channel;
     }
@@ -582,10 +582,15 @@ namespace Canis
         m_volume = _volume;
         Mix_PlayMusic((Mix_Music *)m_music, _loops);
 
+        UpdateVolume();
+    }
+
+    void MusicAsset::UpdateVolume()
+    {
         if (GetProjectConfig().mute)
             Mix_VolumeMusic(0.0f);
         else
-            Mix_VolumeMusic(128 * _volume * GetProjectConfig().volume);
+            Mix_VolumeMusic(128 * m_volume * GetProjectConfig().volume);
     }
 
     void MusicAsset::Mute()
