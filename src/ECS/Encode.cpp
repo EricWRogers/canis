@@ -118,19 +118,18 @@ namespace Canis
             _out << YAML::Key << "Canis::TextComponent";
             _out << YAML::BeginMap;
 
-			_out << YAML::Key << "assetId";
+			_out << YAML::Key << "text" << YAML::Value << tc.text;
+			_out << YAML::Key << "alignment" << YAML::Value << tc.alignment;
+
+			_out << YAML::Key << "TextAsset";
             _out << YAML::BeginMap;
 
 			_out << YAML::Key << "path" << YAML::Value << AssetManager::GetPath(tc.assetId);
 			_out << YAML::Key << "size" << YAML::Value << AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
 
-			_out << YAML::EndMap;
+			_out << YAML::EndMap; // close asset map
 
-            _out << YAML::Key << "active" << YAML::Value << tc.assetId;
-			_out << YAML::Key << "text" << YAML::Value << tc.text;
-			_out << YAML::Key << "alignment" << YAML::Value << tc.alignment;
-
-            _out << YAML::EndMap;
+            _out << YAML::EndMap; // close text component map
         }
 	}
 

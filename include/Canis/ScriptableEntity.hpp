@@ -5,6 +5,7 @@
 
 namespace Canis
 {
+class SceneManager;
 
 class ScriptableEntity
 {    
@@ -30,6 +31,7 @@ public:
     InputManager& GetInputManager() { return *entity.scene->inputManager; }
     Camera& GetCamera() { return *entity.scene->camera; }
     Scene& GetScene() { return *entity.scene; }
+    SceneManager& GetSceneManager() { return *(SceneManager*)(entity.scene->sceneManager); }
 
     template<typename T>
     T* GetSystem() { return entity.scene->GetSystem<T>(); }

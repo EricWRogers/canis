@@ -15,7 +15,7 @@ namespace Canis {
     };
 }
 
-/*namespace std {
+namespace std {
 	template <typename T> struct hash;
 
 	template<>
@@ -27,4 +27,4 @@ namespace Canis {
 		}
 	};
 
-}*/
+}

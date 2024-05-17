@@ -270,7 +270,7 @@ namespace Canis
             
             out << YAML::BeginMap;
 
-            out << YAML::Key << "Entity" << YAML::Value << entity.GetUUID();
+            out << YAML::Key << std::to_string(entity.GetUUID());
 
             for (int i = 0; i < encodeEntity.size(); i++)
                 encodeEntity[i](out, entity);

@@ -3,6 +3,7 @@
 #include <fstream>
 #include <yaml-cpp/yaml.h>
 #include <Canis/Data/Bit.hpp>
+#include <Canis/UUID.hpp>
 
 namespace YAML
 {
@@ -77,6 +78,23 @@ namespace YAML
 			rhs.y = node[1].as<float>();
 			rhs.z = node[2].as<float>();
 			rhs.w = node[3].as<float>();
+			return true;
+		}
+	};
+
+	template<>
+	struct convert<Canis::UUID>
+	{
+		static Node encode(const Canis::UUID& _uuid)
+		{
+			Node node;
+			node.push_back((uint64_t)_uuid);
+			return node;
+		}
+
+		static bool decode(const Node& _node, Canis::UUID& _uuid)
+		{
+			_uuid = _node.as<uint64_t>();
 			return true;
 		}
 	};

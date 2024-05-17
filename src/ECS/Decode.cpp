@@ -87,7 +87,7 @@ namespace Canis
         if (auto textComponent = _n["Canis::TextComponent"])
         {
             auto &tc = _entity.AddComponent<Canis::TextComponent>();
-            auto asset = textComponent["assetId"];
+            auto asset = textComponent["TextAsset"];
             if (asset)
             {
                 tc.assetId = AssetManager::LoadText(
