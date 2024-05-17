@@ -88,6 +88,7 @@ namespace Canis
     class TextAsset : public Asset
     {
     private:
+        std::string m_path = "";
         unsigned int m_vao, m_vbo, m_font_size;
     public:
         TextAsset(unsigned int _font_size) { m_font_size = _font_size; }
@@ -97,6 +98,8 @@ namespace Canis
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
         unsigned int GetFontSize() { return m_font_size; }
+
+        std::string GetPath() { return m_path; }
     };
 
     class SoundAsset : public Asset

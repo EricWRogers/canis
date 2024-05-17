@@ -16,6 +16,7 @@ namespace Canis
     class Scene {
         private:
             friend class Entity;
+            friend class SceneManager;
 
             std::vector<System*> m_updateSystems = {};
             std::vector<System*> m_renderSystems = {};

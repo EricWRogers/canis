@@ -19,7 +19,7 @@ class ParticleEmitterSystem : public System
 {
 private:
 public:
-    ParticleEmitterSystem() : System() {}
+    ParticleEmitterSystem() : System() { m_name = "Canis::ParticaleEmitterSystem"; }
 
     void Create() override {}
 

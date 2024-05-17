@@ -23,7 +23,7 @@ namespace Canis
         std::vector<HUDElementDepth> elements = {};
         bool m_hide = false;
     public:
-        RenderHUDSystem() : System() {}
+        RenderHUDSystem() : System() { m_name = "Canis::RenderHUDSystem"; }
 
         void SetSort(GlyphSortType _sortType);
 

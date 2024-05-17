@@ -193,6 +193,8 @@ namespace Canis
                 {
                     Canis::Entity entity = scene->CreateEntity();
 
+                    entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
+
                     for(int d = 0;  d < decodeEntity.size(); d++)
                         decodeEntity[d](e, entity, this);
 
@@ -257,6 +259,25 @@ namespace Canis
         YAML::Emitter out;
         out << YAML::BeginMap;
         out << YAML::Key << "Scene" << YAML::Value << scene->name;
+        
+        // Serialize System
+        out << YAML::Key << "Systems";
+        out << YAML::BeginSeq;
+        for (System* s : scene->m_updateSystems)
+        {
+            out << YAML::Value << s->GetName();
+        }
+        out << YAML::EndSeq;
+
+        // Serialize Render System
+        out << YAML::Key << "RenderSystems";
+        out << YAML::BeginSeq;
+        for (System* s : scene->m_renderSystems)
+        {
+            out << YAML::Value << s->GetName();
+        }
+        out << YAML::EndSeq;
+
 		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
         scene->entityRegistry.each([&](auto _entityHandle)
 		{
@@ -270,7 +291,7 @@ namespace Canis
             
             out << YAML::BeginMap;
 
-            out << YAML::Key << std::to_string(entity.GetUUID());
+            out << YAML::Key << "Entity" << YAML::Key << std::to_string(entity.GetUUID());
 
             for (int i = 0; i < encodeEntity.size(); i++)
                 encodeEntity[i](out, entity);

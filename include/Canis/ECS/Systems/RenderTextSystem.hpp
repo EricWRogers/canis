@@ -16,7 +16,7 @@ namespace Canis
     public:
         Canis::Shader textShader;
 
-        RenderTextSystem() : System() {}
+        RenderTextSystem() : System() { m_name = type_name<RenderTextSystem>(); }
 
         void RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status, float _angle);
 

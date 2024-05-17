@@ -7,7 +7,7 @@ namespace Canis
     {
     private:
     public:
-        SpriteAnimationSystem() : System() {}
+        SpriteAnimationSystem() : System() { m_name = type_name<SpriteAnimationSystem>(); }
 
         void Create() {}
 

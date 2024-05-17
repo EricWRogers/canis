@@ -53,7 +53,7 @@ namespace Canis
         }
 
         ~RenderHDRSystem() {
-
+            m_name = "Canis::RenderHDRSystem"; 
         }
 
         void Create()

@@ -9,5 +9,6 @@ namespace Canis
 
 		IDComponent() = default;
 		IDComponent(const IDComponent&) = default;
+		IDComponent(UUID _id) { ID = _id; }
 	};
 }

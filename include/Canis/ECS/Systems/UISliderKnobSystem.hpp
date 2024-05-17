@@ -8,7 +8,7 @@ namespace Canis
     {
     private:
     public:
-        UISliderKnobSystem() : System() {}
+        UISliderKnobSystem() : System() { m_name = type_name<UISliderKnobSystem>(); }
 
         void Create() {}
 

@@ -96,6 +96,7 @@ namespace Canis
 
 		RenderMeshWithShadowSystem() : System()
 		{
+			m_name = "Canis::RenderMeshWithShadowSystem"; 
 		}
 
 		~RenderMeshWithShadowSystem()

@@ -7,6 +7,7 @@
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
+#include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
 #include <Canis/ECS/Components/MeshComponent.hpp>
 
@@ -124,13 +125,67 @@ namespace Canis
 			_out << YAML::Key << "TextAsset";
             _out << YAML::BeginMap;
 
-			_out << YAML::Key << "path" << YAML::Value << AssetManager::GetPath(tc.assetId);
+			_out << YAML::Key << "path" << YAML::Value << AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
 			_out << YAML::Key << "size" << YAML::Value << AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
 
 			_out << YAML::EndMap; // close asset map
 
             _out << YAML::EndMap; // close text component map
         }
+	}
+
+	void EncodeButtonComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	{
+		if (_entity.HasComponent<ButtonComponent>())
+		{
+			ButtonComponent& bc = _entity.GetComponent<ButtonComponent>();
+			ButtonComponent defaultButton;
+
+			_out << YAML::Key << "Canis::ButtonComponent";
+            _out << YAML::BeginMap;
+
+			if (bc.eventName != defaultButton.eventName)
+				_out << YAML::Key << "eventName" << YAML::Value << bc.eventName;
+
+			if (bc.baseColor != defaultButton.baseColor)
+				_out << YAML::Key << "baseColor" << YAML::Value << bc.baseColor;
+
+			if (bc.hoverColor != defaultButton.hoverColor)
+				_out << YAML::Key << "hoverColor" << YAML::Value << bc.hoverColor;
+
+			if (bc.action != defaultButton.action)
+				_out << YAML::Key << "action" << YAML::Value << bc.action;
+
+			if (bc.mouseOver != defaultButton.mouseOver)
+				_out << YAML::Key << "mouseOver" << YAML::Value << bc.mouseOver;
+
+			if (bc.scale != defaultButton.scale)
+				_out << YAML::Key << "scale" << YAML::Value << bc.scale;
+
+			if (bc.hoverScale != defaultButton.hoverScale)
+				_out << YAML::Key << "hoverScale" << YAML::Value << bc.hoverScale;
+
+			if (bc.up)
+				if (bc.up.HasComponent<IDComponent>())
+					_out << YAML::Key << "up" << YAML::Value << (uint64_t)bc.up.GetComponent<IDComponent>().ID;
+			
+			if (bc.down)
+				if (bc.down.HasComponent<IDComponent>())
+					_out << YAML::Key << "down" << YAML::Value << (uint64_t)bc.down.GetComponent<IDComponent>().ID;
+			
+			if (bc.left)
+				if (bc.left.HasComponent<IDComponent>())
+					_out << YAML::Key << "left" << YAML::Value << (uint64_t)bc.left.GetComponent<IDComponent>().ID;
+			
+			if (bc.right)
+				if (bc.right.HasComponent<IDComponent>())
+					_out << YAML::Key << "right" << YAML::Value << (uint64_t)bc.right.GetComponent<IDComponent>().ID;
+
+			if (bc.defaultSelected != defaultButton.defaultSelected)
+				_out << YAML::Key << "defaultSelected" << YAML::Value << bc.defaultSelected;
+
+			_out << YAML::EndMap; // close asset map
+		}
 	}
 
 	void EncodeTagComponent(YAML::Emitter &_out, Canis::Entity &_entity)

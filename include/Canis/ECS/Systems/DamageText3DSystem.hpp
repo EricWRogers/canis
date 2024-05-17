@@ -9,7 +9,7 @@ namespace Canis
     {
     private:
     public:
-        DamageText3DSystem() : System() {}
+        DamageText3DSystem() : System() { m_name = type_name<DamageText3DSystem>(); }
 
         void Create() {}
 

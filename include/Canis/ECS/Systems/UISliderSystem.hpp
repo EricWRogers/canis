@@ -7,9 +7,9 @@ namespace Canis
     class Scene;
     class UISliderSystem : public System
     {
-    private:
+    protected:
     public:
-        UISliderSystem() : System() {}
+        UISliderSystem() : System() { m_name = type_name<UISliderSystem>(); }
 
         void Create() {}
 

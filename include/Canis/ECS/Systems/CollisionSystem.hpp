@@ -254,7 +254,7 @@ namespace Canis
         }
 
     public:
-        CollisionSystem() : System() {}
+        CollisionSystem() : System() { m_name = "Canis::CollisionSystem"; }
 
         void Create()
         {

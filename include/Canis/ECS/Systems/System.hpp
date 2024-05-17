@@ -1,6 +1,7 @@
 #pragma once
 
 #include <Canis/External/entt.hpp>
+#include <Canis/External/GetNameOfType.hpp>
 
 namespace Canis
 {
@@ -13,7 +14,8 @@ namespace Canis
 
     class System
     {
-    private:
+    protected:
+        std::string m_name = "ChangeMe";
     public:
         bool m_isCreated = false;
 
@@ -25,6 +27,7 @@ namespace Canis
         virtual void Draw(entt::registry &_registry, float _deltaTime) {}
 
         bool IsCreated() { return m_isCreated; }
+        std::string GetName() { return m_name; }
 
         Scene &GetScene() { return *scene; }
         Window &GetWindow() { return *window; }

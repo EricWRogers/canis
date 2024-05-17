@@ -188,19 +188,17 @@ namespace Canis
         if (targetButton)
         {
             ButtonComponent &button = targetButton.GetComponent<ButtonComponent>();
-
-            if (button.func == nullptr)
-                return;
+            bool clicked = false;
 
             if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD)
             {
                 if (button.action == 0u && inputManager->JustPressedButton(ControllerButton::A))
                 {
-                    button.func(button.instance);
+                    clicked = true;
                 }
                 else if (button.action == 1u && inputManager->JustReleasedButton(ControllerButton::A))
                 {
-                    button.func(button.instance);
+                    clicked = true;
                 }
             }
             else
@@ -209,14 +207,27 @@ namespace Canis
                 {
                     if (inputManager->JustLeftClicked())
                     {
-                        button.func(button.instance);
+                        clicked = true;
                     }
                 }
                 else if (button.action == 1u)
                 {
                     if (inputManager->LeftClickReleased())
                     {
-                        button.func(button.instance);
+                        clicked = true;
+                    }
+                }
+            }
+        
+            if (clicked)
+            {
+                for (int i = 0; i < List::GetCount(&m_buttonListeners); i++)
+                {
+                    ButtonListener& bl = m_buttonListeners[i];
+
+                    if (bl.name == button.eventName)
+                    {
+                        bl.func(targetButton, bl.data);
                     }
                 }
             }

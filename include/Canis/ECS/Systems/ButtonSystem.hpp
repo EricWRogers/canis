@@ -14,9 +14,9 @@ namespace Canis
     };
 
     struct ButtonListener {
-        std::string name;
-        void* data;
-        std::function<void(void* _data)> func;
+        std::string name = "";
+        void* data = nullptr;
+        std::function<void(Entity _entity, void* _data)> func = nullptr;
     };
 
     class ButtonSystem : public System
@@ -26,7 +26,7 @@ namespace Canis
         ButtonAndDepth* m_buttons = nullptr;
         ButtonListener* m_buttonListeners = nullptr;
     public:
-        ButtonSystem() : System() {}
+        ButtonSystem() : System() { m_name = type_name<ButtonSystem>(); }
         ~ButtonSystem();
 
         void Create();
@@ -38,7 +38,7 @@ namespace Canis
         ButtonListener* AddButtonListener(
             std::string _name,
             void* _data,
-            std::function<void(void* _data)> func
+            std::function<void(Entity _entity, void* _data)> func
         );
 
         void RemoveButtonListener(ButtonListener* _listener);

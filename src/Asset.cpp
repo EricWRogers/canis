@@ -425,6 +425,7 @@ namespace Canis
 
     bool TextAsset::Load(std::string _path)
     {
+        m_path = _path;
         // FreeType
         // --------
         // All functions return a value different than 0 whenever an error occurred

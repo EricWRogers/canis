@@ -40,7 +40,7 @@ namespace Canis
         static bool CompareBackToFront(Glyph *a, Glyph *b) { return (a->depth > b->depth); }
         static bool CompareTexture(Glyph *a, Glyph *b) { return (a->textureId < b->textureId); }
 
-        SpriteRenderer2DSystem() : System() {}
+        SpriteRenderer2DSystem() : System() { m_name = type_name<SpriteRenderer2DSystem>(); }
 
         ~SpriteRenderer2DSystem();
 
