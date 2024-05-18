@@ -256,6 +256,7 @@ namespace Canis
 
     void SceneManager::Save()
     {
+        Log("Save Scene");
         YAML::Emitter out;
         out << YAML::BeginMap;
         out << YAML::Key << "Scene" << YAML::Value << scene->name;

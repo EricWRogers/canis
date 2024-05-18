@@ -24,7 +24,7 @@ namespace Canis
     private:
         InputDevice m_lastInputDevice = InputDevice::MOUSE;
         ButtonAndDepth* m_buttons = nullptr;
-        ButtonListener* m_buttonListeners = nullptr;
+        std::vector<ButtonListener> m_buttonListeners = {};
     public:
         ButtonSystem() : System() { m_name = type_name<ButtonSystem>(); }
         ~ButtonSystem();
@@ -35,10 +35,10 @@ namespace Canis
 
         void Update(entt::registry &_registry, float _deltaTime);
 
-        ButtonListener* AddButtonListener(
+        ButtonListener& AddButtonListener(
             std::string _name,
             void* _data,
-            std::function<void(Entity _entity, void* _data)> func
+            std::function<void(Entity _entity, void* _data)> _func
         );
 
         void RemoveButtonListener(ButtonListener* _listener);

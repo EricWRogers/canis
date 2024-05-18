@@ -2,6 +2,7 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/SpriteAnimationComponent.hpp>
@@ -20,6 +21,10 @@
 #include <Canis/ECS/Systems/RenderHUDSystem.hpp>
 #include <Canis/ECS/Systems/RenderTextSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
+
+#include <Canis/External/GetNameOfType.hpp>
+
+using namespace glm;
 
 namespace Canis
 {
@@ -68,6 +73,28 @@ namespace Canis
             rt.scale = rectTransform["scale"].as<float>();
             rt.depth = rectTransform["depth"].as<float>();
             rt.scaleWithScreen = (ScaleWithScreen)rectTransform["scaleWithScreen"].as<int>(0);
+        }
+    }
+
+    void DecodeButtonComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    {
+        if (auto buttonComponent = _n["Canis::ButtonComponent"])
+        {
+            ButtonComponent defaultButton;
+
+            auto &bc = _entity.AddComponent<ButtonComponent>();
+            bc.eventName = buttonComponent["eventName"].as<std::string>();
+            bc.baseColor = buttonComponent["baseColor"].as<vec4>(defaultButton.baseColor);
+            bc.hoverColor = buttonComponent["hoverColor"].as<vec4>(defaultButton.hoverColor);
+            bc.action = buttonComponent["action"].as<unsigned int>(defaultButton.action);
+            bc.mouseOver = buttonComponent["mouseOver"].as<bool>(defaultButton.mouseOver);
+            bc.scale = buttonComponent["scale"].as<float>(defaultButton.scale);
+            bc.hoverScale = buttonComponent["hoverScale"].as<float>(defaultButton.hoverScale);
+            //bc.up = buttonComponent["up"].as<uint64_t>(defaultButton.up);
+            //bc.down = buttonComponent["down"].as<std::string>(defaultButton.down);
+            //bc.left = buttonComponent["left"].as<std::string>(defaultButton.left);
+            //bc.right = buttonComponent["right"].as<std::string>(defaultButton.right);
+            bc.defaultSelected = buttonComponent["defaultSelected"].as<bool>(defaultButton.defaultSelected);
         }
     }
 

@@ -114,9 +114,6 @@ namespace Canis
         // load first scene
         sceneManager.ForceLoad(_sceneName);
 
-        // do not commit
-        sceneManager.Save();
-
         appState = AppState::ON;
 
         Loop();
