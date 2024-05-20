@@ -105,7 +105,7 @@ namespace Canis
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels
         // in that buffer
-        glClearColor(0.05f, 0.05f, 0.05f, 1.0f);
+        SetClearColor(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f));
 
         // VSYNC 0 off 1 on
         SDL_GL_SetSwapInterval(0);
@@ -138,6 +138,16 @@ namespace Canis
     void Window::SetMousePosition(int _x, int _y)
     {
       SDL_WarpMouseInWindow((SDL_Window*)sdlWindow, _x, screenHeight - _y);
+    }
+
+    void Window::ClearColor()
+    {
+        glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+    }
+
+    void Window::SetClearColor(glm::vec4 _color)
+    {
+        m_clearColor = _color;
     }
 
     void Window::MouseLock(bool _isLocked)

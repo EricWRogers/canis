@@ -1,5 +1,6 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/Entity.hpp>
+#include <Canis/Yaml.hpp>
 
 #include <Canis/ECS/Components/TextComponent.hpp>
 
@@ -185,6 +186,11 @@ namespace Canis
         {
             YAML::Node root = YAML::LoadFile(scene->path);
 
+            window->SetClearColor(
+                root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f))
+            );
+            window->ClearColor();
+
             auto entities = root["Entities"];
 
             if(entities)
@@ -260,6 +266,8 @@ namespace Canis
         YAML::Emitter out;
         out << YAML::BeginMap;
         out << YAML::Key << "Scene" << YAML::Value << scene->name;
+
+        out << YAML::Key << "ClearColor" << YAML::Value << window->GetScreenColor();
         
         // Serialize System
         out << YAML::Key << "Systems";
@@ -307,8 +315,16 @@ namespace Canis
 		out << YAML::EndSeq;
 		out << YAML::EndMap;
 
-		std::ofstream fout(scene->name);
-		fout << out.c_str();
+        if (scene->path.size() > 0)
+        {
+            std::ofstream fout(scene->path);
+            fout << out.c_str();
+        }
+        else
+        {
+            std::ofstream fout(scene->name);
+            fout << out.c_str();
+        }
     }
 
     bool SceneManager::IsSplashScene(std::string _sceneName)

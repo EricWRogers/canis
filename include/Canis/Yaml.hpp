@@ -7,10 +7,16 @@
 
 namespace YAML
 {
-	template<>
+	Emitter &operator<<(Emitter &out, const glm::vec2 &v);
+
+	Emitter &operator<<(Emitter &out, const glm::vec3 &v);
+
+	Emitter &operator<<(Emitter &out, const glm::vec4 &v);
+
+	template <>
 	struct convert<glm::vec2>
 	{
-		static Node encode(const glm::vec2& rhs)
+		static Node encode(const glm::vec2 &rhs)
 		{
 			Node node;
 			node.push_back(rhs.x);
@@ -19,7 +25,7 @@ namespace YAML
 			return node;
 		}
 
-		static bool decode(const Node& node, glm::vec2& rhs)
+		static bool decode(const Node &node, glm::vec2 &rhs)
 		{
 			if (!node.IsSequence() || node.size() != 2)
 				return false;
@@ -30,10 +36,10 @@ namespace YAML
 		}
 	};
 
-	template<>
+	template <>
 	struct convert<glm::vec3>
 	{
-		static Node encode(const glm::vec3& rhs)
+		static Node encode(const glm::vec3 &rhs)
 		{
 			Node node;
 			node.push_back(rhs.x);
@@ -43,7 +49,7 @@ namespace YAML
 			return node;
 		}
 
-		static bool decode(const Node& node, glm::vec3& rhs)
+		static bool decode(const Node &node, glm::vec3 &rhs)
 		{
 			if (!node.IsSequence() || node.size() != 3)
 				return false;
@@ -55,10 +61,10 @@ namespace YAML
 		}
 	};
 
-	template<>
+	template <>
 	struct convert<glm::vec4>
 	{
-		static Node encode(const glm::vec4& rhs)
+		static Node encode(const glm::vec4 &rhs)
 		{
 			Node node;
 			node.push_back(rhs.x);
@@ -69,7 +75,7 @@ namespace YAML
 			return node;
 		}
 
-		static bool decode(const Node& node, glm::vec4& rhs)
+		static bool decode(const Node &node, glm::vec4 &rhs)
 		{
 			if (!node.IsSequence() || node.size() != 4)
 				return false;
@@ -82,17 +88,17 @@ namespace YAML
 		}
 	};
 
-	template<>
+	template <>
 	struct convert<Canis::UUID>
 	{
-		static Node encode(const Canis::UUID& _uuid)
+		static Node encode(const Canis::UUID &_uuid)
 		{
 			Node node;
 			node.push_back((uint64_t)_uuid);
 			return node;
 		}
 
-		static bool decode(const Node& _node, Canis::UUID& _uuid)
+		static bool decode(const Node &_node, Canis::UUID &_uuid)
 		{
 			_uuid = _node.as<uint64_t>();
 			return true;
