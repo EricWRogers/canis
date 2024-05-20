@@ -186,6 +186,8 @@ namespace Canis
         {
             YAML::Node root = YAML::LoadFile(scene->path);
 
+            entityAndUUIDToConnect.clear();
+
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f))
             );
@@ -212,6 +214,22 @@ namespace Canis
                     if (auto prefab = e["Prefab"])
                     {
                         scene->Instantiate(prefab.as<std::string>());
+                    }
+                }
+
+                for(auto euuid : entityAndUUIDToConnect)
+                {
+                    euuid.entity->scene = scene;
+
+                    auto view = scene->entityRegistry.view<IDComponent>();
+
+                    for (auto [entity, id] : view.each())
+                    {
+                        if (id.ID == euuid.uuid)
+                        {
+                            euuid.entity->entityHandle = entity;
+                            break;
+                        }
                     }
                 }
             }

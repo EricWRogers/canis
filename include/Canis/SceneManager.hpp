@@ -17,6 +17,11 @@ struct SceneData
     bool splashScreenHasCalledLoadAll = false;
 };
 
+struct EntityAndUUID {
+    Entity *entity = nullptr;
+    UUID uuid;
+};
+
 class SceneManager
 {
 private:
@@ -78,5 +83,7 @@ public:
 
     std::unordered_map<std::string, std::string> message = {};
     std::unordered_map<std::string, std::string> nextMessage = {};
+
+    std::vector<EntityAndUUID> entityAndUUIDToConnect;
 };
 } // end of Canis namespace
