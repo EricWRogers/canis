@@ -1,5 +1,6 @@
 #pragma once
 #include <cstdint>
+#include <unordered_map>
 
 namespace Canis {
     class UUID
@@ -16,15 +17,10 @@ namespace Canis {
 }
 
 namespace std {
-	template <typename T> struct hash;
-
-	template<>
-	struct hash<Canis::UUID>
-	{
-		size_t operator()(const Canis::UUID& _uuid) const
-		{
-			return (uint64_t)_uuid;
-		}
-	};
-
+    template<>
+    struct hash<Canis::UUID> {
+        std::size_t operator()(const Canis::UUID& _uuid) const {
+            return static_cast<uint64_t>(_uuid);
+        }
+    };
 }
