@@ -19,6 +19,17 @@
 
 namespace Canis
 {
+    bool FileExists(const char *filename)
+    {
+        FILE *file = fopen(filename, "r");
+        if (file)
+        {
+            fclose(file);
+            return true;
+        }
+        return false;
+    }
+
     void SetUpIMGUI(Window *_window)
     {
         // Setup Dear ImGui context
@@ -39,11 +50,11 @@ namespace Canis
         ImGui_ImplOpenGL3_Init(glsl_version);
     }
 
-    SceneManager::SceneManager(){}
+    SceneManager::SceneManager() {}
 
     SceneManager::~SceneManager()
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
             delete m_scenes[i].scene;
         }
@@ -72,7 +83,7 @@ namespace Canis
 
     void SceneManager::PreLoadAll()
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
             if (m_scenes[i].preloaded == false)
             {
@@ -83,16 +94,20 @@ namespace Canis
                 m_scenes[i].scene->camera = camera;
                 m_scenes[i].scene->seed = seed;
 
-                if (m_scenes[i].scene->path != "") {
+                if (m_scenes[i].scene->path != "")
+                {
                     YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
 
                     // serialize systems
-                    if(YAML::Node systems = root["Systems"]) {
-                        for(int s = 0;  s < systems.size(); s++) {
+                    if (YAML::Node systems = root["Systems"])
+                    {
+                        for (int s = 0; s < systems.size(); s++)
+                        {
                             std::string name = systems[s].as<std::string>();
-                            for(int d = 0;  d < decodeSystem.size(); d++) {
+                            for (int d = 0; d < decodeSystem.size(); d++)
+                            {
                                 if (decodeSystem[d](name, m_scenes[i].scene))
                                     continue;
                             }
@@ -100,17 +115,20 @@ namespace Canis
                     }
 
                     // serialize render systems
-                    if(YAML::Node renderSystems = root["RenderSystems"]) {
-                        for(int r = 0;  r < renderSystems.size(); r++) {
+                    if (YAML::Node renderSystems = root["RenderSystems"])
+                    {
+                        for (int r = 0; r < renderSystems.size(); r++)
+                        {
                             std::string name = renderSystems[r].as<std::string>();
-                            for(int d = 0;  d < decodeRenderSystem.size(); d++) {
+                            for (int d = 0; d < decodeRenderSystem.size(); d++)
+                            {
                                 if (decodeRenderSystem[d](name, m_scenes[i].scene))
                                     continue;
                             }
                         }
                     }
                 }
-                
+
                 m_scenes[i].scene->PreLoad();
                 m_scenes[i].preloaded = true;
             }
@@ -119,7 +137,7 @@ namespace Canis
 
     void SceneManager::PreLoad(std::string _sceneName)
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
             if (m_scenes[i].preloaded == false && m_scenes[i].scene->name == _sceneName)
             {
@@ -130,16 +148,20 @@ namespace Canis
                 m_scenes[i].scene->camera = camera;
                 m_scenes[i].scene->seed = seed;
 
-                if (m_scenes[i].scene->path != "") {
+                if (m_scenes[i].scene->path != "")
+                {
                     YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
 
                     // serialize systems
-                    if(YAML::Node systems = root["Systems"]) {
-                        for(int s = 0;  s < systems.size(); s++) {
+                    if (YAML::Node systems = root["Systems"])
+                    {
+                        for (int s = 0; s < systems.size(); s++)
+                        {
                             std::string name = systems[s].as<std::string>();
-                            for(int d = 0;  d < decodeSystem.size(); d++) {
+                            for (int d = 0; d < decodeSystem.size(); d++)
+                            {
                                 if (decodeSystem[d](name, m_scenes[i].scene))
                                     continue;
                             }
@@ -147,17 +169,20 @@ namespace Canis
                     }
 
                     // serialize render systems
-                    if(YAML::Node renderSystems = root["RenderSystems"]) {
-                        for(int r = 0;  r < renderSystems.size(); r++) {
+                    if (YAML::Node renderSystems = root["RenderSystems"])
+                    {
+                        for (int r = 0; r < renderSystems.size(); r++)
+                        {
                             std::string name = renderSystems[r].as<std::string>();
-                            for(int d = 0;  d < decodeRenderSystem.size(); d++) {
+                            for (int d = 0; d < decodeRenderSystem.size(); d++)
+                            {
                                 if (decodeRenderSystem[d](name, m_scenes[i].scene))
                                     continue;
                             }
                         }
                     }
                 }
-                
+
                 m_scenes[i].scene->PreLoad();
                 m_scenes[i].preloaded = true;
             }
@@ -179,25 +204,24 @@ namespace Canis
             FatalError("Failed to load scene at index " + std::to_string(_index));
 
         patientLoadIndex = -1;
-        
+
         if (scene != nullptr)
         {
             scene->UnLoad();
             {
                 // Clean up ScriptableEntity pointer
-                scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto& scriptComponent)
-                {
+                scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto &scriptComponent)
+                                                                   {
                     if (scriptComponent.Instance)
                     {
                         scriptComponent.Instance->OnDestroy();
-                    }
-                });
+                    } });
             }
 
             // swap maps
             message.swap(nextMessage);
             nextMessage.clear();
-            
+
             scene->entityRegistry = entt::registry();
         }
 
@@ -222,42 +246,41 @@ namespace Canis
             Load(patientLoadIndex);
         }
 
-        if(scene->path != "")
+        if (scene->path != "")
         {
             YAML::Node root = YAML::LoadFile(scene->path);
 
             entityAndUUIDToConnect.clear();
 
             window->SetClearColor(
-                root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f))
-            );
+                root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));
             window->ClearColor();
 
             auto entities = root["Entities"];
 
-            if(entities)
+            if (entities)
             {
-                for(auto e : entities)
+                for (auto e : entities)
                 {
                     Canis::Entity entity = scene->CreateEntity();
 
                     entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
 
-                    for(int d = 0;  d < decodeEntity.size(); d++)
+                    for (int d = 0; d < decodeEntity.size(); d++)
                         decodeEntity[d](e, entity, this);
 
                     if (auto scriptComponent = e["Canis::ScriptComponent"])
                         for (int d = 0; d < decodeScriptableEntity.size(); d++)
                             if (decodeScriptableEntity[d](scriptComponent.as<std::string>(), entity))
                                 continue;
-                    
+
                     if (auto prefab = e["Prefab"])
                     {
                         scene->Instantiate(prefab.as<std::string>());
                     }
                 }
 
-                for(auto euuid : entityAndUUIDToConnect)
+                for (auto euuid : entityAndUUIDToConnect)
                 {
                     euuid.entity->scene = scene;
 
@@ -276,16 +299,16 @@ namespace Canis
             }
         }
 
-        for(int i = 0; i < scene->systems.size(); i++)
+        for (int i = 0; i < scene->systems.size(); i++)
         {
-            if(!scene->systems[i]->IsCreated())
+            if (!scene->systems[i]->IsCreated())
             {
                 scene->systems[i]->Create();
                 scene->systems[i]->m_isCreated = true;
             }
         }
 
-        for(int i = 0; i < scene->systems.size(); i++)
+        for (int i = 0; i < scene->systems.size(); i++)
         {
             scene->systems[i]->Ready();
         }
@@ -293,9 +316,9 @@ namespace Canis
 
     void SceneManager::ForceLoad(std::string _name)
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
-            if(m_scenes[i].scene->name == _name)
+            if (m_scenes[i].scene->name == _name)
             {
                 Load(i);
                 return;
@@ -307,9 +330,9 @@ namespace Canis
 
     void SceneManager::Load(std::string _name)
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
-            if(m_scenes[i].scene->name == _name)
+            if (m_scenes[i].scene->name == _name)
             {
                 patientLoadIndex = i;
                 return;
@@ -327,11 +350,11 @@ namespace Canis
         out << YAML::Key << "Scene" << YAML::Value << scene->name;
 
         out << YAML::Key << "ClearColor" << YAML::Value << window->GetScreenColor();
-        
+
         // Serialize System
         out << YAML::Key << "Systems";
         out << YAML::BeginSeq;
-        for (System* s : scene->m_updateSystems)
+        for (System *s : scene->m_updateSystems)
         {
             out << YAML::Value << s->GetName();
         }
@@ -340,15 +363,15 @@ namespace Canis
         // Serialize Render System
         out << YAML::Key << "RenderSystems";
         out << YAML::BeginSeq;
-        for (System* s : scene->m_renderSystems)
+        for (System *s : scene->m_renderSystems)
         {
             out << YAML::Value << s->GetName();
         }
         out << YAML::EndSeq;
 
-		out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
+        out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
         scene->entityRegistry.each([&](auto _entityHandle)
-		{
+                                   {
 			Entity entity = { _entityHandle, scene };
             
 			if (!entity)
@@ -369,10 +392,9 @@ namespace Canis
                     if (encodeScriptableEntity[i](out, entity.GetComponent<ScriptComponent>().Instance))
                         break;
             
-            out << YAML::EndMap;
-		});
-		out << YAML::EndSeq;
-		out << YAML::EndMap;
+            out << YAML::EndMap; });
+        out << YAML::EndSeq;
+        out << YAML::EndMap;
 
         if (scene->path.size() > 0)
         {
@@ -388,9 +410,9 @@ namespace Canis
 
     bool SceneManager::IsSplashScene(std::string _sceneName)
     {
-        for(int i = 0; i < m_scenes.size(); i++)
+        for (int i = 0; i < m_scenes.size(); i++)
         {
-            if(m_scenes[i].scene->name == _sceneName && m_scenes[i].splashScreen == true)
+            if (m_scenes[i].scene->name == _sceneName && m_scenes[i].splashScreen == true)
             {
                 return true;
             }
@@ -401,8 +423,8 @@ namespace Canis
 
     void SceneManager::HotReload()
     {
-        if(scene == nullptr)
-        Load(scene->name);
+        if (scene == nullptr)
+            Load(scene->name);
     }
 
     void SceneManager::Update()
@@ -410,29 +432,31 @@ namespace Canis
         m_updateStart = high_resolution_clock::now();
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
-        
+
         if (patientLoadIndex != -1)
         {
             Load(patientLoadIndex);
             patientLoadIndex = -1;
         }
-        
+
         auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
 
-        for(auto [_entity, _scriptComponent] : view.each())
+        for (auto [_entity, _scriptComponent] : view.each())
         {
-            if (!_scriptComponent.Instance) {
+            if (!_scriptComponent.Instance)
+            {
                 _scriptComponent.Instance = _scriptComponent.InstantiateScript();
-                _scriptComponent.Instance->entity = Entity { _entity,  this->scene };
+                _scriptComponent.Instance->entity = Entity{_entity, this->scene};
                 _scriptComponent.Instance->OnCreate();
             }
         }
-        
+
         scene->Update();
 
-        for(auto [_entity, _scriptComponent] : view.each())
+        for (auto [_entity, _scriptComponent] : view.each())
         {
-            if (!_scriptComponent.Instance->isOnReadyCalled) {
+            if (!_scriptComponent.Instance->isOnReadyCalled)
+            {
                 _scriptComponent.Instance->isOnReadyCalled = true;
                 _scriptComponent.Instance->OnReady();
             }
@@ -448,7 +472,7 @@ namespace Canis
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
-        
+
         if (patientLoadIndex != -1)
         {
             Load(patientLoadIndex);
@@ -470,13 +494,13 @@ namespace Canis
 
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
-        
+
         if (patientLoadIndex != -1)
         {
             Load(patientLoadIndex);
             patientLoadIndex = -1;
         }
-        
+
         scene->Draw();
 
         /////////////////////////////////////
@@ -493,57 +517,68 @@ namespace Canis
             static int m_index = 0;
             static UUID id = 0;
             static Entity entity(scene);
-
+            static bool refresh = true;
 
             int count = 0;
 
-            auto view = scene->entityRegistry.view<IDComponent>();
-
-            for (auto [entityID, id] : view.each())
-            {
-                if (count == m_index)
-                {
-                    id = id.ID;
-                    entity.entityHandle = entityID;
-                }
-
-                count++;
-            }
-
-            if (count == 0)
-                return;
-
+            
 
             ImGui::Begin("Hello, Editor!"); // Create a window called "Hello, world!" and append into it.
 
             if (ImGui::Button("Back"))
             {
+                refresh = true;
                 m_index--;
-
-                if (m_index < 0)
-                    m_index = count - 1;
             }
             ImGui::SameLine();
             ImGui::Text("Entity ID: %d", m_index);
             ImGui::SameLine();
+
             if (ImGui::Button("Next"))
             {
+                refresh = true;
                 m_index++;
+            }
 
-                if (m_index >= count)
-                    m_index = 0;
+            auto view = scene->entityRegistry.view<IDComponent>();
+
+            for (auto [entityID, id] : view.each())
+            {
+                count++;
+            }
+
+            if (m_index < 0)
+                m_index = count - 1;
+            
+            if (m_index >= count)
+                m_index = 0;
+
+            if (count == 0)
+                return;
+            
+            int i = 0;
+
+            for (auto [entityID, id] : view.each())
+            {
+                if (i == m_index)
+                {
+                    id = id.ID;
+                    entity.entityHandle = entityID;
+                }
+
+                i++;
             }
 
             if (entity.HasComponent<RectTransformComponent>())
             {
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto& rtc = entity.GetComponent<RectTransformComponent>();
+                    auto &rtc = entity.GetComponent<RectTransformComponent>();
 
                     ImGui::Checkbox("active", &rtc.active);
-                    
+
                     ImGui::Combo("anchor", &rtc.anchor, RectAnchorLabels, IM_ARRAYSIZE(RectAnchorLabels));
-                    
+
                     ImGui::InputFloat2("position", glm::value_ptr(rtc.position), "%.3f");
                     ImGui::InputFloat2("size", glm::value_ptr(rtc.size), "%.3f");
                     ImGui::InputFloat2("originOffset", glm::value_ptr(rtc.originOffset), "%.3f");
@@ -552,7 +587,7 @@ namespace Canis
                     ImGui::InputFloat("depth", &rtc.depth);
 
                     ImGui::Combo("scaleWithScreen", &rtc.scaleWithScreen, ScaleWithScreenLabels, IM_ARRAYSIZE(ScaleWithScreenLabels));
-                    
+
                     ImGui::InputFloat2("rotationOriginOffset", glm::value_ptr(rtc.rotationOriginOffset), "%.3f");
                 }
             }
@@ -561,13 +596,86 @@ namespace Canis
             {
                 if (ImGui::CollapsingHeader("Canis::Color"))
                 {
-                    auto& cc = entity.GetComponent<ColorComponent>();
+                    auto &cc = entity.GetComponent<ColorComponent>();
                     ImGui::InputFloat4("color", glm::value_ptr(cc.color), "%.3f");
                     ImGui::InputFloat3("emission", glm::value_ptr(cc.emission), "%.3f");
                     ImGui::InputFloat("emissionUsingAlbedoIntesity", &cc.emissionUsingAlbedoIntesity);
                 }
             }
 
+            if (entity.HasComponent<TextComponent>())
+            {
+                static std::string path = "";
+                static int size = 0;
+                static std::string lastFramePath = "";
+                static int lastFrameSize = 0;
+
+                auto &tc = entity.GetComponent<TextComponent>();
+
+                if (refresh)
+                {
+                    path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
+                    lastFramePath = path;
+
+                    size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
+                    lastFrameSize = size;
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Text"))
+                {
+                    if (ImGui::CollapsingHeader("Text Asset"))
+                    {
+                        std::string tempPath = std::string(path);
+                        int tempSize = size;
+
+                        ImGui::InputText("path", &tempPath);
+                        ImGui::InputInt("size", &tempSize);
+
+                        path = std::string(tempPath);
+                        size = tempSize;
+
+                        if (path != lastFramePath || size != lastFrameSize)
+                        {
+                            if (size < 0)
+                                size = 12;
+
+                            if (!path.empty())
+                            {
+                                if (FileExists(path.c_str()))
+                                {
+                                    int newID = AssetManager::LoadText(path, size);
+
+                                    if (newID != -1)
+                                    {
+                                        tc.assetId = newID;
+
+                                        path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
+                                        lastFramePath = path;
+
+                                        size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
+                                        lastFrameSize = size;
+                                    }
+                                }
+                                else
+                                {
+                                    Canis::Log("File does not exist: " + path);
+                                }
+                            }
+                        }
+                    }
+
+                    ImGui::InputText("text", &tc.text);
+
+                    static const char *AlignmentLabels[] = {
+                        "Left", "Right", "Center"};
+
+                    int *a = ((int *)&tc.alignment); // this might be bad because imgui uses -1 as error
+
+                    ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
+                }
+            }
+
+            refresh = false; // keep here
             ImGui::End();
         }
 
@@ -587,13 +695,13 @@ namespace Canis
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
-        
+
         if (patientLoadIndex != -1)
         {
             Load(patientLoadIndex);
             patientLoadIndex = -1;
         }
-        
+
         scene->InputUpdate();
 
         if (inputManager->JustPressedKey(SDLK_F12))
@@ -606,8 +714,8 @@ namespace Canis
     {
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
-        
+
         scene->unscaledDeltaTime = _deltaTime;
-        scene->deltaTime         = _deltaTime * scene->timeScale;
+        scene->deltaTime = _deltaTime * scene->timeScale;
     }
 } // end of Canis namespace
