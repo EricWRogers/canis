@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -19,5 +20,21 @@ namespace Canis
         Entity left;
         Entity right;
         bool defaultSelected = false;
+
+        static void RegisterProperties()
+		{
+			REGISTER_PROPERTY(Canis::ButtonComponent, eventName, std::string);
+			REGISTER_PROPERTY(Canis::ButtonComponent, baseColor, glm::vec4);
+            REGISTER_PROPERTY(Canis::ButtonComponent, hoverColor, glm::vec4);
+			REGISTER_PROPERTY(Canis::ButtonComponent, action, unsigned int);
+            REGISTER_PROPERTY(Canis::ButtonComponent, mouseOver, bool);
+			REGISTER_PROPERTY(Canis::ButtonComponent, scale, float);
+            REGISTER_PROPERTY(Canis::ButtonComponent, hoverScale, float);
+			REGISTER_PROPERTY(Canis::ButtonComponent, up, Entity);
+            REGISTER_PROPERTY(Canis::ButtonComponent, down, Entity);
+			REGISTER_PROPERTY(Canis::ButtonComponent, left, Entity);
+            REGISTER_PROPERTY(Canis::ButtonComponent, right, Entity);
+			REGISTER_PROPERTY(Canis::ButtonComponent, defaultSelected, bool);
+		}
     };
 } // end of Canis namespace

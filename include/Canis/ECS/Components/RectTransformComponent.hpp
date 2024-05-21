@@ -1,6 +1,7 @@
 #pragma once
 #include <glm/glm.hpp>
 #include <string>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -17,7 +18,7 @@ namespace Canis
 		BOTTOMRIGHT = 8
 	};
 
-	enum class ScaleWithScreen
+	enum ScaleWithScreen
 	{
 		NONE = 0,
 		WIDTH = 1,
@@ -71,6 +72,7 @@ namespace Canis
 		}
 		}
 	}
+	
 	struct RectTransformComponent
 	{
 		bool active = true;
@@ -81,7 +83,21 @@ namespace Canis
 		float rotation = 0.0f;
 		float scale = 1.0f;
 		float depth = 1.0f;
-		ScaleWithScreen scaleWithScreen = ScaleWithScreen::NONE;
+		int scaleWithScreen = ScaleWithScreen::NONE;
 		glm::vec2 rotationOriginOffset = glm::vec2(0.0f);
+
+		static void RegisterProperties()
+		{
+			REGISTER_PROPERTY(Canis::RectTransformComponent, active, bool);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, anchor, int);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, position, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, size, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, originOffset, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, rotation, float);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, scale, float);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, depth, float);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, scaleWithScreen, int);
+			REGISTER_PROPERTY(Canis::RectTransformComponent, rotationOriginOffset, glm::vec2);
+		}
 	};
 } // end of Canis namespace

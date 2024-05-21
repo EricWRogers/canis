@@ -227,6 +227,7 @@ namespace Canis
                     {
                         if (id.ID == euuid.uuid)
                         {
+                            Canis::Log("Connect");
                             euuid.entity->entityHandle = entity;
                             break;
                         }

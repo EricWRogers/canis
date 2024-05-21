@@ -5,6 +5,57 @@
 #include <Canis/Data/Bit.hpp>
 #include <Canis/UUID.hpp>
 
+#include <unordered_map>
+#include <variant>
+#include <type_traits>
+#include <functional>
+#include <string>
+#include <glm/glm.hpp>
+#include <yaml-cpp/yaml.h>
+
+// Define PropertySetter as a function that takes a YAML node and a void pointer to the component
+using PropertySetter = std::function<void(YAML::Node&, void*, void*)>;
+
+// PropertyRegistry struct to hold the setters for each property
+struct PropertyRegistry {
+    std::unordered_map<std::string, PropertySetter> setters;
+};
+
+// Template declaration for GetPropertyRegistry
+template <typename T>
+PropertyRegistry& GetPropertyRegistry()
+{
+    static PropertyRegistry registry;
+    return registry;
+}
+
+namespace Canis
+{
+	void AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager);
+}
+
+#define REGISTER_PROPERTY(component, property, type)                                                 	\
+{                                                                                                    	\
+	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
+		if constexpr (!std::is_same_v<type, Canis::Entity>) {   										\
+			static_cast<component *>(componentPtr)->property = node.as<type>();                  		\
+		} 																								\
+		else \
+		{ \
+			Canis::AddEntityAndUUIDToSceneManager( \
+				(void*)(&static_cast<component *>(componentPtr)->property), \
+				node.as<Canis::UUID>(), \
+				_sceneManager); \
+		}  \
+	};                                                                                       			\
+                                                                                             \
+}
+
+#define REGISTER_PROPERTY_DEFAULT(component, property, type, defaultValue)                           \
+    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
+        static_cast<component *>(componentPtr)->property = node.as<type>(defaultValue);              \
+    };
+
 namespace YAML
 {
 	Emitter &operator<<(Emitter &out, const glm::vec2 &v);
