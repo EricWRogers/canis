@@ -2,6 +2,7 @@
 #include <SDL_events.h>
 #include <SDL_gamecontroller.h>
 #include <Canis/Debug.hpp>
+#include <imgui_impl_sdl2.h>
 
 namespace Canis
 {
@@ -27,6 +28,9 @@ namespace Canis
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
+            // for the editor
+            ImGui_ImplSDL2_ProcessEvent(&event);
+
             switch (event.type)
             {
             case SDL_QUIT:

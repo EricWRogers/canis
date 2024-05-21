@@ -6,8 +6,38 @@
 
 #include <SDL_keyboard.h>
 
+#include <SDL.h>
+#include <GL/glew.h>
+
+#include <imgui.h>
+#include <imgui_stdlib.h>
+#include <imgui_impl_sdl2.h>
+#include <imgui_impl_opengl3.h>
+
+#include <glm/gtc/type_ptr.hpp>
+
 namespace Canis
 {
+    void SetUpIMGUI(Window *_window)
+    {
+        // Setup Dear ImGui context
+        IMGUI_CHECKVERSION();
+        ImGui::CreateContext();
+        ImGuiIO &io = ImGui::GetIO();
+        (void)io;
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+
+        // Setup Dear ImGui style
+        ImGui::StyleColorsDark();
+        // ImGui::StyleColorsLight();
+
+        // Setup Platform/Renderer backends
+        const char *glsl_version = "#version 330";
+        ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
+        ImGui_ImplOpenGL3_Init(glsl_version);
+    }
+
     SceneManager::SceneManager(){}
 
     SceneManager::~SceneManager()
@@ -135,6 +165,15 @@ namespace Canis
 
     void SceneManager::Load(int _index)
     {
+        static bool notInit = true;
+
+        if (notInit)
+        {
+            notInit = true;
+
+            SetUpIMGUI(window);
+        }
+
         if (m_scenes.size() < _index)
             FatalError("Failed to load scene at index " + std::to_string(_index));
 
@@ -438,6 +477,80 @@ namespace Canis
         }
         
         scene->Draw();
+
+        /////////////////////////////////////
+
+        // Start the Dear ImGui frame
+        ImGui_ImplOpenGL3_NewFrame();
+        ImGui_ImplSDL2_NewFrame();
+        ImGui::NewFrame();
+
+        // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
+        {
+            static float f = 0.0f;
+            static int counter = 0;
+            static int m_index = 0;
+            static UUID id = 0;
+            static Entity entity(scene);
+
+
+            int count = 0;
+
+            auto view = scene->entityRegistry.view<IDComponent>();
+
+            for (auto [entityID, id] : view.each())
+            {
+                if (count == m_index)
+                {
+                    id = id.ID;
+                    entity.entityHandle = entityID;
+                }
+
+                count++;
+            }
+
+            if (count == 0)
+                return;
+
+
+            ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+
+            if (ImGui::Button("Back"))
+            {
+                m_index--;
+
+                if (m_index < 0)
+                    m_index = count - 1;
+            }
+            ImGui::SameLine();
+            ImGui::Text("Entity ID: %d", m_index);
+            ImGui::SameLine();
+            if (ImGui::Button("Next"))
+            {
+                m_index++;
+
+                if (m_index >= count)
+                    m_index = 0;
+            }
+
+            if (entity.HasComponent<RectTransformComponent>())
+            {
+                if (ImGui::CollapsingHeader("RectTransform"))
+                {
+                    auto& rtc = entity.GetComponent<RectTransformComponent>();
+
+                    ImGui::InputFloat2("position", glm::value_ptr(rtc.position), "%.3f");
+                }
+            }
+
+            ImGui::End();
+        }
+
+        // Rendering
+        ImGui::Render();
+        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        /////////////////////////////////////
 
         glFinish(); // make sure all queued command are finished
 

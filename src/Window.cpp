@@ -49,7 +49,7 @@ namespace Canis
             flags |= SDL_WINDOW_BORDERLESS;
 
         // Create Window
-        sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0), _screenWidth, _screenHeight, flags);
+        m_sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0), _screenWidth, _screenHeight, flags);
         
         SDL_Surface *surface;     // Declare an SDL_Surface to be filled in with pixel data from an image file
         Uint16 pixels[16*16] = {  // ...or with raw pixel data:
@@ -73,20 +73,20 @@ namespace Canis
         surface = SDL_CreateRGBSurfaceFrom(pixels,16,16,16,16*2,0x0f00,0x00f0,0x000f,0xf000);
 
         // The icon is attached to the window pointer
-        SDL_SetWindowIcon((SDL_Window*)sdlWindow, surface);
+        SDL_SetWindowIcon((SDL_Window*)m_sdlWindow, surface);
 
         // ...and the surface containing the icon pixel data is no longer required.
         SDL_FreeSurface(surface);
 
-        if ((SDL_Window*)sdlWindow == nullptr) // Check for an error when creating a window
+        if ((SDL_Window*)m_sdlWindow == nullptr) // Check for an error when creating a window
         {
             FatalError("SDL Window could not be created");
         }
 
         // Create OpenGL Context
-        SDL_GLContext glContext = SDL_GL_CreateContext((SDL_Window*)sdlWindow);
+        m_glContext = (void*)SDL_GL_CreateContext((SDL_Window*)m_sdlWindow);
 
-        if (glContext == nullptr) // Check for an error when creating the OpenGL Context
+        if (m_glContext == nullptr) // Check for an error when creating the OpenGL Context
         {
             FatalError("SDL_GL context could not be created!");
         }
@@ -119,7 +119,7 @@ namespace Canis
 
     void Window::SetWindowName(std::string _windowName)
     {
-        SDL_SetWindowTitle((SDL_Window*)sdlWindow,_windowName.c_str());
+        SDL_SetWindowTitle((SDL_Window*)m_sdlWindow,_windowName.c_str());
     }
 
     void Window::SwapBuffer()
@@ -127,7 +127,7 @@ namespace Canis
         // After we draw our sprite and models to a window buffer
         // We want to display the one we were drawing to and
         // get the old buffer to start drawing our next frame to
-        SDL_GL_SwapWindow((SDL_Window*)sdlWindow);
+        SDL_GL_SwapWindow((SDL_Window*)m_sdlWindow);
     }
     
     void Window::CenterMouse()
@@ -137,7 +137,7 @@ namespace Canis
 
     void Window::SetMousePosition(int _x, int _y)
     {
-      SDL_WarpMouseInWindow((SDL_Window*)sdlWindow, _x, screenHeight - _y);
+      SDL_WarpMouseInWindow((SDL_Window*)m_sdlWindow, _x, screenHeight - _y);
     }
 
     void Window::ClearColor()
@@ -169,6 +169,6 @@ namespace Canis
     {
         m_fullscreen = !m_fullscreen;
 
-        SDL_SetWindowFullscreen((SDL_Window*)sdlWindow, m_fullscreen);
+        SDL_SetWindowFullscreen((SDL_Window*)m_sdlWindow, m_fullscreen);
     }
 } // end of Canis namespace
