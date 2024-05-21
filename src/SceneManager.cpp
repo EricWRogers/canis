@@ -2,6 +2,7 @@
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
 
+#include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 
 #include <SDL_keyboard.h>
@@ -513,7 +514,7 @@ namespace Canis
                 return;
 
 
-            ImGui::Begin("Hello, world!"); // Create a window called "Hello, world!" and append into it.
+            ImGui::Begin("Hello, Editor!"); // Create a window called "Hello, world!" and append into it.
 
             if (ImGui::Button("Back"))
             {
@@ -535,11 +536,35 @@ namespace Canis
 
             if (entity.HasComponent<RectTransformComponent>())
             {
-                if (ImGui::CollapsingHeader("RectTransform"))
+                if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
                 {
                     auto& rtc = entity.GetComponent<RectTransformComponent>();
 
+                    ImGui::Checkbox("active", &rtc.active);
+                    
+                    ImGui::Combo("anchor", &rtc.anchor, RectAnchorLabels, IM_ARRAYSIZE(RectAnchorLabels));
+                    
                     ImGui::InputFloat2("position", glm::value_ptr(rtc.position), "%.3f");
+                    ImGui::InputFloat2("size", glm::value_ptr(rtc.size), "%.3f");
+                    ImGui::InputFloat2("originOffset", glm::value_ptr(rtc.originOffset), "%.3f");
+                    ImGui::InputFloat("rotation", &rtc.rotation);
+                    ImGui::InputFloat("scale", &rtc.scale);
+                    ImGui::InputFloat("depth", &rtc.depth);
+
+                    ImGui::Combo("scaleWithScreen", &rtc.scaleWithScreen, ScaleWithScreenLabels, IM_ARRAYSIZE(ScaleWithScreenLabels));
+                    
+                    ImGui::InputFloat2("rotationOriginOffset", glm::value_ptr(rtc.rotationOriginOffset), "%.3f");
+                }
+            }
+
+            if (entity.HasComponent<ColorComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::Color"))
+                {
+                    auto& cc = entity.GetComponent<ColorComponent>();
+                    ImGui::InputFloat4("color", glm::value_ptr(cc.color), "%.3f");
+                    ImGui::InputFloat3("emission", glm::value_ptr(cc.emission), "%.3f");
+                    ImGui::InputFloat("emissionUsingAlbedoIntesity", &cc.emissionUsingAlbedoIntesity);
                 }
             }
 

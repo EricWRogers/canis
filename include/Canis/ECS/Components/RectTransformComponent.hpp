@@ -18,12 +18,22 @@ namespace Canis
 		BOTTOMRIGHT = 8
 	};
 
+	static const char* RectAnchorLabels[] = {
+		"Top Left", "Top Center", "Top Right",
+		"Center Left", "Center", "Center Right",
+		"Bottom Left", "Bottom Center", "Bottom Right"
+	};
+
 	enum ScaleWithScreen
 	{
 		NONE = 0,
 		WIDTH = 1,
 		HEIGHT = 2,
 		WIDTHANDHEIGHT = 3
+	};
+
+	static const char* ScaleWithScreenLabels[] = {
+		"None", "Width", "Height", "Width And Height"
 	};
 
 	glm::vec2 static GetAnchor(const RectAnchor &_anchor, const float &_windowWidth, const float &_windowHeight)
