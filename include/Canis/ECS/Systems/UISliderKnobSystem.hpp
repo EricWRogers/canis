@@ -7,11 +7,12 @@ namespace Canis
     class UISliderKnobSystem;
 
     struct KnobListener {
-        int id = 0;
         std::string name = "";
         void* data = nullptr;
         std::function<void(Entity _entity, float _value, void* _data)> func = nullptr;
-        UISliderKnobSystem* system;
+        
+        int _id = 0;
+        UISliderKnobSystem* _system;
 
         ~KnobListener();        
     };

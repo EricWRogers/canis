@@ -7,6 +7,7 @@
 namespace Canis
 {
     class Scene;
+    class ButtonSystem;
 
     struct ButtonAndDepth {
         Entity entity;
@@ -17,6 +18,11 @@ namespace Canis
         std::string name = "";
         void* data = nullptr;
         std::function<void(Entity _entity, void* _data)> func = nullptr;
+
+        int _id = 0;
+        ButtonSystem* _system = nullptr;
+
+        ~ButtonListener();
     };
 
     class ButtonSystem : public System
@@ -24,7 +30,8 @@ namespace Canis
     private:
         InputDevice m_lastInputDevice = InputDevice::MOUSE;
         ButtonAndDepth* m_buttons = nullptr;
-        std::vector<ButtonListener> m_buttonListeners = {};
+        std::vector<ButtonListener*> m_buttonListeners = {};
+        int nextId = 0;
     public:
         ButtonSystem() : System() { m_name = type_name<ButtonSystem>(); }
         ~ButtonSystem();
@@ -41,6 +48,6 @@ namespace Canis
             std::function<void(Entity _entity, void* _data)> _func
         );
 
-        void RemoveButtonListener(ButtonListener* _listener);
+        void RemoveButtonListener(int _id);
     };
 } // end of Canis namespace

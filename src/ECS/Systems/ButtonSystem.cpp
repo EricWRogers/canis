@@ -217,11 +217,11 @@ namespace Canis
             {
                 for (int i = 0; i < m_buttonListeners.size(); i++)
                 {
-                    ButtonListener& bl = m_buttonListeners[i];
+                    ButtonListener& bl = *m_buttonListeners[i];
 
-                    if (m_buttonListeners[i].name == button.eventName)
+                    if (m_buttonListeners[i]->name == button.eventName)
                     {
-                        m_buttonListeners[i].func(targetButton, m_buttonListeners[i].data);
+                        m_buttonListeners[i]->func(targetButton, m_buttonListeners[i]->data);
                     }
                 }
             }
@@ -231,16 +231,36 @@ namespace Canis
     ButtonListener& ButtonSystem::AddButtonListener(std::string _name, void *_data,
                                       std::function<void(Entity _entity, void* _data)> _func)
     {
-        ButtonListener buttonListener;
+        ButtonListener* buttonListener = new ButtonListener();
+        buttonListener->_system = this;
+        buttonListener->_id = nextId;
+        nextId++;
 
         m_buttonListeners.push_back(buttonListener);
 
-        ButtonListener &bl = m_buttonListeners[ m_buttonListeners.size() - 1 ];
+        ButtonListener &bl = *m_buttonListeners[ m_buttonListeners.size() - 1 ];
 
         bl.name = _name;
         bl.data = _data;
         bl.func = _func;
 
         return bl;
+    }
+
+    void ButtonSystem::RemoveButtonListener(int _id)
+    {
+        for (int i = 0; i < m_buttonListeners.size(); i++)
+        {
+            if (_id == m_buttonListeners[i]->_id)
+            {
+                m_buttonListeners.erase(m_buttonListeners.begin() + i);
+            }
+        }
+    }
+
+    ButtonListener::~ButtonListener()
+    {
+        if (_system == nullptr)
+            _system->RemoveButtonListener(_id);
     }
 } // namespace Canis

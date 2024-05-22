@@ -264,6 +264,7 @@ namespace Canis
                     if (scriptComponent.Instance)
                     {
                         scriptComponent.Instance->OnDestroy();
+                        delete scriptComponent.Instance;
                     } });
             }
 

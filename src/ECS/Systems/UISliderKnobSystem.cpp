@@ -82,8 +82,8 @@ namespace Canis
                                                       std::function<void(Entity _entity, float _value, void *_data)> _func)
     {
         KnobListener* knobListener = new KnobListener();
-        knobListener->system = this;
-        knobListener->id = nextId;
+        knobListener->_system = this;
+        knobListener->_id = nextId;
         nextId++;
 
         m_knobListeners.push_back(knobListener);
@@ -101,7 +101,7 @@ namespace Canis
     {
         for (int i = 0; i < m_knobListeners.size(); i++)
         {
-            if (_id == m_knobListeners[i]->id)
+            if (_id == m_knobListeners[i]->_id)
             {
                 m_knobListeners.erase(m_knobListeners.begin() + i);
             }
@@ -110,7 +110,9 @@ namespace Canis
 
     KnobListener::~KnobListener()
     {
-        system->RemoveKnobListener(id);
+        Canis::Log("k hi");
+        if (_system == nullptr)
+            _system->RemoveKnobListener(_id);
     }
 
     bool DecodeUISliderKnobSystem(const std::string &_name, Canis::Scene *_scene)
