@@ -4,6 +4,7 @@
 
 #include <Canis/Asset.hpp>
 #include <Canis/Debug.hpp>
+#include <Canis/AssetHandle.hpp>
 
 namespace Canis
 {

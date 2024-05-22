@@ -668,7 +668,7 @@ namespace Canis
                 }
             }
 
-            /*if (entity.HasComponent<UIImageComponent>())
+            if (entity.HasComponent<UIImageComponent>())
             {
                 static std::string path = "";
                 static std::string lastFramePath = "";
@@ -677,11 +677,11 @@ namespace Canis
 
                 if (refresh)
                 {
-                    path = AssetManager::Get<TextAsset>(ic.texture)->GetPath();
+                    path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
                     lastFramePath = path;
                 }
 
-                if (ImGui::CollapsingHeader("Canis::Text"))
+                if (ImGui::CollapsingHeader("Canis::Image"))
                 {
                     if (ImGui::CollapsingHeader("Texture Asset"))
                     {
@@ -690,28 +690,22 @@ namespace Canis
                         ImGui::InputText("path", &tempPath);
 
                         path = std::string(tempPath);
-                        size = tempSize;
 
-                        if (path != lastFramePath || size != lastFrameSize)
+                        if (path != lastFramePath)
                         {
-                            if (size < 0)
-                                size = 12;
-
                             if (!path.empty())
                             {
                                 if (FileExists(path.c_str()))
                                 {
-                                    int newID = AssetManager::LoadText(path, size);
+                                    int newID = AssetManager::LoadTexture(path);
 
                                     if (newID != -1)
                                     {
-                                        tc.assetId = newID;
+                                        ic.textureHandle.id = newID;
+                                        ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetTexture();
 
-                                        path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
+                                        path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
                                         lastFramePath = path;
-
-                                        size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
-                                        lastFrameSize = size;
                                     }
                                 }
                                 else
@@ -721,17 +715,10 @@ namespace Canis
                             }
                         }
                     }
-
-                    ImGui::InputText("text", &tc.text);
-
-                    static const char *AlignmentLabels[] = {
-                        "Left", "Right", "Center"};
-
-                    int *a = ((int *)&tc.alignment); // this might be bad because imgui uses -1 as error
-
-                    ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
+                
+                    ImGui::InputFloat4("uv", glm::value_ptr(ic.uv));
                 }
-            }*/
+            }
 
             if (entity.HasComponent<TextComponent>())
             {

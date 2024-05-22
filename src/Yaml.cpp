@@ -34,4 +34,41 @@ namespace YAML
         out << BeginSeq << v.x << v.y << v.z << v.w << EndSeq;
         return out;
     }
+
+    Emitter &operator<<(Emitter &out, const EntityData &e)
+    {
+        Canis::Entity nonConstE;
+        nonConstE.entityHandle = e.entityHandle;
+        nonConstE.scene = (Canis::Scene*)e.scene;
+        
+        if (nonConstE)
+        {
+            if (nonConstE.HasComponent<Canis::IDComponent>())
+            {
+                Canis::Log("HI");
+                out << nonConstE.GetUUID();
+                return out;
+            }
+        }
+
+        out << 0;
+        return out;
+    }
+
+    uint64_t GetUUIDFromEntityData(const EntityData &_entityData)
+    {
+        Canis::Entity nonConstE;
+        nonConstE.entityHandle = _entityData.entityHandle;
+        nonConstE.scene = (Canis::Scene*)_entityData.scene;
+        
+        if (nonConstE)
+        {
+            if (nonConstE.HasComponent<Canis::IDComponent>())
+            {
+                return (uint64_t)nonConstE.GetUUID();
+            }
+        }
+
+        return 0lu;
+    }
 } // end of YAML namespace

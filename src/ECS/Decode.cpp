@@ -145,10 +145,11 @@ namespace Canis
         {
             auto &uiic = _entity.AddComponent<Canis::UIImageComponent>();
             uiic.uv = uiImageComponent["uv"].as<glm::vec4>();
-            uiic.texture = AssetManager::Get<Canis::TextureAsset>(
-                                           AssetManager::LoadTexture(
-                                               uiImageComponent["texture"].as<std::string>()))
-                               ->GetTexture();
+            if (auto textureAsset = uiImageComponent["TextureAsset"])
+            {
+                uiic.textureHandle.id = AssetManager::LoadTexture(textureAsset["path"].as<std::string>());
+                uiic.texture = AssetManager::Get<Canis::TextureAsset>(uiic.textureHandle.id)->GetTexture();
+            }
         }
     }
 

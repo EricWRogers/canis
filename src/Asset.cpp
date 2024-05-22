@@ -24,6 +24,7 @@ namespace Canis
 
     bool TextureAsset::Load(std::string _path)
     {
+        m_path = _path;
         m_texture = LoadImageToGLTexture(_path, GL_RGBA, GL_RGBA);
         return true;
     }

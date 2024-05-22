@@ -33,11 +33,13 @@ namespace Canis
     {
     private:
         GLTexture m_texture;
+        std::string m_path = "";
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         GLTexture GetTexture() { return m_texture; }
         GLTexture* GetPointerToTexture() { return &m_texture; }
+        std::string GetPath() { return m_path; }
     };
 
     class SkyboxAsset : public Asset

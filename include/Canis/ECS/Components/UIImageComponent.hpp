@@ -8,6 +8,7 @@ namespace Canis
     {
         glm::vec4 uv = glm::vec4(0.0f, 0.0f, 1.0f, 1.0f);
         GLTexture texture;
+        TextureHandle textureHandle;
     };
 
     static void GetUIImageFromTextureAtlas(Canis::UIImageComponent &_sprite,

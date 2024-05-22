@@ -4,7 +4,9 @@
 #include <yaml-cpp/yaml.h>
 #include <Canis/Data/Bit.hpp>
 #include <Canis/UUID.hpp>
+#include <Canis/External/entt.hpp>
 
+#include <map>
 #include <unordered_map>
 #include <variant>
 #include <type_traits>
@@ -13,12 +15,22 @@
 #include <glm/glm.hpp>
 #include <yaml-cpp/yaml.h>
 
+struct EntityData { 
+	entt::entity entityHandle{ entt::null };
+	void *scene = nullptr;
+};
+
 // Define PropertySetter as a function that takes a YAML node and a void pointer to the component
 using PropertySetter = std::function<void(YAML::Node&, void*, void*)>;
 
-// PropertyRegistry struct to hold the setters for each property
+// Define PropertyGetter as a function that takes a void pointer to the component and returns a YAML node
+using PropertyGetter = std::function<YAML::Node(void*)>;
+
+// PropertyRegistry struct to hold the setters and getters for each property
 struct PropertyRegistry {
-    std::unordered_map<std::string, PropertySetter> setters;
+    std::map<std::string, PropertySetter> setters;
+    std::map<std::string, PropertyGetter> getters;
+	std::vector<std::string> propertyOrder;
 };
 
 // Template declaration for GetPropertyRegistry
@@ -34,27 +46,35 @@ namespace Canis
 	void AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager);
 }
 
-#define REGISTER_PROPERTY(component, property, type)                                                 	\
-{                                                                                                    	\
+#define REGISTER_PROPERTY(component, property, type)                                                 						\
+{                                                                                                    						\
 	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
-		if constexpr (!std::is_same_v<type, Canis::Entity>) {   										\
-			static_cast<component *>(componentPtr)->property = node.as<type>();                  		\
-		} 																								\
-		else \
-		{ \
-			Canis::AddEntityAndUUIDToSceneManager( \
-				(void*)(&static_cast<component *>(componentPtr)->property), \
-				node.as<Canis::UUID>(), \
-				_sceneManager); \
-		}  \
-	};                                                                                       			\
-                                                                                             \
+		if constexpr (!std::is_same_v<type, Canis::Entity>) {   															\
+			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
+		} 																													\
+		else 																												\
+		{ 																													\
+			Canis::AddEntityAndUUIDToSceneManager( 																			\
+				(void*)(&static_cast<component *>(componentPtr)->property), 												\
+				node.as<Canis::UUID>(), 																					\
+				_sceneManager); 																							\
+		}  																													\
+	};                                                                                       								\
+    GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {       						\
+        if constexpr (!std::is_same_v<type, Canis::Entity>) {                                          						\
+            return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
+        } else {                                                                                       						\
+            /* Assuming Canis::UUID has an encode method or operator<< defined */                         					\
+            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                        					\
+        }                                                                                              						\
+    };                                                                                                						\
+	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  \
 }
 
-#define REGISTER_PROPERTY_DEFAULT(component, property, type, defaultValue)                           \
-    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
-        static_cast<component *>(componentPtr)->property = node.as<type>(defaultValue);              \
-    };
+//#define REGISTER_PROPERTY_DEFAULT(component, property, type, defaultValue)                           \
+//    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
+//        static_cast<component *>(componentPtr)->property = node.as<type>(defaultValue);              \
+//    };
 
 namespace YAML
 {
@@ -63,6 +83,8 @@ namespace YAML
 	Emitter &operator<<(Emitter &out, const glm::vec3 &v);
 
 	Emitter &operator<<(Emitter &out, const glm::vec4 &v);
+
+	Emitter &operator<<(Emitter &out, const EntityData &e);
 
 	template <>
 	struct convert<glm::vec2>
@@ -152,6 +174,26 @@ namespace YAML
 		static bool decode(const Node &_node, Canis::UUID &_uuid)
 		{
 			_uuid = _node.as<uint64_t>();
+			return true;
+		}
+	};
+
+	extern uint64_t GetUUIDFromEntityData(const EntityData &_entityData);
+
+	template <>
+	struct convert<EntityData>
+	{
+		static Node encode(const EntityData &e)
+		{
+			Node node;
+			node = std::to_string(GetUUIDFromEntityData(e));
+			return node;
+		}
+
+		static bool decode(const Node &_node, EntityData &e)
+		{
+			e.entityHandle = (entt::entity)_node.as<uint32_t>();
+			e.scene = (void*)_node.as<uint64_t>();
 			return true;
 		}
 	};

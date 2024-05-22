@@ -7,6 +7,7 @@
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
@@ -90,6 +91,28 @@ namespace Canis
         }
 	}
 
+	void EncodeUIImageComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	{
+		if (_entity.HasComponent<UIImageComponent>())
+        {
+            auto& ic = _entity.GetComponent<UIImageComponent>();
+
+            _out << YAML::Key << "Canis::UIImageComponent";
+            _out << YAML::BeginMap;
+
+			_out << YAML::Key << "TextureAsset";
+            _out << YAML::BeginMap;
+
+			_out << YAML::Key << "path" << YAML::Value << AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
+
+			_out << YAML::EndMap; // close asset map
+
+			_out << YAML::Key << "uv" << YAML::Value << ic.uv;
+
+            _out << YAML::EndMap; // close text component map
+        }
+	}
+	
 	void EncodeTextComponent(YAML::Emitter &_out, Canis::Entity &_entity)
 	{
 		if (_entity.HasComponent<TextComponent>())

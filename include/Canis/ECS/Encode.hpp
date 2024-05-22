@@ -12,9 +12,15 @@ namespace Canis
 
     extern void EncodeRectTransformComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 
+    extern void EncodeUIImageComponent(YAML::Emitter &_out, Canis::Entity &_entity);
+
     extern void EncodeTextComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 
     extern void EncodeButtonComponent(YAML::Emitter &_out, Canis::Entity &_entity);
+
+    extern void EncodeTagComponent(YAML::Emitter &_out, Canis::Entity &_entity);
+
+    extern void EncodeMeshComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 
     extern void EncodeTagComponent(YAML::Emitter &_out, Canis::Entity &_entity);
 
