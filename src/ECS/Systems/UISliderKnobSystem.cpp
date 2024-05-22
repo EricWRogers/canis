@@ -59,12 +59,39 @@ namespace Canis
             {
                 knob.value = newValue;
 
-                if (knob.OnChanged)
+                if (knob.eventName.empty() == false)
                 {
-                    knob.OnChanged(knob.value);
+                    for (int i = 0; i < m_knobListeners.size(); i++)
+                    {
+                        KnobListener &kl = m_knobListeners[i];
+
+                        Canis::Entity e(scene);
+                        e.entityHandle = entity; 
+
+                        if (m_knobListeners[i].name == knob.eventName)
+                        {
+                            m_knobListeners[i].func(e, knob.value, m_knobListeners[i].data);
+                        }
+                    }
                 }
             }
         }
+    }
+
+    KnobListener &UISliderKnobSystem::AddKnobListener(std::string _name, void *_data,
+                                                      std::function<void(Entity _entity, float _value, void *_data)> _func)
+    {
+        KnobListener knobListener;
+
+        m_knobListeners.push_back(knobListener);
+
+        KnobListener &kl = m_knobListeners[m_knobListeners.size() - 1];
+
+        kl.name = _name;
+        kl.data = _data;
+        kl.func = _func;
+
+        return kl;
     }
 
     bool DecodeUISliderKnobSystem(const std::string &_name, Canis::Scene *_scene)

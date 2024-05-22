@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -12,6 +13,16 @@ namespace Canis
         float targetValue = 0.0f;
         float timeToMoveFullBar = 2.0f;
         float _time = 0.0f;
+
+        static void RegisterProperties()
+		{
+			REGISTER_PROPERTY(Canis::UISliderComponent, maxWidth, float);
+			REGISTER_PROPERTY(Canis::UISliderComponent, minUVX, float);
+            REGISTER_PROPERTY(Canis::UISliderComponent, maxUVX, float);
+			REGISTER_PROPERTY(Canis::UISliderComponent, value, float);
+            REGISTER_PROPERTY(Canis::UISliderComponent, targetValue, float);
+			REGISTER_PROPERTY(Canis::UISliderComponent, timeToMoveFullBar, float);
+		}
     };
 
     inline void SetUISliderTarget(UISliderComponent& _slider, float _target)

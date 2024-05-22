@@ -4,6 +4,10 @@
 
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
+#include <Canis/ECS/Components/ButtonComponent.hpp>
+#include <Canis/ECS/Components/UISliderComponent.hpp>
+#include <Canis/ECS/Components/UISliderKnobComponent.hpp>
+#include <Canis/ECS/Components/UIImageComponent.hpp>
 
 #include <SDL_keyboard.h>
 
@@ -30,6 +34,20 @@ namespace Canis
         return false;
     }
 
+    void SceneManager::FindEntityEditor(Entity &_entity, UUID &_uuid)
+    {
+        for (auto euuid : entityAndUUIDToConnect)
+        {
+            if (_uuid == euuid.uuid)
+            {
+                _entity.entityHandle = euuid.entity->entityHandle;
+                return;
+            }
+        }
+
+        _uuid = 0lu;
+    }
+
     void SetUpIMGUI(Window *_window)
     {
         // Setup Dear ImGui context
@@ -48,6 +66,37 @@ namespace Canis
         const char *glsl_version = "#version 330";
         ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
         ImGui_ImplOpenGL3_Init(glsl_version);
+    }
+
+    // Function to copy text to the clipboard
+    void CopyToClipboard(const std::string &text)
+    {
+        ImGui::SetClipboardText(text.c_str());
+    }
+
+    // Function to display clickable entity ID
+    void ShowEntityID(uint64_t id)
+    {
+        // Convert the entity ID to a string
+        std::string entityIDStr = std::to_string(id);
+
+        // Create a unique ID for ImGui to differentiate this item
+        std::string buttonLabel = "##EntityIDButton";
+        buttonLabel += entityIDStr;
+
+        // Display the entity ID as a button
+        ImGui::Text("Entity ID:");
+        ImGui::SameLine();
+        if (ImGui::Button(entityIDStr.c_str()))
+        {
+            CopyToClipboard(entityIDStr);
+        }
+
+        // Add a tooltip to indicate the click functionality
+        if (ImGui::IsItemHovered())
+        {
+            ImGui::SetTooltip("Click to copy to clipboard");
+        }
     }
 
     SceneManager::SceneManager() {}
@@ -290,7 +339,6 @@ namespace Canis
                     {
                         if (id.ID == euuid.uuid)
                         {
-                            Canis::Log("Connect");
                             euuid.entity->entityHandle = entity;
                             break;
                         }
@@ -521,8 +569,6 @@ namespace Canis
 
             int count = 0;
 
-            
-
             ImGui::Begin("Hello, Editor!"); // Create a window called "Hello, world!" and append into it.
 
             if (ImGui::Button("Back"))
@@ -531,7 +577,7 @@ namespace Canis
                 m_index--;
             }
             ImGui::SameLine();
-            ImGui::Text("Entity ID: %d", m_index);
+            ShowEntityID((uint64_t)id);
             ImGui::SameLine();
 
             if (ImGui::Button("Next"))
@@ -542,31 +588,50 @@ namespace Canis
 
             auto view = scene->entityRegistry.view<IDComponent>();
 
-            for (auto [entityID, id] : view.each())
+            for (auto [entityID, idComponent] : view.each())
             {
                 count++;
             }
 
             if (m_index < 0)
                 m_index = count - 1;
-            
+
             if (m_index >= count)
                 m_index = 0;
 
             if (count == 0)
                 return;
-            
+
             int i = 0;
 
-            for (auto [entityID, id] : view.each())
+            for (auto [entityID, idComponent] : view.each())
             {
                 if (i == m_index)
                 {
-                    id = id.ID;
+                    id = idComponent.ID;
                     entity.entityHandle = entityID;
                 }
 
                 i++;
+            }
+
+            if (entity.HasComponent<TagComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::Tag"))
+                {
+                    auto& tagComponent = entity.GetComponent<TagComponent>();
+
+                    char newTag[20];
+                    std::strncpy(newTag, tagComponent.tag, sizeof(newTag));
+
+                    if (ImGui::InputText("Tag", newTag, sizeof(newTag)))
+                    {
+                        if (strlen(newTag) > 0)
+                        {
+                            std::strncpy(tagComponent.tag, newTag, sizeof(tagComponent.tag));
+                        }
+                    }
+                }
             }
 
             if (entity.HasComponent<RectTransformComponent>())
@@ -602,6 +667,71 @@ namespace Canis
                     ImGui::InputFloat("emissionUsingAlbedoIntesity", &cc.emissionUsingAlbedoIntesity);
                 }
             }
+
+            /*if (entity.HasComponent<UIImageComponent>())
+            {
+                static std::string path = "";
+                static std::string lastFramePath = "";
+
+                auto &ic = entity.GetComponent<UIImageComponent>();
+
+                if (refresh)
+                {
+                    path = AssetManager::Get<TextAsset>(ic.texture)->GetPath();
+                    lastFramePath = path;
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Text"))
+                {
+                    if (ImGui::CollapsingHeader("Texture Asset"))
+                    {
+                        std::string tempPath = std::string(path);
+
+                        ImGui::InputText("path", &tempPath);
+
+                        path = std::string(tempPath);
+                        size = tempSize;
+
+                        if (path != lastFramePath || size != lastFrameSize)
+                        {
+                            if (size < 0)
+                                size = 12;
+
+                            if (!path.empty())
+                            {
+                                if (FileExists(path.c_str()))
+                                {
+                                    int newID = AssetManager::LoadText(path, size);
+
+                                    if (newID != -1)
+                                    {
+                                        tc.assetId = newID;
+
+                                        path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
+                                        lastFramePath = path;
+
+                                        size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
+                                        lastFrameSize = size;
+                                    }
+                                }
+                                else
+                                {
+                                    Canis::Log("File does not exist: " + path);
+                                }
+                            }
+                        }
+                    }
+
+                    ImGui::InputText("text", &tc.text);
+
+                    static const char *AlignmentLabels[] = {
+                        "Left", "Right", "Center"};
+
+                    int *a = ((int *)&tc.alignment); // this might be bad because imgui uses -1 as error
+
+                    ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
+                }
+            }*/
 
             if (entity.HasComponent<TextComponent>())
             {
@@ -672,6 +802,113 @@ namespace Canis
                     int *a = ((int *)&tc.alignment); // this might be bad because imgui uses -1 as error
 
                     ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
+                }
+            }
+
+            if (entity.HasComponent<ButtonComponent>())
+            {
+                auto &bc = entity.GetComponent<ButtonComponent>();
+
+                static uint64_t tempIDUp = (bc.up) ? ((bc.up.HasComponent<IDComponent>()) ? (uint64_t)bc.up.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                static uint64_t tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                static uint64_t tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                static uint64_t tempIDRight = (bc.right) ? ((bc.right.HasComponent<IDComponent>()) ? (uint64_t)bc.right.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+
+                if (refresh)
+                {
+                    tempIDUp = (bc.up) ? ((bc.up.HasComponent<IDComponent>()) ? (uint64_t)bc.up.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                    tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                    tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                    tempIDRight = (bc.right) ? ((bc.right.HasComponent<IDComponent>()) ? (uint64_t)bc.right.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Button"))
+                {
+                    ImGui::InputText("eventName", &bc.eventName);
+                    ImGui::InputFloat4("baseColor", glm::value_ptr(bc.baseColor), "%.3f");
+                    ImGui::InputFloat4("hoverColor", glm::value_ptr(bc.hoverColor), "%.3f");
+
+                    static const char *ActionLabels[] = {
+                        "Clicked", "Released"};
+
+                    int actionIndex = (int)bc.action;
+                    ImGui::Combo("action", &actionIndex, ActionLabels, IM_ARRAYSIZE(ActionLabels));
+                    bc.action = actionIndex;
+
+                    ImGui::Checkbox("mouseOver", &bc.mouseOver);
+                    ImGui::InputFloat("scale", &bc.scale);
+                    ImGui::InputFloat("hoverScale", &bc.hoverScale);
+
+                    if (ImGui::InputScalar("Up", ImGuiDataType_U64, &tempIDUp))
+                    {
+                        UUID u = tempIDUp;
+                        FindEntityEditor(bc.up, u);
+                        tempIDUp = u.ID;
+                    }
+
+                    if (ImGui::InputScalar("Down", ImGuiDataType_U64, &tempIDDown))
+                    {
+                        UUID u = tempIDDown;
+                        FindEntityEditor(bc.down, u);
+                        tempIDDown = u.ID;
+                    }
+
+                    if (ImGui::InputScalar("Left", ImGuiDataType_U64, &tempIDLeft))
+                    {
+                        UUID u = tempIDLeft;
+                        FindEntityEditor(bc.left, u);
+                        tempIDLeft = u.ID;
+                    }
+
+                    if (ImGui::InputScalar("Right", ImGuiDataType_U64, &tempIDRight))
+                    {
+                        UUID u = tempIDRight;
+                        FindEntityEditor(bc.right, u);
+                        tempIDRight = u.ID;
+                    }
+
+                    ImGui::Checkbox("defaultSelected", &bc.defaultSelected);
+                }
+            }
+
+            if (entity.HasComponent<UISliderComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::UISlider"))
+                {
+                    auto &sc = entity.GetComponent<UISliderComponent>();
+                    ImGui::InputFloat("maxWidth", &sc.maxWidth);
+                    ImGui::InputFloat("minUVX", &sc.minUVX);
+                    ImGui::InputFloat("maxUVX", &sc.maxUVX);
+                    ImGui::SliderFloat("value", &sc.value, 0.0f, 1.0f);
+                    ImGui::SliderFloat("targetValue", &sc.targetValue, 0.0f, 1.0f);
+                    ImGui::InputFloat("timeToMoveFullBar", &sc.timeToMoveFullBar);
+                }
+            }
+
+            if (entity.HasComponent<UISliderKnobComponent>())
+            {
+                auto &kc = entity.GetComponent<UISliderKnobComponent>();
+
+                static uint64_t tempID = (kc.slider) ? ((kc.slider.HasComponent<IDComponent>()) ? (uint64_t)kc.slider.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+
+                if (refresh)
+                {
+                    tempID = (kc.slider) ? ((kc.slider.HasComponent<IDComponent>()) ? (uint64_t)kc.slider.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Knob"))
+                {
+                    ImGui::InputText("eventName", &kc.eventName);
+
+                    if (ImGui::InputScalar("slider", ImGuiDataType_U64, &tempID))
+                    {
+                        UUID u = tempID;
+                        FindEntityEditor(kc.slider, u);
+                        tempID = u.ID;
+                    }
+
+                    ImGui::Checkbox("grabbed", &kc.grabbed);
+                    ImGui::SliderFloat("value", &kc.value, 0.0f, 1.0f);
                 }
             }
 

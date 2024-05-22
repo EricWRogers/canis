@@ -219,8 +219,6 @@ namespace Canis
                 {
                     ButtonListener& bl = m_buttonListeners[i];
 
-                    //Canis::Log("bl.name: " + m_buttonListeners[i].name + " button.eventName: " + button.eventName);
-
                     if (m_buttonListeners[i].name == button.eventName)
                     {
                         m_buttonListeners[i].func(targetButton, m_buttonListeners[i].data);

@@ -35,6 +35,7 @@ private:
     high_resolution_clock::time_point m_drawEnd;
 
     void Load(int _index);
+    void FindEntityEditor(Entity& _entity, UUID &_uuid);
 public:
     SceneManager();
     ~SceneManager();
