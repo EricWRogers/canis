@@ -4,17 +4,23 @@
 namespace Canis
 {
     class Scene;
+    class UISliderKnobSystem;
 
     struct KnobListener {
+        int id = 0;
         std::string name = "";
         void* data = nullptr;
         std::function<void(Entity _entity, float _value, void* _data)> func = nullptr;
+        UISliderKnobSystem* system;
+
+        ~KnobListener();        
     };
 
     class UISliderKnobSystem : public System
     {
     private:
-        std::vector<KnobListener> m_knobListeners = {};
+        std::vector<KnobListener*> m_knobListeners = {};
+        int nextId = 0;
     public:
         UISliderKnobSystem() : System() { m_name = type_name<UISliderKnobSystem>(); }
 
@@ -30,7 +36,7 @@ namespace Canis
             std::function<void(Entity _entity, float _value, void* _data)> _func
         );
 
-        void RemoveKnobListener(KnobListener& _listener);
+        void RemoveKnobListener(int _id);
     };
 
     extern bool DecodeUISliderKnobSystem(const std::string &_name, Canis::Scene *_scene);

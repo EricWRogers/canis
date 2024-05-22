@@ -63,14 +63,14 @@ namespace Canis
                 {
                     for (int i = 0; i < m_knobListeners.size(); i++)
                     {
-                        KnobListener &kl = m_knobListeners[i];
+                        KnobListener &kl = *m_knobListeners[i];
 
                         Canis::Entity e(scene);
                         e.entityHandle = entity; 
 
-                        if (m_knobListeners[i].name == knob.eventName)
+                        if (m_knobListeners[i]->name == knob.eventName)
                         {
-                            m_knobListeners[i].func(e, knob.value, m_knobListeners[i].data);
+                            m_knobListeners[i]->func(e, knob.value, m_knobListeners[i]->data);
                         }
                     }
                 }
@@ -81,17 +81,36 @@ namespace Canis
     KnobListener &UISliderKnobSystem::AddKnobListener(std::string _name, void *_data,
                                                       std::function<void(Entity _entity, float _value, void *_data)> _func)
     {
-        KnobListener knobListener;
+        KnobListener* knobListener = new KnobListener();
+        knobListener->system = this;
+        knobListener->id = nextId;
+        nextId++;
 
         m_knobListeners.push_back(knobListener);
 
-        KnobListener &kl = m_knobListeners[m_knobListeners.size() - 1];
+        KnobListener &kl = *m_knobListeners[m_knobListeners.size() - 1];
 
         kl.name = _name;
         kl.data = _data;
         kl.func = _func;
 
         return kl;
+    }
+
+    void UISliderKnobSystem::RemoveKnobListener(int _id)
+    {
+        for (int i = 0; i < m_knobListeners.size(); i++)
+        {
+            if (_id == m_knobListeners[i]->id)
+            {
+                m_knobListeners.erase(m_knobListeners.begin() + i);
+            }
+        }
+    }
+
+    KnobListener::~KnobListener()
+    {
+        system->RemoveKnobListener(id);
     }
 
     bool DecodeUISliderKnobSystem(const std::string &_name, Canis::Scene *_scene)
