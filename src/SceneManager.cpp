@@ -103,6 +103,27 @@ namespace Canis
 
     SceneManager::~SceneManager()
     {
+        if (scene != nullptr)
+        {
+            scene->UnLoad();
+            {
+                // Clean up ScriptableEntity pointer
+                scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto &scriptComponent)
+                                                                   {
+                    if (scriptComponent.Instance)
+                    {
+                        scriptComponent.Instance->OnDestroy();
+                        delete scriptComponent.Instance;
+                    } });
+            }
+
+            // swap maps
+            message.swap(nextMessage);
+            nextMessage.clear();
+
+            scene->entityRegistry = entt::registry();
+        }
+        
         for (int i = 0; i < m_scenes.size(); i++)
         {
             delete m_scenes[i].scene;
