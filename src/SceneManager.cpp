@@ -34,7 +34,17 @@ namespace Canis
         return false;
     }
 
-    std::vector<const char*> ConvertVectorToCStringVector(const std::vector<std::string>& stringVector, std::vector<System*> &_system)
+    std::vector<const char*> ConvertVectorToCStringVector(const std::vector<std::string>& stringVector)
+    {
+        std::vector<const char*> cStringVector;
+        for (const auto& str : stringVector)
+        {            
+            cStringVector.push_back(str.c_str());
+        }
+        return cStringVector;
+    }
+
+    std::vector<const char*> ConvertSystemsVectorToCStringVector(const std::vector<std::string>& stringVector, std::vector<System*> &_system)
     {
         std::vector<const char*> cStringVector;
         for (const auto& str : stringVector)
@@ -630,20 +640,8 @@ namespace Canis
 
             ImGui::Begin("Inspector"); // Create a window called "Hello, world!" and append into it.
 
-            if (ImGui::Button("Back"))
-            {
-                refresh = true;
-                m_index--;
-            }
             ImGui::SameLine();
             ShowEntityID((uint64_t)id);
-            ImGui::SameLine();
-
-            if (ImGui::Button("Next"))
-            {
-                refresh = true;
-                m_index++;
-            }
 
             if (m_index < 0)
                 m_index = hierarchyElements.size() - 1;
@@ -951,6 +949,15 @@ namespace Canis
                 }
             }
 
+            static int componentToAdd = 0;
+
+            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetComponent().names);
+
+            if (cStringItems.size() > 0)
+            {
+                ImGui::Combo("##Components", &componentToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+            }
+
             refresh = false; // keep here
             ImGui::End();
         }
@@ -1009,7 +1016,7 @@ namespace Canis
 
                 static int updateToAdd = 0;
 
-                std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().updateSystems, scene->m_updateSystems);
+                std::vector<const char*> cStringItems = ConvertSystemsVectorToCStringVector(GetSystemRegistry().updateSystems, scene->m_updateSystems);
 
                 if (cStringItems.size() > 0)
                 {
@@ -1092,7 +1099,7 @@ namespace Canis
 
                 static int renderToAdd = 0;
 
-                std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().renderSystems, scene->m_renderSystems);
+                std::vector<const char*> cStringItems = ConvertSystemsVectorToCStringVector(GetSystemRegistry().renderSystems, scene->m_renderSystems);
 
                 if (cStringItems.size() > 0)
                 {
@@ -1134,10 +1141,13 @@ namespace Canis
                 std::string selectableID = "##" + uuidStr;
 
                 // Use ImGui::Selectable to create a clickable text item
-                if (ImGui::Selectable((uuidStr + selectableID).c_str()))
+                if (ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == i, ImGuiSelectableFlags_AllowOverlap))
                 {
                     m_index = i;
                 }
+
+                ImGui::SameLine();
+                ImGui::Text(" ");
 
                 if (i != 0)
                 {
