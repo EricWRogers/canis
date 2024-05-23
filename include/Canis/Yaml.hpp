@@ -38,6 +38,11 @@ struct SystemRegistry {
 	std::vector<std::string> renderSystems;
 };
 
+struct ComponentRegistry
+{
+	std::vector<std::string> names;
+};
+
 // Template declaration for GetPropertyRegistry
 template <typename T>
 PropertyRegistry& GetPropertyRegistry()
@@ -47,6 +52,7 @@ PropertyRegistry& GetPropertyRegistry()
 }
 
 extern SystemRegistry& GetSystemRegistry();
+extern ComponentRegistry& GetComponent();
 
 namespace Canis
 {

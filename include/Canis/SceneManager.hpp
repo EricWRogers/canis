@@ -22,6 +22,11 @@ struct EntityAndUUID {
     UUID uuid;
 };
 
+struct HierarchyElementInfo {
+    std::string name;
+    Entity entity;
+};
+
 class SceneManager
 {
 private:
@@ -87,5 +92,6 @@ public:
     std::unordered_map<std::string, std::string> nextMessage = {};
 
     std::vector<EntityAndUUID> entityAndUUIDToConnect;
+    std::vector<HierarchyElementInfo> hierarchyElements;
 };
 } // end of Canis namespace

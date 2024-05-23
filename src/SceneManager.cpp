@@ -344,6 +344,7 @@ namespace Canis
             YAML::Node root = YAML::LoadFile(scene->path);
 
             entityAndUUIDToConnect.clear();
+            hierarchyElements.clear();
 
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));
@@ -359,6 +360,12 @@ namespace Canis
 
                     entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
 
+                    HierarchyElementInfo hei;
+                    hei.entity.entityHandle = entity.entityHandle;
+                    hei.entity.scene = scene;
+
+                    hierarchyElements.push_back(hei);
+ 
                     for (int d = 0; d < decodeEntity.size(); d++)
                         decodeEntity[d](e, entity, this);
 
@@ -602,16 +609,24 @@ namespace Canis
         ImGui_ImplSDL2_NewFrame();
         ImGui::NewFrame();
 
+        static int m_index = 0; // hierachy target
+
         // 2. Show a simple window that we create ourselves. We use a Begin/End pair to create a named window.
         {
             static float f = 0.0f;
             static int counter = 0;
-            static int m_index = 0;
+            static int lastIndex = 0;
             static UUID id = 0;
             static Entity entity(scene);
             static bool refresh = true;
 
             int count = 0;
+
+            if (m_index != lastIndex)
+            {
+                lastIndex = m_index;
+                refresh = true;
+            }
 
             ImGui::Begin("Inspector"); // Create a window called "Hello, world!" and append into it.
 
@@ -630,30 +645,23 @@ namespace Canis
                 m_index++;
             }
 
-            auto view = scene->entityRegistry.view<IDComponent>();
-
-            for (auto [entityID, idComponent] : view.each())
-            {
-                count++;
-            }
-
             if (m_index < 0)
-                m_index = count - 1;
+                m_index = hierarchyElements.size() - 1;
 
-            if (m_index >= count)
+            if (m_index >= hierarchyElements.size())
                 m_index = 0;
 
-            if (count == 0)
+            if (hierarchyElements.size() == 0)
                 return;
 
             int i = 0;
 
-            for (auto [entityID, idComponent] : view.each())
+            for (HierarchyElementInfo hei : hierarchyElements)
             {
                 if (i == m_index)
                 {
-                    id = idComponent.ID;
-                    entity.entityHandle = entityID;
+                    id = hei.entity.GetUUID().ID;
+                    entity = hei.entity;
                 }
 
                 i++;
@@ -947,170 +955,239 @@ namespace Canis
             ImGui::End();
         }
 
-        ImGui::Begin("Systems");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
-        if (ImGui::CollapsingHeader("Update"))
-        {
-            for (int i = 0; i < scene->m_updateSystems.size(); i++)
+        { // SYSTEMS PANEL
+            ImGui::Begin("Systems");  
+            if (ImGui::CollapsingHeader("Update"))
             {
-                ImGui::Text("%s", scene->m_updateSystems[i]->GetName().c_str());
-                
+                for (int i = 0; i < scene->m_updateSystems.size(); i++)
+                {
+                    ImGui::Text("%s", scene->m_updateSystems[i]->GetName().c_str());
+                    
+                    if (i != 0)
+                    {
+                        ImGui::SameLine();
+                        std::string upButtonLabel = "^##" + std::to_string(i);
+                        if (ImGui::Button(upButtonLabel.c_str()))
+                        {
+                            System* temp = scene->m_updateSystems[i - 1];
+                            scene->m_updateSystems[i - 1] = scene->m_updateSystems[i];
+                            scene->m_updateSystems[i] = temp;
+                        }
+                    }
+
+                    if (i != scene->m_updateSystems.size() - 1)
+                    {
+                        ImGui::SameLine();
+                        std::string downButtonLabel = "v##" + std::to_string(i);
+                        if (ImGui::Button(downButtonLabel.c_str()))
+                        {
+                            System* temp = scene->m_updateSystems[i];
+                            scene->m_updateSystems[i] = scene->m_updateSystems[i + 1];
+                            scene->m_updateSystems[i + 1] = temp;
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    std::string removeButtonLabel = "x##" + std::to_string(i);
+                    if (ImGui::Button(removeButtonLabel.c_str()))
+                    {
+                        for (int s = 0; s < scene->systems.size(); s++)
+                        {
+                            if (scene->systems[s]->GetName() == scene->m_updateSystems[i]->GetName())
+                            {
+                                scene->systems.erase( scene->systems.begin() + s );
+                                break;
+                            }
+                        }
+
+                        delete (scene->m_updateSystems[i]);
+                        scene->m_updateSystems.erase( scene->m_updateSystems.begin() + i );
+
+                        i--;
+                    }
+                }
+
+                static int updateToAdd = 0;
+
+                std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().updateSystems, scene->m_updateSystems);
+
+                if (cStringItems.size() > 0)
+                {
+                    ImGui::Combo("##UpdateSystem", &updateToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+                    ImGui::SameLine();
+                    if (ImGui::Button("+##UpdateSystem"))
+                    {
+                        for (int d = 0; d < decodeSystem.size(); d++)
+                        {
+                            if (decodeSystem[d](cStringItems[updateToAdd], scene))
+                                continue;
+                        }
+
+                        for (int i = 0; i < scene->systems.size(); i++)
+                        {
+                            if (!scene->systems[i]->IsCreated())
+                            {
+                                scene->systems[i]->Create();
+                                scene->systems[i]->m_isCreated = true;
+                            }
+                        }
+
+                        updateToAdd = 0;
+                    }
+                }
+            }
+
+            if (ImGui::CollapsingHeader("Render"))
+            {
+                for (int i = 0; i < scene->m_renderSystems.size(); i++)
+                {
+                    ImGui::Text("%s", scene->m_renderSystems[i]->GetName().c_str());
+                    
+                    if (i != 0)
+                    {
+                        ImGui::SameLine();
+                        std::string upButtonLabel = "^##" + std::to_string(i);
+                        upButtonLabel += std::string("Render");
+                        if (ImGui::Button(upButtonLabel.c_str()))
+                        {
+                            System* temp = scene->m_renderSystems[i - 1];
+                            scene->m_renderSystems[i - 1] = scene->m_renderSystems[i];
+                            scene->m_renderSystems[i] = temp;
+                        }
+                    }
+                    
+                    if (i != scene->m_renderSystems.size() - 1)
+                    {
+                        ImGui::SameLine();
+                        std::string downButtonLabel = "v##" + std::to_string(i);
+                        downButtonLabel += std::string("Render");
+                        if (ImGui::Button(downButtonLabel.c_str()))
+                        {
+                            System* temp = scene->m_renderSystems[i];
+                            scene->m_renderSystems[i] = scene->m_renderSystems[i + 1];
+                            scene->m_renderSystems[i + 1] = temp;
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    std::string removeButtonLabel = "x##" + std::to_string(i);
+                    removeButtonLabel += std::string("Render");
+                    if (ImGui::Button(removeButtonLabel.c_str()))
+                    {
+                        for (int s = 0; s < scene->systems.size(); s++)
+                        {
+                            if (scene->systems[s]->GetName() == scene->m_renderSystems[i]->GetName())
+                            {
+                                scene->systems.erase( scene->systems.begin() + s );
+                                break;
+                            }
+                        }
+
+                        delete (scene->m_renderSystems[i]);
+                        scene->m_renderSystems.erase( scene->m_renderSystems.begin() + i );
+
+                        i--;
+                    }
+                }
+
+                static int renderToAdd = 0;
+
+                std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().renderSystems, scene->m_renderSystems);
+
+                if (cStringItems.size() > 0)
+                {
+                    ImGui::Combo("##RenderSystem", &renderToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+                    ImGui::SameLine();
+                    if (ImGui::Button("+##RenderSystem"))
+                    {
+                        for (int d = 0; d < decodeRenderSystem.size(); d++)
+                        {
+                            if (decodeRenderSystem[d](cStringItems[renderToAdd], scene))
+                                continue;
+                        }
+
+                        for (int i = 0; i < scene->systems.size(); i++)
+                        {
+                            if (!scene->systems[i]->IsCreated())
+                            {
+                                scene->systems[i]->Create();
+                                scene->systems[i]->m_isCreated = true;
+                            }
+                        }
+
+                        renderToAdd = 0;
+                    }
+                }
+            }
+            ImGui::End();
+        }
+
+        { // HIERACHY PANEL
+            ImGui::Begin("Hierarchy");  
+            
+            for (int i = 0; i < hierarchyElements.size(); i++)
+            {
+                // Convert UUID to string
+                std::string uuidStr = std::to_string(hierarchyElements[i].entity.GetUUID());
+
+                // Create a unique ID for each selectable item to ensure ImGui can differentiate them
+                std::string selectableID = "##" + uuidStr;
+
+                // Use ImGui::Selectable to create a clickable text item
+                if (ImGui::Selectable((uuidStr + selectableID).c_str()))
+                {
+                    m_index = i;
+                }
+
                 if (i != 0)
                 {
                     ImGui::SameLine();
                     std::string upButtonLabel = "^##" + std::to_string(i);
+                    upButtonLabel += std::to_string(hierarchyElements[i].entity.GetUUID());
                     if (ImGui::Button(upButtonLabel.c_str()))
                     {
-                        System* temp = scene->m_updateSystems[i - 1];
-                        scene->m_updateSystems[i - 1] = scene->m_updateSystems[i];
-                        scene->m_updateSystems[i] = temp;
+                        HierarchyElementInfo temp = hierarchyElements[i - 1];
+                        hierarchyElements[i - 1] = hierarchyElements[i];
+                        hierarchyElements[i] = temp;
                     }
                 }
-
-                if (i != scene->m_updateSystems.size() - 1)
+                
+                if (i != hierarchyElements.size() - 1)
                 {
                     ImGui::SameLine();
                     std::string downButtonLabel = "v##" + std::to_string(i);
+                    downButtonLabel += std::to_string(hierarchyElements[i].entity.GetUUID());
                     if (ImGui::Button(downButtonLabel.c_str()))
                     {
-                        System* temp = scene->m_updateSystems[i];
-                        scene->m_updateSystems[i] = scene->m_updateSystems[i + 1];
-                        scene->m_updateSystems[i + 1] = temp;
+                        HierarchyElementInfo temp = hierarchyElements[i];
+                        hierarchyElements[i] = hierarchyElements[i + 1];
+                        hierarchyElements[i + 1] = temp;
                     }
                 }
 
                 ImGui::SameLine();
                 std::string removeButtonLabel = "x##" + std::to_string(i);
+                removeButtonLabel += std::to_string(hierarchyElements[i].entity.GetUUID());
                 if (ImGui::Button(removeButtonLabel.c_str()))
                 {
-                    for (int s = 0; s < scene->systems.size(); s++)
-                    {
-                        if (scene->systems[s]->GetName() == scene->m_updateSystems[i]->GetName())
-                        {
-                            scene->systems.erase( scene->systems.begin() + s );
-                            break;
-                        }
-                    }
-
-                    delete (scene->m_updateSystems[i]);
-                    scene->m_updateSystems.erase( scene->m_updateSystems.begin() + i );
-
-                    i--;
+                    hierarchyElements.erase( hierarchyElements.begin() + i );
                 }
             }
 
-            static int updateToAdd = 0;
-
-            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().updateSystems, scene->m_updateSystems);
-
-            if (cStringItems.size() > 0)
+            if (ImGui::Button("New Entity"))
             {
-                ImGui::Combo("##UpdateSystem", &updateToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
-                ImGui::SameLine();
-                if (ImGui::Button("+##UpdateSystem"))
-                {
-                    for (int d = 0; d < decodeSystem.size(); d++)
-                    {
-                        if (decodeSystem[d](cStringItems[updateToAdd], scene))
-                            continue;
-                    }
+                Entity e = scene->CreateEntity();
+                e.AddComponent<IDComponent>();
 
-                    for (int i = 0; i < scene->systems.size(); i++)
-                    {
-                        if (!scene->systems[i]->IsCreated())
-                        {
-                            scene->systems[i]->Create();
-                            scene->systems[i]->m_isCreated = true;
-                        }
-                    }
+                HierarchyElementInfo hei;
+                hei.entity.entityHandle = e.entityHandle;
+                hei.entity.scene = scene;
 
-                    updateToAdd = 0;
-                }
+                hierarchyElements.push_back(hei);
             }
+
+            ImGui::End();
         }
-
-        if (ImGui::CollapsingHeader("Render"))
-        {
-            for (int i = 0; i < scene->m_renderSystems.size(); i++)
-            {
-                ImGui::Text("%s", scene->m_renderSystems[i]->GetName().c_str());
-                
-                if (i != 0)
-                {
-                    ImGui::SameLine();
-                    std::string upButtonLabel = "^##" + std::to_string(i);
-                    upButtonLabel += std::string("Render");
-                    if (ImGui::Button(upButtonLabel.c_str()))
-                    {
-                        System* temp = scene->m_renderSystems[i - 1];
-                        scene->m_renderSystems[i - 1] = scene->m_renderSystems[i];
-                        scene->m_renderSystems[i] = temp;
-                    }
-                }
-                
-                if (i != scene->m_renderSystems.size() - 1)
-                {
-                    ImGui::SameLine();
-                    std::string downButtonLabel = "v##" + std::to_string(i);
-                    downButtonLabel += std::string("Render");
-                    if (ImGui::Button(downButtonLabel.c_str()))
-                    {
-                        System* temp = scene->m_renderSystems[i];
-                        scene->m_renderSystems[i] = scene->m_renderSystems[i + 1];
-                        scene->m_renderSystems[i + 1] = temp;
-                    }
-                }
-
-                ImGui::SameLine();
-                std::string removeButtonLabel = "x##" + std::to_string(i);
-                removeButtonLabel += std::string("Render");
-                if (ImGui::Button(removeButtonLabel.c_str()))
-                {
-                    for (int s = 0; s < scene->systems.size(); s++)
-                    {
-                        if (scene->systems[s]->GetName() == scene->m_renderSystems[i]->GetName())
-                        {
-                            scene->systems.erase( scene->systems.begin() + s );
-                            break;
-                        }
-                    }
-
-                    delete (scene->m_renderSystems[i]);
-                    scene->m_renderSystems.erase( scene->m_renderSystems.begin() + i );
-
-                    i--;
-                }
-            }
-
-            static int renderToAdd = 0;
-
-            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().renderSystems, scene->m_renderSystems);
-
-            if (cStringItems.size() > 0)
-            {
-                ImGui::Combo("##RenderSystem", &renderToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
-                ImGui::SameLine();
-                if (ImGui::Button("+##RenderSystem"))
-                {
-                    for (int d = 0; d < decodeRenderSystem.size(); d++)
-                    {
-                        if (decodeRenderSystem[d](cStringItems[renderToAdd], scene))
-                            continue;
-                    }
-
-                    for (int i = 0; i < scene->systems.size(); i++)
-                    {
-                        if (!scene->systems[i]->IsCreated())
-                        {
-                            scene->systems[i]->Create();
-                            scene->systems[i]->m_isCreated = true;
-                        }
-                    }
-
-                    renderToAdd = 0;
-                }
-            }
-        }
-        ImGui::End();
 
         // Rendering
         ImGui::Render();
