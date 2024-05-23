@@ -3,6 +3,7 @@
 #include <SDL_gamecontroller.h>
 #include <Canis/Debug.hpp>
 #include <imgui_impl_sdl2.h>
+#include <Canis/Window.hpp>
 
 namespace Canis
 {
@@ -20,7 +21,7 @@ namespace Canis
         }
     }
 
-    bool InputManager::Update(int _screenWidth, int _screenHeight)
+    bool InputManager::Update(int _screenWidth, int _screenHeight, void* _window)
     {
         SwapMaps();
         mouseRel = glm::vec2(0.0f);
@@ -30,6 +31,11 @@ namespace Canis
         {
             // for the editor
             ImGui_ImplSDL2_ProcessEvent(&event);
+
+            Window* window = (Window*)_window;
+
+            if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID((SDL_Window*)window->GetSDLWindow()))
+                return false;
 
             switch (event.type)
             {

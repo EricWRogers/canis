@@ -34,6 +34,24 @@ namespace Canis
         return false;
     }
 
+    std::vector<const char*> ConvertVectorToCStringVector(const std::vector<std::string>& stringVector, std::vector<System*> &_system)
+    {
+        std::vector<const char*> cStringVector;
+        for (const auto& str : stringVector)
+        {
+            bool shouldContinue = false;
+            for (auto* system : _system)
+                if (system->GetName() == str)
+                    shouldContinue = true;
+            
+            if (shouldContinue)
+                continue;
+            
+            cStringVector.push_back(str.c_str());
+        }
+        return cStringVector;
+    }
+
     void SceneManager::FindEntityEditor(Entity &_entity, UUID &_uuid)
     {
         for (auto euuid : entityAndUUIDToConnect)
@@ -48,15 +66,19 @@ namespace Canis
         _uuid = 0lu;
     }
 
-    void SetUpIMGUI(Window *_window)
+    void SceneManager::SetUpIMGUI(Window *_window)
     {
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
-        ImGuiIO &io = ImGui::GetIO();
+        ImGuiIO& io = ImGui::GetIO();
         (void)io;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;     // Enable Keyboard Controls
+        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;      // Enable Gamepad Controls
+        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;         // Enable Docking
+        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;       // Enable Multi-Viewport / Platform Windows
+        //io.ConfigViewportsNoAutoMerge = true;
+        //io.ConfigViewportsNoTaskBarIcon = true;
 
         // Setup Dear ImGui style
         ImGui::StyleColorsDark();
@@ -123,7 +145,7 @@ namespace Canis
 
             scene->entityRegistry = entt::registry();
         }
-        
+
         for (int i = 0; i < m_scenes.size(); i++)
         {
             delete m_scenes[i].scene;
@@ -591,7 +613,7 @@ namespace Canis
 
             int count = 0;
 
-            ImGui::Begin("Hello, Editor!"); // Create a window called "Hello, world!" and append into it.
+            ImGui::Begin("Inspector"); // Create a window called "Hello, world!" and append into it.
 
             if (ImGui::Button("Back"))
             {
@@ -925,9 +947,189 @@ namespace Canis
             ImGui::End();
         }
 
+        ImGui::Begin("Systems");   // Pass a pointer to our bool variable (the window will have a closing button that will clear the bool when clicked)
+        if (ImGui::CollapsingHeader("Update"))
+        {
+            for (int i = 0; i < scene->m_updateSystems.size(); i++)
+            {
+                ImGui::Text("%s", scene->m_updateSystems[i]->GetName().c_str());
+                
+                if (i != 0)
+                {
+                    ImGui::SameLine();
+                    std::string upButtonLabel = "^##" + std::to_string(i);
+                    if (ImGui::Button(upButtonLabel.c_str()))
+                    {
+                        System* temp = scene->m_updateSystems[i - 1];
+                        scene->m_updateSystems[i - 1] = scene->m_updateSystems[i];
+                        scene->m_updateSystems[i] = temp;
+                    }
+                }
+
+                if (i != scene->m_updateSystems.size() - 1)
+                {
+                    ImGui::SameLine();
+                    std::string downButtonLabel = "v##" + std::to_string(i);
+                    if (ImGui::Button(downButtonLabel.c_str()))
+                    {
+                        System* temp = scene->m_updateSystems[i];
+                        scene->m_updateSystems[i] = scene->m_updateSystems[i + 1];
+                        scene->m_updateSystems[i + 1] = temp;
+                    }
+                }
+
+                ImGui::SameLine();
+                std::string removeButtonLabel = "x##" + std::to_string(i);
+                if (ImGui::Button(removeButtonLabel.c_str()))
+                {
+                    for (int s = 0; s < scene->systems.size(); s++)
+                    {
+                        if (scene->systems[s]->GetName() == scene->m_updateSystems[i]->GetName())
+                        {
+                            scene->systems.erase( scene->systems.begin() + s );
+                            break;
+                        }
+                    }
+
+                    delete (scene->m_updateSystems[i]);
+                    scene->m_updateSystems.erase( scene->m_updateSystems.begin() + i );
+
+                    i--;
+                }
+            }
+
+            static int updateToAdd = 0;
+
+            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().updateSystems, scene->m_updateSystems);
+
+            if (cStringItems.size() > 0)
+            {
+                ImGui::Combo("##UpdateSystem", &updateToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+                ImGui::SameLine();
+                if (ImGui::Button("+##UpdateSystem"))
+                {
+                    for (int d = 0; d < decodeSystem.size(); d++)
+                    {
+                        if (decodeSystem[d](cStringItems[updateToAdd], scene))
+                            continue;
+                    }
+
+                    for (int i = 0; i < scene->systems.size(); i++)
+                    {
+                        if (!scene->systems[i]->IsCreated())
+                        {
+                            scene->systems[i]->Create();
+                            scene->systems[i]->m_isCreated = true;
+                        }
+                    }
+
+                    updateToAdd = 0;
+                }
+            }
+        }
+
+        if (ImGui::CollapsingHeader("Render"))
+        {
+            for (int i = 0; i < scene->m_renderSystems.size(); i++)
+            {
+                ImGui::Text("%s", scene->m_renderSystems[i]->GetName().c_str());
+                
+                if (i != 0)
+                {
+                    ImGui::SameLine();
+                    std::string upButtonLabel = "^##" + std::to_string(i);
+                    upButtonLabel += std::string("Render");
+                    if (ImGui::Button(upButtonLabel.c_str()))
+                    {
+                        System* temp = scene->m_renderSystems[i - 1];
+                        scene->m_renderSystems[i - 1] = scene->m_renderSystems[i];
+                        scene->m_renderSystems[i] = temp;
+                    }
+                }
+                
+                if (i != scene->m_renderSystems.size() - 1)
+                {
+                    ImGui::SameLine();
+                    std::string downButtonLabel = "v##" + std::to_string(i);
+                    downButtonLabel += std::string("Render");
+                    if (ImGui::Button(downButtonLabel.c_str()))
+                    {
+                        System* temp = scene->m_renderSystems[i];
+                        scene->m_renderSystems[i] = scene->m_renderSystems[i + 1];
+                        scene->m_renderSystems[i + 1] = temp;
+                    }
+                }
+
+                ImGui::SameLine();
+                std::string removeButtonLabel = "x##" + std::to_string(i);
+                removeButtonLabel += std::string("Render");
+                if (ImGui::Button(removeButtonLabel.c_str()))
+                {
+                    for (int s = 0; s < scene->systems.size(); s++)
+                    {
+                        if (scene->systems[s]->GetName() == scene->m_renderSystems[i]->GetName())
+                        {
+                            scene->systems.erase( scene->systems.begin() + s );
+                            break;
+                        }
+                    }
+
+                    delete (scene->m_renderSystems[i]);
+                    scene->m_renderSystems.erase( scene->m_renderSystems.begin() + i );
+
+                    i--;
+                }
+            }
+
+            static int renderToAdd = 0;
+
+            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetSystemRegistry().renderSystems, scene->m_renderSystems);
+
+            if (cStringItems.size() > 0)
+            {
+                ImGui::Combo("##RenderSystem", &renderToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+                ImGui::SameLine();
+                if (ImGui::Button("+##RenderSystem"))
+                {
+                    for (int d = 0; d < decodeRenderSystem.size(); d++)
+                    {
+                        if (decodeRenderSystem[d](cStringItems[renderToAdd], scene))
+                            continue;
+                    }
+
+                    for (int i = 0; i < scene->systems.size(); i++)
+                    {
+                        if (!scene->systems[i]->IsCreated())
+                        {
+                            scene->systems[i]->Create();
+                            scene->systems[i]->m_isCreated = true;
+                        }
+                    }
+
+                    renderToAdd = 0;
+                }
+            }
+        }
+        ImGui::End();
+
         // Rendering
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+        ImGuiIO& io = ImGui::GetIO();
+        (void)io;
+
+        // Update and Render additional Platform Windows
+        // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+        //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
+        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+        {
+            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
+            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+            ImGui::UpdatePlatformWindows();
+            ImGui::RenderPlatformWindowsDefault();
+            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+        }
 
         /////////////////////////////////////
 

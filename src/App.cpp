@@ -136,7 +136,7 @@ namespace Canis
 
             sceneManager.LateUpdate();
             
-            if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight()))
+            if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
                 appState = AppState::OFF;
             
             sceneManager.InputUpdate();

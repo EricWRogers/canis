@@ -60,7 +60,7 @@ namespace Canis
         InputManager();
         ~InputManager();
 
-        bool Update(int _screenWidth, int _screenHeight);
+        bool Update(int _screenWidth, int _screenHeight, void* _window);
 
         bool GetKey(unsigned int _keyID);
         bool JustPressedKey(unsigned int _keyID);

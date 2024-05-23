@@ -36,6 +36,7 @@ private:
 
     void Load(int _index);
     void FindEntityEditor(Entity& _entity, UUID &_uuid);
+    void SetUpIMGUI(Window *_window);
 public:
     SceneManager();
     ~SceneManager();

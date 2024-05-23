@@ -33,6 +33,11 @@ struct PropertyRegistry {
 	std::vector<std::string> propertyOrder;
 };
 
+struct SystemRegistry {
+	std::vector<std::string> updateSystems;
+	std::vector<std::string> renderSystems;
+};
+
 // Template declaration for GetPropertyRegistry
 template <typename T>
 PropertyRegistry& GetPropertyRegistry()
@@ -40,6 +45,8 @@ PropertyRegistry& GetPropertyRegistry()
     static PropertyRegistry registry;
     return registry;
 }
+
+extern SystemRegistry& GetSystemRegistry();
 
 namespace Canis
 {
