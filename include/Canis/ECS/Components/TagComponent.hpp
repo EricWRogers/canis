@@ -4,6 +4,6 @@ namespace Canis
 {
     struct TagComponent
     {
-        char tag[20] = "";
+        char tag[20] = "\0";
     };
 } // end of Canis namespace
