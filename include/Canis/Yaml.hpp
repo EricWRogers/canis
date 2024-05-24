@@ -15,6 +15,10 @@
 #include <glm/glm.hpp>
 #include <yaml-cpp/yaml.h>
 
+namespace Canis {
+	class Entity;
+}
+
 struct EntityData { 
 	entt::entity entityHandle{ entt::null };
 	void *scene = nullptr;
@@ -25,6 +29,9 @@ using PropertySetter = std::function<void(YAML::Node&, void*, void*)>;
 
 // Define PropertyGetter as a function that takes a void pointer to the component and returns a YAML node
 using PropertyGetter = std::function<YAML::Node(void*)>;
+
+using AddComponentFunc = std::function<void(Canis::Entity&)>;
+using RemoveComponentFunc = std::function<void(Canis::Entity&)>;
 
 // PropertyRegistry struct to hold the setters and getters for each property
 struct PropertyRegistry {
@@ -41,6 +48,8 @@ struct SystemRegistry {
 struct ComponentRegistry
 {
 	std::vector<std::string> names;
+	std::map<std::string, AddComponentFunc> addComponentFuncs;
+    std::map<std::string, RemoveComponentFunc> removeComponentFuncs;
 };
 
 // Template declaration for GetPropertyRegistry
@@ -78,11 +87,13 @@ namespace Canis
             return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
         } else {                                                                                       						\
             /* Assuming Canis::UUID has an encode method or operator<< defined */                         					\
-            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                        					\
+            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
         }                                                                                              						\
     };                                                                                                						\
 	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  \
 }
+
+
 
 //#define REGISTER_PROPERTY_DEFAULT(component, property, type, defaultValue)                           \
 //    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \

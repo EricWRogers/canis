@@ -682,6 +682,16 @@ namespace Canis
                         }
                     }
                 }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Tag"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Tag"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::TagComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             if (entity.HasComponent<RectTransformComponent>())
@@ -705,6 +715,16 @@ namespace Canis
 
                     ImGui::InputFloat2("rotationOriginOffset", glm::value_ptr(rtc.rotationOriginOffset), "%.3f");
                 }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Rect"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Rect"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::RectTransformComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             if (entity.HasComponent<ColorComponent>())
@@ -715,6 +735,16 @@ namespace Canis
                     ImGui::InputFloat4("color", glm::value_ptr(cc.color), "%.3f");
                     ImGui::InputFloat3("emission", glm::value_ptr(cc.emission), "%.3f");
                     ImGui::InputFloat("emissionUsingAlbedoIntesity", &cc.emissionUsingAlbedoIntesity);
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Color"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Color"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::ColorComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
                 }
             }
 
@@ -767,6 +797,16 @@ namespace Canis
                     }
                 
                     ImGui::InputFloat4("uv", glm::value_ptr(ic.uv));
+                }
+            
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Image"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Image"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::UIImageComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
                 }
             }
 
@@ -840,6 +880,16 @@ namespace Canis
 
                     ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
                 }
+            
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Text"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Text"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::TextComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             if (entity.HasComponent<ButtonComponent>())
@@ -906,6 +956,16 @@ namespace Canis
 
                     ImGui::Checkbox("defaultSelected", &bc.defaultSelected);
                 }
+            
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Button"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Button"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::ButtonComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             if (entity.HasComponent<UISliderComponent>())
@@ -919,6 +979,16 @@ namespace Canis
                     ImGui::SliderFloat("value", &sc.value, 0.0f, 1.0f);
                     ImGui::SliderFloat("targetValue", &sc.targetValue, 0.0f, 1.0f);
                     ImGui::InputFloat("timeToMoveFullBar", &sc.timeToMoveFullBar);
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::UISlider"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::UISlider"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::UISliderComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
                 }
             }
 
@@ -947,6 +1017,16 @@ namespace Canis
                     ImGui::Checkbox("grabbed", &kc.grabbed);
                     ImGui::SliderFloat("value", &kc.value, 0.0f, 1.0f);
                 }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Knob"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Knob"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::UISliderKnobComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
             }
 
             static int componentToAdd = 0;
@@ -956,6 +1036,13 @@ namespace Canis
             if (cStringItems.size() > 0)
             {
                 ImGui::Combo("##Components", &componentToAdd, cStringItems.data(), static_cast<int>(cStringItems.size()));
+
+                ImGui::SameLine();
+
+                if (ImGui::Button("+##AddComponent"))
+                {
+                    GetComponent().addComponentFuncs[GetComponent().names[componentToAdd]](entity);
+                }
             }
 
             refresh = false; // keep here
