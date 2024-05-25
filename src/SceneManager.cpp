@@ -62,6 +62,19 @@ namespace Canis
         return cStringVector;
     }
 
+    std::vector<const char*> ConvertComponentVectorToCStringVector(const std::vector<std::string>& stringVector, Entity &_entity)
+    {
+        std::vector<const char*> cStringVector;
+        for (const auto& str : stringVector)
+        {
+            if (GetComponent().hasComponentFuncs[str](_entity))
+                continue;
+            
+            cStringVector.push_back(str.c_str());
+        }
+        return cStringVector;
+    }
+
     void SceneManager::FindEntityEditor(Entity &_entity, UUID &_uuid)
     {
         for (auto euuid : entityAndUUIDToConnect)
@@ -1031,7 +1044,12 @@ namespace Canis
 
             static int componentToAdd = 0;
 
-            std::vector<const char*> cStringItems = ConvertVectorToCStringVector(GetComponent().names);
+            if (refresh)
+            {
+                componentToAdd = 0;
+            }
+
+            std::vector<const char*> cStringItems = ConvertComponentVectorToCStringVector(GetComponent().names, entity);
 
             if (cStringItems.size() > 0)
             {
@@ -1041,7 +1059,8 @@ namespace Canis
 
                 if (ImGui::Button("+##AddComponent"))
                 {
-                    GetComponent().addComponentFuncs[GetComponent().names[componentToAdd]](entity);
+                    GetComponent().addComponentFuncs[cStringItems[componentToAdd]](entity);
+                    componentToAdd = 0;
                 }
             }
 

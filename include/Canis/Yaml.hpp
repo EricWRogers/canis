@@ -32,6 +32,7 @@ using PropertyGetter = std::function<YAML::Node(void*)>;
 
 using AddComponentFunc = std::function<void(Canis::Entity&)>;
 using RemoveComponentFunc = std::function<void(Canis::Entity&)>;
+using HasComponentFunc = std::function<bool(Canis::Entity&)>;
 
 // PropertyRegistry struct to hold the setters and getters for each property
 struct PropertyRegistry {
@@ -50,6 +51,7 @@ struct ComponentRegistry
 	std::vector<std::string> names;
 	std::map<std::string, AddComponentFunc> addComponentFuncs;
     std::map<std::string, RemoveComponentFunc> removeComponentFuncs;
+	std::map<std::string, HasComponentFunc> hasComponentFuncs;
 };
 
 // Template declaration for GetPropertyRegistry
