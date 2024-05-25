@@ -14,6 +14,7 @@ private:
     friend class Scene;
 
     void* InitScriptableComponent();
+    void RemoveScriptable(Canis::ScriptComponent &script);
 public:
     entt::entity entityHandle{ entt::null };
     Canis::Scene *scene = nullptr;
@@ -119,6 +120,20 @@ public:
             FatalError("Entity does not have that component");
             return *static_cast<T*>(sc.Instance);
         }
+    }
+
+    void RemoveScript()
+    {
+        if (!HasComponent<ScriptComponent>())
+        {
+            FatalError("Entity does not script component");
+        }
+
+        Canis::ScriptComponent& scriptComponent = GetComponent<Canis::ScriptComponent>();
+
+        RemoveScriptable(scriptComponent);
+
+        RemoveComponent<ScriptComponent>();
     }
 
     void SetTag(std::string _tag);

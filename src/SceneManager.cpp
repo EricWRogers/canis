@@ -325,13 +325,9 @@ namespace Canis
             scene->UnLoad();
             {
                 // Clean up ScriptableEntity pointer
-                scene->entityRegistry.view<ScriptComponent>().each([](auto entity, auto &scriptComponent)
-                                                                   {
-                    if (scriptComponent.Instance)
-                    {
-                        scriptComponent.Instance->OnDestroy();
-                        delete scriptComponent.Instance;
-                    } });
+                scene->entityRegistry.view<ScriptComponent>().each([this](auto entity, auto &scriptComponent) {
+                    Entity(entity, scene).RemoveScript();
+                });
             }
 
             // swap maps
@@ -1049,6 +1045,8 @@ namespace Canis
                 componentToAdd = 0;
             }
 
+            {
+
             std::vector<const char*> cStringItems = ConvertComponentVectorToCStringVector(GetComponent().names, entity);
 
             if (cStringItems.size() > 0)
@@ -1061,6 +1059,69 @@ namespace Canis
                 {
                     GetComponent().addComponentFuncs[cStringItems[componentToAdd]](entity);
                     componentToAdd = 0;
+                }
+            }
+
+            }
+
+            static int scriptComponentSelect = 0;
+            static std::vector<std::string> scriptComponentDropdown = {};
+
+            if (refresh)
+            {
+                scriptComponentSelect = 0;
+                scriptComponentDropdown.clear();
+                scriptComponentDropdown.push_back("NONE");
+
+                for (std::string name : GetScriptableComponentRegistry().names)
+                {
+                    scriptComponentDropdown.push_back(name);
+                }
+
+                if (entity.HasComponent<ScriptComponent>())
+                {
+                    for (int i = 1; i < scriptComponentDropdown.size(); i++)
+                    {
+                        if (GetScriptableComponentRegistry().hasScriptableComponent[scriptComponentDropdown[i]](entity))
+                        {
+                            scriptComponentSelect = i;
+                        }
+                    }
+                }
+            }
+
+            if (ImGui::CollapsingHeader("ScriptComponent"))
+            {
+                int wasScriptComponentSelect = scriptComponentSelect;
+
+                std::vector<const char*> cStringItems = ConvertVectorToCStringVector(scriptComponentDropdown);
+
+                ImGui::Combo("##ScriptableComponents", &scriptComponentSelect, cStringItems.data(), static_cast<int>(cStringItems.size()));
+
+                if (scriptComponentSelect != wasScriptComponentSelect)
+                {
+                    if (scriptComponentSelect == 0)
+                    {
+                        if (entity.HasComponent<ScriptComponent>())
+                        {
+                            if (GetScriptableComponentRegistry().hasScriptableComponent[scriptComponentDropdown[wasScriptComponentSelect]](entity))
+                            {
+                                GetScriptableComponentRegistry().removeScriptableComponent[scriptComponentDropdown[wasScriptComponentSelect]](entity);
+                            }
+                        }
+                    }
+                    else
+                    {
+                        if (entity.HasComponent<ScriptComponent>())
+                        {
+                            if (GetScriptableComponentRegistry().hasScriptableComponent[scriptComponentDropdown[scriptComponentSelect]](entity))
+                            {
+                                GetScriptableComponentRegistry().removeScriptableComponent[scriptComponentDropdown[scriptComponentSelect]](entity);
+                            }
+                        }
+
+                        GetScriptableComponentRegistry().addScriptableComponent[scriptComponentDropdown[scriptComponentSelect]](entity);
+                    }
                 }
             }
 

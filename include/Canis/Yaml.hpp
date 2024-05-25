@@ -34,6 +34,10 @@ using AddComponentFunc = std::function<void(Canis::Entity&)>;
 using RemoveComponentFunc = std::function<void(Canis::Entity&)>;
 using HasComponentFunc = std::function<bool(Canis::Entity&)>;
 
+using AddScriptableComponent = std::function<void(Canis::Entity&)>;
+using RemoveScriptableComponent = std::function<void(Canis::Entity&)>;
+using HasScriptableComponent = std::function<bool(Canis::Entity&)>;
+
 // PropertyRegistry struct to hold the setters and getters for each property
 struct PropertyRegistry {
     std::map<std::string, PropertySetter> setters;
@@ -54,6 +58,14 @@ struct ComponentRegistry
 	std::map<std::string, HasComponentFunc> hasComponentFuncs;
 };
 
+struct ScriptableComponentRegistry
+{
+	std::vector<std::string> names;
+	std::map<std::string, AddScriptableComponent> addScriptableComponent;
+    std::map<std::string, RemoveScriptableComponent> removeScriptableComponent;
+	std::map<std::string, HasScriptableComponent> hasScriptableComponent;
+};
+
 // Template declaration for GetPropertyRegistry
 template <typename T>
 PropertyRegistry& GetPropertyRegistry()
@@ -64,6 +76,7 @@ PropertyRegistry& GetPropertyRegistry()
 
 extern SystemRegistry& GetSystemRegistry();
 extern ComponentRegistry& GetComponent();
+extern ScriptableComponentRegistry& GetScriptableComponentRegistry();
 
 namespace Canis
 {

@@ -29,6 +29,15 @@ void* Entity::InitScriptableComponent()
     return sc.Instance;
 }
 
+void Entity::RemoveScriptable(Canis::ScriptComponent &script)
+{
+    if (script.Instance)
+    {
+        script.Instance->OnDestroy();
+        delete script.Instance;
+    }
+}
+
 void Entity::SetTag(std::string _tag)
 {
     if (HasComponent<TagComponent>() == false)

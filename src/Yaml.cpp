@@ -13,6 +13,12 @@ ComponentRegistry& GetComponent()
     return registry;
 }
 
+ScriptableComponentRegistry& GetScriptableComponentRegistry()
+{
+    static ScriptableComponentRegistry registry;
+    return registry;
+}
+
 void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager)
 {
     SceneManager* sceneManager = (SceneManager*)_sceneManager;
