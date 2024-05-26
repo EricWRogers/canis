@@ -110,7 +110,7 @@ namespace Canis
 
     KnobListener::~KnobListener()
     {
-        if (_system == nullptr)
+        if (_system != nullptr)
             _system->RemoveKnobListener(_id);
     }
 

@@ -17,6 +17,7 @@ namespace Canis
         private:
             friend class Entity;
             friend class SceneManager;
+            friend class Editor;
 
             std::vector<System*> m_updateSystems = {};
             std::vector<System*> m_renderSystems = {};

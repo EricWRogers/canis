@@ -6,6 +6,7 @@
 #include <functional>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
 #include <Canis/ScriptableEntity.hpp>
+#include <Canis/Editor.hpp>
 
 namespace Canis
 {
@@ -29,6 +30,8 @@ struct HierarchyElementInfo {
 
 class SceneManager
 {
+friend class Editor;
+
 private:
     int m_sceneIndex = -1;
     int patientLoadIndex = -1;
@@ -39,8 +42,9 @@ private:
     high_resolution_clock::time_point m_drawStart;
     high_resolution_clock::time_point m_drawEnd;
 
+    Editor m_editor;
+
     void Load(int _index);
-    void FindEntityEditor(Entity& _entity, UUID &_uuid);
     void SetUpIMGUI(Window *_window);
 public:
     SceneManager();
@@ -69,6 +73,8 @@ public:
 
     bool IsSplashScene(std::string _sceneName);
 
+    void FindEntityEditor(Entity& _entity, UUID &_uuid);
+
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeSystem = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeRenderSystem = {};
     std::vector<std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)>> decodeEntity = {};
@@ -91,7 +97,7 @@ public:
     std::unordered_map<std::string, std::string> message = {};
     std::unordered_map<std::string, std::string> nextMessage = {};
 
-    std::vector<EntityAndUUID> entityAndUUIDToConnect;
-    std::vector<HierarchyElementInfo> hierarchyElements;
+    std::vector<EntityAndUUID> entityAndUUIDToConnect = {};
+    std::vector<HierarchyElementInfo> hierarchyElements = {};
 };
 } // end of Canis namespace

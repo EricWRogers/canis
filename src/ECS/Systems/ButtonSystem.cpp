@@ -260,7 +260,7 @@ namespace Canis
 
     ButtonListener::~ButtonListener()
     {
-        if (_system == nullptr)
+        if (_system != nullptr)
             _system->RemoveButtonListener(_id);
     }
 } // namespace Canis
