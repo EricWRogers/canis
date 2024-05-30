@@ -35,9 +35,9 @@ public:
     void AddSplashScene(Scene *_scene);
 
     void Run( std::string _windowName, std::string _sceneName);
+    void Loop();
 
 private:
-    void Loop();
 
     Canis::SceneManager sceneManager;
 

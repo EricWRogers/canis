@@ -2,10 +2,12 @@
 #include <Canis/Asset.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
+#include <GL/gl.h>
+#include <SDL_opengl.h>
+#include <SDL_opengl_glext.h>
 #include <memory>
 #include <string.h>
 #include <SDL_mixer.h>
-#include <GL/glew.h>
 #include <unordered_map>
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
@@ -432,6 +434,7 @@ namespace Canis
         // All functions return a value different than 0 whenever an error occurred
         FT_Library ft;
         FT_Face face;
+
         if (FT_Init_FreeType(&ft))
         {
             Canis::Error("ERROR::FREETYPE: Could not init FreeType Library");
@@ -465,11 +468,11 @@ namespace Canis
                 glTexImage2D(
                     GL_TEXTURE_2D,
                     0,
-                    GL_RED,
+                    GL_LUMINANCE,
                     face->glyph->bitmap.width,
                     face->glyph->bitmap.rows,
                     0,
-                    GL_RED,
+                    GL_LUMINANCE,
                     GL_UNSIGNED_BYTE,
                     face->glyph->bitmap.buffer);
                 // set texture options
@@ -487,6 +490,7 @@ namespace Canis
             }
             glBindTexture(GL_TEXTURE_2D, 0);
         }
+
         FT_Done_Face(face);
         FT_Done_FreeType(ft);
 

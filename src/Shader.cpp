@@ -1,7 +1,9 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
 
-#include <GL/glew.h>
+#include <SDL_opengl.h>
+#include <GLES3/gl3.h>
+
 #include <SDL.h>
 
 #include <vector>

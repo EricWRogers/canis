@@ -1,6 +1,7 @@
 #include <Canis/Window.hpp>
 #include <SDL.h>
-#include <GL/glew.h>
+#include <SDL_opengl.h>
+#include <GLES3/gl3.h>
 
 namespace Canis
 {
@@ -35,9 +36,9 @@ namespace Canis
         screenHeight = _screenHeight;
 
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
-        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
         //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
         
         if (_currentFlags & WindowFlags::FULLSCREEN)
@@ -49,41 +50,20 @@ namespace Canis
             flags |= SDL_WINDOW_BORDERLESS;
 
         // Create Window
-        m_sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0), _screenWidth, _screenHeight, flags);
-        
-        SDL_Surface *surface;     // Declare an SDL_Surface to be filled in with pixel data from an image file
-        Uint16 pixels[16*16] = {  // ...or with raw pixel data:
-            0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xffff, 0xf435, 0xf435,
-            0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435,
-            0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff,
-        };
-        surface = SDL_CreateRGBSurfaceFrom(pixels,16,16,16,16*2,0x0f00,0x00f0,0x000f,0xf000);
+        m_sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, _screenWidth, _screenHeight, flags);
+    
 
-        // The icon is attached to the window pointer
-        SDL_SetWindowIcon((SDL_Window*)m_sdlWindow, surface);
-
-        // ...and the surface containing the icon pixel data is no longer required.
-        SDL_FreeSurface(surface);
+        Log("About to check SDL");
 
         if ((SDL_Window*)m_sdlWindow == nullptr) // Check for an error when creating a window
         {
             FatalError("SDL Window could not be created");
         }
 
+        Log("About to check GL Context");
+
         // Create OpenGL Context
+        //m_glContext = {SDL_GL_CreateContext((SDL_Window*)m_sdlWindow)};
         m_glContext = (void*)SDL_GL_CreateContext((SDL_Window*)m_sdlWindow);
 
         if (m_glContext == nullptr) // Check for an error when creating the OpenGL Context
@@ -91,28 +71,32 @@ namespace Canis
             FatalError("SDL_GL context could not be created!");
         }
 
-        // Load OpenGL
-        GLenum error = glewInit();
+        // Display OpenGL version
+        int major, minor;
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
+        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
+        std::cout << "OpenGLES version loaded: " << major << "." << minor << std::endl;
 
-        if (error != GLEW_OK) // Check for an error loading OpenGL
-        {
-            FatalError("Could not init GLEW");
-        }
-
-        std::string openglVersion = (const char*)glGetString(GL_VERSION);
-        Log("*** OpenGL Version: " + openglVersion + " ***");
+        Log("Set Clear Color");
 
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels
         // in that buffer
         SetClearColor(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f));
 
+        Log("Set Swap");
+
         // VSYNC 0 off 1 on
         SDL_GL_SetSwapInterval(0);
 
+        Log("glEnable");
+
         // Enable alpha blending
         glEnable(GL_BLEND);
+        Log("glBlendFunc");
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+
+        Log("End of create");
 
         return 0;
     }

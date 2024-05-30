@@ -382,7 +382,6 @@ namespace Canis
         m_time += _deltaTime;
         
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_ALPHA);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_ALWAYS);
@@ -450,7 +449,6 @@ namespace Canis
         SpriteRenderBatch(true);
 
         glDisable(GL_DEPTH_TEST);
-        glDisable(GL_ALPHA);
         glDisable(GL_BLEND);
     }
 } // end of Canis namespace

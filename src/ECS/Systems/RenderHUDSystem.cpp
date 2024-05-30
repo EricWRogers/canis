@@ -122,7 +122,6 @@ namespace Canis
                     if (lastWasText)
                     {
                         glEnable(GL_DEPTH_TEST);
-                        glEnable(GL_ALPHA);
                         glEnable(GL_BLEND);
                         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                         glDepthFunc(GL_ALWAYS);
@@ -191,7 +190,6 @@ namespace Canis
                         m_spriteRenderer.SpriteRenderBatch(false);
 
                         glDisable(GL_DEPTH_TEST);
-                        glDisable(GL_ALPHA);
                         glDisable(GL_BLEND);
                     }
 
@@ -201,7 +199,6 @@ namespace Canis
                     TextComponent &text = _registry.get<TextComponent>(elements[i].element);
 
                     glEnable(GL_DEPTH_TEST);
-                    glEnable(GL_ALPHA);
                     glEnable(GL_BLEND);
                     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
                     glDepthFunc(GL_ALWAYS);
@@ -230,7 +227,6 @@ namespace Canis
                     m_textRenderer.textShader.UnUse();
 
                     glDisable(GL_DEPTH_TEST);
-                    glDisable(GL_ALPHA);
                     glDisable(GL_BLEND);
                 }
             }
@@ -242,7 +238,6 @@ namespace Canis
             m_spriteRenderer.SpriteRenderBatch(false);
 
             glDisable(GL_DEPTH_TEST);
-            glDisable(GL_ALPHA);
             glDisable(GL_BLEND);
         }
     }

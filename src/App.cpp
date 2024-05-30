@@ -6,10 +6,18 @@
 
 #include <SDL_mixer.h>
 
+#ifdef __EMSCRIPTEN__
+#include <emscripten.h>
+#endif
+
+#include <iostream>
+
 namespace Canis
 {
     App::App(const std::string &_organization, const std::string &_app)
     {
+        std::cout << "App Constructer" << std::endl;
+
         Init();
         PlayerPrefs::Init(_organization, _app);
         PlayerPrefs::LoadFromFile();
@@ -70,16 +78,22 @@ namespace Canis
         // windowFlags |= Canis::WindowFlags::FULLSCREEN;
         // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
+        std::cout << "create window" << std::endl;
+
         if (GetProjectConfig().fullscreen)
             window.CreateFullScreen(_windowName);
         else
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
+        std::cout << "init audio mixer" << std::endl;
+        
         //Initialize SDL_mixer
-        if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
+        /*if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
         {
             printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
-        }
+        }*/
+
+        std::cout << "load config" << std::endl;
         
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
@@ -94,6 +108,8 @@ namespace Canis
         else
             time.Init(100000);
 
+        Log("time init");
+
         camera.override_camera = false;
 
         sceneManager.window = &window;
@@ -102,17 +118,24 @@ namespace Canis
         sceneManager.camera = &camera;
         sceneManager.seed = seed;
 
+
         if (sceneManager.IsSplashScene(_sceneName))
         {
+            Log("PreLoad");
             sceneManager.PreLoad(_sceneName);
         }
         else
         {
+            Log("PreLoadAll");
             sceneManager.PreLoadAll();
         }
 
+        Log("Pre ForceLoad");
+
         // load first scene
         sceneManager.ForceLoad(_sceneName);
+
+        Log("Post ForceLoad");
 
         appState = AppState::ON;
 
@@ -121,30 +144,27 @@ namespace Canis
     
     void App::Loop()
     {
-        while (appState == AppState::ON)
-        {
-            deltaTime = time.StartFrame();
+        deltaTime = time.StartFrame();
 
-            sceneManager.SetDeltaTime(deltaTime);
+        sceneManager.SetDeltaTime(deltaTime);
 
-            sceneManager.Update();
+        sceneManager.Update();
 
-            sceneManager.Draw();
+        sceneManager.Draw();
 
-            // Get SDL to swap our buffer
-            window.SwapBuffer();
+        // Get SDL to swap our buffer
+        window.SwapBuffer();
 
-            sceneManager.LateUpdate();
-            
-            if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
-                appState = AppState::OFF;
-            
-            sceneManager.InputUpdate();
+        sceneManager.LateUpdate();
+        
+        if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
+            appState = AppState::OFF;
+        
+        sceneManager.InputUpdate();
 
-            window.fps = time.EndFrame(); 
+        window.fps = time.EndFrame(); 
 
-            if (sceneManager.running == false)
-                appState = AppState::OFF;
-        }
+        if (sceneManager.running == false)
+            appState = AppState::OFF;
     }
 }

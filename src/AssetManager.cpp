@@ -254,6 +254,7 @@ namespace Canis
             // create text
             Asset *text = new TextAsset(fontSize);
             text->Load(_path);
+
             int id = assetLibrary.nextId;
 
             // cache text

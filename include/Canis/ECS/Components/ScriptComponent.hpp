@@ -18,7 +18,7 @@ namespace Canis
                 T *t = new T();
                 return static_cast<ScriptableEntity*>(t);
             };
-            DestroyScript = [](ScriptComponent* scriptComponent) { delete scriptComponent->Instance; scriptComponent->Instance = nullptr; };
+            DestroyScript = [](ScriptComponent* scriptComponent) { delete (void*)scriptComponent->Instance; scriptComponent->Instance = nullptr; };
         }
     };
 } // end of Canis namespace

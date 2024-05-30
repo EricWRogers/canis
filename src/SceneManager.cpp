@@ -12,7 +12,7 @@
 #include <SDL_keyboard.h>
 
 #include <SDL.h>
-#include <GL/glew.h>
+#include <GL/gl.h>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -111,6 +111,7 @@ namespace Canis
 
                 if (m_scenes[i].scene->path != "")
                 {
+                    Log("About to load");
                     YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
@@ -118,6 +119,7 @@ namespace Canis
                     // serialize systems
                     if (YAML::Node systems = root["Systems"])
                     {
+                        Log("System Found");
                         for (int s = 0; s < systems.size(); s++)
                         {
                             std::string name = systems[s].as<std::string>();
@@ -222,6 +224,8 @@ namespace Canis
 
         if (scene != nullptr)
         {
+            Log("Unload");
+
             scene->UnLoad();
             {
                 // Clean up ScriptableEntity pointer
@@ -247,8 +251,12 @@ namespace Canis
             scene->time = time;
             scene->camera = camera;
 
+            Log("PreLoad");
+
             scene->PreLoad();
         }
+
+        Log("Load");
 
         scene->Load();
 
@@ -265,9 +273,16 @@ namespace Canis
             entityAndUUIDToConnect.clear();
             hierarchyElements.clear();
 
+            Log("SetCleartColor");
+
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));
+            
+            Log("ClearColor");
+
             window->ClearColor();
+
+            Log("ClearColor");
 
             auto entities = root["Entities"];
 
@@ -278,6 +293,8 @@ namespace Canis
                     Canis::Entity entity = scene->CreateEntity();
 
                     entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
+
+                    Log("Add: " + std::to_string(e["Entity"].as<uint64_t>(0)));
 
                     HierarchyElementInfo hei;
                     hei.entity.entityHandle = entity.entityHandle;
@@ -533,7 +550,7 @@ namespace Canis
 
         scene->Draw();
 
-        m_editor.Draw(scene);
+        m_editor.Draw(scene, window, time);
 
         glFinish(); // make sure all queued command are finished
 

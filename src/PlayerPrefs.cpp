@@ -2,6 +2,7 @@
 #include <Canis/Debug.hpp>
 #include <map>
 #include <SDL.h>
+#include <climits>
 
 namespace Canis
 {

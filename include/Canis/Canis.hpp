@@ -6,14 +6,14 @@ namespace Canis
     {
         bool fullscreen = false;
         int width = 1280;
-        int heigth = 800;
+        int heigth = 720;
         bool useFrameLimit = false;
         int frameLimit = 60;
         bool overrideSeed = false;
         unsigned int seed = 0;
         float volume = 1.0f;
         bool mute = false;
-        bool log = false;
+        bool log = true;
     };
 
     ProjectConfig& GetProjectConfig();

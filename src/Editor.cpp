@@ -11,12 +11,13 @@
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 
 #include <SDL.h>
-#include <GL/glew.h>
+#include <GL/gl.h>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
+
 
 #include <glm/gtc/type_ptr.hpp>
 
@@ -119,7 +120,7 @@ namespace Canis
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
         io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows
+        // io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows
         // io.ConfigViewportsNoAutoMerge = true;
         // io.ConfigViewportsNoTaskBarIcon = true;
 
@@ -128,13 +129,13 @@ namespace Canis
         // ImGui::StyleColorsLight();
 
         // Setup Platform/Renderer backends
-        const char *glsl_version = "#version 330";
+        const char *glsl_version = "#version 300 es";
         ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
         ImGui_ImplOpenGL3_Init(glsl_version);
     }
 
-    void Editor::Draw(Scene *_scene)
-    {
+    void Editor::Draw(Scene *_scene, Window* _window, Time *_time)
+    {        
         if (m_scene != _scene)
         {
             Log("new scene");
@@ -149,7 +150,7 @@ namespace Canis
         DrawInspectorPanel();
         DrawSystemPanel();
         DrawHierarchyPanel();
-        DrawScenePanel();
+        DrawScenePanel(_window, _time);
 
         // Rendering
         ImGui::Render();
@@ -917,7 +918,7 @@ namespace Canis
         ImGui::End();
     }
 
-    void Editor::DrawScenePanel()
+    void Editor::DrawScenePanel(Window* _window, Time *_time)
     {
         ImGui::Begin("Scene");
 
@@ -979,6 +980,10 @@ namespace Canis
                 return;
             }
         }
+
+        ImGui::SameLine();
+        std::string fps = std::to_string(_time->fps);
+        ImGui::Text("%s", fps.c_str());
 
         ImGui::End();
     }

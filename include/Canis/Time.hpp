@@ -22,7 +22,6 @@ namespace Canis
 
         unsigned int nanoSecondsDeltaTime;
         
-        double fps;
         double maxFPS;
         double frameTime;
         double deltaTime;
@@ -41,5 +40,7 @@ namespace Canis
         void CalculateFPS();
 
         float EndFrame();
+
+        double fps;
     };
 } // end of Canis namespace

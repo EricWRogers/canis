@@ -3,7 +3,7 @@
 #include <glm/gtc/matrix_transform.hpp>
 #include <glm/gtc/type_ptr.hpp>
 
-#include <GL/glew.h>
+#include <SDL_opengl.h>
 
 #include <Canis/ECS/Components/RectTransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
@@ -161,7 +161,6 @@ namespace Canis
     void RenderTextSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         glEnable(GL_DEPTH_TEST);
-        glEnable(GL_ALPHA);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_ALWAYS);
@@ -204,7 +203,6 @@ namespace Canis
         textShader.UnUse();
 
         glDisable(GL_DEPTH_TEST);
-        glDisable(GL_ALPHA);
         glDisable(GL_BLEND);
     }
 } // end of Canis namespace
