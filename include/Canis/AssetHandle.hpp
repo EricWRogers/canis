@@ -1,5 +1,5 @@
 #pragma once
 
 struct TextureHandle{
-    int id;
+    int id = -1;
 };

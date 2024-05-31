@@ -134,6 +134,11 @@ namespace Canis
                     ColorComponent &color = _registry.get<ColorComponent>(elements[i].element);
                     UIImageComponent &image = _registry.get<UIImageComponent>(elements[i].element);
 
+                    if (image.textureHandle.id == -1)
+                    {
+                        continue;
+                    }
+
                     positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
                                                (float)window->GetScreenWidth(),
                                                (float)window->GetScreenHeight());
