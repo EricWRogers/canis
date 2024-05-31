@@ -2,9 +2,7 @@
 #include <Canis/Asset.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
-#include <GL/gl.h>
-#include <SDL_opengl.h>
-#include <SDL_opengl_glext.h>
+#include <Canis/External/OpenGl.hpp>
 #include <memory>
 #include <string.h>
 #include <SDL_mixer.h>
@@ -465,6 +463,7 @@ namespace Canis
                 unsigned int texture;
                 glGenTextures(1, &texture);
                 glBindTexture(GL_TEXTURE_2D, texture);
+                #ifdef __EMSCRIPTEN__
                 glTexImage2D(
                     GL_TEXTURE_2D,
                     0,
@@ -475,6 +474,19 @@ namespace Canis
                     GL_LUMINANCE,
                     GL_UNSIGNED_BYTE,
                     face->glyph->bitmap.buffer);
+                #else
+                glTexImage2D(
+                    GL_TEXTURE_2D,
+                    0,
+                    GL_RED,
+                    face->glyph->bitmap.width,
+                    face->glyph->bitmap.rows,
+                    0,
+                    GL_RED,
+                    GL_UNSIGNED_BYTE,
+                    face->glyph->bitmap.buffer);
+                #endif
+                
                 // set texture options
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
                 glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);

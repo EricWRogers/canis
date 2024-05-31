@@ -9,10 +9,10 @@
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 
-#include <SDL_keyboard.h>
+#include <Canis/External/OpenGl.hpp>
 
 #include <SDL.h>
-#include <GL/gl.h>
+#include <SDL_keyboard.h>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>

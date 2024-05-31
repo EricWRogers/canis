@@ -35,11 +35,19 @@ namespace Canis
         screenWidth = _screenWidth;
         screenHeight = _screenHeight;
 
+        #ifdef __EMSCRIPTEN__
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-        //SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+        #else
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
+        #endif
         
         if (_currentFlags & WindowFlags::FULLSCREEN)
         {
@@ -99,7 +107,11 @@ namespace Canis
         }
 
         #ifdef __EMSCRIPTEN__
-        
+            int major, minor;
+            SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
+            SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
+
+            Log("OpenGLES version loaded: " + std::to_string(major) + "." + std::to_string(minor));
         #else
         if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
             std::cerr << "Failed to initialize GLAD" << std::endl;
@@ -108,14 +120,16 @@ namespace Canis
             SDL_Quit();
             exit(-1);
         }
-        #endif
 
         // Display OpenGL version
         int major, minor;
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
         SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
 
-        Log("OpenGLES version loaded: " + std::to_string(major) + "." + std::to_string(minor));
+        Log("OpenGL version loaded: " + std::to_string(major) + "." + std::to_string(minor));
+        #endif
+
+        
 
         // before a new frame is drawn we need to clear the buffer
         // the clear color will be the new value of all of the pixels

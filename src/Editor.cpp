@@ -10,8 +10,9 @@
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 
+#include <Canis/External/OpenGl.hpp>
+
 #include <SDL.h>
-#include <GL/gl.h>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -150,9 +151,8 @@ namespace Canis
         // ImGui::StyleColorsLight();
 
         // Setup Platform/Renderer backends
-        const char *glsl_version = "#version 300 es";
         ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
-        ImGui_ImplOpenGL3_Init(glsl_version);
+        ImGui_ImplOpenGL3_Init(OPENGLVERSION);
     }
 
     void Editor::Draw(Scene *_scene, Window* _window, Time *_time)

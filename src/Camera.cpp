@@ -1,5 +1,5 @@
 #include <Canis/Camera.hpp>
-#include <GL/gl.h>
+#include <Canis/External/OpenGl.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
 namespace Canis

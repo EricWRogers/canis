@@ -172,6 +172,18 @@ namespace Canis
         void* shaderFileData = SDL_LoadFile_RW(shaderFile, &shaderFileLength, true);
         std::string shaderFileCode(static_cast<char*>(shaderFileData), shaderFileLength);
 
+        // Replace placeholder text with actual version directive
+        std::string placeholder = "[OPENGL VERSION]";
+        std::string versionDirective(OPENGLVERSION);
+
+        size_t pos = shaderFileCode.find(placeholder);
+        if (pos != std::string::npos) {
+            shaderFileCode.replace(pos, placeholder.length(), versionDirective);
+        } else {
+            Error("Add [OPENGL VERSION] to the top of your shader file: " + _filePath);
+            shaderFileCode = versionDirective + shaderFileCode;
+        }
+
         const char *contentsPtr = shaderFileCode.c_str();
         glShaderSource(_id, 1, &contentsPtr, nullptr);
 
