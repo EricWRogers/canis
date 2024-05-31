@@ -208,12 +208,18 @@ namespace Canis
         static Entity entity(m_scene);
         static bool refresh = true;
 
+        static std::vector<std::string> pngFilePaths = {};
+        static std::vector<std::string> ttfFilePaths = {};
+
         int count = 0;
 
         if (m_index != lastIndex)
         {
             lastIndex = m_index;
             refresh = true;
+
+            pngFilePaths = FindFilesInFolder("assets", ".png");
+            ttfFilePaths = FindFilesInFolder("assets", ".ttf");
         }
 
         ImGui::Begin("Inspector"); // Create a window called "Hello, world!" and append into it.
@@ -330,56 +336,45 @@ namespace Canis
             if (entity.HasComponent<UIImageComponent>())
             {
                 static std::string path = "";
-                static std::string lastFramePath = "";
+                static int selectedPath = 0;
 
                 auto &ic = entity.GetComponent<UIImageComponent>();
 
                 if (refresh)
                 {
-
-                    for(std::string& s : FindFilesInFolder("assets", ".png"))
-                    {
-                        Log(s);
-                    }
-
                     path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
-                    lastFramePath = path;
+
+                    int index = 0;
+                    for(std::string& s : pngFilePaths)
+                    {
+                        if (path == s)
+                        {
+                            selectedPath = index;
+                        }
+
+                        index++;
+                    }
                 }
 
                 if (ImGui::CollapsingHeader("Canis::Image"))
                 {
-                    if (ImGui::CollapsingHeader("Texture Asset"))
+                    std::vector<const char *> cStringItems = ConvertVectorToCStringVector(pngFilePaths);
+
+                    if (ImGui::Combo("##Canis::Image", &selectedPath, cStringItems.data(), static_cast<int>(cStringItems.size())))
                     {
-                        std::string tempPath = std::string(path);
+                        int newID = AssetManager::LoadTexture(pngFilePaths[selectedPath]);
 
-                        ImGui::InputText("path", &tempPath);
-
-                        path = std::string(tempPath);
-
-                        if (path != lastFramePath)
+                        if (newID != -1)
                         {
-                            if (!path.empty())
-                            {
-                                if (FileExists(path.c_str()))
-                                {
-                                    int newID = AssetManager::LoadTexture(path);
+                            ic.textureHandle.id = newID;
+                            ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetTexture();
 
-                                    if (newID != -1)
-                                    {
-                                        ic.textureHandle.id = newID;
-                                        ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetTexture();
-
-                                        path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
-                                        lastFramePath = path;
-                                    }
-                                }
-                                else
-                                {
-                                    Canis::Log("File does not exist: " + path);
-                                }
-                            }
+                            path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
                         }
                     }
+
+                    ImGui::SameLine();
+                    ImGui::Text("image");
 
                     ImGui::InputFloat4("uv", glm::value_ptr(ic.uv));
                 }
@@ -399,59 +394,67 @@ namespace Canis
             {
                 static std::string path = "";
                 static int size = 0;
-                static std::string lastFramePath = "";
                 static int lastFrameSize = 0;
+                static int selectedPath = 0;
 
                 auto &tc = entity.GetComponent<TextComponent>();
 
                 if (refresh)
                 {
                     path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
-                    lastFramePath = path;
 
                     size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
                     lastFrameSize = size;
+
+                    int index = 0;
+                    for(std::string& s : ttfFilePaths)
+                    {
+                        if (path == s)
+                        {
+                            selectedPath = index;
+                        }
+
+                        index++;
+                    }
                 }
 
                 if (ImGui::CollapsingHeader("Canis::Text"))
                 {
                     if (ImGui::CollapsingHeader("Text Asset"))
                     {
-                        std::string tempPath = std::string(path);
                         int tempSize = size;
+                        bool newPath = false;
 
-                        ImGui::InputText("path", &tempPath);
+                        std::vector<const char *> cStringItems = ConvertVectorToCStringVector(ttfFilePaths);
+
+                        if (ImGui::Combo("##Canis::Text", &selectedPath, cStringItems.data(), static_cast<int>(cStringItems.size())))
+                        {
+                            newPath = true;
+                            path = ttfFilePaths[selectedPath];
+                        }
+
+                        ImGui::SameLine();
+                        ImGui::Text("text");
+
                         ImGui::InputInt("size", &tempSize);
 
-                        path = std::string(tempPath);
                         size = tempSize;
 
-                        if (path != lastFramePath || size != lastFrameSize)
+                        if (newPath || size != lastFrameSize)
                         {
                             if (size < 0)
                                 size = 12;
 
-                            if (!path.empty())
+                            int newID = AssetManager::LoadText(path, size);
+
+                            if (newID != -1)
                             {
-                                if (FileExists(path.c_str()))
-                                {
-                                    int newID = AssetManager::LoadText(path, size);
+                                tc.assetId = newID;
 
-                                    if (newID != -1)
-                                    {
-                                        tc.assetId = newID;
+                                path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
 
-                                        path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
-                                        lastFramePath = path;
-
-                                        size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
-                                        lastFrameSize = size;
-                                    }
-                                }
-                                else
-                                {
-                                    Canis::Log("File does not exist: " + path);
-                                }
+                                size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
+                                lastFrameSize = size;
                             }
                         }
                     }
