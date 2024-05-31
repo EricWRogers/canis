@@ -16,8 +16,6 @@ namespace Canis
 {
     App::App(const std::string &_organization, const std::string &_app)
     {
-        std::cout << "App Constructer" << std::endl;
-
         Init();
         PlayerPrefs::Init(_organization, _app);
         PlayerPrefs::LoadFromFile();
@@ -78,22 +76,16 @@ namespace Canis
         // windowFlags |= Canis::WindowFlags::FULLSCREEN;
         // windowFlags |= Canis::WindowFlags::BORDERLESS;
 
-        std::cout << "create window" << std::endl;
-
         if (GetProjectConfig().fullscreen)
             window.CreateFullScreen(_windowName);
         else
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
-        
-        std::cout << "init audio mixer" << std::endl;
         
         //Initialize SDL_mixer
         /*if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
         {
             printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
         }*/
-
-        std::cout << "load config" << std::endl;
         
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
@@ -108,8 +100,6 @@ namespace Canis
         else
             time.Init(100000);
 
-        Log("time init");
-
         camera.override_camera = false;
 
         sceneManager.window = &window;
@@ -121,21 +111,15 @@ namespace Canis
 
         if (sceneManager.IsSplashScene(_sceneName))
         {
-            Log("PreLoad");
             sceneManager.PreLoad(_sceneName);
         }
         else
         {
-            Log("PreLoadAll");
             sceneManager.PreLoadAll();
         }
 
-        Log("Pre ForceLoad");
-
         // load first scene
         sceneManager.ForceLoad(_sceneName);
-
-        Log("Post ForceLoad");
 
         appState = AppState::ON;
 

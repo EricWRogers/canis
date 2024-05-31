@@ -111,7 +111,6 @@ namespace Canis
 
                 if (m_scenes[i].scene->path != "")
                 {
-                    Log("About to load");
                     YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
@@ -119,7 +118,6 @@ namespace Canis
                     // serialize systems
                     if (YAML::Node systems = root["Systems"])
                     {
-                        Log("System Found");
                         for (int s = 0; s < systems.size(); s++)
                         {
                             std::string name = systems[s].as<std::string>();
@@ -282,8 +280,6 @@ namespace Canis
                     Canis::Entity entity = scene->CreateEntity();
 
                     entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
-
-                    Log("Add: " + std::to_string(e["Entity"].as<uint64_t>(0)));
 
                     HierarchyElementInfo hei;
                     hei.entity.entityHandle = entity.entityHandle;
