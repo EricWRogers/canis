@@ -14,6 +14,7 @@ namespace Canis
         float volume = 1.0f;
         bool mute = false;
         bool log = true;
+        bool editor = false;
     };
 
     ProjectConfig& GetProjectConfig();

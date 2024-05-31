@@ -91,6 +91,14 @@ namespace Canis
                     continue;
                 }
             }
+            if (word == "editor")
+            {
+                if (file >> word)
+                {
+                    GetProjectConfig().editor = (word == "true");
+                    continue;
+                }
+            }
         }
 
         file.close();

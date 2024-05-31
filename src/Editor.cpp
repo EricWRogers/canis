@@ -1,4 +1,5 @@
 #include <Canis/Editor.hpp>
+#include <Canis/Canis.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/SceneManager.hpp>
@@ -128,6 +129,9 @@ namespace Canis
 
     void Editor::Init(Window *_window)
     {
+        #if CANIS_EDITOR
+        if (GetProjectConfig().editor)
+        {
         // Setup Dear ImGui context
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
@@ -153,10 +157,15 @@ namespace Canis
         // Setup Platform/Renderer backends
         ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
         ImGui_ImplOpenGL3_Init(OPENGLVERSION);
+        }
+        #endif
     }
 
     void Editor::Draw(Scene *_scene, Window* _window, Time *_time)
-    {        
+    {
+        #if CANIS_EDITOR
+        if (GetProjectConfig().editor)
+        {     
         if (m_scene != _scene)
         {
             Log("new scene");
@@ -197,6 +206,8 @@ namespace Canis
         {
             GetSceneManager().Save();
         }
+        }
+        #endif
     }
 
     void Editor::DrawInspectorPanel()

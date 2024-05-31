@@ -1,4 +1,5 @@
 #include <Canis/InputManager.hpp>
+#include <Canis/Canis.hpp>
 #include <SDL_events.h>
 #include <SDL_gamecontroller.h>
 #include <Canis/Debug.hpp>
@@ -29,8 +30,12 @@ namespace Canis
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
-            // for the editor
-            ImGui_ImplSDL2_ProcessEvent(&event);
+            #if CANIS_EDITOR
+            if (GetProjectConfig().editor)
+            {
+                ImGui_ImplSDL2_ProcessEvent(&event);
+            }
+            #endif
 
             Window* window = (Window*)_window;
 
