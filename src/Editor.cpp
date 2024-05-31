@@ -18,8 +18,23 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
 
-
 #include <glm/gtc/type_ptr.hpp>
+
+#include <filesystem>
+
+namespace fs = std::filesystem;
+
+std::vector<std::string> FindFilesInFolder(const std::string& _folder, const std::string &_extension) {
+    std::vector<std::string> files;
+    
+    for (const auto& entry : fs::recursive_directory_iterator(_folder)) {
+        if (entry.is_regular_file() && entry.path().extension() == _extension) {
+            files.push_back(entry.path().string());
+        }
+    }
+
+    return files;
+}
 
 namespace Canis
 {
@@ -321,6 +336,12 @@ namespace Canis
 
                 if (refresh)
                 {
+
+                    for(std::string& s : FindFilesInFolder("assets", ".png"))
+                    {
+                        Log(s);
+                    }
+
                     path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
                     lastFramePath = path;
                 }
