@@ -1,7 +1,7 @@
 #include <Canis/Window.hpp>
+#include <Canis/External/OpenGl.hpp>
+
 #include <SDL.h>
-#include <SDL_opengl.h>
-#include <GLES3/gl3.h>
 
 namespace Canis
 {
@@ -70,6 +70,18 @@ namespace Canis
         {
             FatalError("SDL_GL context could not be created!");
         }
+
+        #ifdef __EMSCRIPTEN__
+        
+        #else
+        if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
+            std::cerr << "Failed to initialize GLAD" << std::endl;
+            SDL_GL_DeleteContext((SDL_GLContext)m_glContext);
+            SDL_DestroyWindow((SDL_Window*)m_sdlWindow);
+            SDL_Quit();
+            exit(-1);
+        }
+        #endif
 
         // Display OpenGL version
         int major, minor;

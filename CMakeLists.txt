@@ -50,8 +50,11 @@ target_link_libraries("imgui" PRIVATE SDL2main SDL2-static)
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
-#file(GLOB_RECURSE GLAD_SOURCES external/glad/*.c)
-#file(GLOB_RECURSE GLAD_HEADERS external/glad/*.h)
+file(GLOB_RECURSE GLAD_SOURCES external/glad/*.c)
+file(GLOB_RECURSE GLAD_HEADERS external/glad/*.h)
+
+add_library(glad external/glad/src/glad.c)
+target_include_directories(glad PUBLIC external/glad/include)
 
 file(GLOB_RECURSE SRC_SOURCES src/*.c*)
 file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
@@ -69,6 +72,7 @@ target_link_libraries(${PROJECT_NAME}
     SDL2main
     SDL2_mixer
     imgui
+    glad
 )
 
 target_include_directories(${PROJECT_NAME}

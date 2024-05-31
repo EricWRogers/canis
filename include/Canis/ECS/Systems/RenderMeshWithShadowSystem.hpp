@@ -7,10 +7,7 @@
 #include <glm/gtc/type_ptr.hpp>
 #include <glm/gtx/string_cast.hpp>
 
-#include <SDL_opengl.h>
-#include <SDL_opengl_glext.h>
-
-#include <GLES3/gl3.h>
+#include <Canis/External/OpenGl.hpp>
 
 #include "../../Math.hpp"
 #include "../../Shader.hpp"

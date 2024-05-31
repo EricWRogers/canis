@@ -139,7 +139,14 @@ namespace Canis
 
         appState = AppState::ON;
 
+        #ifdef __EMSCRIPTEN__
         Loop();
+        #else
+        while(appState == AppState::ON)
+        {
+            Loop();
+        }
+        #endif
     }
     
     void App::Loop()

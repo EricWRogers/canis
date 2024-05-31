@@ -224,7 +224,6 @@ namespace Canis
 
         if (scene != nullptr)
         {
-            Log("Unload");
 
             scene->UnLoad();
             {
@@ -251,12 +250,8 @@ namespace Canis
             scene->time = time;
             scene->camera = camera;
 
-            Log("PreLoad");
-
             scene->PreLoad();
         }
-
-        Log("Load");
 
         scene->Load();
 
@@ -273,16 +268,10 @@ namespace Canis
             entityAndUUIDToConnect.clear();
             hierarchyElements.clear();
 
-            Log("SetCleartColor");
-
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));
-            
-            Log("ClearColor");
 
             window->ClearColor();
-
-            Log("ClearColor");
 
             auto entities = root["Entities"];
 

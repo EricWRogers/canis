@@ -1,8 +1,6 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
-
-#include <SDL_opengl.h>
-#include <GLES3/gl3.h>
+#include <Canis/External/OpenGl.hpp>
 
 #include <SDL.h>
 
