@@ -108,13 +108,6 @@ namespace Canis
 	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  \
 }
 
-
-
-//#define REGISTER_PROPERTY_DEFAULT(component, property, type, defaultValue)                           \
-//    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
-//        static_cast<component *>(componentPtr)->property = node.as<type>(defaultValue);              \
-//    };
-
 namespace YAML
 {
 	Emitter &operator<<(Emitter &out, const glm::vec2 &v);

@@ -23,8 +23,6 @@
 
 namespace Canis
 {
-    
-
     void SceneManager::FindEntityEditor(Entity &_entity, UUID &_uuid)
     {
         for (auto euuid : entityAndUUIDToConnect)
@@ -282,6 +280,7 @@ namespace Canis
                     entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
 
                     HierarchyElementInfo hei;
+                    hei.name = e["Name"].as<std::string>("");
                     hei.entity.entityHandle = entity.entityHandle;
                     hei.entity.scene = scene;
 
@@ -390,9 +389,10 @@ namespace Canis
         out << YAML::EndSeq;
 
         out << YAML::Key << "Entities" << YAML::Value << YAML::BeginSeq;
-        scene->entityRegistry.each([&](auto _entityHandle)
-                                   {
-			Entity entity = { _entityHandle, scene };
+
+        for (HierarchyElementInfo info : hierarchyElements)
+        {
+            Entity entity = info.entity;
             
 			if (!entity)
 				return;
@@ -404,6 +404,8 @@ namespace Canis
 
             out << YAML::Key << "Entity" << YAML::Key << std::to_string(entity.GetUUID());
 
+            out << YAML::Key << "Name" << YAML::Key << info.name;
+
             for (int i = 0; i < encodeEntity.size(); i++)
                 encodeEntity[i](out, entity);
             
@@ -412,7 +414,9 @@ namespace Canis
                     if (encodeScriptableEntity[i](out, entity.GetComponent<ScriptComponent>().Instance))
                         break;
             
-            out << YAML::EndMap; });
+            out << YAML::EndMap;
+        }
+
         out << YAML::EndSeq;
         out << YAML::EndMap;
 

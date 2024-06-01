@@ -4,6 +4,7 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/SceneManager.hpp>
 
+#include <Canis/ECS/Components/TransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
@@ -236,6 +237,7 @@ namespace Canis
         ImGui::Begin("Inspector"); // Create a window called "Hello, world!" and append into it.
 
         ImGui::SameLine();
+
         ShowEntityID((uint64_t)id);
 
         if (GetSceneManager().hierarchyElements.size() != 0)
@@ -247,6 +249,7 @@ namespace Canis
             if (m_index >= GetSceneManager().hierarchyElements.size())
                 m_index = 0;
 
+            ImGui::InputText("", &GetSceneManager().hierarchyElements[m_index].name);
 
             int i = 0;
 
@@ -636,7 +639,6 @@ namespace Canis
             }
 
             {
-
                 std::vector<const char *> cStringItems = ConvertComponentVectorToCStringVector(GetComponent().names, entity);
 
                 if (cStringItems.size() > 0)
@@ -901,7 +903,9 @@ namespace Canis
             std::string selectableID = "##" + uuidStr;
 
             // Use ImGui::Selectable to create a clickable text item
-            if (ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == i, ImGuiSelectableFlags_AllowOverlap))
+            ImGui::InputText((selectableID).c_str(), &GetSceneManager().hierarchyElements[i].name); // ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == i, ImGuiSelectableFlags_AllowOverlap))
+            
+            if (ImGui::IsItemFocused())
             {
                 m_index = i;
             }
@@ -940,6 +944,7 @@ namespace Canis
             removeButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
             if (ImGui::Button(removeButtonLabel.c_str()))
             {
+                GetSceneManager().hierarchyElements[i].entity.Destroy();
                 GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + i);
             }
         }
