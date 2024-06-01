@@ -82,14 +82,16 @@ namespace Canis
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
         //Initialize SDL_mixer
-        #ifdef __EMSCRIPTEN__
-        
-        #else
-        if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 )
-        {
-            printf( "SDL_mixer could not initialize! SDL_mixer Error: %s\n", Mix_GetError() );
+        int result = Mix_Init(MIX_INIT_OGG);
+        if (result != MIX_INIT_OGG) {
+            fprintf(stderr, "Mix_Init Error: %s.\n", Mix_GetError());
+            exit(1);
         }
-        #endif
+        //if (Mix_OpenAudio(44100, AUDIO_S16SYS, 1, 4096) == -1)
+        if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 ) {
+            fprintf(stderr, "Mix_OpenAudio Error: %s.\n", Mix_GetError());
+            exit(1);
+        }
         
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
