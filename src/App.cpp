@@ -82,15 +82,16 @@ namespace Canis
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
         //Initialize SDL_mixer
-        int result = Mix_Init(MIX_INIT_OGG);
-        if (result != MIX_INIT_OGG) {
-            fprintf(stderr, "Mix_Init Error: %s.\n", Mix_GetError());
-            exit(1);
+        int result = Mix_Init(MIX_INIT_OGG | MIX_INIT_MP3);
+        if (result & MIX_INIT_OGG == false) {
+            FatalError("Failed to initialize OGG support.");
         }
-        //if (Mix_OpenAudio(44100, AUDIO_S16SYS, 1, 4096) == -1)
+        if (result & MIX_INIT_MP3 == false) {
+            FatalError("Failed to initialize MP3 support.");
+        }
+        
         if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 ) {
-            fprintf(stderr, "Mix_OpenAudio Error: %s.\n", Mix_GetError());
-            exit(1);
+            FatalError("Mix_OpenAudio " + std::string(Mix_GetError()));
         }
         
         if(!GetProjectConfig().overrideSeed)
