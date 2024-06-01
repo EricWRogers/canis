@@ -35,6 +35,7 @@ void Entity::RemoveScriptable(Canis::ScriptComponent &script)
     {
         script.Instance->OnDestroy();
         delete script.Instance;
+        script.Instance = nullptr;
     }
 }
 
