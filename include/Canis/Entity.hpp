@@ -139,6 +139,7 @@ public:
     void SetTag(std::string _tag);
 
     bool TagEquals(const char a[20], const char b[20]);
+    bool TagEquals(const std::string &_tag);
     Entity GetEntityWithTag(std::string _tag);
     std::vector<Entity> GetEntitiesWithTag(std::string _tag);
 

@@ -72,6 +72,9 @@ namespace Canis
         TextureAsset* GetTexture(const std::string &_path);
         TextureAsset* GetTexture(const int _textureID);
 
+        TextureHandle GetTextureHandle(const std::string &_path);
+        TextureHandle GetTextureHandle(const int _textureID);
+
         int LoadPrefab(const std::string &_path);
         PrefabAsset& GetPrefab(const std::string &_path);
 

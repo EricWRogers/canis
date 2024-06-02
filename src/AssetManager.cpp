@@ -59,6 +59,22 @@ namespace Canis
             return GetTexture(LoadTexture(_path));
         }
 
+        TextureHandle GetTextureHandle(const std::string &_path)
+        {
+            TextureHandle handle;
+            handle.id = LoadTexture(_path);
+            handle.texture = GetTexture(handle.id)->GetGLTexture();
+            return handle;
+        }
+
+        TextureHandle GetTextureHandle(const int _textureID)
+        {
+            TextureHandle handle;
+            handle.id = _textureID;
+            handle.texture = GetTexture(_textureID)->GetGLTexture();
+            return handle;
+        }
+
         int LoadPrefab(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();
@@ -421,7 +437,7 @@ namespace Canis
                 std::string name = node.first.as<std::string>();
                 
                 material->texNames.push_back(name);
-                material->texId.push_back(GetTexture(root[name].as<std::string>())->GetTexture().id);
+                material->texId.push_back(GetTexture(root[name].as<std::string>())->GetGLTexture().id);
             }
 
             int id = assetLibrary.nextId;

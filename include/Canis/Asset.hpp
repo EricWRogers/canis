@@ -37,7 +37,7 @@ namespace Canis
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        GLTexture GetTexture() { return m_texture; }
+        GLTexture GetGLTexture() { return m_texture; }
         GLTexture* GetPointerToTexture() { return &m_texture; }
         std::string GetPath() { return m_path; }
     };

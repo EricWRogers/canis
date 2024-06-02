@@ -1,5 +1,11 @@
 #pragma once
+#include <Canis/Data/GLTexture.hpp>
 
-struct TextureHandle{
-    int id = -1;
-};
+namespace Canis
+{
+    struct TextureHandle
+    {
+        int id = -1;
+        GLTexture texture;
+    };
+}

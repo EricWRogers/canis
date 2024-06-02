@@ -437,7 +437,7 @@ namespace Canis
                 Draw(
                     glm::vec4(rect_transform.position.x + anchorTable[rect_transform.anchor].x, rect_transform.position.y + anchorTable[rect_transform.anchor].y, rect_transform.size.x, rect_transform.size.y),
                     sprite.uv,
-                    sprite.texture,
+                    sprite.textureHandle.texture,
                     rect_transform.depth,
                     color,
                     rect_transform.rotation,

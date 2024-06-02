@@ -8,6 +8,7 @@
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
+#include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/UISliderComponent.hpp>
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
@@ -249,7 +250,7 @@ namespace Canis
             if (m_index >= GetSceneManager().hierarchyElements.size())
                 m_index = 0;
 
-            ImGui::InputText("", &GetSceneManager().hierarchyElements[m_index].name);
+            ImGui::InputText("##InspectorObjectName", &GetSceneManager().hierarchyElements[m_index].name);
 
             int i = 0;
 
@@ -381,7 +382,7 @@ namespace Canis
                         if (newID != -1)
                         {
                             ic.textureHandle.id = newID;
-                            ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetTexture();
+                            ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetGLTexture();
 
                             path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
                         }
@@ -570,6 +571,62 @@ namespace Canis
                 }
             }
 
+            if (entity.HasComponent<Sprite2DComponent>())
+            {
+                static std::string path = "";
+                static int selectedPath = 0;
+
+                auto &ic = entity.GetComponent<Sprite2DComponent>();
+
+                if (refresh)
+                {
+                    path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
+
+                    int index = 0;
+                    for(std::string& s : pngFilePaths)
+                    {
+                        if (path == s)
+                        {
+                            selectedPath = index;
+                        }
+
+                        index++;
+                    }
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Sprite"))
+                {
+                    std::vector<const char *> cStringItems = ConvertVectorToCStringVector(pngFilePaths);
+
+                    if (ImGui::Combo("##Canis::Sprite", &selectedPath, cStringItems.data(), static_cast<int>(cStringItems.size())))
+                    {
+                        int newID = AssetManager::LoadTexture(pngFilePaths[selectedPath]);
+
+                        if (newID != -1)
+                        {
+                            ic.textureHandle = AssetManager::GetTextureHandle(newID);
+
+                            path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::Text("image");
+
+                    ImGui::InputFloat4("uv", glm::value_ptr(ic.uv));
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Image"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Image"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::UIImageComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
+            }
+            
             if (entity.HasComponent<UISliderComponent>())
             {
                 if (ImGui::CollapsingHeader("Canis::UISlider"))

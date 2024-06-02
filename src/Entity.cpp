@@ -59,6 +59,44 @@ void Entity::SetTag(std::string _tag)
     strcpy(tagComponent.tag, tag);
 }
 
+bool Entity::TagEquals(const std::string &_tag)
+{
+    if (HasComponent<TagComponent>() == false)
+        AddComponent<TagComponent>();
+    
+    TagComponent& tagComponent = GetComponent<TagComponent>();
+
+    if (_tag.size() == 0)
+    {
+        if (tagComponent.tag[0] == 0)
+        {
+            return true;
+        }
+
+        return false;
+    }
+
+    for (int i = 0; i < 20; i++)
+    {
+        if (_tag.size() <= i)
+        {
+            if (tagComponent.tag[i] == 0)
+            {
+                return true;
+            }
+
+            return false;
+        }
+
+        if (tagComponent.tag[i] != _tag[i])
+        {
+            return false;
+        }
+    }
+
+    return true;
+}
+
 Entity Entity::GetEntityWithTag(std::string _tag)
 {
     Entity e = {};

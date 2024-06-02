@@ -37,7 +37,8 @@ namespace Canis
                     animation.index = 0;
 
                 animation.countDown = spriteAnimationAsset->frames[animation.index].timeOnFrame;
-                sprite.texture = AssetManager::Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
+                sprite.textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
+                sprite.textureHandle.texture = AssetManager::GetTexture(sprite.textureHandle.id)->GetGLTexture();
 
                 GetSpriteFromTextureAtlas(
                     sprite,
@@ -61,8 +62,9 @@ namespace Canis
                     spriteAnimationId = animation.animationId;
                     spriteAnimationAsset = AssetManager::Get<SpriteAnimationAsset>(spriteAnimationId);
                 }
-
-                sprite.texture = AssetManager::Get<Canis::TextureAsset>(spriteAnimationAsset->frames[animation.index].textureId)->GetTexture();
+                
+                sprite.textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
+                sprite.textureHandle.texture = AssetManager::GetTexture(sprite.textureHandle.id)->GetGLTexture();
 
                 GetSpriteFromTextureAtlas(
                     sprite,

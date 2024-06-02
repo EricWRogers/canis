@@ -132,10 +132,7 @@ namespace Canis
         {
             auto &s2dc = _entity.AddComponent<Canis::Sprite2DComponent>();
             s2dc.uv = sprite2DComponent["uv"].as<glm::vec4>();
-            s2dc.texture = AssetManager::Get<Canis::TextureAsset>(
-                                           AssetManager::LoadTexture(
-                                               sprite2DComponent["texture"].as<std::string>()))
-                               ->GetTexture();
+            s2dc.textureHandle = sprite2DComponent["textureHandle"].as<TextureHandle>();//AssetManager::GetTextureHandle(sprite2DComponent["textureHandle"].as<std::string>());
         }
     }
 
@@ -148,7 +145,7 @@ namespace Canis
             if (auto textureAsset = uiImageComponent["TextureAsset"])
             {
                 uiic.textureHandle.id = AssetManager::LoadTexture(textureAsset["path"].as<std::string>());
-                uiic.texture = AssetManager::Get<Canis::TextureAsset>(uiic.textureHandle.id)->GetTexture();
+                uiic.texture = AssetManager::Get<Canis::TextureAsset>(uiic.textureHandle.id)->GetGLTexture();
             }
         }
     }

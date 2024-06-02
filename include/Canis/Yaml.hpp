@@ -4,6 +4,7 @@
 #include <yaml-cpp/yaml.h>
 #include <Canis/Data/Bit.hpp>
 #include <Canis/UUID.hpp>
+#include <Canis/AssetHandle.hpp>
 #include <Canis/External/entt.hpp>
 
 #include <map>
@@ -77,6 +78,9 @@ PropertyRegistry& GetPropertyRegistry()
 extern SystemRegistry& GetSystemRegistry();
 extern ComponentRegistry& GetComponent();
 extern ScriptableComponentRegistry& GetScriptableComponentRegistry();
+extern std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle);
+extern Canis::TextureHandle YAMLDecodeTexture(std::string &_path);
+
 
 namespace Canis
 {
@@ -226,6 +230,24 @@ namespace YAML
 		{
 			e.entityHandle = (entt::entity)_node.as<uint32_t>();
 			e.scene = (void*)_node.as<uint64_t>();
+			return true;
+		}
+	};
+
+	template <>
+	struct convert<Canis::TextureHandle>
+	{
+		static Node encode(const Canis::TextureHandle &_textureHandle)
+		{
+			Node node;
+			node = YAMLEncodeTexture(_textureHandle);
+			return node;
+		}
+
+		static bool decode(const Node &_node, Canis::TextureHandle &_textureHandle)
+		{
+			std::string path = _node.as<std::string>("");
+			_textureHandle = YAMLDecodeTexture(path);
 			return true;
 		}
 	};

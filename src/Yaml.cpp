@@ -1,5 +1,8 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/SceneManager.hpp>
+#include <Canis/AssetManager.hpp>
+
+#include <iostream>
 
 SystemRegistry& GetSystemRegistry()
 {
@@ -30,6 +33,18 @@ void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, voi
     sceneManager->entityAndUUIDToConnect.push_back(entityAndUUID);
 }
 
+std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle)
+{
+    std::cout << "Here 2" << std::endl;
+    return Canis::AssetManager::GetTexture(_textureHandle.id)->GetPath();
+}
+
+Canis::TextureHandle YAMLDecodeTexture(std::string &_path)
+{
+    std::cout << "Here 3" << std::endl;
+    return Canis::AssetManager::GetTextureHandle(_path);
+}
+
 namespace YAML
 {
     Emitter &operator<<(Emitter &out, const glm::vec2 &v)
@@ -58,6 +73,8 @@ namespace YAML
         Canis::Entity nonConstE;
         nonConstE.entityHandle = e.entityHandle;
         nonConstE.scene = (Canis::Scene*)e.scene;
+
+        std::cout << "Here 1" << std::endl;
         
         if (nonConstE)
         {
