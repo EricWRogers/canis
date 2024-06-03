@@ -35,13 +35,11 @@ void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, voi
 
 std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle)
 {
-    std::cout << "Here 2" << std::endl;
     return Canis::AssetManager::GetTexture(_textureHandle.id)->GetPath();
 }
 
 Canis::TextureHandle YAMLDecodeTexture(std::string &_path)
 {
-    std::cout << "Here 3" << std::endl;
     return Canis::AssetManager::GetTextureHandle(_path);
 }
 
