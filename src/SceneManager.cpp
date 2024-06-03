@@ -1,6 +1,7 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
+#include <Canis/Canis.hpp>
 
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
@@ -473,14 +474,14 @@ namespace Canis
                 _scriptComponent.Instance = _scriptComponent.InstantiateScript();
                 _scriptComponent.Instance->entity = Entity{_entity, this->scene};
 
-                if (m_editor.GetMode() == EditorMode::PLAY)
+                if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
                 {
                     _scriptComponent.Instance->OnCreate();
                 }
             }
         }
 
-        if (m_editor.GetMode() == EditorMode::PLAY)
+        if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
         {
 
             scene->Update();
