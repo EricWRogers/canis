@@ -145,6 +145,7 @@ namespace Canis
 
                 m_scenes[i].scene->PreLoad();
                 m_scenes[i].preloaded = true;
+                return;
             }
         }
     }
@@ -507,7 +508,7 @@ namespace Canis
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
 
-        if (m_editor.GetMode() != EditorMode::PLAY)
+        if (m_editor.GetMode() != EditorMode::PLAY && GetProjectConfig().editor == true)
             return;
 
         if (patientLoadIndex != -1)
@@ -553,7 +554,7 @@ namespace Canis
         if (scene == nullptr)
             FatalError("A scene has not been loaded.");
         
-        if (m_editor.GetMode() != EditorMode::PLAY)
+        if (m_editor.GetMode() != EditorMode::PLAY && GetProjectConfig().editor == true)
             return;
 
         if (patientLoadIndex != -1)
