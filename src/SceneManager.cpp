@@ -145,7 +145,6 @@ namespace Canis
 
                 m_scenes[i].scene->PreLoad();
                 m_scenes[i].preloaded = true;
-                return;
             }
         }
     }
