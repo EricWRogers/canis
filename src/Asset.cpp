@@ -567,7 +567,7 @@ namespace Canis
         else
             channel = Mix_PlayChannel(-1, (Mix_Chunk *)m_chunk, 0);
 
-        Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume);
+        Mix_Volume(channel, 128 * _volume * GetProjectConfig().volume * GetProjectConfig().sfxVolume);
         return channel;
     }
 
@@ -608,7 +608,7 @@ namespace Canis
         if (GetProjectConfig().mute)
             Mix_VolumeMusic(0.0f);
         else
-            Mix_VolumeMusic(128 * m_volume * GetProjectConfig().volume);
+            Mix_VolumeMusic(128 * m_volume * GetProjectConfig().volume * GetProjectConfig().musicVolume);
     }
 
     void MusicAsset::Mute()

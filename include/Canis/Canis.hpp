@@ -12,6 +12,8 @@ namespace Canis
         bool overrideSeed = false;
         unsigned int seed = 0;
         float volume = 1.0f;
+        float musicVolume = 1.0f;
+        float sfxVolume = 1.0f;
         bool mute = false;
         bool log = true;
         bool editor = false;

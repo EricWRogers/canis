@@ -171,7 +171,6 @@ namespace Canis
             for(const auto& pair : playerData)
             {
                 std::string line = pair.first + "|" + pair.second + "\n";
-                Log(line);
                 SDL_RWwrite(file, line.c_str(), 1, line.size());
             }
 
