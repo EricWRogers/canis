@@ -32,6 +32,7 @@ namespace Canis
 
         Scene *m_scene;
         int m_index = 0;
+        bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
     };
 }

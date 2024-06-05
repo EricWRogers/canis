@@ -203,6 +203,11 @@ namespace Canis
                     ColorComponent &color = _registry.get<ColorComponent>(elements[i].element);
                     TextComponent &text = _registry.get<TextComponent>(elements[i].element);
 
+                    if (text.assetId == -1)
+                    {
+                        continue;
+                    }
+
                     glEnable(GL_DEPTH_TEST);
                     glEnable(GL_BLEND);
                     glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);

@@ -221,15 +221,16 @@ namespace Canis
         static Entity entity(m_scene);
         static bool refresh = true;
 
-        static std::vector<std::string> pngFilePaths = {};
-        static std::vector<std::string> ttfFilePaths = {};
+        static std::vector<std::string> pngFilePaths = FindFilesInFolder("assets", ".png");
+        static std::vector<std::string> ttfFilePaths = FindFilesInFolder("assets", ".ttf");
 
         int count = 0;
 
-        if (m_index != lastIndex)
+        if (m_index != lastIndex || m_forceRefresh)
         {
             lastIndex = m_index;
             refresh = true;
+            m_forceRefresh = false;
 
             pngFilePaths = FindFilesInFolder("assets", ".png");
             ttfFilePaths = FindFilesInFolder("assets", ".ttf");
@@ -357,6 +358,16 @@ namespace Canis
 
                 if (refresh)
                 {
+                    if (ic.textureHandle.id == -1)
+                    {
+                        if (pngFilePaths.size() == 0)
+                        {
+                            FatalError("No .png not found in the asset folder!");
+                        }
+
+                        ic.textureHandle = AssetManager::GetTextureHandle(pngFilePaths[0]);
+                    }
+
                     path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
 
                     int index = 0;
@@ -416,6 +427,16 @@ namespace Canis
 
                 if (refresh)
                 {
+                    if (tc.assetId == -1) // if the asset id has not been set
+                    {
+                        if (ttfFilePaths.size() == 0)
+                        {
+                            FatalError("No .ttf not found in the asset folder!");
+                        }
+
+                        tc.assetId = AssetManager::LoadText(ttfFilePaths[0], 24);
+                    }
+
                     path = AssetManager::Get<TextAsset>(tc.assetId)->GetPath();
 
                     size = AssetManager::Get<TextAsset>(tc.assetId)->GetFontSize();
@@ -669,7 +690,21 @@ namespace Canis
                     if (ImGui::InputScalar("slider", ImGuiDataType_U64, &tempID))
                     {
                         UUID u = tempID;
-                        GetSceneManager().FindEntityEditor(kc.slider, u);
+
+                        for (auto hei : GetSceneManager().hierarchyElements)
+                        {
+                            if (hei.entity.GetUUID() == tempID)
+                            {
+                                u = tempID;
+                                kc.slider = hei.entity;
+                                break;
+                            }
+                            else
+                            {
+                                u = 0ul;
+                            }
+                        }
+                        
                         tempID = u.ID;
                     }
 
@@ -708,6 +743,7 @@ namespace Canis
                     {
                         GetComponent().addComponentFuncs[cStringItems[componentToAdd]](entity);
                         componentToAdd = 0;
+                        m_forceRefresh = true;
                     }
                 }
             }
@@ -980,6 +1016,7 @@ namespace Canis
                     HierarchyElementInfo temp = GetSceneManager().hierarchyElements[i - 1];
                     GetSceneManager().hierarchyElements[i - 1] = GetSceneManager().hierarchyElements[i];
                     GetSceneManager().hierarchyElements[i] = temp;
+                    m_forceRefresh = true;
                 }
             }
 
@@ -993,6 +1030,7 @@ namespace Canis
                     HierarchyElementInfo temp = GetSceneManager().hierarchyElements[i];
                     GetSceneManager().hierarchyElements[i] = GetSceneManager().hierarchyElements[i + 1];
                     GetSceneManager().hierarchyElements[i + 1] = temp;
+                    m_forceRefresh = true;
                 }
             }
 
@@ -1003,6 +1041,19 @@ namespace Canis
             {
                 GetSceneManager().hierarchyElements[i].entity.Destroy();
                 GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + i);
+                m_forceRefresh = true;
+            }
+
+            ImGui::SameLine();
+            std::string duplicateButtonLabel = "d##" + std::to_string(i);
+            duplicateButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
+            if (ImGui::Button(duplicateButtonLabel.c_str()))
+            {
+                Canis::HierarchyElementInfo hei;
+                hei.entity = GetSceneManager().hierarchyElements[i].entity.Duplicate();
+                hei.name = GetSceneManager().hierarchyElements[i].name + " copy";
+                GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + i + 1, hei);
+                m_forceRefresh = true;
             }
         }
 
@@ -1016,6 +1067,7 @@ namespace Canis
             hei.entity.scene = m_scene;
 
             GetSceneManager().hierarchyElements.push_back(hei);
+            m_forceRefresh = true;
         }
 
         ImGui::End();

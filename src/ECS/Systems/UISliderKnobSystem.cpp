@@ -19,7 +19,7 @@ namespace Canis
         for (auto [entity, rect, button, knob] : view.each())
         {
             if (!knob.slider)
-                return;
+                continue;
 
             if (mouseDown == false)
                 knob.grabbed = false;
@@ -38,10 +38,10 @@ namespace Canis
             rect.position.y = (sliderRect.position.y + (sliderRect.size.y * sliderRect.scale) / 2.0f) - halfSize.y;
 
             if (mouseDown == false)
-                return;
+                continue;
 
             if (!button.mouseOver && !knob.grabbed)
-                return;
+                continue;
 
             knob.grabbed = true;
 
