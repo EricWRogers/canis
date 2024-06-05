@@ -8,7 +8,11 @@ namespace Canis
 {
     namespace PlayerPrefs
     {
-        static std::string PLAYERDATAPATH = "";
+        std::string& GetPlayerDataPath()
+        {
+            static std::string path = "";
+            return path;
+        }
 
         std::map<std::string,std::string> &GetPlayerData()
         {
@@ -110,11 +114,11 @@ namespace Canis
 
         void LoadFromFile()
         {
-            Canis::Log("Loading Player Data");
+            Canis::Log("Loading Player Data: " + GetPlayerDataPath() + "player.data");
 
             std::map<std::string,std::string>& playerData = GetPlayerData();
 
-            SDL_RWops* file = SDL_RWFromFile((PLAYERDATAPATH+"player.data").c_str(), "r");
+            SDL_RWops* file = SDL_RWFromFile((GetPlayerDataPath()+"player.data").c_str(), "r");
 
             if (file == nullptr) {
                 Canis::Log("Player Data Not Found.");
@@ -152,11 +156,11 @@ namespace Canis
 
         void SaveToFile()
         {
-            Canis::Log("Saving Player Data");
+            Canis::Log("Saving Player Data: " + (GetPlayerDataPath()+"player.data"));
 
             std::map<std::string,std::string>& playerData = GetPlayerData();
 
-            SDL_RWops *file = SDL_RWFromFile((PLAYERDATAPATH+"player.data").c_str(), "w+");
+            SDL_RWops *file = SDL_RWFromFile((GetPlayerDataPath()+"player.data").c_str(), "w+");
 
             if (file == nullptr)
             {
@@ -167,6 +171,7 @@ namespace Canis
             for(const auto& pair : playerData)
             {
                 std::string line = pair.first + "|" + pair.second + "\n";
+                Log(line);
                 SDL_RWwrite(file, line.c_str(), 1, line.size());
             }
 
@@ -175,7 +180,7 @@ namespace Canis
 
         void Init(const std::string &_organization, const std::string &_app)
         {
-            PLAYERDATAPATH = std::string(SDL_GetPrefPath(_organization.c_str(), _app.c_str()));
+            GetPlayerDataPath() = std::string(SDL_GetPrefPath(_organization.c_str(), _app.c_str()));
         }
     }
 }
