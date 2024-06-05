@@ -6,6 +6,33 @@
 #include <Canis/ECS/Components/ScriptComponent.hpp>
 #include <Canis/ECS/Components/TransformComponent.hpp>
 
+#include <iomanip>
+#include <iostream>
+#include <string>
+#include <type_traits>
+#include <variant>
+#include <vector>
+
+#include <Canis/External/entt.hpp>
+
+
+entt::entity DuplicateEntity(entt::registry& _from, entt::registry& _to, entt::entity _original) {
+    entt::entity newEntity = _to.create();
+
+    for(auto &&curr: _from.storage()) {
+        if(auto &storage = curr.second; storage.contains(_original)) {
+            auto* destinationStorage = _to.storage(curr.first);
+
+            if (destinationStorage)
+            {
+                destinationStorage->push(newEntity, storage.value(_original));
+            }
+        }
+    }
+
+    return newEntity;
+}
+
 namespace Canis
 {
 void Entity::Destroy()
@@ -159,6 +186,22 @@ bool Entity::TagEquals(const char a[20], const char b[20])
         i++;
     }
     return true;
+}
+
+Entity Entity::Duplicate()
+{
+    Entity e(
+        DuplicateEntity(scene->entityRegistry, scene->entityRegistry, entityHandle)
+        ,scene
+    );
+
+    if (e.HasComponent<IDComponent>())
+    {
+        e.RemoveComponent<IDComponent>();
+        e.AddComponent<IDComponent>();
+    }
+
+    return e;
 }
 
 void Entity::SetParent(entt::entity _parent)

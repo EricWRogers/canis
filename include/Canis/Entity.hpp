@@ -143,6 +143,8 @@ public:
     Entity GetEntityWithTag(std::string _tag);
     std::vector<Entity> GetEntitiesWithTag(std::string _tag);
 
+    Entity Duplicate();
+
     void SetParent(entt::entity _parent);
     void AddChild(entt::entity _child);
 
