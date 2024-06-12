@@ -6,14 +6,14 @@ namespace Canis
 {
     enum ParticleEmitterState
     {
-        NONE            = 0,
-        LOOPING         = 1,
-        BURST           = 2,
-        GRAVITY         = 4,
-        PAUSED          = 8,
-        COLORLERP       = 16,
-        DESTROYONEND    = 32,
-        LOCAL           = 64
+        EMPYTYEMITTERSTATE = 0,
+        LOOPING             = 1,
+        BURST               = 2,
+        GRAVITY             = 4,
+        PAUSED              = 8,
+        COLORLERP           = 16,
+        DESTROYONEND        = 32,
+        LOCAL               = 64
     };
 
     enum EmitterShape
@@ -27,7 +27,7 @@ namespace Canis
 
     struct ParticleEmitterComponent
     {
-        unsigned int state = ParticleEmitterState::NONE;
+        unsigned int state = ParticleEmitterState::EMPYTYEMITTERSTATE;
         EmitterShape shape = EmitterShape::POINT;
         float shapeScale = 1.0f;
         int numOfParticle = 100;
