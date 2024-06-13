@@ -144,8 +144,7 @@ namespace Canis
             uiic.uv = uiImageComponent["uv"].as<glm::vec4>();
             if (auto textureAsset = uiImageComponent["TextureAsset"])
             {
-                uiic.textureHandle.id = AssetManager::LoadTexture(textureAsset["path"].as<std::string>());
-                uiic.texture = AssetManager::Get<Canis::TextureAsset>(uiic.textureHandle.id)->GetGLTexture();
+                uiic.textureHandle = AssetManager::GetTextureHandle(textureAsset["path"].as<std::string>());
             }
         }
     }

@@ -392,10 +392,7 @@ namespace Canis
 
                         if (newID != -1)
                         {
-                            ic.textureHandle.id = newID;
-                            ic.texture = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetGLTexture();
-
-                            path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
+                            ic.textureHandle = AssetManager::GetTextureHandle(newID);
                         }
                     }
 

@@ -22,6 +22,9 @@ namespace Canis
         if (t.size() == 0)
             return;
         
+        if (fontId < 1)
+                return;
+        
         // activate corresponding render state
         shader.Use();
         shader.SetVec4("textColor", color);
@@ -178,6 +181,9 @@ namespace Canis
 
         for (auto [entity, transform, color, text] : view.each())
         {
+            if (text.assetId < 1)
+                continue;
+
             if (transform.active == true)
             {
                 e.entityHandle = entity;

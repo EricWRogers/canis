@@ -177,7 +177,7 @@ namespace Canis
                     m_spriteRenderer.DrawUI(
                         glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                         image.uv,
-                        image.texture,
+                        image.textureHandle.texture,
                         rect_transform.depth,
                         color,
                         rect_transform.rotation,
