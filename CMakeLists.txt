@@ -4,6 +4,7 @@ project(canis)
 set(CMAKE_CXX_STANDARD 20)
 
 set(BUILD_TESTING                   FALSE)
+set(glew-cmake_BUILD_SHARED         FALSE)
 
 set(SDL_TEST_ENABLED_BY_DEFAULT     FALSE)
 set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
@@ -29,13 +30,14 @@ set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
 
-#add_subdirectory(external/GL)
+add_subdirectory(external/GL)
 add_subdirectory(external/glm)
 add_subdirectory(external/yaml-cpp)
 add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
+add_subdirectory(external/assimp)
 
 # Set where the ImGui files are stored
 set(IMGUI_PATH  "external/imgui")
@@ -50,12 +52,6 @@ target_link_libraries("imgui" PRIVATE SDL2main SDL2-static)
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
 
-file(GLOB_RECURSE GLAD_SOURCES external/glad/*.c)
-file(GLOB_RECURSE GLAD_HEADERS external/glad/*.h)
-
-add_library(glad external/glad/src/glad.c)
-target_include_directories(glad PUBLIC external/glad/include)
-
 file(GLOB_RECURSE SRC_SOURCES src/*.c*)
 file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
 
@@ -66,13 +62,14 @@ target_link_libraries(${PROJECT_NAME}
     $<INSTALL_INTERFACE:include>
     glm
     stb
+    libglew_static
     freetype
     yaml-cpp
     SDL2-static
     SDL2main
     SDL2_mixer
     imgui
-    glad
+    assimp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -85,6 +82,7 @@ target_include_directories(${PROJECT_NAME}
         SDL2main
         SDL2_mixer
         imgui
+        assimp
         "${PROJECT_SOURCE_DIR}/include"
 )
 

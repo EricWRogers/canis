@@ -13,7 +13,6 @@
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
 
-
 namespace Canis
 {
     class Asset

@@ -13,6 +13,12 @@ namespace Canis
     {
     }
 
+    Shader::Shader(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
+    {
+        Compile(_vertexShaderFilePath, _fragmentShaderFilePath);
+        Link();
+    }
+
     Shader::~Shader()
     {
         if (m_fragmentShaderId != 0)

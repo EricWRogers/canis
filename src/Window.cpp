@@ -112,8 +112,10 @@ namespace Canis
 
             Log("OpenGLES version loaded: " + std::to_string(major) + "." + std::to_string(minor));
         #else
-        if (!gladLoadGLLoader((GLADloadproc)SDL_GL_GetProcAddress)) {
-            std::cerr << "Failed to initialize GLAD" << std::endl;
+        // Load OpenGL
+        GLenum error = glewInit();
+        if (error != GLEW_OK) {
+            FatalError("Could not init GLEW");
             SDL_GL_DeleteContext((SDL_GLContext)m_glContext);
             SDL_DestroyWindow((SDL_Window*)m_sdlWindow);
             SDL_Quit();

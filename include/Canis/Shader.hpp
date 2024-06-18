@@ -8,6 +8,7 @@ namespace Canis
     {
     public:
         Shader();
+        Shader(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath);
         ~Shader();
 
         void Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath);
