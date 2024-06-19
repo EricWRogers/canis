@@ -551,6 +551,8 @@ namespace Canis
 
 					entities_rendered++;
 
+					material = nullptr;
+
 					continue;
 					// end of animation
 				}
