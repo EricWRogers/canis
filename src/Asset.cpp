@@ -10,6 +10,8 @@
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
 
+#include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
+
 #define TINYGLTF_IMPLEMENTATION
 #define STB_IMAGE_IMPLEMENTATION
 #define STB_IMAGE_WRITE_IMPLEMENTATION
@@ -371,6 +373,25 @@ namespace Canis
         return true;
     }
 
+    bool AnimatedModelAsset::Load(std::string _path)
+    {
+        animatedModel = new LearnOpenGL::AnimatedModel(_path);
+        return true;
+    }
+
+    bool AnimatedModelAsset::Free()
+    {
+        if (animatedModel)
+            delete animatedModel;
+        
+        return true;
+    }
+
+    void AnimatedModelAsset::Draw(Shader &_shader)
+    {
+        animatedModel->Draw(_shader);
+    }
+    
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
     {
         CalculateIndicesFromVertices(_vertices);

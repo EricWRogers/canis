@@ -197,6 +197,35 @@ namespace Canis
             return id;
         }
 
+        int LoadAnimatedModel(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            std::map<std::string, int>::iterator it;
+            it = assetLibrary.assetPath.find(_path);
+
+            // check if animated model already exist
+            if (it != assetLibrary.assetPath.end()) // found
+            {
+                return it->second;
+            }
+
+            // create animated model
+            Asset *model = new AnimatedModelAsset();
+            model->Load(_path);
+            int id = assetLibrary.nextId;
+
+            // cache animated model
+            assetLibrary.assets[id] = model;
+
+            // cache id
+            assetLibrary.assetPath[_path] = id;
+
+            // increment id
+            assetLibrary.nextId++;
+
+            return id;
+        }
+        
         int LoadSound(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();

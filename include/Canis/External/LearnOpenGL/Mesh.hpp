@@ -1,5 +1,4 @@
-#ifndef MESH_H
-#define MESH_H
+#pragma once
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
@@ -12,6 +11,8 @@ using namespace std;
 
 #define MAX_BONE_INFLUENCE 4
 
+namespace LearnOpenGL
+{
 struct Vertex {
     // position
     glm::vec3 Position;
@@ -131,4 +132,4 @@ private:
         glBindVertexArray(0);
     }
 };
-#endif
+}

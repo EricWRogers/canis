@@ -17,34 +17,24 @@
 #include <map>
 #include <vector>
 #include "AssimpGLMHelper.hpp"
+#include "Animation.hpp"
 
 using namespace std;
 
 namespace LearnOpenGL
 {
-struct BoneInfo
-{
-	//id is index in finalBoneMatrices
-	int id;
-
-	//offset matrix transforms vertex from model space to bone space
-	glm::mat4 offset;
-
-};
-
-class Model 
+class AnimatedModel 
 {
 public:
     // model data 
     vector<Texture> textures_loaded;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
     vector<Mesh>    meshes;
+	vector<Animation> animations;
     string directory;
     bool gammaCorrection;
 	
-	
-
     // constructor, expects a filepath to a 3D model.
-    Model(string const &path, bool gamma = false) : gammaCorrection(gamma)
+    AnimatedModel(string const &path, bool gamma = false) : gammaCorrection(gamma)
     {
         loadModel(path);
     }
@@ -55,7 +45,7 @@ public:
         for(unsigned int i = 0; i < meshes.size(); i++)
             meshes[i].Draw(shader);
     }
-    
+
 	auto& GetBoneInfoMap() { return m_BoneInfoMap; }
 	int& GetBoneCount() { return m_BoneCounter; }
 	
@@ -70,7 +60,7 @@ private:
     {
         // read file via ASSIMP
         Assimp::Importer importer;
-        const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_GenSmoothNormals | aiProcess_CalcTangentSpace);
+        const aiScene* scene = importer.ReadFile(path, aiProcess_Triangulate | aiProcess_GenSmoothNormals);
         // check for errors
         if(!scene || scene->mFlags & AI_SCENE_FLAGS_INCOMPLETE || !scene->mRootNode) // if is Not Zero
         {
@@ -82,6 +72,21 @@ private:
 
         // process ASSIMP's root node recursively
         processNode(scene->mRootNode, scene);
+
+		// load animations
+		for (int i = 0; i < scene->mNumAnimations; i++)
+		{
+			Animation animation;
+			auto aiAnimation = scene->mAnimations[i];
+			Canis::Log("number of animations: " + std::to_string(scene->mNumAnimations));
+			animation.duration = aiAnimation->mDuration;
+			animation.ticksPerSecond = aiAnimation->mTicksPerSecond;
+			aiMatrix4x4 globalTransformation = scene->mRootNode->mTransformation;
+			globalTransformation = globalTransformation.Inverse();
+			ReadHierarchyData(animation.rootNode, scene->mRootNode);
+			ReadMissingBones(animation, aiAnimation);
+			animations.push_back(animation);
+		}
     }
 
     // processes a node in a recursive fashion. Processes each individual mesh located at the node and repeats this process on its children nodes (if any).
@@ -111,7 +116,6 @@ private:
 			vertex.m_Weights[i] = 0.0f;
 		}
 	}
-
 
 	Mesh processMesh(aiMesh* mesh, const aiScene* scene)
 	{
@@ -173,7 +177,6 @@ private:
 		}
 	}
 
-
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene)
 	{
 		auto& boneInfoMap = m_BoneInfoMap;
@@ -210,6 +213,46 @@ private:
 		}
 	}
 
+	void ReadMissingBones(Animation& _animation, const aiAnimation* _aiAnimation)
+	{
+		int size = _aiAnimation->mNumChannels;
+
+		auto& boneInfoMap = GetBoneInfoMap();//getting m_BoneInfoMap from Model class
+		int& boneCount = GetBoneCount(); //getting the m_BoneCounter from Model class
+
+		//reading channels(bones engaged in an _aiAnimation and their keyframes)
+		for (int i = 0; i < size; i++)
+		{
+			auto channel = _aiAnimation->mChannels[i];
+			std::string boneName = channel->mNodeName.data;
+
+			if (boneInfoMap.find(boneName) == boneInfoMap.end())
+			{
+				boneInfoMap[boneName].id = boneCount;
+				boneCount++;
+			}
+			_animation.bones.push_back(Bone(channel->mNodeName.data,
+				boneInfoMap[channel->mNodeName.data].id, channel));
+		}
+
+		_animation.boneInfoMap = boneInfoMap;
+	}
+
+	void ReadHierarchyData(AssimpNodeData& dest, const aiNode* src)
+	{
+		assert(src);
+
+		dest.name = src->mName.data;
+		dest.transformation = AssimpGLMHelpers::ConvertMatrixToGLMFormat(src->mTransformation);
+		dest.childrenCount = src->mNumChildren;
+
+		for (int i = 0; i < src->mNumChildren; i++)
+		{
+			AssimpNodeData newData;
+			ReadHierarchyData(newData, src->mChildren[i]);
+			dest.children.push_back(newData);
+		}
+	}
 
 	unsigned int TextureFromFile(const char* path, const string& directory, bool gamma = false)
 	{

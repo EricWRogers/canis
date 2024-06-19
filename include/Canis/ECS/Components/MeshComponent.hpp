@@ -9,5 +9,6 @@ namespace Canis
 		int material = 0;
 		bool useInstance = false;
 		bool castDepth = true;
+		bool animatedModel = false;
 	};
 } // end of Canis namespace

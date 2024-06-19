@@ -49,9 +49,8 @@ namespace Canis
 		high_resolution_clock::time_point endTime;
 
 		Canis::Shader *cesiumManShader;
-		LearnOpenGL::Model *cesiumManModel;
-		LearnOpenGL::Animation *cesiumManAnimation;
-		LearnOpenGL::Animator *cesiumManAnimator;
+		LearnOpenGL::AnimatedModel *cesiumManModel;
+		LearnOpenGL::AnimatorComponent cesiumManAnimator;
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
@@ -284,6 +283,14 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
+				if (mesh.animatedModel == true)
+				{
+					// animation test
+					
+					continue;
+					// end of animation
+				}
+
 				if (!mesh.castShadow)
 					continue;
 
@@ -401,6 +408,14 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
+				if (mesh.animatedModel == true)
+				{
+					// animation test
+					
+					continue;
+					// end of animation
+				}
+
 				if (!mesh.castDepth)
 					continue;
 
@@ -514,6 +529,31 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
 				unsigned int textureCount = 0;
+
+				if (mesh.animatedModel == true)
+				{
+					// animation test
+					LearnOpenGL::UpdateBones(cesiumManAnimator, deltaTime);
+					cesiumManShader->Use();
+
+					// view/projection transformations
+					cesiumManShader->SetMat4("projection", projection);
+					cesiumManShader->SetMat4("view", cameraView);
+
+					for (int i = 0; i < 100; ++i)
+						cesiumManShader->SetMat4("finalBonesMatrices[" + std::to_string(i) + "]", cesiumManAnimator.bones[i]);
+					
+					// render the loaded model
+					cesiumManShader->SetMat4("model", transform.modelMatrix);
+
+					AnimatedModelAsset* animatedModel = AssetManager::Get<AnimatedModelAsset>(mesh.id);
+					animatedModel->Draw(*cesiumManShader);
+
+					entities_rendered++;
+
+					continue;
+					// end of animation
+				}
 
 				if (!mesh.useInstance)
 				{
@@ -731,7 +771,7 @@ namespace Canis
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
-				// glDrawArrays(GL_TRIANGLES, 0, size);
+				
 				if (!mesh.useInstance)
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
@@ -743,26 +783,6 @@ namespace Canis
 
 				entities_rendered++;
 			}
-
-			// animation test
-			cesiumManAnimator->UpdateAnimation(deltaTime);
-			cesiumManShader->Use();
-
-			// view/projection transformations
-			cesiumManShader->SetMat4("projection", projection);
-			cesiumManShader->SetMat4("view", cameraView);
-
-			auto transforms = cesiumManAnimator->GetFinalBoneMatrices();
-			for (int i = 0; i < transforms.size(); ++i)
-				cesiumManShader->SetMat4("finalBonesMatrices[" + std::to_string(i) + "]", transforms[i]);
-			
-			// render the loaded model
-			glm::mat4 transform = glm::mat4(1.0f);
-			transform = glm::translate(transform, glm::vec3(15.0f, 2.0f, 15.0f)); // translate it down so it's at the center of the scene
-			transform = glm::scale(transform, glm::vec3(4.0f));	// it's a bit too big for our scene, so scale it down
-			cesiumManShader->SetMat4("model", transform);
-			cesiumManModel->Draw(*cesiumManShader);
-			// end of animation
 
 			// draw skybox as last
 			glDepthFunc(GL_LEQUAL); // change depth function so depth test passes when values are equal to depth buffer's content
@@ -948,9 +968,9 @@ namespace Canis
 				ConfigureBuffers();
 
 			cesiumManShader = new Canis::Shader("assets/shaders/anim_model.vs", "assets/shaders/anim_model.fs");
-			cesiumManModel = new LearnOpenGL::Model("assets/models/CesiumMan/CesiumMan.gltf");
-			cesiumManAnimation = new LearnOpenGL::Animation("assets/models/CesiumMan/CesiumMan.gltf", cesiumManModel);
-			cesiumManAnimator = new LearnOpenGL::Animator(cesiumManAnimation);
+			cesiumManModel = new LearnOpenGL::AnimatedModel("assets/models/CesiumMan/CesiumMan.gltf");
+			
+			LearnOpenGL::PlayAnimation(cesiumManAnimator, &cesiumManModel->animations[0]);
 
 			Canis::List::Init(&sortingEntitiesList, 100, sizeof(RenderEnttRapper));
 

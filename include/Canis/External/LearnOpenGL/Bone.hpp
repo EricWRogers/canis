@@ -30,6 +30,16 @@ struct KeyScale
 	float timeStamp;
 };
 
+struct BoneInfo
+{
+	//id is index in finalBoneMatrices
+	int id;
+
+	//offset matrix transforms vertex from model space to bone space
+	glm::mat4 offset;
+
+};
+
 class Bone
 {
 public:
@@ -88,32 +98,38 @@ public:
 
 	int GetPositionIndex(float animationTime)
 	{
+		// TODO: do a binary search on this array
 		for (int index = 0; index < m_NumPositions - 1; ++index)
 		{
 			if (animationTime < m_Positions[index + 1].timeStamp)
 				return index;
 		}
-		assert(0);
+		
+		return -1;
 	}
 
 	int GetRotationIndex(float animationTime)
 	{
+		// TODO: do a binary search on this array
 		for (int index = 0; index < m_NumRotations - 1; ++index)
 		{
 			if (animationTime < m_Rotations[index + 1].timeStamp)
 				return index;
 		}
-		assert(0);
+		
+		return -1;
 	}
 
 	int GetScaleIndex(float animationTime)
 	{
+		// TODO: do a binary search on this array
 		for (int index = 0; index < m_NumScalings - 1; ++index)
 		{
 			if (animationTime < m_Scales[index + 1].timeStamp)
 				return index;
 		}
-		assert(0);
+		
+		return -1;
 	}
 
 
@@ -134,6 +150,10 @@ private:
 			return glm::translate(glm::mat4(1.0f), m_Positions[0].position);
 
 		int p0Index = GetPositionIndex(animationTime);
+
+		if (p0Index == -1)
+			Canis::FatalError("Model animation not valid");
+
 		int p1Index = p0Index + 1;
 		float scaleFactor = GetScaleFactor(m_Positions[p0Index].timeStamp,
 			m_Positions[p1Index].timeStamp, animationTime);
@@ -151,6 +171,10 @@ private:
 		}
 
 		int p0Index = GetRotationIndex(animationTime);
+
+		if (p0Index == -1)
+			Canis::FatalError("Model animation not valid");
+
 		int p1Index = p0Index + 1;
 		float scaleFactor = GetScaleFactor(m_Rotations[p0Index].timeStamp,
 			m_Rotations[p1Index].timeStamp, animationTime);
@@ -167,6 +191,10 @@ private:
 			return glm::scale(glm::mat4(1.0f), m_Scales[0].scale);
 
 		int p0Index = GetScaleIndex(animationTime);
+
+		if (p0Index == -1)
+			Canis::FatalError("Model animation not valid");
+
 		int p1Index = p0Index + 1;
 		float scaleFactor = GetScaleFactor(m_Scales[p0Index].timeStamp,
 			m_Scales[p1Index].timeStamp, animationTime);

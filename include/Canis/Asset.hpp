@@ -13,6 +13,11 @@
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
 
+namespace LearnOpenGL
+{
+    class AnimatedModel;
+}
+
 namespace Canis
 {
     class Asset
@@ -71,6 +76,17 @@ namespace Canis
     private:
         void Bind();
         void CalculateIndicesFromVertices(const std::vector<Canis::Vertex> &_vertices);
+    };
+
+    class AnimatedModelAsset : public Asset
+    {
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        void Draw(Shader &_shader);
+
+        LearnOpenGL::AnimatedModel* animatedModel = nullptr;
     };
 
     class InstanceMeshAsset : public Asset

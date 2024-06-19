@@ -8,75 +8,71 @@
 #include "Animation.hpp"
 #include "Bone.hpp"
 
+#include <Canis/Entity.hpp>
+
 namespace LearnOpenGL
 {
-class Animator
-{
-public:
-	Animator(Animation* animation)
+	struct AnimatorComponent
 	{
-		m_CurrentTime = 0.0;
-		m_CurrentAnimation = animation;
+		glm::mat4 bones[100];
+		Animation *currectAnimation;
+		float currentTime = 0.0f;
+		bool loop = true;
+		std::function<void(Canis::Entity _entity)> OnEndOfAnimation = nullptr;
+	};
 
-		m_FinalBoneMatrices.reserve(100);
-
-		for (int i = 0; i < 100; i++)
-			m_FinalBoneMatrices.push_back(glm::mat4(1.0f));
+	static Bone* FindBone(Animation& _animation, const std::string& name)
+	{
+		auto iter = std::find_if(_animation.bones.begin(), _animation.bones.end(),
+			[&](Bone& bone)
+			{
+				return bone.GetBoneName() == name;
+			}
+		);
+		if (iter == _animation.bones.end()) return nullptr;
+		else return &(*iter);
 	}
 
-	void UpdateAnimation(float dt)
+	static void CalculateBoneTransform(AnimatorComponent &_animator, const AssimpNodeData *_node, glm::mat4 _parent)
 	{
-		m_DeltaTime = dt;
-		if (m_CurrentAnimation)
-		{
-			m_CurrentTime += m_CurrentAnimation->GetTicksPerSecond() * dt;
-			m_CurrentTime = fmod(m_CurrentTime, m_CurrentAnimation->GetDuration());
-			CalculateBoneTransform(&m_CurrentAnimation->GetRootNode(), glm::mat4(1.0f));
-		}
-	}
+		std::string nodeName = _node->name;
+		glm::mat4 nodeTransform = _node->transformation;
 
-	void PlayAnimation(Animation* pAnimation)
-	{
-		m_CurrentAnimation = pAnimation;
-		m_CurrentTime = 0.0f;
-	}
-
-	void CalculateBoneTransform(const AssimpNodeData* node, glm::mat4 parentTransform)
-	{
-		std::string nodeName = node->name;
-		glm::mat4 nodeTransform = node->transformation;
-
-		Bone* Bone = m_CurrentAnimation->FindBone(nodeName);
+		Bone *Bone = FindBone(*_animator.currectAnimation ,nodeName);
 
 		if (Bone)
 		{
-			Bone->Update(m_CurrentTime);
+			Bone->Update(_animator.currentTime);
 			nodeTransform = Bone->GetLocalTransform();
 		}
 
-		glm::mat4 globalTransformation = parentTransform * nodeTransform;
+		glm::mat4 globalTransformation = _parent * nodeTransform;
 
-		auto boneInfoMap = m_CurrentAnimation->GetBoneIDMap();
+		auto boneInfoMap = _animator.currectAnimation->boneInfoMap;
 		if (boneInfoMap.find(nodeName) != boneInfoMap.end())
 		{
 			int index = boneInfoMap[nodeName].id;
 			glm::mat4 offset = boneInfoMap[nodeName].offset;
-			m_FinalBoneMatrices[index] = globalTransformation * offset;
+			_animator.bones[index] = globalTransformation * offset;
 		}
 
-		for (int i = 0; i < node->childrenCount; i++)
-			CalculateBoneTransform(&node->children[i], globalTransformation);
+		for (int i = 0; i < _node->childrenCount; i++)
+			CalculateBoneTransform(_animator, &_node->children[i], globalTransformation);
 	}
 
-	std::vector<glm::mat4> GetFinalBoneMatrices()
+	static void UpdateBones(AnimatorComponent &_animator, float _dt)
 	{
-		return m_FinalBoneMatrices;
+		if (_animator.currectAnimation)
+		{
+			_animator.currentTime += _animator.currectAnimation->ticksPerSecond * _dt;
+			_animator.currentTime = fmod(_animator.currentTime, _animator.currectAnimation->duration);
+			CalculateBoneTransform(_animator, &_animator.currectAnimation->rootNode, glm::mat4(1.0f));
+		}
 	}
 
-private:
-	std::vector<glm::mat4> m_FinalBoneMatrices;
-	Animation* m_CurrentAnimation;
-	float m_CurrentTime;
-	float m_DeltaTime;
-};
+	static void PlayAnimation(AnimatorComponent &_animator, Animation *animation)
+	{
+		_animator.currectAnimation = animation;
+		_animator.currentTime = 0.0f;
+	}
 }

@@ -30,6 +30,12 @@ set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
 
+set(ASSIMP_INSTALL                  FALSE)
+set(ASSIMP_BUILD_DOCS               FALSE)
+set(ASSIMP_NO_EXPORT                TRUE)
+set(ASSIMP_BUILD_SAMPLES            FALSE)
+set(ASSIMP_BUILD_TESTS              FALSE)
+
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
 add_subdirectory(external/yaml-cpp)
@@ -37,7 +43,10 @@ add_subdirectory(external/SDL)
 add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
+
+set(BUILD_SHARED_LIBS FALSE)
 add_subdirectory(external/assimp)
+set(BUILD_SHARED_LIBS TRUE)
 
 # Set where the ImGui files are stored
 set(IMGUI_PATH  "external/imgui")
