@@ -210,7 +210,7 @@ namespace Canis
 			_out << YAML::Key << "Canis::MeshComponent";
             _out << YAML::BeginMap;
 
-			_out << YAML::Key << "modelPath" << YAML::Value << AssetManager::GetPath(mc.id);
+			_out << YAML::Key << "modelPath" << YAML::Value << AssetManager::GetPath(mc.modelHandle.id);
 			_out << YAML::Key << "materialPath" << YAML::Value << AssetManager::GetPath(mc.material);
             _out << YAML::Key << "castShadow" << YAML::Value << mc.castShadow;
 			_out << YAML::Key << "useInstance" << YAML::Value << mc.useInstance;

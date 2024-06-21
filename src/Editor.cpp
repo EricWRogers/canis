@@ -6,6 +6,8 @@
 
 #include <Canis/ECS/Components/TransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/MeshComponent.hpp>
+#include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
@@ -222,6 +224,8 @@ namespace Canis
         static bool refresh = true;
 
         static std::vector<std::string> pngFilePaths = FindFilesInFolder("assets", ".png");
+        static std::vector<std::string> materialFilePaths = FindFilesInFolder("assets", ".material");
+        static std::vector<std::string> objFilePaths = FindFilesInFolder("assets", ".obj");
         static std::vector<std::string> ttfFilePaths = FindFilesInFolder("assets", ".ttf");
 
         int count = 0;
@@ -295,6 +299,52 @@ namespace Canis
                 }
             }
 
+            if (entity.HasComponent<TransformComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::Transform", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto &tc = entity.GetComponent<TransformComponent>();
+
+                    ImGui::Checkbox("active", &tc.active);
+                    ImGui::InputFloat3("position", glm::value_ptr(tc.position), "%.3f");
+                    ImGui::InputFloat4("rotation", glm::value_ptr(tc.rotation), "%.3f");
+                    ImGui::InputFloat3("scale", glm::value_ptr(tc.scale), "%.3f");
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Transform"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Transform"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::TransformComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
+            }
+
+            if (entity.HasComponent<SphereColliderComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::SphereCollider", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto &scc = entity.GetComponent<SphereColliderComponent>();
+
+                    ImGui::InputFloat3("center", glm::value_ptr(scc.center), "%.3f");
+                    ImGui::InputFloat("radius", &scc.radius);
+                    ImGui::InputScalar("layer", ImGuiDataType_U32, &scc.layer);
+                    ImGui::InputScalar("mask", ImGuiDataType_U32, &scc.mask);
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::SphereCollider"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::SphereCollider"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::SphereColliderComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
+            }
+            
             if (entity.HasComponent<RectTransformComponent>())
             {
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
@@ -349,6 +399,112 @@ namespace Canis
                 }
             }
 
+            if (entity.HasComponent<MeshComponent>())
+            {
+                static std::string path = "";
+                static int selectedPath = 0;
+                static std::string materialPath = "";
+                static int materialSelectedPath = 0;
+
+                auto &mc = entity.GetComponent<MeshComponent>();
+
+                if (refresh)
+                {
+                    if (mc.modelHandle.id == -1)
+                    {
+                        if (objFilePaths.size() == 0)
+                        {
+                            FatalError("No .obj not found in the asset folder!");
+                        }
+
+                        mc.modelHandle.id = AssetManager::LoadModel(objFilePaths[0]);
+                    }
+
+                    path = AssetManager::GetPath(mc.modelHandle.id);
+
+                    int index = 0;
+                    for(std::string& s : pngFilePaths)
+                    {
+                        if (path == s)
+                        {
+                            selectedPath = index;
+                        }
+
+                        index++;
+                    }
+
+                    // material
+                    if (mc.material == -1)
+                    {
+                        if (materialFilePaths.size() == 0)
+                        {
+                            FatalError("No .material not found in the asset folder!");
+                        }
+
+                        mc.material = AssetManager::LoadMaterial(materialFilePaths[0]);
+                    }
+
+                    materialPath = AssetManager::GetPath(mc.material);
+
+                    index = 0;
+                    for(std::string& s : materialFilePaths)
+                    {
+                        if (path == s)
+                        {
+                            materialSelectedPath = index;
+                        }
+
+                        index++;
+                    }
+                }
+
+                if (ImGui::CollapsingHeader("Canis::Model"))
+                {
+                    std::vector<const char *> cStringItems = ConvertVectorToCStringVector(objFilePaths);
+
+                    if (ImGui::Combo("##Canis::Model", &selectedPath, cStringItems.data(), static_cast<int>(cStringItems.size())))
+                    {
+                        int newID = AssetManager::LoadModel(objFilePaths[selectedPath]);
+
+                        if (newID != -1)
+                        {
+                            mc.modelHandle.id = newID;
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::Text("model");
+
+                    std::vector<const char *> cmStringItems = ConvertVectorToCStringVector(materialFilePaths);
+
+                    if (ImGui::Combo("##Canis::Material", &materialSelectedPath, cmStringItems.data(), static_cast<int>(cmStringItems.size())))
+                    {
+                        int newID = AssetManager::LoadMaterial(materialFilePaths[materialSelectedPath]);
+
+                        if (newID != -1)
+                        {
+                            mc.material = newID;
+                        }
+                    }
+
+                    ImGui::SameLine();
+                    ImGui::Text("material");
+
+                    ImGui::Checkbox("cast shadow", &mc.castShadow);
+                    ImGui::Checkbox("cast depth", &mc.castDepth);
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::Mesh"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::Mesh"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::UIImageComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
+            }
+            
             if (entity.HasComponent<UIImageComponent>())
             {
                 static std::string path = "";

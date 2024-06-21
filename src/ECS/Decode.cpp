@@ -16,7 +16,7 @@
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/DirectionalLightComponent.hpp>
 
-#include <Canis/ECS/Systems/RenderMeshWithShadowSystem.hpp>
+#include <Canis/ECS/Systems/RenderMeshSystem.hpp>
 #include <Canis/ECS/Systems/ButtonSystem.hpp>
 #include <Canis/ECS/Systems/RenderHUDSystem.hpp>
 #include <Canis/ECS/Systems/RenderTextSystem.hpp>
@@ -215,7 +215,7 @@ namespace Canis
             if (modelPath == "")
                 Canis::FatalError("Decode mesh component: modelPath was empty");
             
-            mc.id = AssetManager::LoadModel(modelPath);
+            mc.modelHandle.id = AssetManager::LoadModel(modelPath);
 
             std::string materialPath = meshComponent["materialPath"].as<std::string>("");
             if (materialPath == "")
@@ -248,11 +248,11 @@ namespace Canis
         }
     }
 
-    bool DecodeRenderMeshWithShadowSystem(const std::string &_name, Canis::Scene *_scene)
+    bool DecodeRenderMeshSystem(const std::string &_name, Canis::Scene *_scene)
 	{
-        if (_name == "Canis::RenderMeshWithShadowSystem")
+        if (_name == "Canis::RenderMeshSystem")
         {
-            _scene->CreateRenderSystem<RenderMeshWithShadowSystem>();
+            _scene->CreateRenderSystem<RenderMeshSystem>();
             return true;
         }
         return false;

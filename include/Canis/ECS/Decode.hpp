@@ -22,7 +22,7 @@ namespace Canis
     extern void DecodeSphereColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeDirectionalLightComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
 
-    extern bool DecodeRenderMeshWithShadowSystem(const std::string &_name, Canis::Scene *_scene);
+    extern bool DecodeRenderMeshSystem(const std::string &_name, Canis::Scene *_scene);
     extern bool DecodeButtonSystem(const std::string &_name, Canis::Scene *_scene);
     extern bool DecodeRenderHUDSystem(const std::string &_name, Canis::Scene *_scene);
     extern bool DecodeRenderTextSystem(const std::string &_name, Canis::Scene *_scene);

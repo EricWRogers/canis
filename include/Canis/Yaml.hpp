@@ -14,6 +14,7 @@
 #include <functional>
 #include <string>
 #include <glm/glm.hpp>
+#include <glm/gtc/quaternion.hpp>
 #include <yaml-cpp/yaml.h>
 
 namespace Canis {
@@ -120,6 +121,8 @@ namespace YAML
 
 	Emitter &operator<<(Emitter &out, const glm::vec4 &v);
 
+	Emitter &operator<<(Emitter &out, const glm::quat &q);
+
 	Emitter &operator<<(Emitter &out, const EntityData &e);
 
 	template <>
@@ -185,6 +188,33 @@ namespace YAML
 		}
 
 		static bool decode(const Node &node, glm::vec4 &rhs)
+		{
+			if (!node.IsSequence() || node.size() != 4)
+				return false;
+
+			rhs.x = node[0].as<float>();
+			rhs.y = node[1].as<float>();
+			rhs.z = node[2].as<float>();
+			rhs.w = node[3].as<float>();
+			return true;
+		}
+	};
+
+	template <>
+	struct convert<glm::quat>
+	{
+		static Node encode(const glm::quat &rhs)
+		{
+			Node node;
+			node.push_back(rhs.x);
+			node.push_back(rhs.y);
+			node.push_back(rhs.z);
+			node.push_back(rhs.w);
+			node.SetStyle(EmitterStyle::Flow);
+			return node;
+		}
+
+		static bool decode(const Node &node, glm::quat &rhs)
 		{
 			if (!node.IsSequence() || node.size() != 4)
 				return false;

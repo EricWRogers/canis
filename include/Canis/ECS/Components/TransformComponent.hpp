@@ -1,7 +1,6 @@
 #pragma once
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
 #include <vector>
+#include <Canis/Yaml.hpp>
 
 namespace Canis
 {
@@ -16,5 +15,13 @@ namespace Canis
 		bool isDirty = true;
 		entt::entity parent = entt::null;
 		std::vector<entt::entity> children;
+
+		static void RegisterProperties()
+		{
+			REGISTER_PROPERTY(TransformComponent, active, bool);
+			REGISTER_PROPERTY(TransformComponent, position, glm::vec3);
+			REGISTER_PROPERTY(TransformComponent, rotation, glm::quat);
+			REGISTER_PROPERTY(TransformComponent, scale, glm::vec3);
+		}
 	};
 } // end of Canis namespace

@@ -66,6 +66,13 @@ namespace YAML
         return out;
     }
 
+    Emitter &operator<<(Emitter &out, const glm::quat &q)
+    {
+        out << Flow;
+        out << BeginSeq << q.x << q.y << q.z << q.w << EndSeq;
+        return out;
+    }
+
     Emitter &operator<<(Emitter &out, const EntityData &e)
     {
         Canis::Entity nonConstE;

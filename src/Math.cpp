@@ -54,7 +54,7 @@ namespace Canis
     bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit) {
         TransformComponent& transform = _entity.GetComponent<TransformComponent>();
         MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
-        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.id);
+        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
         float min_t = std::numeric_limits<float>::max();
         bool hit = false;
@@ -93,7 +93,7 @@ namespace Canis
     {
         TransformComponent& transform = _entity.GetComponent<TransformComponent>();
         MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
-        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.id);
+        ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
         bool didHit = false;
         float closestDistance = 0.0f;

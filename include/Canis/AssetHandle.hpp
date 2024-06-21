@@ -8,4 +8,9 @@ namespace Canis
         int id = -1;
         GLTexture texture;
     };
+
+    struct MeshHandle
+    {
+        int id = -1;
+    };
 }
