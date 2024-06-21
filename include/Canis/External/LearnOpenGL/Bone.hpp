@@ -10,6 +10,8 @@
 #include <glm/gtx/quaternion.hpp>
 #include "AssimpGLMHelper.hpp"
 
+#include <Canis/Debug.hpp>
+
 namespace LearnOpenGL
 {
 struct KeyPosition

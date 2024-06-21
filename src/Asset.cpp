@@ -11,12 +11,9 @@
 #include <Canis/Yaml.hpp>
 
 #include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
-
-#define TINYGLTF_IMPLEMENTATION
-#define STB_IMAGE_IMPLEMENTATION
-#define STB_IMAGE_WRITE_IMPLEMENTATION
-// #define TINYGLTF_NOEXCEPTION // optional. disable exception handling.
 #include <Canis/External/TinyGLTF.hpp>
+#define TINYGLTF_IMPLEMENTATION
+
 
 namespace Canis
 {

@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <Canis/External/OpenGl.hpp>
 #include <Canis/Shader.hpp>
 
 #include <string>
