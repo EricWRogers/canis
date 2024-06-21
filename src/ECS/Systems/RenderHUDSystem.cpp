@@ -200,7 +200,7 @@ namespace Canis
 
                     lastWasText = true;
 
-                    ColorComponent &color = _registry.get<ColorComponent>(elements[i].element);
+                    ColorComponent color = _registry.get<ColorComponent>(elements[i].element);
                     TextComponent &text = _registry.get<TextComponent>(elements[i].element);
 
                     if (text.assetId == -1)

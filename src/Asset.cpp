@@ -14,7 +14,6 @@
 #include <Canis/External/TinyGLTF.hpp>
 #define TINYGLTF_IMPLEMENTATION
 
-
 namespace Canis
 {
     Asset::Asset() {}

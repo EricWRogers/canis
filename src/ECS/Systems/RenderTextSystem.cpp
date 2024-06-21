@@ -22,7 +22,7 @@ namespace Canis
         if (t.size() == 0)
             return;
         
-        if (fontId < 1)
+        if (fontId < 0)
                 return;
         
         // activate corresponding render state
@@ -181,7 +181,7 @@ namespace Canis
 
         for (auto [entity, transform, color, text] : view.each())
         {
-            if (text.assetId < 1)
+            if (text.assetId < 0)
                 continue;
 
             if (transform.active == true)
