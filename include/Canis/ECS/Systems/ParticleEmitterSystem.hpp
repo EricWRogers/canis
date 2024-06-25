@@ -63,7 +63,7 @@ public:
                     colorComponent.emissionUsingAlbedoIntesity = emitter.emissionUsingAlbedoIntesity;
 
                     MeshComponent meshComponent = {};
-                    meshComponent.id = emitter.modelID;
+                    meshComponent.modelHandle.id = emitter.modelID;
                     meshComponent.castShadow = emitter.castShadow;
                     meshComponent.material = emitter.material;
 

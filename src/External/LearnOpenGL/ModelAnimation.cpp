@@ -1,4 +1,5 @@
 #include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
+#include <Canis/AssetManager.hpp>
 #include <Canis/External/OpenGl.hpp>
 #include <stb_image.h>
 
