@@ -30,11 +30,14 @@
 
 namespace fs = std::filesystem;
 
-std::vector<std::string> FindFilesInFolder(const std::string& _folder, const std::string &_extension) {
+std::vector<std::string> FindFilesInFolder(const std::string &_folder, const std::string &_extension)
+{
     std::vector<std::string> files;
-    
-    for (const auto& entry : fs::recursive_directory_iterator(_folder)) {
-        if (entry.is_regular_file() && entry.path().extension() == _extension) {
+
+    for (const auto &entry : fs::recursive_directory_iterator(_folder))
+    {
+        if (entry.is_regular_file() && entry.path().extension() == _extension)
+        {
             files.push_back(entry.path().string());
         }
     }
@@ -96,6 +99,16 @@ namespace Canis
         return cStringVector;
     }
 
+    std::vector<const char *> HierarchyElementInfoToCString(std::vector<HierarchyElementInfo> _hierarchyElementInfos)
+    {
+        std::vector<const char *> cStringVector;
+        for (const auto &hei : _hierarchyElementInfos)
+        {
+            cStringVector.push_back(hei.name.c_str());
+        }
+        return cStringVector;
+    }
+
     void CopyToClipboard(const std::string &_text)
     {
         ImGui::SetClipboardText(_text.c_str());
@@ -125,93 +138,92 @@ namespace Canis
         }
     }
 
-    SceneManager& Editor::GetSceneManager()
+    SceneManager &Editor::GetSceneManager()
     {
         return *((SceneManager *)m_scene->sceneManager);
     }
 
-
     void Editor::Init(Window *_window)
     {
-        #if CANIS_EDITOR
+#if CANIS_EDITOR
         if (GetProjectConfig().editor)
         {
-        // Setup Dear ImGui context
-        IMGUI_CHECKVERSION();
-        ImGui::CreateContext();
-        ImGuiIO &io = ImGui::GetIO();
-        (void)io;
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
-        io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
-        io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
+            // Setup Dear ImGui context
+            IMGUI_CHECKVERSION();
+            ImGui::CreateContext();
+            ImGuiIO &io = ImGui::GetIO();
+            (void)io;
+            io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
+            io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
+            io.ConfigFlags |= ImGuiConfigFlags_DockingEnable;     // Enable Docking
 
-        #ifdef __EMSCRIPTEN__
-        
-        #else
-        io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable;   // Enable Multi-Viewport / Platform Windows
-        #endif
-        
-        // io.ConfigViewportsNoAutoMerge = true;
-        // io.ConfigViewportsNoTaskBarIcon = true;
+#ifdef __EMSCRIPTEN__
 
-        // Setup Dear ImGui style
-        ImGui::StyleColorsDark();
-        // ImGui::StyleColorsLight();
+#else
+            io.ConfigFlags |= ImGuiConfigFlags_ViewportsEnable; // Enable Multi-Viewport / Platform Windows
+#endif
 
-        // Setup Platform/Renderer backends
-        ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
-        ImGui_ImplOpenGL3_Init(OPENGLVERSION);
+            // io.ConfigViewportsNoAutoMerge = true;
+            // io.ConfigViewportsNoTaskBarIcon = true;
+
+            // Setup Dear ImGui style
+            ImGui::StyleColorsDark();
+            // ImGui::StyleColorsLight();
+
+            // Setup Platform/Renderer backends
+            ImGui_ImplSDL2_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
+            ImGui_ImplOpenGL3_Init(OPENGLVERSION);
         }
-        #endif
+#endif
     }
 
-    void Editor::Draw(Scene *_scene, Window* _window, Time *_time)
+    void Editor::Draw(Scene *_scene, Window *_window, Time *_time)
     {
-        #if CANIS_EDITOR
+#if CANIS_EDITOR
         if (GetProjectConfig().editor)
-        {     
-        if (m_scene != _scene)
         {
-            Log("new scene");
+            if (m_scene != _scene)
+            {
+                Log("new scene");
+            }
+            m_scene = _scene;
+
+            // Start the Dear ImGui frame
+            ImGui_ImplOpenGL3_NewFrame();
+            ImGui_ImplSDL2_NewFrame();
+            ImGui::NewFrame();
+
+            DrawInspectorPanel();
+            DrawSystemPanel();
+            DrawHierarchyPanel();
+            DrawScenePanel(_window, _time);
+
+            // Rendering
+            ImGui::Render();
+            ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+
+            ImGuiIO &io = ImGui::GetIO();
+            (void)io;
+
+            // Update and Render additional Platform Windows
+            // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
+            //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+            {
+                SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
+                SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+                ImGui::UpdatePlatformWindows();
+                ImGui::RenderPlatformWindowsDefault();
+                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+            }
+
+            // Save
+            if (m_mode == EditorMode::EDIT && GetSceneManager().inputManager->JustPressedKey(SDLK_F5))
+            {
+                GetSceneManager().Save();
+            }
         }
-        m_scene = _scene;
-
-        // Start the Dear ImGui frame
-        ImGui_ImplOpenGL3_NewFrame();
-        ImGui_ImplSDL2_NewFrame();
-        ImGui::NewFrame();
-
-        DrawInspectorPanel();
-        DrawSystemPanel();
-        DrawHierarchyPanel();
-        DrawScenePanel(_window, _time);
-
-        // Rendering
-        ImGui::Render();
-        ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
-
-        ImGuiIO& io = ImGui::GetIO();
-        (void)io;
-
-        // Update and Render additional Platform Windows
-        // (Platform functions may change the current OpenGL context, so we save/restore it to make it easier to paste this code elsewhere.
-        //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            SDL_Window* backup_current_window = SDL_GL_GetCurrentWindow();
-            SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
-            ImGui::UpdatePlatformWindows();
-            ImGui::RenderPlatformWindowsDefault();
-            SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
-        }
-
-        // Save
-        if (m_mode == EditorMode::EDIT && GetSceneManager().inputManager->JustPressedKey(SDLK_F5))
-        {
-            GetSceneManager().Save();
-        }
-        }
-        #endif
+#endif
     }
 
     void Editor::DrawInspectorPanel()
@@ -344,7 +356,7 @@ namespace Canis
                     ImGui::EndPopup();
                 }
             }
-            
+
             if (entity.HasComponent<RectTransformComponent>())
             {
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
@@ -423,7 +435,7 @@ namespace Canis
                     path = AssetManager::GetPath(mc.modelHandle.id);
 
                     int index = 0;
-                    for(std::string& s : pngFilePaths)
+                    for (std::string &s : pngFilePaths)
                     {
                         if (path == s)
                         {
@@ -447,7 +459,7 @@ namespace Canis
                     materialPath = AssetManager::GetPath(mc.material);
 
                     index = 0;
-                    for(std::string& s : materialFilePaths)
+                    for (std::string &s : materialFilePaths)
                     {
                         if (path == s)
                         {
@@ -504,7 +516,7 @@ namespace Canis
                     ImGui::EndPopup();
                 }
             }
-            
+
             if (entity.HasComponent<UIImageComponent>())
             {
                 static std::string path = "";
@@ -527,7 +539,7 @@ namespace Canis
                     path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
 
                     int index = 0;
-                    for(std::string& s : pngFilePaths)
+                    for (std::string &s : pngFilePaths)
                     {
                         if (path == s)
                         {
@@ -596,7 +608,7 @@ namespace Canis
                     lastFrameSize = size;
 
                     int index = 0;
-                    for(std::string& s : ttfFilePaths)
+                    for (std::string &s : ttfFilePaths)
                     {
                         if (path == s)
                         {
@@ -677,9 +689,18 @@ namespace Canis
                 static uint64_t tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                 static uint64_t tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                 static uint64_t tempIDRight = (bc.right) ? ((bc.right.HasComponent<IDComponent>()) ? (uint64_t)bc.right.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                
+                static int refreshCount = 0;
+
+                static int upIndex = 0;
+                static int downIndex = 0;
+                static int leftIndex = 0;
+                static int rightIndex = 0;
 
                 if (refresh)
                 {
+                    Canis::Log("Refresh: " + std::to_string(refreshCount));
+                    refreshCount++;
                     tempIDUp = (bc.up) ? ((bc.up.HasComponent<IDComponent>()) ? (uint64_t)bc.up.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                     tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                     tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
@@ -703,32 +724,114 @@ namespace Canis
                     ImGui::InputFloat("scale", &bc.scale);
                     ImGui::InputFloat("hoverScale", &bc.hoverScale);
 
-                    if (ImGui::InputScalar("Up", ImGuiDataType_U64, &tempIDUp))
+                    upIndex = 0;
+                    downIndex = 0;
+                    leftIndex = 0;
+                    rightIndex = 0;
+
+                    std::vector<HierarchyElementInfo> otherButtonEntities = {};
+
+                    HierarchyElementInfo h = {};
+                    h.name = "[NONE]";
+                    otherButtonEntities.push_back(h);
+                    
+                    int i = 0;
+                    for (HierarchyElementInfo hei : GetSceneManager().hierarchyElements)
                     {
-                        UUID u = tempIDUp;
-                        GetSceneManager().FindEntityEditor(bc.up, u);
-                        tempIDUp = u.ID;
+                        if (id != hei.entity.GetUUID().ID)
+                        {
+                            if (hei.entity.HasComponent<ButtonComponent>())
+                            {
+                                otherButtonEntities.push_back(hei);
+
+                                if (tempIDUp != 0lu)
+                                {
+                                    if (bc.up)
+                                    {
+                                        if (bc.up.GetUUID() == hei.entity.GetUUID())
+                                        {
+                                            upIndex = i;
+                                        }
+                                    }
+                                }
+                                
+                                if (tempIDDown != 0lu)
+                                {
+                                    if (bc.down)
+                                    {
+                                        if (bc.down.GetUUID() == hei.entity.GetUUID())
+                                        {
+                                            downIndex = i;
+                                        }
+                                    }
+                                }
+                                
+                                if (tempIDLeft != 0lu)
+                                {
+                                    if (bc.left)
+                                    {
+                                        if (bc.left.GetUUID() == hei.entity.GetUUID())
+                                        {
+                                            leftIndex = i;
+                                        }
+                                    }
+                                }
+                                
+                                if (tempIDRight != 0lu)
+                                {
+                                    if (bc.right)
+                                    {
+                                        if (bc.right.GetUUID() == hei.entity.GetUUID())
+                                        {
+                                            rightIndex = i;
+                                        }
+                                    }
+                                }
+                            
+                                i++;
+                            }
+                        }
                     }
 
-                    if (ImGui::InputScalar("Down", ImGuiDataType_U64, &tempIDDown))
+                    std::vector<const char *> otherButtonNames = HierarchyElementInfoToCString(otherButtonEntities);
+
+                    Canis::Log("up index: " + std::to_string(upIndex));
+
+                    if (ImGui::Combo("nav up", &upIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
                     {
-                        UUID u = tempIDDown;
-                        GetSceneManager().FindEntityEditor(bc.down, u);
-                        tempIDDown = u.ID;
+                        Canis::Log("up index: " + std::to_string(upIndex));
+                        if (otherButtonEntities.size() > 0)
+                        {
+                            tempIDUp = otherButtonEntities[upIndex].entity.GetUUID();
+                            bc.up = otherButtonEntities[upIndex].entity;
+                        }
                     }
 
-                    if (ImGui::InputScalar("Left", ImGuiDataType_U64, &tempIDLeft))
+                    if (ImGui::Combo("nav down", &downIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
                     {
-                        UUID u = tempIDLeft;
-                        GetSceneManager().FindEntityEditor(bc.left, u);
-                        tempIDLeft = u.ID;
+                        if (otherButtonEntities.size() > 0)
+                        {
+                            tempIDDown = otherButtonEntities[downIndex].entity.GetUUID();
+                            bc.down = otherButtonEntities[downIndex].entity;
+                        }
                     }
 
-                    if (ImGui::InputScalar("Right", ImGuiDataType_U64, &tempIDRight))
+                    if (ImGui::Combo("nav left", &leftIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
                     {
-                        UUID u = tempIDRight;
-                        GetSceneManager().FindEntityEditor(bc.right, u);
-                        tempIDRight = u.ID;
+                        if (otherButtonEntities.size() > 0)
+                        {
+                            tempIDLeft = otherButtonEntities[leftIndex].entity.GetUUID();
+                            bc.left = otherButtonEntities[leftIndex].entity;
+                        }
+                    }
+
+                    if (ImGui::Combo("nav right", &rightIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
+                    {
+                        if (otherButtonEntities.size() > 0)
+                        {
+                            tempIDRight = otherButtonEntities[rightIndex].entity.GetUUID();
+                            bc.right = otherButtonEntities[rightIndex].entity;
+                        }
                     }
 
                     ImGui::Checkbox("defaultSelected", &bc.defaultSelected);
@@ -757,7 +860,7 @@ namespace Canis
                     path = AssetManager::Get<TextureAsset>(ic.textureHandle.id)->GetPath();
 
                     int index = 0;
-                    for(std::string& s : pngFilePaths)
+                    for (std::string &s : pngFilePaths)
                     {
                         if (path == s)
                         {
@@ -800,7 +903,7 @@ namespace Canis
                     ImGui::EndPopup();
                 }
             }
-            
+
             if (entity.HasComponent<UISliderComponent>())
             {
                 if (ImGui::CollapsingHeader("Canis::UISlider"))
@@ -857,7 +960,7 @@ namespace Canis
                                 u = 0ul;
                             }
                         }
-                        
+
                         tempID = u.ID;
                     }
 
@@ -961,7 +1064,6 @@ namespace Canis
                     }
                 }
             }
-
         }
 
         refresh = false; // keep here
@@ -1150,7 +1252,7 @@ namespace Canis
 
             // Use ImGui::Selectable to create a clickable text item
             ImGui::InputText((selectableID).c_str(), &GetSceneManager().hierarchyElements[i].name); // ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == i, ImGuiSelectableFlags_AllowOverlap))
-            
+
             if (ImGui::IsItemFocused())
             {
                 m_index = i;
@@ -1226,7 +1328,7 @@ namespace Canis
         ImGui::End();
     }
 
-    void Editor::DrawScenePanel(Window* _window, Time *_time)
+    void Editor::DrawScenePanel(Window *_window, Time *_time)
     {
         ImGui::Begin("Scene");
 
