@@ -2,6 +2,8 @@
 
 /* Container for bone data */
 
+#include <Canis/Debug.hpp>
+
 #include <vector>
 #include <assimp/scene.h>
 #include <list>

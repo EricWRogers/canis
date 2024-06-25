@@ -83,10 +83,10 @@ namespace Canis
         
         //Initialize SDL_mixer
         int result = Mix_Init(MIX_INIT_OGG | MIX_INIT_MP3);
-        if (result & MIX_INIT_OGG == false) {
+        if ( (result & MIX_INIT_OGG) == false) {
             FatalError("Failed to initialize OGG support.");
         }
-        if (result & MIX_INIT_MP3 == false) {
+        if ( (result & MIX_INIT_MP3) == false) {
             FatalError("Failed to initialize MP3 support.");
         }
         

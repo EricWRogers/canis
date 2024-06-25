@@ -5,6 +5,7 @@
 
 #include <Canis/External/OpenGl.hpp>
 #include <Canis/Shader.hpp>
+#include <Canis/Data/GLTexture.hpp>
 
 #include <string>
 #include <vector>
@@ -27,60 +28,57 @@ struct Vertex {
 	float m_Weights[MAX_BONE_INFLUENCE];
 };
 
-struct Texture {
-    unsigned int id;
-    string type;
-    string path;
-};
-
 class Mesh {
 public:
     // mesh Data
     vector<Vertex>       vertices;
     vector<unsigned int> indices;
-    vector<Texture>      textures;
+    vector<Canis::GLTexture> diffuseTextures;
+    vector<Canis::GLTexture> specularTextures;
+    vector<Canis::GLTexture> normalTextures;
+    vector<Canis::GLTexture> heightTextures;
+
     unsigned int VAO;
 
     // constructor
-    Mesh(vector<Vertex> vertices, vector<unsigned int> indices, vector<Texture> textures)
+    Mesh(vector<Vertex> vertices, vector<unsigned int> indices)
     {
         this->vertices = vertices;
         this->indices = indices;
-        this->textures = textures;
 
         // now that we have all the required data, set the vertex buffers and its attribute pointers.
         setupMesh();
+    }
+
+    void AttachTexture(const std::string &_name, int _index, int _slot, Canis::GLTexture _texture, Canis::Shader &_shader)
+    {
+        // activate texture slot
+        glActiveTexture(GL_TEXTURE0 + _slot);
+        
+        // now set the sampler to the correct texture unit
+        _shader.SetInt(_name + std::to_string(_index), _slot);
+            
+        // and finally bind the texture
+        glBindTexture(GL_TEXTURE_2D, _texture.id);
     }
 
     // render the mesh
     void Draw(Canis::Shader &shader) 
     {
         // bind appropriate textures
-        unsigned int diffuseNr  = 1;
-        unsigned int specularNr = 1;
-        unsigned int normalNr   = 1;
-        unsigned int heightNr   = 1;
-        for(unsigned int i = 0; i < textures.size(); i++)
-        {
-            glActiveTexture(GL_TEXTURE0 + i); // active proper texture unit before binding
-            // retrieve texture number (the N in diffuse_textureN)
-            string number;
-            string name = textures[i].type;
-            if(name == "texture_diffuse")
-                number = std::to_string(diffuseNr++);
-            else if(name == "texture_specular")
-                number = std::to_string(specularNr++); // transfer unsigned int to string
-            else if(name == "texture_normal")
-                number = std::to_string(normalNr++); // transfer unsigned int to string
-             else if(name == "texture_height")
-                number = std::to_string(heightNr++); // transfer unsigned int to string
+        unsigned int slot = 0;
 
-            // now set the sampler to the correct texture unit
-            shader.SetInt(name + number, i);
-            
-            // and finally bind the texture
-            glBindTexture(GL_TEXTURE_2D, textures[i].id);
-        }
+        for (int i = 0; i < diffuseTextures.size(); i++)
+            AttachTexture("texture_diffuse", i, slot++, diffuseTextures[i], shader);
+        
+        for (int i = 0; i < specularTextures.size(); i++)
+            AttachTexture("texture_specular", i, slot++, specularTextures[i], shader);
+        
+        for (int i = 0; i < normalTextures.size(); i++)
+            AttachTexture("texture_normal", i, slot++, normalTextures[i], shader);
+        
+        for (int i = 0; i < heightTextures.size(); i++)
+            AttachTexture("texture_height", i, slot++, heightTextures[i], shader);
         
         // draw mesh
         glBindVertexArray(VAO);

@@ -284,9 +284,9 @@ void TMXLoader::loadLayers(std::unique_ptr<TMXMap> const &map, rapidxml::xml_nod
             {
                 // Add tile to vector, must be cast from char* to unsigned int
 				if (currentNode->first_attribute() == NULL)
-					tileVector[currentRow][currentTile] == 0;
+					tileVector[currentRow][currentTile] = 0;
 				else
-                	tileVector[currentRow][currentTile] = (unsigned int)std::stoul((currentNode->first_attribute()->value() == "" ? "0" : currentNode->first_attribute()->value()));
+                	tileVector[currentRow][currentTile] = (unsigned int)std::stoul((std::string(currentNode->first_attribute()->value()) == "") ? "0" : currentNode->first_attribute()->value());
                 
                 currentTile++;
                 

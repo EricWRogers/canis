@@ -25,9 +25,8 @@ namespace LearnOpenGL
 class AnimatedModel 
 {
 public:
-    // model data 
-    vector<Texture> textures_loaded;	// stores all the textures loaded so far, optimization to make sure textures aren't loaded more than once.
-    vector<Mesh>    meshes;
+    // model data
+    vector<Mesh> meshes;
 	vector<Animation> animations;
     string directory;
     bool gammaCorrection;
@@ -64,6 +63,10 @@ private:
 
 	Mesh processMesh(aiMesh* mesh, const aiScene* scene);
 
+	void SetVertexBoneDataToDefault(Vertex& vertex);
+
+	Mesh processMesh(aiMesh* mesh, const aiScene* scene);
+
 	void SetVertexBoneData(Vertex& vertex, int boneID, float weight);
 
 	void ExtractBoneWeightForVertices(std::vector<Vertex>& vertices, aiMesh* mesh, const aiScene* scene);
@@ -76,6 +79,6 @@ private:
     
     // checks all material textures of a given type and loads the textures if they're not loaded yet.
     // the required info is returned as a Texture struct.
-    vector<Texture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, string typeName);
+    vector<Canis::GLTexture> loadMaterialTextures(aiMaterial *mat, aiTextureType type, string typeName);
 };
 }
