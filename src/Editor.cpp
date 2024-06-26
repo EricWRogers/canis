@@ -689,8 +689,6 @@ namespace Canis
                 static uint64_t tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                 static uint64_t tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                 static uint64_t tempIDRight = (bc.right) ? ((bc.right.HasComponent<IDComponent>()) ? (uint64_t)bc.right.GetComponent<IDComponent>().ID : 0lu) : 0lu;
-                
-                static int refreshCount = 0;
 
                 static int upIndex = 0;
                 static int downIndex = 0;
@@ -699,8 +697,6 @@ namespace Canis
 
                 if (refresh)
                 {
-                    Canis::Log("Refresh: " + std::to_string(refreshCount));
-                    refreshCount++;
                     tempIDUp = (bc.up) ? ((bc.up.HasComponent<IDComponent>()) ? (uint64_t)bc.up.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                     tempIDDown = (bc.down) ? ((bc.down.HasComponent<IDComponent>()) ? (uint64_t)bc.down.GetComponent<IDComponent>().ID : 0lu) : 0lu;
                     tempIDLeft = (bc.left) ? ((bc.left.HasComponent<IDComponent>()) ? (uint64_t)bc.left.GetComponent<IDComponent>().ID : 0lu) : 0lu;
@@ -735,7 +731,7 @@ namespace Canis
                     h.name = "[NONE]";
                     otherButtonEntities.push_back(h);
                     
-                    int i = 0;
+                    int i = 1;
                     for (HierarchyElementInfo hei : GetSceneManager().hierarchyElements)
                     {
                         if (id != hei.entity.GetUUID().ID)
@@ -794,8 +790,6 @@ namespace Canis
                     }
 
                     std::vector<const char *> otherButtonNames = HierarchyElementInfoToCString(otherButtonEntities);
-
-                    Canis::Log("up index: " + std::to_string(upIndex));
 
                     if (ImGui::Combo("nav up", &upIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
                     {
