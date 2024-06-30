@@ -140,6 +140,9 @@ namespace Canis
 
     SceneManager &Editor::GetSceneManager()
     {
+        if (m_scene->sceneManager == nullptr)
+            Canis::Error("sceneManager is null");
+        
         return *((SceneManager *)m_scene->sceneManager);
     }
 
@@ -1291,6 +1294,7 @@ namespace Canis
                 GetSceneManager().hierarchyElements[i].entity.Destroy();
                 GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + i);
                 m_forceRefresh = true;
+                continue;
             }
 
             ImGui::SameLine();
@@ -1344,7 +1348,7 @@ namespace Canis
             int i = 0;
 
             for (SceneData sceneData : GetSceneManager().m_scenes)
-            {
+            {                
                 sceneNames.push_back(sceneData.scene->name);
 
                 if (sceneData.scene->name == m_scene->name)

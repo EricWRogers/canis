@@ -240,14 +240,11 @@ namespace Canis
         scene = m_scenes[_index].scene;
         m_sceneIndex = _index;
 
-        if (!scene->IsPreLoaded())
+        // normally only runs in editor
+        // when a splash screen is launched first
+        if (m_scenes[_index].preloaded == false)
         {
-            scene->window = window;
-            scene->inputManager = inputManager;
-            scene->time = time;
-            scene->camera = camera;
-
-            scene->PreLoad();
+            PreLoad(m_scenes[_index].scene->name);
         }
 
         scene->Load();
