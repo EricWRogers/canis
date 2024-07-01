@@ -3,6 +3,7 @@
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
 
+#include <Canis/Debug.hpp>
 #include <Canis/External/OpenGl.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
@@ -33,10 +34,10 @@ public:
     // mesh Data
     vector<Vertex>       vertices;
     vector<unsigned int> indices;
-    vector<Canis::GLTexture> diffuseTextures;
-    vector<Canis::GLTexture> specularTextures;
-    vector<Canis::GLTexture> normalTextures;
-    vector<Canis::GLTexture> heightTextures;
+    vector<Canis::GLTexture> diffuseTextures = {};
+    vector<Canis::GLTexture> specularTextures = {};
+    vector<Canis::GLTexture> normalTextures = {};
+    vector<Canis::GLTexture> heightTextures = {};
 
     unsigned int VAO;
 
@@ -67,6 +68,8 @@ public:
     {
         // bind appropriate textures
         unsigned int slot = 0;
+
+        Canis::Log(std::to_string(diffuseTextures.size()));
 
         for (int i = 0; i < diffuseTextures.size(); i++)
             AttachTexture("texture_diffuse", i, slot++, diffuseTextures[i], shader);

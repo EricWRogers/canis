@@ -276,7 +276,7 @@ namespace Canis
 
             for (HierarchyElementInfo hei : GetSceneManager().hierarchyElements)
             {
-                if (i == m_index)
+                if (i == m_index && hei.entity.HasComponent<IDComponent>())
                 {
                     id = hei.entity.GetUUID().ID;
                     entity = hei.entity;
@@ -1307,6 +1307,7 @@ namespace Canis
                 hei.name = GetSceneManager().hierarchyElements[i].name + " copy";
                 GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + i + 1, hei);
                 m_forceRefresh = true;
+                continue;
             }
         }
 
