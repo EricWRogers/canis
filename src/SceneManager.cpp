@@ -247,6 +247,9 @@ namespace Canis
             PreLoad(m_scenes[_index].scene->name);
         }
 
+        entityAndUUIDToConnect.clear();
+        hierarchyElements.clear();
+
         scene->Load();
 
         // in case someone calls load in load
@@ -258,9 +261,6 @@ namespace Canis
         if (scene->path != "")
         {
             YAML::Node root = YAML::LoadFile(scene->path);
-
-            entityAndUUIDToConnect.clear();
-            hierarchyElements.clear();
 
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));
