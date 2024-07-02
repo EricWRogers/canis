@@ -22,6 +22,8 @@ namespace Canis
             name = _name;
         }
 
+        virtual ~State() {}
+
         virtual void Enter(std::unordered_map<std::string, std::string> &_message)
         {
         }
