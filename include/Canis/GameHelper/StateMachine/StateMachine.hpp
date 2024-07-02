@@ -16,6 +16,9 @@ namespace Canis
 
         void OnDestroy()
         {
+            if (m_state != nullptr)
+                m_state->Exit("");
+            
             for (State *s : m_states)
                 delete s;
         }
