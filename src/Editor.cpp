@@ -99,13 +99,15 @@ namespace Canis
         return cStringVector;
     }
 
-    std::vector<const char *> HierarchyElementInfoToCString(std::vector<HierarchyElementInfo> _hierarchyElementInfos)
+    std::vector<const char *> HierarchyElementInfoToCString(std::vector<HierarchyElementInfo> &_hierarchyElementInfos)
     {
         std::vector<const char *> cStringVector;
+        
         for (const auto &hei : _hierarchyElementInfos)
         {
             cStringVector.push_back(hei.name.c_str());
         }
+
         return cStringVector;
     }
 
@@ -796,7 +798,6 @@ namespace Canis
 
                     if (ImGui::Combo("nav up", &upIndex, otherButtonNames.data(), static_cast<int>(otherButtonNames.size())))
                     {
-                        Canis::Log("up index: " + std::to_string(upIndex));
                         if (otherButtonEntities.size() > 0)
                         {
                             tempIDUp = otherButtonEntities[upIndex].entity.GetUUID();
