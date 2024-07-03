@@ -37,7 +37,7 @@ namespace Canis
             rect.position.x = sliderRect.position.x + (knob.value * slider.maxWidth) - halfSize.x;
             rect.position.y = (sliderRect.position.y + (sliderRect.size.y * sliderRect.scale) / 2.0f) - halfSize.y;
 
-            if (mouseDown == false)
+            if (mouseDown == false && button.mouseOver == false)
                 continue;
 
             if (!button.mouseOver && !knob.grabbed)
@@ -45,12 +45,31 @@ namespace Canis
 
             knob.grabbed = true;
 
-            rect.position.x = GetInputManager().mouse.x - (rect.size.x * rect.scale) / 2.0f;
-            rect.position.x -= GetAnchor(
-                                   (RectAnchor)rect.anchor,
-                                   GetWindow().GetScreenWidth(),
-                                   GetWindow().GetScreenHeight())
-                                   .x;
+            if (inputManager->GetLastDeviceType() == InputDevice::MOUSE)
+            {
+                rect.position.x = GetInputManager().mouse.x - (rect.size.x * rect.scale) / 2.0f;
+                rect.position.x -= GetAnchor(
+                                    (RectAnchor)rect.anchor,
+                                    GetWindow().GetScreenWidth(),
+                                    GetWindow().GetScreenHeight())
+                                    .x;
+            }
+            else if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD)
+            {
+                float speed = 100.0f;
+                float direction = 0;
+
+                if (inputManager->GetButton(ControllerButton::DPAD_LEFT))
+                {
+                    direction = -1.0f;
+                }
+                else if (inputManager->GetButton(ControllerButton::DPAD_RIGHT))
+                {
+                    direction = 1.0f;
+                }
+
+                rect.position.x += direction * speed * _deltaTime;
+            }
 
             Clamp(rect.position.x, sliderRect.position.x - halfSize.x, (sliderRect.position.x + slider.maxWidth) - halfSize.x);
             float newValue = (rect.position.x - sliderRect.position.x + halfSize.x) / slider.maxWidth;

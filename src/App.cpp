@@ -22,6 +22,8 @@ namespace Canis
 
         // set default audio
         GetProjectConfig().volume = PlayerPrefs::GetInt("master_volume", 128) / 128.0f;
+        GetProjectConfig().musicVolume = PlayerPrefs::GetInt("music_volume", 128) / 128.0f;
+        GetProjectConfig().sfxVolume = PlayerPrefs::GetInt("sfx_volume", 128) / 128.0f;
     }
 
     App::~App()
