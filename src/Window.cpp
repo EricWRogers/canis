@@ -201,4 +201,14 @@ namespace Canis
 
         SDL_SetWindowFullscreen((SDL_Window*)m_sdlWindow, m_fullscreen);
     }
+
+    bool Window::GetVSync()
+    {
+        return (bool)SDL_GL_GetSwapInterval();
+    }
+
+    void Window::SetVSync(bool _vsync)
+    {
+        SDL_GL_SetSwapInterval((int)_vsync);
+    }
 } // end of Canis namespace

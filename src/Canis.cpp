@@ -12,6 +12,43 @@ namespace Canis
         return projectConfig;
     }
 
+    bool SaveProjectConfig()
+    {
+        ProjectConfig projectConfig = GetProjectConfig();
+
+        SDL_RWops *file = SDL_RWFromFile("assets/project.canis", "w+");
+
+        if (file == nullptr)
+        {
+            Canis::Warning("Fail to open project config file for saving.");
+            return false;
+        }
+
+        std::map<std::string,std::string> data = {};
+
+        data["fullscreen"] = (projectConfig.fullscreen) ? "true" : "false";
+        data["width"] = std::to_string(projectConfig.width);
+        data["height"] = std::to_string(projectConfig.heigth);
+        data["use_frame_limit"] = (projectConfig.useFrameLimit) ? "true" : "false";
+        data["frame_limit"] = std::to_string(projectConfig.frameLimit);
+        data["override_seed"] = (projectConfig.overrideSeed) ? "true" : "false";
+        data["seed"] = std::to_string(projectConfig.seed);
+        data["volume"] = std::to_string(projectConfig.volume);
+        data["log"] = (projectConfig.log) ? "true" : "false";
+        data["editor"] = (projectConfig.editor) ? "true" : "false";
+        data["vsync"] = (projectConfig.vsync) ? "true" : "false";
+
+        for(const auto& pair : data)
+        {
+            std::string line = pair.first + " " + pair.second + "\n";
+            SDL_RWwrite(file, line.c_str(), 1, line.size());
+        }
+
+        SDL_RWclose(file);
+
+        return true;
+    }
+
     int Init()
     {
         SDL_Init(SDL_INIT_EVERYTHING);

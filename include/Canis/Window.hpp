@@ -42,6 +42,9 @@ namespace Canis
         void* GetSDLWindow() { return m_sdlWindow; }
         void* GetGLContext() { return m_glContext; }
 
+        bool GetVSync();
+        void SetVSync(bool _vsync);
+
         float fps;
 
     private:

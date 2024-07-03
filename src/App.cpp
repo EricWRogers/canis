@@ -81,6 +81,9 @@ namespace Canis
         else
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
+        // Set VSync
+        window.SetVSync(GetProjectConfig().vsync);
+        
         //Initialize SDL_mixer
         int result = Mix_Init(MIX_INIT_OGG | MIX_INIT_MP3);
         if ( (result & MIX_INIT_OGG) == false) {
@@ -94,6 +97,7 @@ namespace Canis
             FatalError("Mix_OpenAudio " + std::string(Mix_GetError()));
         }
         
+        // seed
         if(!GetProjectConfig().overrideSeed)
             GetProjectConfig().seed = std::time(NULL);
 

@@ -17,9 +17,11 @@ namespace Canis
         bool mute = false;
         bool log = true;
         bool editor = false;
+        bool vsync = false;
     };
 
     ProjectConfig& GetProjectConfig();
+    bool SaveProjectConfig();
 
     int Init();
 } // end of Canis namespace
