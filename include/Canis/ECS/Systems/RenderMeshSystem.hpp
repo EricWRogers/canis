@@ -28,6 +28,7 @@
 #include <Canis/Asset.hpp>
 #include <Canis/DataStructure/List.hpp>
 #include <Canis/Time.hpp>
+#include <Canis/PlayerPrefs.hpp>
 
 #include <Canis/External/LearnOpenGL/Animator.hpp>
 #include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
@@ -72,7 +73,8 @@ namespace Canis
 		float farPlane = 40.0f;
 		unsigned int quadVAO = 0;
 		unsigned int quadVBO;
-		const unsigned int SHADOW_WIDTH = 1024 * 4, SHADOW_HEIGHT = 1024 * 4;
+		int shadowMultiplier = 4;
+		unsigned int SHADOW_WIDTH = 1024 * shadowMultiplier, SHADOW_HEIGHT = 1024 * shadowMultiplier;
 		unsigned int shadowMapFBO = 0;
 		unsigned int shadowMap;
 		unsigned int depthMapFBO = 0;
@@ -850,8 +852,10 @@ namespace Canis
 
 		void ConfigureBuffers()
 		{
-			// configure depth map FBO
-			// -----------------------
+			// configure shadow map
+			shadowMultiplier = PlayerPrefs::GetInt("shadow_multiplier", 4);
+			SHADOW_WIDTH = 1024 * shadowMultiplier;
+			SHADOW_HEIGHT = 1024 * shadowMultiplier;
 			glGenFramebuffers(1, &shadowMapFBO);
 			// create depth texture
 			glGenTextures(1, &shadowMap);
@@ -1015,7 +1019,36 @@ namespace Canis
 				screenSpaceCopyShader->Link();
 			}
 		}
-		void Ready() {}
+		
+		void Ready()
+		{
+			if (shadowMultiplier != PlayerPrefs::GetInt("shadow_multiplier", 4))
+			{
+				glDeleteTextures(1, &shadowMap);
+
+				// configure shadow map
+				shadowMultiplier = PlayerPrefs::GetInt("shadow_multiplier", 4);
+				SHADOW_WIDTH = 1024 * shadowMultiplier;
+				SHADOW_HEIGHT = 1024 * shadowMultiplier;
+				// create depth texture
+				glGenTextures(1, &shadowMap);
+				glBindTexture(GL_TEXTURE_2D, shadowMap);
+				glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+				float borderColor[] = {1.0, 1.0, 1.0, 1.0};
+				glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+				// attach depth texture as FBO's depth buffer
+				glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
+				glDrawBuffer(GL_NONE);
+				glReadBuffer(GL_NONE);
+				glBindFramebuffer(GL_FRAMEBUFFER, 0);
+			}
+		}
+
 		void Update(entt::registry &_registry, float _deltaTime)
 		{
 			glEnable(GL_DEPTH_TEST);
