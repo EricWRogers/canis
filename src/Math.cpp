@@ -498,6 +498,32 @@ namespace Canis
         }
     }
 
+    void Clamp(int &_value, int _min, int _max)
+    {
+        if (_value < _min)
+        {
+            _value = _min;
+        }
+
+        if (_value > _max)
+        {
+            _value = _max;
+        }
+    }
+
+    void ClampRap(int &_value, int _min, int _max)
+    {
+        if (_value < _min)
+        {
+            _value = _max;
+        }
+
+        if (_value > _max)
+        {
+            _value = _min;
+        }
+    }
+
     void RotatePoint(vec2 &_point, const float &_cosAngle, const float &_sinAngle)
     {
         float x = _point.x;

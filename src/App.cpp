@@ -82,7 +82,7 @@ namespace Canis
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
         // Set VSync
-        window.SetVSync(Canis::PlayerPrefs::GetBool("vsync", GetProjectConfig().vsync));
+        window.SetVSync(PlayerPrefs::GetBool("vsync", GetProjectConfig().vsync));
         
         //Initialize SDL_mixer
         int result = Mix_Init(MIX_INIT_OGG | MIX_INIT_MP3);
@@ -96,6 +96,7 @@ namespace Canis
         if( Mix_OpenAudio( 44100, MIX_DEFAULT_FORMAT, 2, 4096 ) < 0 ) {
             FatalError("Mix_OpenAudio " + std::string(Mix_GetError()));
         }
+        //
         
         // seed
         if(!GetProjectConfig().overrideSeed)
@@ -105,11 +106,17 @@ namespace Canis
 
         srand(seed);
         Canis::Log("seed : " + std::to_string(seed));
+        //
 
+        // fps
+        int fps = 0;
         if(GetProjectConfig().useFrameLimit)
-            time.Init(GetProjectConfig().frameLimit+0.0f);
+            fps = GetProjectConfig().frameLimit;
         else
-            time.Init(100000);
+            fps = 100000;
+        
+        time.Init(PlayerPrefs::GetInt("fps_cap", fps)+0.0f);
+        //
 
         camera.override_camera = false;
 

@@ -98,6 +98,10 @@ namespace Canis
 
     void Clamp(float &_value, float _min, float _max);
 
+    void Clamp(int &_value, int _min, int _max);
+
+    void ClampRap(int &_value, int _min, int _max);
+
     void RotatePoint(vec2 &_point, const float &_cosAngle, const float &_sinAngle);
 
     void RotatePointAroundPivot(vec2 &_point, const vec2 &_pivot, float _radian);
