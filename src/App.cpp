@@ -82,7 +82,7 @@ namespace Canis
             window.Create(_windowName, GetProjectConfig().width, GetProjectConfig().heigth, windowFlags);
         
         // Set VSync
-        window.SetVSync(GetProjectConfig().vsync);
+        window.SetVSync(Canis::PlayerPrefs::GetBool("vsync", GetProjectConfig().vsync));
         
         //Initialize SDL_mixer
         int result = Mix_Init(MIX_INIT_OGG | MIX_INIT_MP3);
