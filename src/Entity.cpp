@@ -41,6 +41,19 @@ void Entity::Destroy()
     {
         if (scene->entityRegistry.valid(entityHandle))
         {
+            if (HasComponent<TransformComponent>())
+            {
+                TransformComponent& transform = GetComponent<TransformComponent>();
+
+                Entity child(scene);
+
+                for (int i = 0; i < transform.children.size(); i++)
+                {
+                    child.entityHandle = transform.children[i];
+
+                    child.Destroy();
+                }
+            }
             scene->entityRegistry.destroy(entityHandle);
         }
     }
