@@ -24,6 +24,7 @@
 #include "../Components/SphereColliderComponent.hpp"
 #include "../Components/PointLightComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
+#include "../Components/ParticleComponent.hpp"
 
 #include <Canis/Asset.hpp>
 #include <Canis/DataStructure/List.hpp>
@@ -1076,7 +1077,9 @@ namespace Canis
 					continue;
 
 				if (transform.isDirty)
+				{
 					UpdateModelMatrix(transform);
+				}
 
 				// if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
 				//	continue;
@@ -1088,7 +1091,7 @@ namespace Canis
 				if (sortBy == SortBy::DISTANCE)
 					rer.value = glm::distance(pos, camera->Position);
 				if (sortBy == SortBy::HEIGHT)
-					rer.value = transform.position.y;
+					rer.value = pos.y;
 
 				sortingEntities.push_back(rer);
 			}
