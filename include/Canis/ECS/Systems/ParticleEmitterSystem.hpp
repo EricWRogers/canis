@@ -38,12 +38,16 @@ public:
                 emitter.time = emitter.lifeTime;
                 // load particles
                 for(int i = 0; i < emitter.numOfParticle; i++) {
-                    TransformComponent transformComponent = {};
+                    Entity e = scene->CreateEntity();
+                    TransformComponent& transformComponent = e.AddComponent<TransformComponent>();
                     transformComponent.registry = &(scene->entityRegistry);
                     
                     if (emitter.state & ParticleEmitterState::LOCAL)
                     {
-                        transformComponent = transform;
+                        transformComponent.position = glm::vec3(0.0f);
+                        transformComponent.scale = glm::vec3(1.0f);
+
+                        e.SetParent(entity);
                     }
                     else
                     {
@@ -70,37 +74,41 @@ public:
                     SphereColliderComponent sphereColliderComponent = {};
 
                     // create entity
-                    entt::entity e = _registry.create();
-                    _registry.emplace<TransformComponent>(e, transformComponent);
-                    _registry.emplace<ColorComponent>(e, colorComponent);
-                    _registry.emplace<MeshComponent>(e, meshComponent);
-                    _registry.emplace<SphereColliderComponent>(e, sphereColliderComponent);
-                    _registry.emplace<ParticleComponent>(e, particleComponent);
+                    e.AddComponent<ColorComponent>(colorComponent);
+                    e.AddComponent<MeshComponent>(meshComponent);
+                    e.AddComponent<SphereColliderComponent>(sphereColliderComponent);
+                    e.AddComponent<ParticleComponent>(particleComponent);
 
                     emitter.particles.push_back(e);
                 }
             }
 
-            if (emitter.state & ParticleEmitterState::BURST && !(emitter.state & ParticleEmitterState::PAUSED)) {
-                for(int i = 0; i < emitter.numOfParticle; i++) {
+            if (emitter.state & ParticleEmitterState::BURST && !(emitter.state & ParticleEmitterState::PAUSED))
+            {
+                for(int i = 0; i < emitter.numOfParticle; i++)
+                {
                     TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
                     ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
                     ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
                     if (emitter.state & ParticleEmitterState::LOCAL)
                     {
-                        t = transform;
+                        t.position = glm::vec3(0.0f);
+                        t.scale = glm::vec3(1.0f);
                     }
                     else
                     {
                         t.position = Canis::GetGlobalPosition(transform);
                         t.scale = Canis::GetGlobalScale(transform);
                     }
+
                     c.color = emitter.colorStart;
+
                     float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
                     t.scale = transform.scale*scaleMul;
                     t.isDirty = true;
                     t.active = true;
+                    
                     p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
                     p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);
                     p.velocity.z = RandomFloat(emitter.minVelocity.z, emitter.maxVelocity.z);
@@ -110,6 +118,7 @@ public:
                     p.acceleration = glm::vec3(0.0f);
                     p.time = emitter.particleLifeTime;
                 }
+
                 emitter.state |= ParticleEmitterState::PAUSED;
             }
 
@@ -132,11 +141,23 @@ public:
                             ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
                             ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
-                            t = transform;
+                            float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
+
+                            if (emitter.state & ParticleEmitterState::LOCAL)
+                            {
+                                t.position = glm::vec3(0.0f);
+                                t.scale = glm::vec3(scaleMul);
+                            }
+                            else
+                            {
+                                t.position = Canis::GetGlobalPosition(transform);
+                                t.scale = transform.scale*scaleMul;
+                            }
 
                             c.color = emitter.colorStart;
 
                             t.active = true;
+
                             SetTransformRotation(t,
                                 glm::vec3(
                                     RandomFloat(emitter.minRotation.x,emitter.maxRotation.x),
@@ -145,9 +166,8 @@ public:
                                 )
                             );
 
-                            float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
-                            t.scale = transform.scale*scaleMul;
                             t.isDirty = true;
+
                             p.velocity.x = RandomFloat(emitter.minVelocity.x, emitter.maxVelocity.x);
                             p.velocity.y = RandomFloat(emitter.minVelocity.y, emitter.maxVelocity.y);
                             p.velocity.z = RandomFloat(emitter.minVelocity.z, emitter.maxVelocity.z);
@@ -165,17 +185,28 @@ public:
                 }
             }
 
-            if (emitter.time < 0.0f) {
-                if (emitter.state & ParticleEmitterState::LOOPING) {
+            if (emitter.time < 0.0f)
+            {
+                if (emitter.state & ParticleEmitterState::LOOPING)
+                {
                     emitter.time = emitter.lifeTime;
                 }
-                else if (emitter.state & ParticleEmitterState::DESTROYONEND) {
+                else if (emitter.state & ParticleEmitterState::DESTROYONEND)
+                {
+                    Entity emitterEntity(entity, scene);
                     // the future having a pool of particels that is shared would be better
-                    for(entt::entity e : emitter.particles) {
-                        _registry.destroy(e);
+                    if (emitter.state & ParticleEmitterState::LOCAL == false)
+                    {
+                        for(entt::entity e : emitter.particles)
+                        {
+                            _registry.destroy(e);
+                        }
+
+                        emitter.particles.clear();
                     }
 
-                    _registry.destroy(entity);
+                    emitterEntity.Destroy();
+                    
                     continue;
                 }
             }
@@ -192,6 +223,7 @@ public:
                     //p.velocity *= p.drag;
 
                     t.position += (p.velocity*_deltaTime);
+
                     t.isDirty = true;
 
                     p.time -= _deltaTime;
