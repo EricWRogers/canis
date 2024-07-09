@@ -256,7 +256,14 @@ namespace Canis
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
-			// lightProjection = glm::perspective(glm::radians(45.0f), (GLfloat)SHADOW_WIDTH / (GLfloat)SHADOW_HEIGHT, near_plane, far_plane); // note that if you use a perspective projection matrix you'll have to change the light position as the current light position isn't enough to reflect the whole scene
+			/*auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+
+			for (auto [entity, transform, directionalLight] : viewDirLight.each())
+			{
+				lightPos = GetGlobalPosition(transform);
+				lightLookAt = lightPos + (directionalLight.direction * 5.0f); 
+			}*/
+
 			lightProjection = glm::ortho(-lightProjectionSize, lightProjectionSize, -lightProjectionSize, lightProjectionSize, nearPlane, farPlane);
 			lightView = glm::lookAt(lightPos, lightLookAt, glm::vec3(0.0, 1.0, 0.0));
 			lightSpaceMatrix = lightProjection * lightView;
@@ -659,7 +666,7 @@ namespace Canis
 						if (transform.active)
 						{
 							numDirLights++;
-							shadow_mapping_shader->SetVec3("dirLight.direction", glm::normalize(glm::eulerAngles(transform.rotation)));
+							shadow_mapping_shader->SetVec3("dirLight.direction", directionalLight.direction);
 							shadow_mapping_shader->SetVec3("dirLight.ambient", directionalLight.ambient);
 							shadow_mapping_shader->SetVec3("dirLight.diffuse", directionalLight.diffuse);
 							shadow_mapping_shader->SetVec3("dirLight.specular", directionalLight.specular);
