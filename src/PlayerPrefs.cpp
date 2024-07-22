@@ -175,6 +175,7 @@ namespace Canis
             }
 
             SDL_RWclose(file);
+            Canis::Log("Saving Player Data: close file");
         }
 
         void Init(const std::string &_organization, const std::string &_app)
