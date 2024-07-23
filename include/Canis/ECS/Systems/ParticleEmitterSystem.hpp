@@ -70,6 +70,7 @@ public:
                     meshComponent.modelHandle.id = emitter.modelID;
                     meshComponent.castShadow = emitter.castShadow;
                     meshComponent.material = emitter.material;
+                    meshComponent.castDepth = false;
 
                     SphereColliderComponent sphereColliderComponent = {};
 
