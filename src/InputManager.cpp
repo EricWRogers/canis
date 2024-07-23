@@ -26,6 +26,7 @@ namespace Canis
     {
         SwapMaps();
         mouseRel = glm::vec2(0.0f);
+        m_scrollVertical = 0;
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -53,6 +54,12 @@ namespace Canis
                     mouseRel.x = event.motion.xrel;
                     mouseRel.y = event.motion.yrel;
                     m_lastInputDeviceType = InputDevice::MOUSE;
+                break;
+            case SDL_MOUSEWHEEL:
+                m_scrollVertical = event.wheel.y;
+                //Log("Y: " + std::to_string(event.wheel.y));
+                //Log("Float Y: " + std::to_string(event.wheel.preciseY));
+                //Log("Direction: " + std::to_string(event.wheel.direction));
                 break;
             case SDL_KEYUP:
                 ReleasedKey(event.key.keysym.sym);

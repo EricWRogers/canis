@@ -76,6 +76,8 @@ namespace Canis
         float GetLeftTrigger(unsigned int _gameControllerId);
         float GetRightTrigger(unsigned int _gameControllerId);
 
+        int VerticalScroll() { return m_scrollVertical; }
+
         bool GetLeftClick() { return  m_leftClick; }
         bool LeftClickReleased() { return  m_leftClick == false && m_wasLeftClick == true; }
         bool JustLeftClicked() { return  m_leftClick == true && m_wasLeftClick == false; }
@@ -122,6 +124,8 @@ namespace Canis
         bool m_rightClick = false;
         bool m_wasLeftClick = false;
         bool m_wasRightClick = false;
+
+        int m_scrollVertical = 0;
 
         unsigned int m_lastControllerID = 0u;
 
