@@ -37,16 +37,23 @@ namespace Canis
             rect.position.x = sliderRect.position.x + (knob.value * slider.maxWidth) - halfSize.x;
             rect.position.y = (sliderRect.position.y + (sliderRect.size.y * sliderRect.scale) / 2.0f) - halfSize.y;
 
-            if (mouseDown == false && button.mouseOver == false)
-                continue;
+            if (inputManager->GetLastDeviceType() == InputDevice::MOUSE)
+            {
+                if (mouseDown == false)
+                    continue;
+            }
+            else
+            {
+                if (mouseDown == false && button.mouseOver == false)
+                    continue;
+            }
 
             if (!button.mouseOver && !knob.grabbed)
                 continue;
 
-            knob.grabbed = true;
-
             if (inputManager->GetLastDeviceType() == InputDevice::MOUSE)
             {
+                
                 rect.position.x = GetInputManager().mouse.x - (rect.size.x * rect.scale) / 2.0f;
                 rect.position.x -= GetAnchor(
                                     (RectAnchor)rect.anchor,
@@ -70,6 +77,8 @@ namespace Canis
 
                 rect.position.x += direction * speed * _deltaTime;
             }
+
+            knob.grabbed = true;
 
             Clamp(rect.position.x, sliderRect.position.x - halfSize.x, (sliderRect.position.x + slider.maxWidth) - halfSize.x);
             float newValue = (rect.position.x - sliderRect.position.x + halfSize.x) / slider.maxWidth;
