@@ -196,7 +196,7 @@ public:
                 {
                     Entity emitterEntity(entity, scene);
                     // the future having a pool of particels that is shared would be better
-                    if (emitter.state & ParticleEmitterState::LOCAL == false)
+                    if ((emitter.state & ParticleEmitterState::LOCAL) == false)
                     {
                         for(entt::entity e : emitter.particles)
                         {
