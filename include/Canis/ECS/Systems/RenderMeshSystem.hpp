@@ -31,9 +31,6 @@
 #include <Canis/Time.hpp>
 #include <Canis/PlayerPrefs.hpp>
 
-#include <Canis/External/LearnOpenGL/Animator.hpp>
-#include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
-
 namespace Canis
 {
 	struct RenderEnttRapper
@@ -49,10 +46,6 @@ namespace Canis
 		RenderEnttRapper *sortingEntitiesList = nullptr;
 		high_resolution_clock::time_point startTime;
 		high_resolution_clock::time_point endTime;
-
-		Canis::Shader *cesiumManShader;
-		LearnOpenGL::AnimatedModel *cesiumManModel;
-		LearnOpenGL::AnimatorComponent cesiumManAnimator;
 
 	public:
 		Canis::Shader *shadow_mapping_depth_shader;
@@ -293,14 +286,6 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
-				if (mesh.animatedModel == true)
-				{
-					// animation test
-					
-					continue;
-					// end of animation
-				}
-
 				if (!mesh.castShadow)
 					continue;
 
@@ -419,14 +404,6 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
-				if (mesh.animatedModel == true)
-				{
-					// animation test
-					
-					continue;
-					// end of animation
-				}
-
 				if (!mesh.castDepth)
 					continue;
 
@@ -540,33 +517,6 @@ namespace Canis
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
 				const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
 				unsigned int textureCount = 0;
-
-				if (mesh.animatedModel == true)
-				{
-					// animation test
-					LearnOpenGL::UpdateBones(cesiumManAnimator, deltaTime);
-					cesiumManShader->Use();
-
-					// view/projection transformations
-					cesiumManShader->SetMat4("projection", projection);
-					cesiumManShader->SetMat4("view", cameraView);
-
-					for (int i = 0; i < 100; ++i)
-						cesiumManShader->SetMat4("finalBonesMatrices[" + std::to_string(i) + "]", cesiumManAnimator.bones[i]);
-					
-					// render the loaded model
-					cesiumManShader->SetMat4("model", transform.modelMatrix);
-
-					AnimatedModelAsset* animatedModel = AssetManager::Get<AnimatedModelAsset>(mesh.modelHandle.id);
-					animatedModel->Draw(*cesiumManShader);
-
-					entities_rendered++;
-
-					material = nullptr;
-
-					continue;
-					// end of animation
-				}
 
 				if (!mesh.useInstance)
 				{
@@ -981,11 +931,6 @@ namespace Canis
 
 			if (shadowMapFBO == 0)
 				ConfigureBuffers();
-
-			cesiumManShader = new Canis::Shader("assets/shaders/anim_model.vs", "assets/shaders/anim_model.fs");
-			cesiumManModel = new LearnOpenGL::AnimatedModel("assets/models/CesiumMan/CesiumMan.gltf");
-			
-			LearnOpenGL::PlayAnimation(cesiumManAnimator, &cesiumManModel->animations[0]);
 
 			Canis::List::Init(&sortingEntitiesList, 100, sizeof(RenderEnttRapper));
 

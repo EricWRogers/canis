@@ -44,10 +44,6 @@ add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
 
-set(BUILD_SHARED_LIBS FALSE)
-add_subdirectory(external/assimp)
-set(BUILD_SHARED_LIBS TRUE)
-
 # Set where the ImGui files are stored
 set(IMGUI_PATH  "external/imgui")
     
@@ -95,7 +91,6 @@ target_link_libraries(${PROJECT_NAME}
     SDL2main
     SDL2_mixer
     imgui
-    assimp
 )
 
 target_include_directories(${PROJECT_NAME}
@@ -108,7 +103,6 @@ target_include_directories(${PROJECT_NAME}
         SDL2main
         SDL2_mixer
         imgui
-        assimp
         "${PROJECT_SOURCE_DIR}/include"
 )
 

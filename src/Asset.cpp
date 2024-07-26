@@ -10,7 +10,6 @@
 #include <Canis/External/TMXLoader/TMXLoader.h>
 #include <Canis/Yaml.hpp>
 
-#include <Canis/External/LearnOpenGL/ModelAnimation.hpp>
 #include <Canis/External/TinyGLTF.hpp>
 #define TINYGLTF_IMPLEMENTATION
 
@@ -367,25 +366,6 @@ namespace Canis
         glDeleteVertexArrays(1, &vao);
 
         return true;
-    }
-
-    bool AnimatedModelAsset::Load(std::string _path)
-    {
-        animatedModel = new LearnOpenGL::AnimatedModel(_path);
-        return true;
-    }
-
-    bool AnimatedModelAsset::Free()
-    {
-        if (animatedModel)
-            delete animatedModel;
-        
-        return true;
-    }
-
-    void AnimatedModelAsset::Draw(Shader &_shader)
-    {
-        animatedModel->Draw(_shader);
     }
     
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
