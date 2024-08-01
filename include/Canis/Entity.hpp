@@ -158,7 +158,21 @@ public:
 
     glm::vec3 GetGlobalPosition();
 
-    operator bool() const { return entityHandle != entt::null; }
+    operator bool() {
+        if (entityHandle == entt::null)
+            return false;
+        
+        if (scene == nullptr)
+            return false;
+        
+        if (entityHandle == entt::tombstone || !scene->entityRegistry.valid(entityHandle))
+        {
+            entityHandle = entt::null;
+            return false;
+        }
+
+        return true;
+    }
     operator entt::entity() const { return entityHandle; }
     operator uint32_t() const { return (uint32_t)entityHandle; }
 
