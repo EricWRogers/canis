@@ -490,6 +490,16 @@ namespace Canis
         _value = _min + sin(Canis::PI * _fraction) * (_max - _min);
     }
 
+    float Min(float _x, float _y)
+    {
+        return (_x < _y) ? _x : _y;
+    }
+
+    float Max(float _x, float _y)
+    {
+        return (_x > _y) ? _x : _y;
+    }
+
     void Clamp(float &_value, float _min, float _max)
     {
         if (_value < _min)

@@ -21,6 +21,7 @@
 #include "../Components/TransformComponent.hpp"
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
+#include "../Components/BoxColliderComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
 #include "../Components/PointLightComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
@@ -515,7 +516,7 @@ namespace Canis
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 				const ColorComponent &color = registry.get<const ColorComponent>(rer.e);
 				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
-				const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
+				//const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
 				unsigned int textureCount = 0;
 
 				if (!mesh.useInstance)
@@ -701,7 +702,8 @@ namespace Canis
 					if (numPointLights >= maxPointLights)
 						break;
 
-					float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
+					//float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
+					float distance = glm::distance(t.position, transform.position) - 1.0;
 					float attenuation = 1.0 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
 
 					if (attenuation <= 0.0001)
@@ -1025,6 +1027,33 @@ namespace Canis
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
+			{
+				if (!transform.active)
+					continue;
+
+				if (transform.isDirty)
+				{
+					UpdateModelMatrix(transform);
+				}
+
+				// if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
+				//	continue;
+
+				glm::vec3 pos = Canis::GetGlobalPosition(transform);
+
+				RenderEnttRapper rer = {};
+				rer.e = entity;
+				if (sortBy == SortBy::DISTANCE)
+					rer.value = glm::distance(pos, camera->Position);
+				if (sortBy == SortBy::HEIGHT)
+					rer.value = pos.y;
+
+				sortingEntities.push_back(rer);
+			}
+
+			auto viewBox = _registry.view<TransformComponent, const MeshComponent, const BoxColliderComponent>();
+
+			for (auto [entity, transform, mesh, box] : viewBox.each())
 			{
 				if (!transform.active)
 					continue;

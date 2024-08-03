@@ -98,6 +98,10 @@ namespace Canis
 
     void AnimationBellCurve(glm::vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction);
 
+    float Min(float _x, float _y);
+
+    float Max(float _x, float _y);
+    
     void Clamp(float &_value, float _min, float _max);
 
     void Clamp(int &_value, int _min, int _max);
