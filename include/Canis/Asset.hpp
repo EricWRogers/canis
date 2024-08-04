@@ -205,6 +205,17 @@ namespace Canis
         HASFRONTFACECULLING                 = 1024u,
         HASCUSTOMDEPTHSHADER                = 2048u,
     };
+
+    class MaterialFields
+    {
+    private:
+        struct FloatUniformData { std::string name; float value; };
+        std::vector<FloatUniformData> floatUniformData = {};
+    public:
+        void Use(Shader &_shader);
+
+        void SetFloat(const std::string& _string, float _value);
+    };
     
     struct MaterialAsset
     {
@@ -219,6 +230,7 @@ namespace Canis
         float emissionUsingAlbedoPlusIntesity;
         std::vector<std::string> texNames;
         std::vector<unsigned int> texId;
+        MaterialFields materialFields;
     };
 
     class PrefabAsset : public Asset

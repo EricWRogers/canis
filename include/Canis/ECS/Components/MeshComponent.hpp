@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/Asset.hpp> // MaterialFields
 #include <Canis/AssetHandle.hpp>
 
 namespace Canis
@@ -11,5 +12,7 @@ namespace Canis
 		bool useInstance = false;
 		bool castDepth = true;
 		bool animatedModel = false;
+		bool overrideMaterialField = false;
+		MaterialFields overrideMaterialFields; // this could be a seperate component
 	};
 } // end of Canis namespace

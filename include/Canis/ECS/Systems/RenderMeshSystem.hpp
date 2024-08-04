@@ -103,7 +103,7 @@ namespace Canis
 
 		RenderMeshSystem() : System()
 		{
-			m_name = "Canis::RenderMeshSystem"; 
+			m_name = "Canis::RenderMeshSystem";
 		}
 
 		~RenderMeshSystem()
@@ -255,7 +255,7 @@ namespace Canis
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
 				lightPos = GetGlobalPosition(transform);
-				lightLookAt = lightPos + (directionalLight.direction * 5.0f); 
+				lightLookAt = lightPos + (directionalLight.direction * 5.0f);
 			}*/
 
 			lightProjection = glm::ortho(-lightProjectionSize, lightProjectionSize, -lightProjectionSize, lightProjectionSize, nearPlane, farPlane);
@@ -281,10 +281,11 @@ namespace Canis
 			InstanceMeshAsset *instanceMeshAsset = nullptr;
 			Shader *depthShader = shadow_mapping_depth_instance_shader;
 			MaterialAsset *material = nullptr;
+			bool lastOverriderMaterialFields = false;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
+				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
 				if (!mesh.castShadow)
@@ -292,19 +293,19 @@ namespace Canis
 
 				if (!mesh.useInstance)
 				{
-					//if (mesh.id != modelId)
+					// if (mesh.id != modelId)
 					//{
-						modelId = mesh.modelHandle.id;
-						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
-						size = AssetManager::Get<ModelAsset>(modelId)->size;
-						ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+					modelId = mesh.modelHandle.id;
+					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
+					size = AssetManager::Get<ModelAsset>(modelId)->size;
+					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
 
-						material = AssetManager::Get<MaterialAsset>(mesh.material);
+					material = AssetManager::Get<MaterialAsset>(mesh.material);
 
-						depthShader = shadow_mapping_depth_shader;
+					depthShader = shadow_mapping_depth_shader;
 
-						if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
-							depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
+					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
 					//}
 					depthShader->Use();
 					depthShader->SetMat4(modelKey, transform.modelMatrix);
@@ -323,12 +324,26 @@ namespace Canis
 
 					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
 						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
-					
+
 					depthShader->Use();
 				}
 
+				if (lastOverriderMaterialFields != mesh.overrideMaterialField)
+				{
+					if (mesh.overrideMaterialField)
+					{
+						mesh.overrideMaterialFields.Use(*depthShader);
+					}
+					else
+					{
+						material->materialFields.Use(*depthShader);
+					}
+				}
+
+				lastOverriderMaterialFields = mesh.overrideMaterialField;
+
 				depthShader->SetFloat("TIME", m_time);
-				
+
 				depthShader->SetInt("shadowMap", 0);
 				depthShader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 
@@ -399,10 +414,11 @@ namespace Canis
 			InstanceMeshAsset *instanceMeshAsset = nullptr;
 			Shader *depthShader = shadow_mapping_depth_instance_shader;
 			MaterialAsset *material = nullptr;
+			bool lastOverriderMaterialFields = false;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
+				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 
 				if (!mesh.castDepth)
@@ -445,13 +461,27 @@ namespace Canis
 
 					if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
 						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
-					
+
 					depthShader->Use();
 					depthShader->SetInt("shadowMap", 0);
 					depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
 				}
 
 				depthShader->SetFloat("TIME", m_time);
+
+				if (lastOverriderMaterialFields != mesh.overrideMaterialField)
+				{
+					if (mesh.overrideMaterialField)
+					{
+						mesh.overrideMaterialFields.Use(*depthShader);
+					}
+					else
+					{
+						material->materialFields.Use(*depthShader);
+					}
+				}
+
+				lastOverriderMaterialFields = mesh.overrideMaterialField;
 
 				glBindVertexArray(vao);
 
@@ -508,6 +538,7 @@ namespace Canis
 			unsigned int ebo = 0;
 			unsigned int materialInfo = 0u;
 			MaterialAsset *material = nullptr;
+			bool lastOverriderMaterialFields = false;
 
 			InstanceMeshAsset *instanceMeshAsset = nullptr;
 
@@ -515,8 +546,8 @@ namespace Canis
 			{
 				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
 				const ColorComponent &color = registry.get<const ColorComponent>(rer.e);
-				const MeshComponent &mesh = registry.get<const MeshComponent>(rer.e);
-				//const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
+				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
+				// const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
 				unsigned int textureCount = 0;
 
 				if (!mesh.useInstance)
@@ -687,7 +718,32 @@ namespace Canis
 					}
 
 					shadow_mapping_shader->SetFloat("TIME", m_time);
+
+					if (mesh.overrideMaterialField)
+					{
+						mesh.overrideMaterialFields.Use(*shadow_mapping_shader);
+					}
+					else
+					{
+						material->materialFields.Use(*shadow_mapping_shader);
+					}
 				}
+				else
+				{
+					if (lastOverriderMaterialFields != mesh.overrideMaterialField)
+					{
+						if (mesh.overrideMaterialField)
+						{
+							mesh.overrideMaterialFields.Use(*shadow_mapping_shader);
+						}
+						else
+						{
+							material->materialFields.Use(*shadow_mapping_shader);
+						}
+					}
+				}
+
+				lastOverriderMaterialFields = mesh.overrideMaterialField;
 
 				glBindVertexArray(vao);
 
@@ -702,7 +758,7 @@ namespace Canis
 					if (numPointLights >= maxPointLights)
 						break;
 
-					//float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
+					// float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
 					float distance = glm::distance(t.position, transform.position) - 1.0;
 					float attenuation = 1.0 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
 
@@ -736,7 +792,6 @@ namespace Canis
 				shadow_mapping_shader->SetVec3(emissionKey, color.emission);
 				shadow_mapping_shader->SetFloat(emissionUsingAlbedoIntesityKey, color.emissionUsingAlbedoIntesity);
 
-				
 				if (!mesh.useInstance)
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
@@ -975,7 +1030,7 @@ namespace Canis
 				screenSpaceCopyShader->Link();
 			}
 		}
-		
+
 		void Ready()
 		{
 			if (shadowMultiplier != PlayerPrefs::GetInt("shadow_multiplier", 4))

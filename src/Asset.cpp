@@ -667,6 +667,17 @@ namespace Canis
         return true;
     }
 
+    void MaterialFields::Use(Shader &_shader)
+    {
+        for (int i = 0; i < floatUniformData.size(); i++)
+            _shader.SetFloat(floatUniformData[i].name, floatUniformData[i].value);
+    }
+
+    void MaterialFields::SetFloat(const std::string& _name, float _value)
+    {
+        floatUniformData.push_back({_name, _value});
+    }
+
     bool PrefabAsset::Load(const std::string _path)
     {
         m_node = YAML::LoadFile(_path);
