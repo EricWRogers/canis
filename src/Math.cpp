@@ -367,7 +367,7 @@ namespace Canis
 
     void LookAt(TransformComponent &_transform, vec3 _target, vec3 _up)
     {
-        vec3 direction = normalize(_target - _transform.position);
+        vec3 direction = normalize(_target - GetGlobalPosition(_transform));
         _transform.rotation = quatLookAt(direction, _up);
         UpdateModelMatrix(_transform);
     }
