@@ -29,6 +29,7 @@ namespace Canis
 
     void Shader::Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
     {
+        m_path = _vertexShaderFilePath;
         //Getting vertex shaderID
         m_vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
         if (m_vertexShaderId == 0)
@@ -83,12 +84,26 @@ namespace Canis
         glBindAttribLocation(m_programId, m_numberOfAttributes++, _attributeName.c_str());
     }
 
-    GLint Shader::GetUniformLocation(const std::string &_uniformName)
+    GLint Shader::GetUniformLocation(const std::string &_uniformName) const
     {
+        if (m_locationsCashe.find(_uniformName) != m_locationsCashe.end())
+        {
+            //Canis::Log("Cashe: " + _uniformName + " location: " + std::to_string(m_locationsCashe[_uniformName]));
+            return m_locationsCashe[_uniformName];
+        }
+        
         GLint location = glGetUniformLocation(m_programId, _uniformName.c_str());
-        if (location == GL_INVALID_INDEX)
-            FatalError("Uniform " + _uniformName + " not found in shader!");
 
+        //Canis::Log(_uniformName + " location: " + std::to_string(location));
+
+        if (location == GL_INVALID_INDEX)
+        {
+            //FatalError("Uniform " + _uniformName + " not found in shader " + m_path + " isValid: " + std::to_string(m_isLinked));
+        }
+
+        m_locationsCashe[_uniformName] = location;
+
+        
         return location;
     }
 
@@ -107,63 +122,87 @@ namespace Canis
     }
 
     void Shader::SetBool(const std::string &_name, bool _value) const
-    {         
-        glUniform1i(glGetUniformLocation(m_programId, _name.c_str()), (int)_value); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform1i(location, (int)_value); 
     }
     
     void Shader::SetInt(const std::string &_name, int _value) const
-    { 
-        glUniform1i(glGetUniformLocation(m_programId, _name.c_str()), _value); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform1i( location, _value); 
     }
     
     void Shader::SetFloat(const std::string &_name, float _value) const
-    { 
-        glUniform1f(glGetUniformLocation(m_programId, _name.c_str()), _value); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform1f( location, _value); 
     }
     
     void Shader::SetVec2(const std::string &_name, const glm::vec2 &_value) const
-    { 
-        glUniform2fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform2fv( location, 1, &_value[0]); 
     }
 
     void Shader::SetVec2(const std::string &_name, float _x, float _y) const
-    { 
-        glUniform2f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform2f( location, _x, _y); 
     }
     
     void Shader::SetVec3(const std::string &_name, const glm::vec3 &_value) const
-    { 
-        glUniform3fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform3fv( location, 1, &_value[0]); 
     }
 
     void Shader::SetVec3(const std::string &_name, float _x, float _y, float _z) const
-    { 
-        glUniform3f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y, _z); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform3f( location, _x, _y, _z); 
     }
     
     void Shader::SetVec4(const std::string &_name, const glm::vec4 &_value) const
-    { 
-        glUniform4fv(glGetUniformLocation(m_programId, _name.c_str()), 1, &_value[0]); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform4fv( location, 1, &_value[0]); 
     }
 
     void Shader::SetVec4(const std::string &_name, float _x, float _y, float _z, float _w) 
-    { 
-        glUniform4f(glGetUniformLocation(m_programId, _name.c_str()), _x, _y, _z, _w); 
+    {
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniform4f( location, _x, _y, _z, _w); 
     }
     
     void Shader::SetMat2(const std::string &_name, const glm::mat2 &_mat) const
     {
-        glUniformMatrix2fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniformMatrix2fv( location, 1, GL_FALSE, &_mat[0][0]);
     }
     
     void Shader::SetMat3(const std::string &_name, const glm::mat3 &_mat) const
     {
-        glUniformMatrix3fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniformMatrix3fv( location, 1, GL_FALSE, &_mat[0][0]);
     }
     
     void Shader::SetMat4(const std::string &_name, const glm::mat4 &_mat) const
     {
-        glUniformMatrix4fv(glGetUniformLocation(m_programId, _name.c_str()), 1, GL_FALSE, &_mat[0][0]);
+        int location = GetUniformLocation(_name);
+        if (location > -1)
+            glUniformMatrix4fv(location, 1, GL_FALSE, &_mat[0][0]);
     }
 
 
@@ -189,6 +228,8 @@ namespace Canis
             Error("Add [OPENGL VERSION] to the top of your shader file: " + _filePath);
             shaderFileCode = versionDirective + shaderFileCode;
         }
+
+        //Canis::Log(shaderFileCode);
 
         const char *contentsPtr = shaderFileCode.c_str();
         glShaderSource(_id, 1, &contentsPtr, nullptr);

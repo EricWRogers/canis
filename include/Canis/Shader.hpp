@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <glm/glm.hpp>
+#include <unordered_map>
 
 namespace Canis
 {
@@ -30,7 +31,7 @@ namespace Canis
         void SetMat4(const std::string &_name, const glm::mat4 &_mat) const;
 
         bool IsLinked() { return m_isLinked; }
-        int GetUniformLocation(const std::string &uniformName);
+        int GetUniformLocation(const std::string &uniformName) const;
         int GetProgramID() { return m_programId; }
 
     private:
@@ -41,6 +42,10 @@ namespace Canis
         unsigned int m_fragmentShaderId = 0;
 
         int m_numberOfAttributes = 0;
+
+        mutable std::unordered_map<std::string, int> m_locationsCashe = {};
+
+        std::string m_path = "";
 
         void CompileShaderFile(const std::string &_filePath, unsigned int &_id);
     };

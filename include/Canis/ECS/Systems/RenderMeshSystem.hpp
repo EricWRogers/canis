@@ -245,8 +245,6 @@ namespace Canis
 
 			shadow_mapping_depth_shader->Use();
 
-			shadow_mapping_depth_shader->SetInt("shadowMap", 0);
-
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
@@ -281,7 +279,6 @@ namespace Canis
 			InstanceMeshAsset *instanceMeshAsset = nullptr;
 			Shader *depthShader = shadow_mapping_depth_instance_shader;
 			MaterialAsset *material = nullptr;
-			bool lastOverriderMaterialFields = false;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -328,23 +325,18 @@ namespace Canis
 					depthShader->Use();
 				}
 
-				if (lastOverriderMaterialFields != mesh.overrideMaterialField)
+				if (mesh.overrideMaterialField)
 				{
-					if (mesh.overrideMaterialField)
-					{
-						mesh.overrideMaterialFields.Use(*depthShader);
-					}
-					else
-					{
-						material->materialFields.Use(*depthShader);
-					}
+					mesh.overrideMaterialFields.Use(*depthShader);
+				}
+				else
+				{
+					material->materialFields.Use(*depthShader);
 				}
 
-				lastOverriderMaterialFields = mesh.overrideMaterialField;
+				if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
+					depthShader->SetFloat("TIME", m_time);
 
-				depthShader->SetFloat("TIME", m_time);
-
-				depthShader->SetInt("shadowMap", 0);
 				depthShader->SetMat4("lightSpaceMatrix", lightSpaceMatrix);
 
 				glBindVertexArray(vao);
@@ -381,8 +373,6 @@ namespace Canis
 
 			shadow_mapping_depth_shader->Use();
 
-			shadow_mapping_depth_shader->SetInt("shadowMap", 0);
-
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
@@ -414,7 +404,6 @@ namespace Canis
 			InstanceMeshAsset *instanceMeshAsset = nullptr;
 			Shader *depthShader = shadow_mapping_depth_instance_shader;
 			MaterialAsset *material = nullptr;
-			bool lastOverriderMaterialFields = false;
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
@@ -441,7 +430,6 @@ namespace Canis
 							depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
 
 						depthShader->Use();
-						depthShader->SetInt("shadowMap", 0);
 						depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
 					}
 
@@ -463,14 +451,13 @@ namespace Canis
 						depthShader = AssetManager::Get<ShaderAsset>(material->depthShaderId)->GetShader();
 
 					depthShader->Use();
-					depthShader->SetInt("shadowMap", 0);
 					depthShader->SetMat4("lightSpaceMatrix", spaceMatrix);
 				}
 
-				depthShader->SetFloat("TIME", m_time);
-
-				if (lastOverriderMaterialFields != mesh.overrideMaterialField)
+				if (material->info & MaterialInfo::HASCUSTOMDEPTHSHADER)
 				{
+					depthShader->SetFloat("TIME", m_time);
+
 					if (mesh.overrideMaterialField)
 					{
 						mesh.overrideMaterialFields.Use(*depthShader);
@@ -480,8 +467,6 @@ namespace Canis
 						material->materialFields.Use(*depthShader);
 					}
 				}
-
-				lastOverriderMaterialFields = mesh.overrideMaterialField;
 
 				glBindVertexArray(vao);
 
@@ -660,9 +645,6 @@ namespace Canis
 					shadow_mapping_shader->SetInt("numDirLights", numDirLights);
 
 					shadow_mapping_shader->SetFloat("material.shininess", 32.0f);
-
-					shadow_mapping_shader->SetInt("hdr", true);
-					shadow_mapping_shader->SetFloat("exposure", 3.1f);
 
 					shadow_mapping_shader->SetVec3("viewPos", camera->Position);
 					shadow_mapping_shader->SetVec3("lightPos", lightPos);
