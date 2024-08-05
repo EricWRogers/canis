@@ -31,7 +31,7 @@ namespace Canis
         void SetMat4(const std::string &_name, const glm::mat4 &_mat) const;
 
         bool IsLinked() { return m_isLinked; }
-        int GetUniformLocation(const std::string &uniformName) const;
+        int GetUniformLocation(const std::string &uniformName, const size_t _valueHash) const;
         int GetProgramID() { return m_programId; }
 
     private:
@@ -44,6 +44,7 @@ namespace Canis
         int m_numberOfAttributes = 0;
 
         mutable std::unordered_map<std::string, int> m_locationsCashe = {};
+        mutable std::unordered_map<std::string, size_t> m_lastValueCashe = {};
 
         std::string m_path = "";
 
