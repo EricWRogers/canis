@@ -493,10 +493,14 @@ namespace Canis
 
 		void DrawMesh(float deltaTime, entt::registry &registry)
 		{
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glEnable(GL_BLEND);
+
 			glClearColor(0.0f, 0.0f, 0.0f, 1.0f);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 			glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
 			glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
 			// reset viewport
 			glDepthFunc(GL_LESS);
 
@@ -594,7 +598,6 @@ namespace Canis
 
 					if ((materialInfo | MaterialInfo::HASSCREENTEXTURE) == materialInfo)
 					{
-						// glFinish();
 						glDisable(GL_BLEND);
 
 						glBindFramebuffer(GL_FRAMEBUFFER, 0);
@@ -805,6 +808,8 @@ namespace Canis
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			shadow_mapping_shader->UnUse();
+
+			glDisable(GL_BLEND);
 		}
 
 		void Blur(float deltaTime, entt::registry &registry)
@@ -965,8 +970,8 @@ namespace Canis
 
 		void Create()
 		{
+			// TODO (Eric) : Get move this out of the engine
 			skyboxAssetId = AssetManager::LoadSkybox("assets/textures/lowpoly-skybox/");
-			// skyboxAssetId = AssetManager::LoadSkybox("assets/textures/space-nebulas-skybox/");
 
 			if (shadowMapFBO == 0)
 				ConfigureBuffers();
@@ -1044,22 +1049,12 @@ namespace Canis
 
 		void Update(entt::registry &_registry, float _deltaTime)
 		{
-			glEnable(GL_DEPTH_TEST);
-			glEnable(GL_ALPHA);
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glDepthFunc(GL_LESS);
-			glEnable(GL_CULL_FACE);
-
-			// timing float sort, shadowPass, depthPass, drawMesh, blur, bloomCombine;
-
-			// timing startTime = high_resolution_clock::now();
-
 			m_time += _deltaTime;
 
 			sortingEntities.clear();
 			Canis::List::Clear(&sortingEntitiesList);
 
-			Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
+			// Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
 			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
 
@@ -1073,8 +1068,7 @@ namespace Canis
 					UpdateModelMatrix(transform);
 				}
 
-				// if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
-				//	continue;
+				// TODO (Eric) : Check Camera Frustum
 
 				glm::vec3 pos = Canis::GetGlobalPosition(transform);
 
@@ -1100,8 +1094,7 @@ namespace Canis
 					UpdateModelMatrix(transform);
 				}
 
-				// if (!isOnFrustum(camFrustum, transform, transform.modelMatrix, sphere))
-				//	continue;
+				// TODO (Eric) : Check Camera Frustum
 
 				glm::vec3 pos = Canis::GetGlobalPosition(transform);
 
@@ -1115,75 +1108,40 @@ namespace Canis
 				sortingEntities.push_back(rer);
 			}
 
-			// startTime = high_resolution_clock::now();
-			if (sortBy == SortBy::DISTANCE)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+			switch (sortBy)
+			{
+				case SortBy::DISTANCE:
+					std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
 								 { return (a.value > b.value); });
-			if (sortBy == SortBy::HEIGHT)
-				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+					break;
+				case SortBy::HEIGHT:
+					std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
 								 { return (a.value < b.value); });
-			// endTime = high_resolution_clock::now();
-			// std::cout << "Vector MergeSort : " << std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f << std::endl;
-
-			// startTime = high_resolution_clock::now();
-			// Canis::List::MergeSort(&sortingEntitiesList, Canis::DoubleAscending);
-			//  timing endTime = high_resolution_clock::now();
-			//  timing sort = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
-
-			// timing startTime = high_resolution_clock::now();
-			// timing glFlush();
+					break;
+			}				
+			
+			glEnable(GL_DEPTH_TEST);
+			glEnable(GL_ALPHA);
+			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+			glDepthFunc(GL_LESS);
+			glEnable(GL_CULL_FACE);
+			
 			ShadowDepthPass(_deltaTime, _registry);
-			// timing glFinish();
-			// timing endTime = high_resolution_clock::now();
-			// timing shadowPass = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
-			// timing startTime = high_resolution_clock::now();
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
-			// timing glFlush();
+			
 			DepthPass(_deltaTime, _registry);
-			// timing glFinish();
-			// timing endTime = high_resolution_clock::now();
-			// timing depthPass = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
-
-			// timing startTime = high_resolution_clock::now();
-			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-			glEnable(GL_BLEND);
-			// timing glFlush();
 			DrawMesh(_deltaTime, _registry);
-			// timing glFinish();
-			// timing endTime = high_resolution_clock::now();
-			// timing drawMesh = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
-
-			// timing startTime = high_resolution_clock::now();
-			glDisable(GL_BLEND);
-			// timing glFlush();
 			Blur(_deltaTime, _registry);
-			// timing glFinish();
-			// timing endTime = high_resolution_clock::now();
-			// timing blur = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
-
-			// timing startTime = high_resolution_clock::now();
-			// timing glFlush();
 			BloomCombine(_deltaTime, _registry);
-			// timing glFinish();
-			// timing endTime = high_resolution_clock::now();
-			// timing bloomCombine = std::chrono::duration_cast<std::chrono::nanoseconds>(endTime - startTime).count() / 1000000000.0f;
 
 			glDisable(GL_CULL_FACE);
 			glDisable(GL_DEPTH_TEST);
 			glDisable(GL_ALPHA);
 			glDisable(GL_BLEND);
-
-			// timing Log("////////////////////////");
-			// timing Log("sort: " + std::to_string(sort));
-			// timing Log("shadowPass: " + std::to_string(shadowPass));
-			// timing Log("depthPass: " + std::to_string(depthPass));
-			// timing Log("drawMesh: " + std::to_string(drawMesh));
-			// timing Log("blur: " + std::to_string(blur));
-			// timing Log("bloomCombine: " + std::to_string(bloomCombine));
 		}
 	};
 } // end of Canis namespace
