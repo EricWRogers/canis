@@ -1,12 +1,11 @@
 #pragma once
 #include <vector>
-
-#include <Canis/Scene.hpp>
-
 #include <functional>
-#include <Canis/ECS/Components/ScriptComponent.hpp>
-#include <Canis/ScriptableEntity.hpp>
+
 #include <Canis/Editor.hpp>
+#include <Canis/ScriptableEntity.hpp>
+#include <Canis/ECS/Components/ScriptComponent.hpp>
+
 
 namespace Canis
 {

@@ -1,11 +1,11 @@
 #pragma once
-#include <Canis/Window.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/Time.hpp>
 
 namespace Canis
 {
     class SceneManager;
+    class Time;
+    class Window;
 
     enum EditorMode
     {
@@ -18,6 +18,8 @@ namespace Canis
     {
     friend class Scene;
     public:
+        Editor() = default;
+        ~Editor() = default;
         void Init(Window* _window);
         void Draw(Scene* _scene, Window* _window, Time *_time);
 

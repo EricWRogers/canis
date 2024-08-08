@@ -62,13 +62,15 @@ file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
 
 add_library(${PROJECT_NAME} STATIC ${SRC_SOURCES} ${SRC_HEADERS})
 
+set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+
 target_precompile_headers(${PROJECT_NAME}
     PUBLIC
     <vector>
+    <map>
     <unordered_map>
     <string>
     <functional>
-    <map>
     <fstream>
     <cstdint>
     <memory>
@@ -77,6 +79,8 @@ target_precompile_headers(${PROJECT_NAME}
     <stdio.h>
     <cstring>
     <iostream>
+    <algorithm>
+    <random>
 )
 
 target_link_libraries(${PROJECT_NAME}

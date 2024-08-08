@@ -3,6 +3,8 @@
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/SceneManager.hpp>
+#include <Canis/Window.hpp>
+#include <Canis/Time.hpp>
 
 #include <Canis/ECS/Components/TransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
