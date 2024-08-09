@@ -128,6 +128,14 @@ namespace Canis
                     continue;
                 }
             }
+            if (word == "logToFile")
+            {
+                if (file >> word)
+                {
+                    GetProjectConfig().logToFile = (word == "true");
+                    continue;
+                }
+            }
             if (word == "editor")
             {
                 if (file >> word)

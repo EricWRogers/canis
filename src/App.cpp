@@ -16,7 +16,16 @@ namespace Canis
 {
     App::App(const std::string &_organization, const std::string &_app)
     {
+        fflush(stdout);
+        fflush(stderr);
+        
         Init();
+
+        if (GetProjectConfig().logToFile)
+        {
+            SetLogTarget("canis.log");
+        }
+
         PlayerPrefs::Init(_organization, _app);
         PlayerPrefs::LoadFromFile();
 

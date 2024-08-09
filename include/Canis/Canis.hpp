@@ -16,6 +16,7 @@ namespace Canis
         float sfxVolume = 1.0f;
         bool mute = false;
         bool log = true;
+        bool logToFile = false;
         bool editor = false;
         bool vsync = false;
     };
