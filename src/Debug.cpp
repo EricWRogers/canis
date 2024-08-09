@@ -70,8 +70,8 @@ namespace Canis
         }
         else
         {
-            GetLoggingData().logFile = freopen(GetLoggingData().logTarget.c_str(), "w", stdout);
-            GetLoggingData().logFileError = freopen(GetLoggingData().logTarget.c_str(), "w", stderr);
+            GetLoggingData().logFile = freopen(GetLoggingData().logTarget.c_str(), "a", stdout);
+            GetLoggingData().logFileError = freopen(GetLoggingData().logTarget.c_str(), "a", stderr);
         }
     }
 
