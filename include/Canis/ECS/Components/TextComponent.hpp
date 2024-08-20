@@ -7,7 +7,7 @@ namespace Canis
 struct TextComponent
 {
 	int assetId = -1;
-	std::string text = ""; // FIX : memory leak
+	std::string text = "";
 	unsigned int alignment = 0; // 0 is left align | 1 is right align | 2 is center align
 	unsigned int _status = BIT::ONE; // this will make the RenderTextSystem recalculate rect size &| alignment
 };

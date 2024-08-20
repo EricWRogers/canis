@@ -8,6 +8,7 @@
 
 namespace Canis
 {
+class SceneManager;
 class Entity
 {
 private:
@@ -25,6 +26,8 @@ public:
     Entity(const Entity& _other) = default;
 
     void Destroy();
+
+    SceneManager& GetSceneManager();
 
     template<typename T, typename... Args>
     T& AddComponent(Args&&... args)

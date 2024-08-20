@@ -1,5 +1,6 @@
 #include <Canis/Entity.hpp>
 #include <Canis/Scene.hpp>
+#include <Canis/SceneManager.hpp>
 #include <Canis/Math.hpp>
 
 #include <Canis/ScriptableEntity.hpp>
@@ -57,6 +58,11 @@ void Entity::Destroy()
             scene->entityRegistry.destroy(entityHandle);
         }
     }
+}
+
+SceneManager& Entity::GetSceneManager()
+{
+    return *(Canis::SceneManager*)scene->sceneManager;
 }
 
 void* Entity::InitScriptableComponent()
