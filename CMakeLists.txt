@@ -7,9 +7,7 @@ set(BUILD_TESTING                   FALSE)
 set(glew-cmake_BUILD_SHARED         FALSE)
 
 set(SDL_TEST_ENABLED_BY_DEFAULT     FALSE)
-set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
-
-set(BUILD_SHARED_LIBS               FALSE)
+set(SDL_SHARED_ENABLED_BY_DEFAULT   TRUE)
 
 set(YAML_CPP_BUILD_TOOLS            FALSE)
 set(YAML_CPP_BUILD_TESTS            FALSE)
@@ -29,12 +27,6 @@ set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
 set(SDL2MIXER_MOD_XMP               FALSE)
 set(SDL2MIXER_MOD                   FALSE)
 set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
-
-set(ASSIMP_INSTALL                  FALSE)
-set(ASSIMP_BUILD_DOCS               FALSE)
-set(ASSIMP_NO_EXPORT                TRUE)
-set(ASSIMP_BUILD_SAMPLES            FALSE)
-set(ASSIMP_BUILD_TESTS              FALSE)
 
 add_subdirectory(external/GL)
 add_subdirectory(external/glm)
@@ -91,8 +83,7 @@ target_link_libraries(${PROJECT_NAME}
     libglew_static
     freetype
     yaml-cpp
-    SDL2-static
-    SDL2main
+    SDL2
     SDL2_mixer
     imgui
 )
@@ -103,8 +94,7 @@ target_include_directories(${PROJECT_NAME}
         stb
         freetype
         yaml-cpp
-        SDL2-static
-        SDL2main
+        SDL2
         SDL2_mixer
         imgui
         "${PROJECT_SOURCE_DIR}/include"
