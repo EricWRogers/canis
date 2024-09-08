@@ -173,7 +173,8 @@ public:
     void AddScene(Scene *_scene);
     void AddSplashScene(Scene *_scene);
 
-    void Run( std::string _windowName, std::string _sceneName);
+    void Run(std::string _windowName);
+    void Run(std::string _windowName, std::string _sceneName);
     void Loop();
 
 private:

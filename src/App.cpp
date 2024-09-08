@@ -80,6 +80,61 @@ namespace Canis
         sceneManager.AddSplashScene(_scene);
     }
 
+    void App::Run(std::string _windowName)
+    {
+        // load project.canis
+        std::ifstream file;
+        file.open("assets/project.canis");
+
+        if (!file.is_open())
+        {
+            FatalError("Can not open assets/project.canis");
+        }
+
+        std::string word;
+        std::string firstScene;
+
+        while(file >> word)
+        {
+            if (word == "splash_scene")
+            {
+                if (file >> word)
+                {
+                    YAML::Node root = YAML::LoadFile(word);
+                    std::string name = root["Scene"].as<std::string>();
+
+                    AddSplashScene(new Scene(name, word));
+                }
+            }
+            else if (word == "scene")
+            {
+                if (file >> word)
+                {
+                    YAML::Node root = YAML::LoadFile(word);
+                    std::string name = root["Scene"].as<std::string>();
+
+                    AddScene(new Scene(name, word));
+                }
+            }
+            else if (word == "run_scene")
+            {
+                if (file >> word)
+                {
+                    firstScene = word;
+                }
+            }
+        }
+
+        file.close();
+
+        if (firstScene == "")
+        {
+            FatalError("run_scene not found in project.canis");
+        }
+
+        Run(_windowName, firstScene);
+    }
+
     void App::Run( std::string _windowName, std::string _sceneName)
     {
         unsigned int windowFlags = 0;
