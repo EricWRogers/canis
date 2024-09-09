@@ -53,7 +53,7 @@ void EncodeComponent(YAML::Emitter &_out, Canis::Entity &_entity)
 {                                                                           \
     static bool registered = (ComponentType::RegisterProperties(), true);   \
     AppInstance.AddDecodeComponent(DecodeComponent<ComponentType>);         \
-    AppInstance.AddEncodeComponent(EncodeComponent<ComponentType>);         \
+    /*AppInstance.AddEncodeComponent(EncodeComponent<ComponentType>);*/     \
 }
 
 #define REGISTER_UPDATE_SYSTEM(system)                                      \
