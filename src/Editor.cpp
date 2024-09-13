@@ -1349,6 +1349,8 @@ namespace Canis
                 return;
             }
 
+            ImGui::SameLine();
+
             std::vector<std::string> sceneNames = {};
             int currentSceneIndex = 0;
             int i = 0;
@@ -1395,17 +1397,15 @@ namespace Canis
             }
         }
 
-        ImGui::SameLine();
         std::string fps = std::to_string(_time->fps);
-        ImGui::Text("%s", fps.c_str());
-
         std::string deltaTime = std::to_string(m_scene->deltaTime);
         std::string cpuTime = std::to_string(GetSceneManager().updateTime);
         std::string gpuTime = std::to_string(GetSceneManager().drawTime);
 
-        ImGui::Text("Delta Time %s", deltaTime.c_str());
-        ImGui::Text("CPU Time %s", cpuTime.c_str());
-        ImGui::Text("GPU Time %s", gpuTime.c_str());
+        ImGui::Text("FPS: %s", fps.c_str());
+        ImGui::Text("Delta Time: %s", deltaTime.c_str());
+        ImGui::Text("CPU Time: %s", cpuTime.c_str());
+        ImGui::Text("GPU Time: %s", gpuTime.c_str());
 
         ImGui::End();
     }
