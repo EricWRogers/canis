@@ -35,6 +35,7 @@ namespace Canis
     const float PI = 3.14159265f;
 
     const float RAD2DEG = 180.0f / PI;
+    const float DEG2RAD = PI / 180.0f;
 
     bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit);
 
@@ -57,6 +58,8 @@ namespace Canis
     vec3 GetGlobalRotation(TransformComponent &_transform);
 
     vec3 GetGlobalScale(TransformComponent &_transform);
+
+    vec3 GetLocalRotation(TransformComponent &_transform);
 
     void MoveTransformPosition(TransformComponent &_transform, vec3 _offset);
 

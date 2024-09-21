@@ -1,6 +1,7 @@
 #include <Canis/IOManager.hpp>
 #include <Canis/Math.hpp>
-
+#include <Canis/External/OpenGl.hpp>
+#include <stb_image.h>
 
 namespace Canis
 {

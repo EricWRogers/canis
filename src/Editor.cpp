@@ -5,6 +5,7 @@
 #include <Canis/SceneManager.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/Time.hpp>
+#include <Canis/Math.hpp>
 
 #include <Canis/ECS/Components/TransformComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
@@ -324,10 +325,22 @@ namespace Canis
                 {
                     auto &tc = entity.GetComponent<TransformComponent>();
 
+                    bool update = false;
+
                     ImGui::Checkbox("active", &tc.active);
-                    ImGui::InputFloat3("position", glm::value_ptr(tc.position), "%.3f");
-                    ImGui::InputFloat4("rotation", glm::value_ptr(tc.rotation), "%.3f");
-                    ImGui::InputFloat3("scale", glm::value_ptr(tc.scale), "%.3f");
+                    if (ImGui::InputFloat3("position", glm::value_ptr(tc.position), "%.3f"))
+                        update = true;
+                    glm::vec3 r = GetLocalRotation(tc) * RAD2DEG;
+                    if (ImGui::InputFloat3("rotation", glm::value_ptr(r), "%.3f"))
+                    {
+                        update = true;
+                        SetTransformRotation(tc, r * DEG2RAD);
+                    }
+                    if (ImGui::InputFloat3("scale", glm::value_ptr(tc.scale), "%.3f"))
+                        update = true;
+                    
+                    if (update)
+                        UpdateModelMatrix(tc);
                 }
 
                 if (ImGui::BeginPopupContextItem("Menu##Canis::Transform"))

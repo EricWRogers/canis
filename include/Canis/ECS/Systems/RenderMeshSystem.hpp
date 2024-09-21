@@ -248,13 +248,13 @@ namespace Canis
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
-			/*auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+			auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
 				lightPos = GetGlobalPosition(transform);
 				lightLookAt = lightPos + (directionalLight.direction * 5.0f);
-			}*/
+			}
 
 			lightProjection = glm::ortho(-lightProjectionSize, lightProjectionSize, -lightProjectionSize, lightProjectionSize, nearPlane, farPlane);
 			lightView = glm::lookAt(lightPos, lightLookAt, glm::vec3(0.0, 1.0, 0.0));
@@ -873,8 +873,10 @@ namespace Canis
 			// attach depth texture as FBO's depth buffer
 			glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
-			glDrawBuffer(GL_NONE);
-			glReadBuffer(GL_NONE);
+			#ifndef GL_ES_VERSION_3_0
+				glDrawBuffer(GL_NONE);
+				glReadBuffer(GL_NONE);
+			#endif
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			// configure depth map FBO
@@ -892,8 +894,10 @@ namespace Canis
 			// attach depth texture as FBO's depth buffer
 			glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
 			glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-			glDrawBuffer(GL_NONE);
-			glReadBuffer(GL_NONE);
+			#ifndef GL_ES_VERSION_3_0
+				glDrawBuffer(GL_NONE);
+				glReadBuffer(GL_NONE);
+			#endif
 			glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
 			// configure (floating point) framebuffers
@@ -1041,8 +1045,10 @@ namespace Canis
 				// attach depth texture as FBO's depth buffer
 				glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
-				glDrawBuffer(GL_NONE);
-				glReadBuffer(GL_NONE);
+				#ifndef GL_ES_VERSION_3_0
+					glDrawBuffer(GL_NONE);
+					glReadBuffer(GL_NONE);
+				#endif
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 			}
 		}

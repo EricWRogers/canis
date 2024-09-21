@@ -313,6 +313,11 @@ namespace Canis
         return size;
     }
 
+    vec3 GetLocalRotation(TransformComponent &_transform)
+    {
+        return glm::eulerAngles(_transform.rotation);
+    }
+
     void MoveTransformPosition(TransformComponent &_transform, vec3 _offset)
     {
         _transform.position += _offset;
