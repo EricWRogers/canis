@@ -5,6 +5,7 @@ set(CMAKE_CXX_STANDARD 20)
 
 set(BUILD_TESTING                   FALSE)
 set(glew-cmake_BUILD_SHARED         FALSE)
+set(glew-cmake_BUILD_STATIC         TRUE)
 
 set(SDL_TEST_ENABLED_BY_DEFAULT     FALSE)
 set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
@@ -36,7 +37,9 @@ set(ASSIMP_NO_EXPORT                TRUE)
 set(ASSIMP_BUILD_SAMPLES            FALSE)
 set(ASSIMP_BUILD_TESTS              FALSE)
 
+if( NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
 add_subdirectory(external/GL)
+endif()
 add_subdirectory(external/glm)
 add_subdirectory(external/yaml-cpp)
 add_subdirectory(external/SDL)
@@ -62,7 +65,7 @@ file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
 
 add_library(${PROJECT_NAME} STATIC ${SRC_SOURCES} ${SRC_HEADERS})
 
-set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
+#set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
 
 target_precompile_headers(${PROJECT_NAME}
     PUBLIC
@@ -83,6 +86,7 @@ target_precompile_headers(${PROJECT_NAME}
     <random>
 )
 
+if( NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
     $<INSTALL_INTERFACE:include>
@@ -96,6 +100,20 @@ target_link_libraries(${PROJECT_NAME}
     SDL2_mixer
     imgui
 )
+else()
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+    $<INSTALL_INTERFACE:include>
+    glm
+    stb
+    freetype
+    yaml-cpp
+    SDL2-static
+    SDL2main
+    SDL2_mixer
+    imgui
+)
+endif()
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
