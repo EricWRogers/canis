@@ -544,6 +544,12 @@ namespace Canis
         }
     }
 
+    glm::vec3 ZeroY(glm::vec3 _vector)
+    {
+        _vector.y = 0.0f;
+        return _vector;
+    }
+
     void RotatePoint(vec2 &_point, const float &_cosAngle, const float &_sinAngle)
     {
         float x = _point.x;
