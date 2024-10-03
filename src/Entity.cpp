@@ -230,6 +230,7 @@ void Entity::SetParent(entt::entity _parent)
         if (scene->entityRegistry.all_of<TransformComponent>(_parent))
         {
             TransformComponent& transform = GetComponent<TransformComponent>();
+            glm::vec3 globalPosition = GetGlobalPosition();
 
             if (transform.parent != entt::null)
             {
@@ -248,8 +249,11 @@ void Entity::SetParent(entt::entity _parent)
             transform.parent = _parent;
 
             TransformComponent& parentTransform = scene->entityRegistry.get<TransformComponent>(transform.parent);
+            glm::vec3 parentGlobalPosition = Entity(transform.parent, scene).GetGlobalPosition();
 
             parentTransform.children.push_back(entityHandle);
+
+            SetPosition(globalPosition - parentGlobalPosition);
 
             UpdateModelMatrix(transform);
         }
