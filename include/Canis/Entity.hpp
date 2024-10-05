@@ -150,6 +150,8 @@ public:
 
     void SetParent(entt::entity _parent);
     void AddChild(entt::entity _child);
+    int ChildCount();
+    Entity GetChild(int _index);
 
     void SetPosition(glm::vec3 _postion);
     void MovePosition(glm::vec3 _delta);

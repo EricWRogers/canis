@@ -268,6 +268,29 @@ void Entity::AddChild(entt::entity _child)
     }
 }
 
+int Entity::ChildCount()
+{
+    if (HasComponent<TransformComponent>() == false)
+        return 0;
+
+    auto& transform = GetComponent<TransformComponent>();
+
+    return transform.children.size();
+}
+
+Entity Entity::GetChild(int _index)
+{
+    if (HasComponent<TransformComponent>() == false)
+        return Entity(scene);
+    
+    auto& transform = GetComponent<TransformComponent>();
+
+    if (transform.children.size() >= _index || _index < 0)
+        return Entity(scene);
+    
+    return Entity(GetComponent<TransformComponent>().children[_index], scene);
+}
+
 void Entity::SetPosition(glm::vec3 _postion)
 {
     if (HasComponent<TransformComponent>())
@@ -319,6 +342,10 @@ glm::vec3 Entity::GetGlobalPosition()
     if (HasComponent<TransformComponent>())
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
+
+        //if (transform.isDirty)
+        //    UpdateModelMatrix(transform);
+        
         return glm::vec3(transform.modelMatrix[3]);
     }
 
