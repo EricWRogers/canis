@@ -262,7 +262,7 @@ namespace Canis
 
         if (_transform.registry == nullptr)
         {
-            Canis::Warning("Transform registry MISSING");
+            Canis::FatalError("Transform registry MISSING");
             return;
         }
 
@@ -323,6 +323,25 @@ namespace Canis
         _transform.position += _offset;
 
         UpdateModelMatrix(_transform);
+    }
+
+    void SetGlobalPosition(TransformComponent &_transform, vec3 _position)
+    {
+        if (_transform.parent == entt::null)
+        {
+            SetTransformPosition(_transform, _position);
+        }
+        else
+        {
+            UpdateModelMatrix(_transform);
+
+            TransformComponent &parentTransform = _transform.registry->get<TransformComponent>(_transform.parent);
+
+            SetTransformPosition(
+                _transform, 
+                _position - GetGlobalPosition(parentTransform)
+            );
+        }
     }
 
     void SetTransformPosition(TransformComponent &_transform, vec3 _position)

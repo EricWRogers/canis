@@ -67,6 +67,8 @@ namespace Canis
 
     void Rotate(TransformComponent &_transform, vec3 _rotate);
 
+    void SetGlobalPosition(TransformComponent &_transform, vec3 _position);
+
     void SetTransformRotation(TransformComponent &_transform, vec3 _rotation);
 
     void SetTransformRotation(TransformComponent &_transform, quat _rotation);
