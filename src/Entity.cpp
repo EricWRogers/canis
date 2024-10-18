@@ -36,6 +36,17 @@ entt::entity DuplicateEntity(entt::registry& _from, entt::registry& _to, entt::e
 
 namespace Canis
 {
+template<>
+TransformComponent& Canis::Entity::AddComponent<TransformComponent>()
+{
+    if(HasComponent<TransformComponent>())
+        FatalError("Entity already has component!");
+    
+    TransformComponent& component = scene->entityRegistry.emplace<TransformComponent>(entityHandle);
+    component.registry = &(scene->entityRegistry);
+    return component;
+}
+
 void Entity::Destroy()
 {
     if (scene != nullptr)

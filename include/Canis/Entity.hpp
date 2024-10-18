@@ -36,7 +36,6 @@ public:
             FatalError("Entity already has component!");
         
         T& component = scene->entityRegistry.emplace<T>(entityHandle, std::forward<Args>(args)...);
-        //scene->OnComponentAdded<T>(*this, component);
         return component;
     }
 
@@ -44,7 +43,6 @@ public:
     T& AddOrReplaceComponent(Args&&... args)
     {
         T& component = scene->entityRegistry.emplace_or_replace<T>(entityHandle, std::forward<Args>(args)...);
-        //scene->OnComponentAdded<T>(*this, component);
         return component;
     }
 
