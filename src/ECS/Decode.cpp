@@ -194,11 +194,11 @@ namespace Canis
         if (auto transformComponent = _n["Canis::TransformComponent"])
         {
             auto &tc = _entity.AddComponent<Canis::TransformComponent>();
-            tc.registry = &(_entity.scene->entityRegistry);
             tc.active = transformComponent["active"].as<bool>(true);
             tc.position = transformComponent["position"].as<glm::vec3>(glm::vec3(0.0f));
             tc.rotation = glm::quat(glm::degrees(transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f))));
             tc.scale = transformComponent["scale"].as<glm::vec3>(glm::vec3(1.0f));
+            UpdateModelMatrix(tc);
         }
     }
 
@@ -242,6 +242,7 @@ namespace Canis
         if (auto directionalLightComponent = _n["Canis::DirectionalLightComponent"])
         {
             auto &dlc = _entity.AddComponent<Canis::DirectionalLightComponent>();
+            dlc.direction = directionalLightComponent["direction"].as<glm::vec3>();
             dlc.ambient = directionalLightComponent["ambient"].as<glm::vec3>();
             dlc.diffuse = directionalLightComponent["diffuse"].as<glm::vec3>();
             dlc.specular = directionalLightComponent["specular"].as<glm::vec3>();

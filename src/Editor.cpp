@@ -17,6 +17,7 @@
 #include <Canis/ECS/Components/UISliderComponent.hpp>
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
+#include <Canis/ECS/Components/DirectionalLightComponent.hpp>
 
 #include <Canis/External/OpenGl.hpp>
 
@@ -348,6 +349,29 @@ namespace Canis
                     if (ImGui::MenuItem("Remove##Canis::Transform"))
                     {
                         GetComponent().removeComponentFuncs[std::string(type_name<Canis::TransformComponent>())](entity);
+                    }
+
+                    ImGui::EndPopup();
+                }
+            }
+
+            if (entity.HasComponent<DirectionalLightComponent>())
+            {
+                if (ImGui::CollapsingHeader("Canis::DirectionalLightComponent", ImGuiTreeNodeFlags_DefaultOpen))
+                {
+                    auto &dlc = entity.GetComponent<DirectionalLightComponent>();
+
+                    ImGui::InputFloat3("direction", glm::value_ptr(dlc.direction), "%.3f");
+                    ImGui::InputFloat3("ambient", glm::value_ptr(dlc.ambient), "%.3f");
+                    ImGui::InputFloat3("diffuse", glm::value_ptr(dlc.diffuse), "%.3f");
+                    ImGui::InputFloat3("specular", glm::value_ptr(dlc.specular), "%.3f");
+                }
+
+                if (ImGui::BeginPopupContextItem("Menu##Canis::DirectionalLightComponent"))
+                {
+                    if (ImGui::MenuItem("Remove##Canis::DirectionalLightComponent"))
+                    {
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::DirectionalLightComponent>())](entity);
                     }
 
                     ImGui::EndPopup();
