@@ -345,8 +345,8 @@ glm::vec3 Entity::GetGlobalPosition()
     {
         TransformComponent& transform = GetComponent<TransformComponent>();
 
-        //if (transform.isDirty)
-        //    UpdateModelMatrix(transform);
+        if (transform.isDirty) // it would be nice to remove this
+            UpdateModelMatrix(transform);
         
         return glm::vec3(transform.modelMatrix[3]);
     }
