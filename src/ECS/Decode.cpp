@@ -1,7 +1,7 @@
 #include <Canis/ECS/Decode.hpp>
 #include <Canis/SceneManager.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
@@ -11,7 +11,7 @@
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/MeshComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 #include <Canis/ECS/Components/DirectionalLightComponent.hpp>
@@ -59,11 +59,11 @@ namespace Canis
         }
     }
 
-    void DecodeRectTransformComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeRectTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto rectTransform = _n["Canis::RectTransformComponent"])
+        if (auto rectTransform = _n["Canis::RectTransform"])
         {
-            auto &rt = _entity.AddComponent<Canis::RectTransformComponent>();
+            auto &rt = _entity.AddComponent<Canis::RectTransform>();
             rt.active = rectTransform["active"].as<bool>();
             rt.anchor = (Canis::RectAnchor)rectTransform["anchor"].as<int>();
             rt.position = rectTransform["position"].as<glm::vec2>();
@@ -189,11 +189,11 @@ namespace Canis
         }
     }
 
-    void DecodeTransformComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto transformComponent = _n["Canis::TransformComponent"])
+        if (auto transformComponent = _n["Canis::Transform"])
         {
-            auto &tc = _entity.AddComponent<Canis::TransformComponent>();
+            auto &tc = _entity.AddComponent<Canis::Transform>();
             tc.active = transformComponent["active"].as<bool>(true);
             tc.position = transformComponent["position"].as<glm::vec3>(glm::vec3(0.0f));
             tc.rotation = glm::quat(glm::degrees(transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f))));

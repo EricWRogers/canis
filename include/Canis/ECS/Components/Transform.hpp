@@ -4,7 +4,7 @@
 
 namespace Canis
 {
-	struct TransformComponent
+	struct Transform
 	{
 		entt::registry* registry = nullptr;
 		bool active = true;
@@ -18,10 +18,10 @@ namespace Canis
 
 		static void RegisterProperties()
 		{
-			REGISTER_PROPERTY(TransformComponent, active, bool);
-			REGISTER_PROPERTY(TransformComponent, position, glm::vec3);
-			REGISTER_PROPERTY(TransformComponent, rotation, glm::quat);
-			REGISTER_PROPERTY(TransformComponent, scale, glm::vec3);
+			REGISTER_PROPERTY(Transform, active, bool);
+			REGISTER_PROPERTY(Transform, position, glm::vec3);
+			REGISTER_PROPERTY(Transform, rotation, glm::quat);
+			REGISTER_PROPERTY(Transform, scale, glm::vec3);
 		}
 	};
 } // end of Canis namespace

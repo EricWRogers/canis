@@ -3,7 +3,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Math.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/UISliderComponent.hpp>
 
@@ -11,7 +11,7 @@ namespace Canis
 {
     void UISliderSystem::Update(entt::registry &_registry, float _deltaTime)
     {
-        auto view = _registry.view<RectTransformComponent, UIImageComponent, UISliderComponent>();
+        auto view = _registry.view<RectTransform, UIImageComponent, UISliderComponent>();
         for (auto [entity, rect, image, slider] : view.each())
         {
             if (slider.value != slider.targetValue)

@@ -7,7 +7,7 @@
 #include <Canis/DataStructure/List.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/Math.hpp>
 
@@ -34,7 +34,7 @@ namespace Canis
     void ButtonSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         auto view =
-            _registry.view<RectTransformComponent, ColorComponent, ButtonComponent>();
+            _registry.view<RectTransform, ColorComponent, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
         bool mouseLook = window->GetMouseLock();
@@ -116,14 +116,14 @@ namespace Canis
             {
                 lastTargetButton.GetComponent<ColorComponent>().color = lastTargetButton.GetComponent<ButtonComponent>().baseColor;
                 lastTargetButton.GetComponent<ButtonComponent>().mouseOver = false;
-                lastTargetButton.GetComponent<RectTransformComponent>().scale = lastTargetButton.GetComponent<ButtonComponent>().scale;
+                lastTargetButton.GetComponent<RectTransform>().scale = lastTargetButton.GetComponent<ButtonComponent>().scale;
             }
 
             if (targetButton)
             {
                 targetButton.GetComponent<ColorComponent>().color = targetButton.GetComponent<ButtonComponent>().hoverColor;
                 targetButton.GetComponent<ButtonComponent>().mouseOver = true;
-                targetButton.GetComponent<RectTransformComponent>().scale = targetButton.GetComponent<ButtonComponent>().hoverScale;
+                targetButton.GetComponent<RectTransform>().scale = targetButton.GetComponent<ButtonComponent>().hoverScale;
             }
         }
         else
@@ -134,7 +134,7 @@ namespace Canis
 
             for (int i = 0; i < List::GetCount(&m_buttons); i++)
             {
-                RectTransformComponent &rect_transform = m_buttons[i].entity.GetComponent<RectTransformComponent>();
+                RectTransform &rect_transform = m_buttons[i].entity.GetComponent<RectTransform>();
                 ColorComponent &color = m_buttons[i].entity.GetComponent<ColorComponent>();
                 ButtonComponent &button = m_buttons[i].entity.GetComponent<ButtonComponent>();
 

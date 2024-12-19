@@ -13,7 +13,7 @@
 
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
@@ -64,8 +64,8 @@ namespace Canis
         }
 
         // Draw
-        auto viewUIImage = _registry.view<RectTransformComponent, ColorComponent, UIImageComponent>();
-        auto viewText = _registry.view<RectTransformComponent, ColorComponent, TextComponent>();
+        auto viewUIImage = _registry.view<RectTransform, ColorComponent, UIImageComponent>();
+        auto viewText = _registry.view<RectTransform, ColorComponent, TextComponent>();
 
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         Canis::Entity e;
@@ -113,7 +113,7 @@ namespace Canis
 
         for (int i = 0; i < elements.size(); i++)
         {
-            Canis::RectTransformComponent &rect_transform = _registry.get<RectTransformComponent>(elements[i].element);
+            Canis::RectTransform &rect_transform = _registry.get<RectTransform>(elements[i].element);
 
             if (elements[i].isText == false)
             {

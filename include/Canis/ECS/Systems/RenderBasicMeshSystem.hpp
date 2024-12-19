@@ -14,7 +14,7 @@
 
 #include <Canis/ECS/Systems/System.hpp>
 
-#include "../Components/TransformComponent.hpp"
+#include "../Components/Transform.hpp"
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
 #include "../Components/SphereColliderComponent.hpp"
@@ -88,7 +88,7 @@ namespace Canis
 			return plan.getSignedDistanceToPlan(sphere.center) > -sphere.radius;
 		}
 
-		bool isOnFrustum(const Frustum &camFrustum, const Canis::TransformComponent &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
+		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
 		{
 			// Get global scale thanks to our transform
 			const glm::vec3 globalScale = transform.scale;
@@ -136,7 +136,7 @@ namespace Canis
 			// directional light
 			int numDirLights = 0;
 
-			auto viewDirLight = _registry.view<const Canis::TransformComponent, Canis::DirectionalLightComponent>();
+			auto viewDirLight = _registry.view<const Canis::Transform, Canis::DirectionalLightComponent>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
@@ -157,7 +157,7 @@ namespace Canis
 			int numPointLights = 0;
 			int maxPointLights = 4;
 			
-			auto viewPointLight = _registry.view<const Canis::TransformComponent, Canis::PointLightComponent>();
+			auto viewPointLight = _registry.view<const Canis::Transform, Canis::PointLightComponent>();
 
 			for (auto [entity, transform, pointLight] : viewPointLight.each())
 			{
@@ -182,7 +182,7 @@ namespace Canis
 			int numSpotLights = 0;
 			int maxSpotLights = 4;
 
-			auto viewSpotLight = _registry.view<const Canis::TransformComponent, Canis::SpotLightComponent>();
+			auto viewSpotLight = _registry.view<const Canis::Transform, Canis::SpotLightComponent>();
 			
 			for (auto [entity, transform, spotLight] : viewSpotLight.each())
 			{
@@ -232,7 +232,7 @@ namespace Canis
 
 			shader->SetFloat("material.shininess", 32.0f);
 
-			auto view = _registry.view<Canis::TransformComponent, ColorComponent, MeshComponent, SphereColliderComponent>();
+			auto view = _registry.view<Canis::Transform, ColorComponent, MeshComponent, SphereColliderComponent>();
 
 			for (auto [entity, transform, color, mesh, sphere] : view.each())
 			{

@@ -15,7 +15,7 @@
 #include <Canis/AssetManager.hpp>
 
 #include <Canis/ECS/Components/MeshComponent.hpp>
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 
 namespace Canis
 {
@@ -52,7 +52,7 @@ namespace Canis
     }
 
     bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit) {
-        TransformComponent& transform = _entity.GetComponent<TransformComponent>();
+        Transform& transform = _entity.GetComponent<Transform>();
         MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
         ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
@@ -91,7 +91,7 @@ namespace Canis
 
     bool CheckRay(Entity _entity, Ray _ray, Hit &_hit)
     {
-        TransformComponent& transform = _entity.GetComponent<TransformComponent>();
+        Transform& transform = _entity.GetComponent<Transform>();
         MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
         ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
@@ -256,7 +256,7 @@ namespace Canis
             rotationAxis.z * invs);
     }
 
-    void UpdateModelMatrix(TransformComponent &_transform)
+    void UpdateModelMatrix(Transform &_transform)
     {
         _transform.isDirty = false;
 
@@ -276,35 +276,35 @@ namespace Canis
 
         if (_transform.parent != entt::null)
         {
-            TransformComponent &parentTransform = _transform.registry->get<TransformComponent>(_transform.parent);
+            Transform &parentTransform = _transform.registry->get<Transform>(_transform.parent);
 
             _transform.modelMatrix = parentTransform.modelMatrix * _transform.modelMatrix;
         }
 
         for (int i = 0; i < _transform.children.size(); i++)
         {
-            TransformComponent &childTransform = _transform.registry->get<TransformComponent>(_transform.children[i]);
+            Transform &childTransform = _transform.registry->get<Transform>(_transform.children[i]);
 
             UpdateModelMatrix(childTransform);
         }
     }
 
-    const mat4 &GetModelMatrix(TransformComponent &_transform)
+    const mat4 &GetModelMatrix(Transform &_transform)
     {
         return _transform.modelMatrix;
     }
 
-    vec3 GetGlobalPosition(const TransformComponent &_transform)
+    vec3 GetGlobalPosition(const Transform &_transform)
     {
         return vec3(_transform.modelMatrix[3]);
     }
 
-    vec3 GetGlobalRotation(TransformComponent &_transform)
+    vec3 GetGlobalRotation(Transform &_transform)
     {
         return vec3(_transform.modelMatrix[3]);
     }
 
-    vec3 GetGlobalScale(TransformComponent &_transform)
+    vec3 GetGlobalScale(Transform &_transform)
     {
         vec3 size;
         size.x = length(vec3(_transform.modelMatrix[0])); // Basis vector X
@@ -313,19 +313,19 @@ namespace Canis
         return size;
     }
 
-    vec3 GetLocalRotation(TransformComponent &_transform)
+    vec3 GetLocalRotation(Transform &_transform)
     {
         return glm::eulerAngles(_transform.rotation);
     }
 
-    void MoveTransformPosition(TransformComponent &_transform, vec3 _offset)
+    void MoveTransformPosition(Transform &_transform, vec3 _offset)
     {
         _transform.position += _offset;
 
         UpdateModelMatrix(_transform);
     }
 
-    void SetGlobalPosition(TransformComponent &_transform, vec3 _position)
+    void SetGlobalPosition(Transform &_transform, vec3 _position)
     {
         if (_transform.parent == entt::null)
         {
@@ -335,7 +335,7 @@ namespace Canis
         {
             UpdateModelMatrix(_transform);
 
-            TransformComponent &parentTransform = _transform.registry->get<TransformComponent>(_transform.parent);
+            Transform &parentTransform = _transform.registry->get<Transform>(_transform.parent);
 
             SetTransformPosition(
                 _transform, 
@@ -344,52 +344,52 @@ namespace Canis
         }
     }
 
-    void SetTransformPosition(TransformComponent &_transform, vec3 _position)
+    void SetTransformPosition(Transform &_transform, vec3 _position)
     {
         _transform.position = _position;
 
         UpdateModelMatrix(_transform);
     }
 
-    vec3 GetTransformForward(TransformComponent &_transform)
+    vec3 GetTransformForward(Transform &_transform)
     {
         return normalize(_transform.rotation * vec3(0.0f, 0.0f, 1.0f));
     }
 
-    vec3 GetTransformRight(TransformComponent &_transform)
+    vec3 GetTransformRight(Transform &_transform)
     {
         return normalize(_transform.rotation * vec3(1.0f, 0.0f, 0.0f));
     }
 
-    void Rotate(TransformComponent &_transform, vec3 _rotate)
+    void Rotate(Transform &_transform, vec3 _rotate)
     {
         _transform.rotation = quat(_rotate) * _transform.rotation;
 
         UpdateModelMatrix(_transform);
     }
 
-    void SetTransformRotation(TransformComponent &_transform, vec3 _rotation)
+    void SetTransformRotation(Transform &_transform, vec3 _rotation)
     {
         _transform.rotation = quat(_rotation);
 
         UpdateModelMatrix(_transform);
     }
 
-    void SetTransformRotation(TransformComponent &_transform, quat _rotation)
+    void SetTransformRotation(Transform &_transform, quat _rotation)
     {
         _transform.rotation = _rotation;
 
         UpdateModelMatrix(_transform);
     }
 
-    void SetTransformScale(TransformComponent &_transform, vec3 _scale)
+    void SetTransformScale(Transform &_transform, vec3 _scale)
     {
         _transform.scale = _scale;
 
         UpdateModelMatrix(_transform);
     }
 
-    void LookAt(TransformComponent &_transform, vec3 _target, vec3 _up)
+    void LookAt(Transform &_transform, vec3 _target, vec3 _up)
     {
         vec3 direction = normalize(_target - GetGlobalPosition(_transform));
         _transform.rotation = quatLookAt(direction, _up);
@@ -441,7 +441,7 @@ namespace Canis
         return res;
     }
 
-    void RotateTowardsLookAt(TransformComponent &_transform, vec3 _target, vec3 _up, float _maxAngle)
+    void RotateTowardsLookAt(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle)
     {
         vec3 direction = normalize(_target - GetGlobalPosition(_transform));
         quat targetQuat = quatLookAt(direction, _up);

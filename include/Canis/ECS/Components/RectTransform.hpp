@@ -83,7 +83,7 @@ namespace Canis
 		}
 	}
 	
-	struct RectTransformComponent
+	struct RectTransform
 	{
 		bool active = true;
 		int anchor = RectAnchor::BOTTOMLEFT;
@@ -98,16 +98,16 @@ namespace Canis
 
 		static void RegisterProperties()
 		{
-			REGISTER_PROPERTY(Canis::RectTransformComponent, active, bool);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, anchor, int);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, position, glm::vec2);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, size, glm::vec2);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, originOffset, glm::vec2);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, rotation, float);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, scale, float);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, depth, float);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, scaleWithScreen, int);
-			REGISTER_PROPERTY(Canis::RectTransformComponent, rotationOriginOffset, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, active, bool);
+			REGISTER_PROPERTY(Canis::RectTransform, anchor, int);
+			REGISTER_PROPERTY(Canis::RectTransform, position, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, size, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, originOffset, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, rotation, float);
+			REGISTER_PROPERTY(Canis::RectTransform, scale, float);
+			REGISTER_PROPERTY(Canis::RectTransform, depth, float);
+			REGISTER_PROPERTY(Canis::RectTransform, scaleWithScreen, int);
+			REGISTER_PROPERTY(Canis::RectTransform, rotationOriginOffset, glm::vec2);
 		}
 	};
 } // end of Canis namespace

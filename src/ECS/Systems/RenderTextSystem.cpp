@@ -5,7 +5,7 @@
 
 #include <Canis/External/OpenGl.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 
@@ -81,7 +81,7 @@ namespace Canis
             float deltaX = right - left;
             x = xBackUp;
 
-            RectTransformComponent& rectTransform = ((Entity*)_entity)->GetComponent<RectTransformComponent>();
+            RectTransform& rectTransform = ((Entity*)_entity)->GetComponent<RectTransform>();
             rectTransform.size.x = deltaX;
             rectTransform.size.y = bigestH;
 
@@ -174,7 +174,7 @@ namespace Canis
         projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
         glUniformMatrix4fv(glGetUniformLocation(textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        auto view = _registry.view<RectTransformComponent, ColorComponent, TextComponent>();
+        auto view = _registry.view<RectTransform, ColorComponent, TextComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         Canis::Entity e;
         e.scene = scene;

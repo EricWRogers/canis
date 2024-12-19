@@ -5,7 +5,7 @@
 #include <Canis/ECS/Components/IDComponent.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 
 namespace Canis
 {
@@ -38,7 +38,7 @@ public:
         
         T& component = scene->entityRegistry.emplace<T>(entityHandle, std::forward<Args>(args)...);
         
-        if constexpr (std::is_same_v<T, Canis::TransformComponent>) {
+        if constexpr (std::is_same_v<T, Canis::Transform>) {
             component.registry = &(scene->entityRegistry);
         }
 
@@ -46,12 +46,12 @@ public:
     }
 
     /*template<>
-    TransformComponent& Canis::Entity::AddComponent<TransformComponent>()
+    Transform& Canis::Entity::AddComponent<Transform>()
     {
-        if(HasComponent<TransformComponent>())
+        if(HasComponent<Transform>())
             FatalError("Entity already has component!");
         
-        TransformComponent& component = scene->entityRegistry.emplace<TransformComponent>(entityHandle);
+        Transform& component = scene->entityRegistry.emplace<Transform>(entityHandle);
         component.registry = &(scene->entityRegistry);
         return component;
     }*/

@@ -7,7 +7,7 @@
 #include <Canis/Time.hpp>
 #include <Canis/Math.hpp>
 
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/MeshComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
@@ -320,11 +320,11 @@ namespace Canis
                 }
             }
 
-            if (entity.HasComponent<TransformComponent>())
+            if (entity.HasComponent<Transform>())
             {
                 if (ImGui::CollapsingHeader("Canis::Transform", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto &tc = entity.GetComponent<TransformComponent>();
+                    auto &tc = entity.GetComponent<Transform>();
 
                     bool update = false;
 
@@ -348,7 +348,7 @@ namespace Canis
                 {
                     if (ImGui::MenuItem("Remove##Canis::Transform"))
                     {
-                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::TransformComponent>())](entity);
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::Transform>())](entity);
                     }
 
                     ImGui::EndPopup();
@@ -401,11 +401,11 @@ namespace Canis
                 }
             }
 
-            if (entity.HasComponent<RectTransformComponent>())
+            if (entity.HasComponent<RectTransform>())
             {
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto &rtc = entity.GetComponent<RectTransformComponent>();
+                    auto &rtc = entity.GetComponent<RectTransform>();
 
                     ImGui::Checkbox("active", &rtc.active);
 
@@ -427,7 +427,7 @@ namespace Canis
                 {
                     if (ImGui::MenuItem("Remove##Canis::Rect"))
                     {
-                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::RectTransformComponent>())](entity);
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::RectTransform>())](entity);
                     }
 
                     ImGui::EndPopup();

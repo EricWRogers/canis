@@ -1,5 +1,5 @@
 #pragma once
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/Data/Bit.hpp>
 
 namespace Canis
@@ -21,7 +21,7 @@ namespace Text {
 	const unsigned int RIGHT  = 1u;
 	const unsigned int CENTER = 2u;
 
-	inline void Set(TextComponent &_textComponent, RectTransformComponent &_rectComponent, std::string _text) {
+	inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, std::string _text) {
 		_textComponent.text = _text;
 		_rectComponent.originOffset = glm::vec2(0.0f);
 		_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated

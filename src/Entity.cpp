@@ -5,7 +5,7 @@
 
 #include <Canis/ScriptableEntity.hpp>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 
 #include <iomanip>
 #include <iostream>
@@ -44,9 +44,9 @@ void Entity::Destroy()
     {
         if (scene->entityRegistry.valid(entityHandle))
         {
-            if (HasComponent<TransformComponent>())
+            if (HasComponent<Transform>())
             {
-                TransformComponent& transform = GetComponent<TransformComponent>();
+                Transform& transform = GetComponent<Transform>();
 
                 Entity child(scene);
 
@@ -227,16 +227,16 @@ Entity Entity::Duplicate()
 
 void Entity::SetParent(entt::entity _parent)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        if (scene->entityRegistry.all_of<TransformComponent>(_parent))
+        if (scene->entityRegistry.all_of<Transform>(_parent))
         {
-            TransformComponent& transform = GetComponent<TransformComponent>();
+            Transform& transform = GetComponent<Transform>();
             glm::vec3 globalPosition = GetGlobalPosition();
 
             if (transform.parent != entt::null)
             {
-                TransformComponent& parentTransform = scene->entityRegistry.get<TransformComponent>(transform.parent);
+                Transform& parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
 
                 for (int i = 0; i < parentTransform.children.size(); i++)
                 {
@@ -250,7 +250,7 @@ void Entity::SetParent(entt::entity _parent)
 
             transform.parent = _parent;
 
-            TransformComponent& parentTransform = scene->entityRegistry.get<TransformComponent>(transform.parent);
+            Transform& parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
             glm::vec3 parentGlobalPosition = Entity(transform.parent, scene).GetGlobalPosition();
 
             parentTransform.children.push_back(entityHandle);
@@ -264,7 +264,7 @@ void Entity::SetParent(entt::entity _parent)
 
 void Entity::AddChild(entt::entity _child)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
         SetParent(_child);
     }
@@ -272,68 +272,68 @@ void Entity::AddChild(entt::entity _child)
 
 int Entity::ChildCount()
 {
-    if (HasComponent<TransformComponent>() == false)
+    if (HasComponent<Transform>() == false)
         return 0;
 
-    auto& transform = GetComponent<TransformComponent>();
+    auto& transform = GetComponent<Transform>();
 
     return transform.children.size();
 }
 
 Entity Entity::GetChild(int _index)
 {
-    if (HasComponent<TransformComponent>() == false)
+    if (HasComponent<Transform>() == false)
         return Entity(scene);
     
-    auto& transform = GetComponent<TransformComponent>();
+    auto& transform = GetComponent<Transform>();
 
     if (transform.children.size() >= _index || _index < 0)
         return Entity(scene);
     
-    return Entity(GetComponent<TransformComponent>().children[_index], scene);
+    return Entity(GetComponent<Transform>().children[_index], scene);
 }
 
 void Entity::SetPosition(glm::vec3 _postion)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
         SetTransformPosition(transform, _postion);
     }
 }
 
 void Entity::MovePosition(glm::vec3 _delta)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
         MoveTransformPosition(transform, _delta);
     }
 }
 
 void Entity::SetRotation(glm::vec3 _radians)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
         SetTransformRotation(transform, _radians);
     }
 }
 
 void Entity::Rotate(glm::vec3 _radians)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
         Canis::Rotate(transform, _radians);
     }
 }
 
 void Entity::SetScale(glm::vec3 _scale)
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
         transform.scale = _scale;
         UpdateModelMatrix(transform);
     }
@@ -341,9 +341,9 @@ void Entity::SetScale(glm::vec3 _scale)
 
 glm::vec3 Entity::GetGlobalPosition()
 {
-    if (HasComponent<TransformComponent>())
+    if (HasComponent<Transform>())
     {
-        TransformComponent& transform = GetComponent<TransformComponent>();
+        Transform& transform = GetComponent<Transform>();
 
         if (transform.isDirty) // it would be nice to remove this
             UpdateModelMatrix(transform);

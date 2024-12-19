@@ -2,7 +2,7 @@
 
 #include <Canis/Scene.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
 namespace Canis
@@ -132,7 +132,7 @@ namespace Canis
 
     void CollisionSystem2D::LoadLayers(entt::registry &registry)
     {
-        auto view = registry.view<const RectTransformComponent, CircleColliderComponent>();
+        auto view = registry.view<const RectTransform, CircleColliderComponent>();
         for (auto [entity, transform, circle] : view.each())
         {
             Add(transform.position, circle.layer, circle.mask, entity, circle.radius);

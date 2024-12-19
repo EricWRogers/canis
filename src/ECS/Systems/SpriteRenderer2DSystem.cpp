@@ -2,7 +2,7 @@
 
 #include <Canis/Camera2D.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
@@ -403,7 +403,7 @@ namespace Canis
         Begin(glyphSortType);
 
         // Draw
-        auto view = _registry.view<const RectTransformComponent, const Sprite2DComponent>();
+        auto view = _registry.view<const RectTransform, const Sprite2DComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         float halfWidth = window->GetScreenWidth() / 2;
         float halfHeight = window->GetScreenHeight() / 2;

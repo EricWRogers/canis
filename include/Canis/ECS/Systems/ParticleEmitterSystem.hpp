@@ -6,7 +6,7 @@
 
 #include <Canis/ECS/Systems/System.hpp>
 
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/MeshComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
@@ -26,7 +26,7 @@ public:
     void Ready() override {}
 
     void Update(entt::registry &_registry, float _deltaTime) override {
-        auto view = _registry.view<TransformComponent, SphereColliderComponent, ParticleEmitterComponent>();
+        auto view = _registry.view<Transform, SphereColliderComponent, ParticleEmitterComponent>();
         for (auto [entity, transform, sphere, emitter] : view.each())
         {
             // check if the particles system is seen by camera
@@ -39,7 +39,7 @@ public:
                 // load particles
                 for(int i = 0; i < emitter.numOfParticle; i++) {
                     Entity e = scene->CreateEntity();
-                    TransformComponent& transformComponent = e.AddComponent<TransformComponent>();
+                    Transform& transformComponent = e.AddComponent<Transform>();
                     transformComponent.registry = &(scene->entityRegistry);
                     
                     if (emitter.state & ParticleEmitterState::LOCAL)
@@ -88,7 +88,7 @@ public:
             {
                 for(int i = 0; i < emitter.numOfParticle; i++)
                 {
-                    TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
+                    Transform &t = _registry.get<Transform>(emitter.particles[i]);
                     ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
                     ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
@@ -134,7 +134,7 @@ public:
                     int numHaveSpawned = 0;
 
                     for(int i = 0; i < emitter.numOfParticle; i++) {
-                        TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
+                        Transform &t = _registry.get<Transform>(emitter.particles[i]);
 
                         if (t.active == false) {
                             numHaveSpawned++;
@@ -214,7 +214,7 @@ public:
 
             // update particles
             for(int i = 0; i < emitter.numOfParticle; i++) {
-                TransformComponent &t = _registry.get<TransformComponent>(emitter.particles[i]);
+                Transform &t = _registry.get<Transform>(emitter.particles[i]);
 
                 if (t.active) {
                     ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);

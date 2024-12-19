@@ -3,10 +3,10 @@
 
 #include <Canis/AssetManager.hpp>
 
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/ColorComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
@@ -15,13 +15,13 @@
 
 namespace Canis
 {
-    void EncodeTransformComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+    void EncodeTransform(YAML::Emitter &_out, Canis::Entity &_entity)
     {
-        if (_entity.HasComponent<TransformComponent>())
+        if (_entity.HasComponent<Transform>())
         {
-            TransformComponent& tc = _entity.GetComponent<TransformComponent>();
+            Transform& tc = _entity.GetComponent<Transform>();
 
-            _out << YAML::Key << "Canis::TransformComponent";
+            _out << YAML::Key << "Canis::Transform";
             _out << YAML::BeginMap;
 
             _out << YAML::Key << "active" << YAML::Value << tc.active;
@@ -68,13 +68,13 @@ namespace Canis
         }
 	}
 
-	void EncodeRectTransformComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	void EncodeRectTransform(YAML::Emitter &_out, Canis::Entity &_entity)
 	{
-		if (_entity.HasComponent<RectTransformComponent>())
+		if (_entity.HasComponent<RectTransform>())
         {
-            RectTransformComponent& rtc = _entity.GetComponent<RectTransformComponent>();
+            RectTransform& rtc = _entity.GetComponent<RectTransform>();
 
-            _out << YAML::Key << "Canis::RectTransformComponent";
+            _out << YAML::Key << "Canis::RectTransform";
             _out << YAML::BeginMap;
 
             _out << YAML::Key << "active" << YAML::Value << rtc.active;

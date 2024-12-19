@@ -3,7 +3,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Math.hpp>
 
-#include <Canis/ECS/Components/RectTransformComponent.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/UISliderComponent.hpp>
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
@@ -15,7 +15,7 @@ namespace Canis
     {
         bool mouseDown = GetInputManager().GetLeftClick();
 
-        auto view = _registry.view<RectTransformComponent, ButtonComponent, UISliderKnobComponent>();
+        auto view = _registry.view<RectTransform, ButtonComponent, UISliderKnobComponent>();
         for (auto [entity, rect, button, knob] : view.each())
         {
             if (!knob.slider)
@@ -25,7 +25,7 @@ namespace Canis
                 knob.grabbed = false;
 
             UISliderComponent &slider = knob.slider.GetComponent<UISliderComponent>();
-            RectTransformComponent &sliderRect = knob.slider.GetComponent<RectTransformComponent>();
+            RectTransform &sliderRect = knob.slider.GetComponent<RectTransform>();
 
             vec2 halfSize{
                 (rect.size.x * rect.scale) / 2.0f,

@@ -12,7 +12,7 @@
 
 #include <Canis/ECS/Systems/System.hpp>
 
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/BoxColliderComponent.hpp>
 #include <Canis/ECS/Components/SphereColliderComponent.hpp>
 
@@ -301,7 +301,7 @@ namespace Canis
 
         void LoadLayers(entt::registry &registry)
         {
-            auto sphereView = registry.view<TransformComponent, SphereColliderComponent>();
+            auto sphereView = registry.view<Transform, SphereColliderComponent>();
             for (auto [entity, transform, sphere] : sphereView.each())
             {
                 CollisionSystemPoint point = {};
@@ -313,7 +313,7 @@ namespace Canis
                 Add(point, sphere.layer, sphere.mask);
             }
 
-            auto boxView = registry.view<TransformComponent, BoxColliderComponent>();
+            auto boxView = registry.view<Transform, BoxColliderComponent>();
             for (auto [entity, transform, box] : boxView.each())
             {
                 float radius = 0.0f;

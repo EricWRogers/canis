@@ -18,7 +18,7 @@
 
 #include <Canis/ECS/Systems/System.hpp>
 
-#include "../Components/TransformComponent.hpp"
+#include "../Components/Transform.hpp"
 #include "../Components/ColorComponent.hpp"
 #include "../Components/MeshComponent.hpp"
 #include "../Components/BoxColliderComponent.hpp"
@@ -164,7 +164,7 @@ namespace Canis
 			return plan.getSignedDistanceToPlan(sphere.center) > -sphere.radius;
 		}
 
-		bool isOnFrustum(const Frustum &camFrustum, const Canis::TransformComponent &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
+		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
 		{
 			// Get global scale thanks to our transform
 			const glm::vec3 globalScale = transform.scale;
@@ -248,7 +248,7 @@ namespace Canis
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
-			auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+			auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLightComponent>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
@@ -283,7 +283,7 @@ namespace Canis
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
-				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+				const Transform &transform = registry.get<const Transform>(rer.e);
 
 				if (!mesh.castShadow)
 					continue;
@@ -408,7 +408,7 @@ namespace Canis
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
-				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+				const Transform &transform = registry.get<const Transform>(rer.e);
 
 				if (!mesh.castDepth)
 					continue;
@@ -533,7 +533,7 @@ namespace Canis
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				const TransformComponent &transform = registry.get<const TransformComponent>(rer.e);
+				const Transform &transform = registry.get<const Transform>(rer.e);
 				const ColorComponent &color = registry.get<const ColorComponent>(rer.e);
 				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
 				// const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
@@ -630,7 +630,7 @@ namespace Canis
 					// directional light
 					int numDirLights = 0;
 
-					auto viewDirLight = registry.view<const Canis::TransformComponent, const Canis::DirectionalLightComponent>();
+					auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLightComponent>();
 
 					for (auto [entity, transform, directionalLight] : viewDirLight.each())
 					{
@@ -736,7 +736,7 @@ namespace Canis
 				int numPointLights = 0;
 				int maxPointLights = 10;
 
-				auto viewPointLight = registry.view<const Canis::TransformComponent, const Canis::PointLightComponent>();
+				auto viewPointLight = registry.view<const Canis::Transform, const Canis::PointLightComponent>();
 
 				for (auto [entity, t, pointLight] : viewPointLight.each())
 				{
@@ -1062,7 +1062,7 @@ namespace Canis
 
 			// Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
-			auto view = _registry.view<TransformComponent, const MeshComponent, const SphereColliderComponent>();
+			auto view = _registry.view<Transform, const MeshComponent, const SphereColliderComponent>();
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
 			{
@@ -1088,7 +1088,7 @@ namespace Canis
 				sortingEntities.push_back(rer);
 			}
 
-			auto viewBox = _registry.view<TransformComponent, const MeshComponent, const BoxColliderComponent>();
+			auto viewBox = _registry.view<Transform, const MeshComponent, const BoxColliderComponent>();
 
 			for (auto [entity, transform, mesh, box] : viewBox.each())
 			{

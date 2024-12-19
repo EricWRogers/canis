@@ -3,7 +3,7 @@
 #include <glm/glm.hpp>
 #include <Canis/External/entt.hpp>
 #include <Canis/Entity.hpp>
-#include <Canis/ECS/Components/TransformComponent.hpp>
+#include <Canis/ECS/Components/Transform.hpp>
 
 using namespace glm;
 
@@ -12,7 +12,7 @@ namespace Canis
     class Camera;
     class Window;
     class InputManager;
-    class TransformComponent;
+    class Transform;
 
     struct Ray
     {
@@ -49,41 +49,41 @@ namespace Canis
 
     quat RotationBetweenVectors(vec3 start, vec3 dest);
 
-    void UpdateModelMatrix(TransformComponent &_transform);
+    void UpdateModelMatrix(Transform &_transform);
 
-	const mat4& GetModelMatrix(TransformComponent &_transform);
+	const mat4& GetModelMatrix(Transform &_transform);
 
-    extern glm::vec3 GetGlobalPosition(const TransformComponent &_transform);
+    extern glm::vec3 GetGlobalPosition(const Transform &_transform);
 
-    vec3 GetGlobalRotation(TransformComponent &_transform);
+    vec3 GetGlobalRotation(Transform &_transform);
 
-    vec3 GetGlobalScale(TransformComponent &_transform);
+    vec3 GetGlobalScale(Transform &_transform);
 
-    vec3 GetLocalRotation(TransformComponent &_transform);
+    vec3 GetLocalRotation(Transform &_transform);
 
-    void MoveTransformPosition(TransformComponent &_transform, vec3 _offset);
+    void MoveTransformPosition(Transform &_transform, vec3 _offset);
 
-    void SetTransformPosition(TransformComponent &_transform, vec3 _position);
+    void SetTransformPosition(Transform &_transform, vec3 _position);
 
-    void Rotate(TransformComponent &_transform, vec3 _rotate);
+    void Rotate(Transform &_transform, vec3 _rotate);
 
-    void SetGlobalPosition(TransformComponent &_transform, vec3 _position);
+    void SetGlobalPosition(Transform &_transform, vec3 _position);
 
-    void SetTransformRotation(TransformComponent &_transform, vec3 _rotation);
+    void SetTransformRotation(Transform &_transform, vec3 _rotation);
 
-    void SetTransformRotation(TransformComponent &_transform, quat _rotation);
+    void SetTransformRotation(Transform &_transform, quat _rotation);
 
-    void SetTransformScale(TransformComponent &_transform, vec3 _scale);
+    void SetTransformScale(Transform &_transform, vec3 _scale);
 
-    vec3 GetTransformForward(TransformComponent &_transform);
+    vec3 GetTransformForward(Transform &_transform);
 
-    vec3 GetTransformRight(TransformComponent &_transform);
+    vec3 GetTransformRight(Transform &_transform);
 
-    void LookAt(TransformComponent &_transform, vec3 _target, vec3 _up);
+    void LookAt(Transform &_transform, vec3 _target, vec3 _up);
 
     quat RotateTowards(quat _q1, quat _q2, float _maxAngle);
 
-    void RotateTowardsLookAt(TransformComponent &_transform, vec3 _target, vec3 _up, float _maxAngle);
+    void RotateTowardsLookAt(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
 
     float RandomFloat(float min, float max);
 
