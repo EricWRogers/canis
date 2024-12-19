@@ -4,7 +4,7 @@
 
 namespace Canis
 {
-	struct SphereColliderComponent
+	struct SphereCollider
 	{
 		glm::vec3 center{0.0f, 0.0f, 0.0f};
 		float radius{1.0f};
@@ -13,10 +13,10 @@ namespace Canis
 
 		static void RegisterProperties()
 		{
-			REGISTER_PROPERTY(SphereColliderComponent, center, glm::vec3);
-			REGISTER_PROPERTY(SphereColliderComponent, radius, float);
-			REGISTER_PROPERTY(SphereColliderComponent, layer, unsigned int);
-			REGISTER_PROPERTY(SphereColliderComponent, mask, unsigned int);
+			REGISTER_PROPERTY(SphereCollider, center, glm::vec3);
+			REGISTER_PROPERTY(SphereCollider, radius, float);
+			REGISTER_PROPERTY(SphereCollider, layer, unsigned int);
+			REGISTER_PROPERTY(SphereCollider, mask, unsigned int);
 		}
 	};
 } // end of Canis namespace

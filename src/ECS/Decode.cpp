@@ -1,6 +1,6 @@
 #include <Canis/ECS/Decode.hpp>
 #include <Canis/SceneManager.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
@@ -12,8 +12,8 @@
 #include <Canis/ECS/Components/CircleColliderComponent.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
-#include <Canis/ECS/Components/MeshComponent.hpp>
-#include <Canis/ECS/Components/SphereColliderComponent.hpp>
+#include <Canis/ECS/Components/Mesh.hpp>
+#include <Canis/ECS/Components/SphereCollider.hpp>
 #include <Canis/ECS/Components/DirectionalLightComponent.hpp>
 
 #include <Canis/ECS/Systems/RenderMeshSystem.hpp>
@@ -98,11 +98,11 @@ namespace Canis
         }
     }
 
-    void DecodeColorComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeColor(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto colorComponent = _n["Canis::ColorComponent"])
+        if (auto colorComponent = _n["Canis::Color"])
         {
-            auto &cc = _entity.AddComponent<Canis::ColorComponent>();
+            auto &cc = _entity.AddComponent<Canis::Color>();
             cc.color = colorComponent["color"].as<glm::vec4>(cc.color);
             cc.emission = colorComponent["emission"].as<glm::vec3>(cc.emission);
             cc.emissionUsingAlbedoIntesity = colorComponent["emissionUsingAlbedoIntesity"].as<float>(cc.emissionUsingAlbedoIntesity);
@@ -202,11 +202,11 @@ namespace Canis
         }
     }
 
-    void DecodeMeshComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeMesh(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto meshComponent = _n["Canis::MeshComponent"])
+        if (auto meshComponent = _n["Canis::Mesh"])
         {
-            auto &mc = _entity.AddComponent<Canis::MeshComponent>();
+            auto &mc = _entity.AddComponent<Canis::Mesh>();
             mc.castShadow = meshComponent["castShadow"].as<bool>(mc.castShadow);
             mc.useInstance = meshComponent["useInstance"].as<bool>(mc.useInstance);
             mc.castDepth = meshComponent["castDepth"].as<bool>(mc.castDepth);
@@ -225,11 +225,11 @@ namespace Canis
         }
     }
 
-    void DecodeSphereColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeSphereCollider(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto sphereColliderComponent = _n["Canis::SphereColliderComponent"])
+        if (auto sphereColliderComponent = _n["Canis::SphereCollider"])
         {
-            auto &scc = _entity.AddComponent<SphereColliderComponent>();
+            auto &scc = _entity.AddComponent<SphereCollider>();
             scc.center = sphereColliderComponent["center"].as<glm::vec3>(scc.center);
             scc.radius = sphereColliderComponent["radius"].as<float>(scc.radius);
             scc.layer = sphereColliderComponent["layer"].as<unsigned int>(scc.layer);

@@ -6,7 +6,7 @@
 
 #include <Canis/DataStructure/List.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/Math.hpp>
@@ -34,7 +34,7 @@ namespace Canis
     void ButtonSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         auto view =
-            _registry.view<RectTransform, ColorComponent, ButtonComponent>();
+            _registry.view<RectTransform, Color, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
         bool mouseLook = window->GetMouseLock();
@@ -114,14 +114,14 @@ namespace Canis
 
             if (lastTargetButton)
             {
-                lastTargetButton.GetComponent<ColorComponent>().color = lastTargetButton.GetComponent<ButtonComponent>().baseColor;
+                lastTargetButton.GetComponent<Color>().color = lastTargetButton.GetComponent<ButtonComponent>().baseColor;
                 lastTargetButton.GetComponent<ButtonComponent>().mouseOver = false;
                 lastTargetButton.GetComponent<RectTransform>().scale = lastTargetButton.GetComponent<ButtonComponent>().scale;
             }
 
             if (targetButton)
             {
-                targetButton.GetComponent<ColorComponent>().color = targetButton.GetComponent<ButtonComponent>().hoverColor;
+                targetButton.GetComponent<Color>().color = targetButton.GetComponent<ButtonComponent>().hoverColor;
                 targetButton.GetComponent<ButtonComponent>().mouseOver = true;
                 targetButton.GetComponent<RectTransform>().scale = targetButton.GetComponent<ButtonComponent>().hoverScale;
             }
@@ -135,7 +135,7 @@ namespace Canis
             for (int i = 0; i < List::GetCount(&m_buttons); i++)
             {
                 RectTransform &rect_transform = m_buttons[i].entity.GetComponent<RectTransform>();
-                ColorComponent &color = m_buttons[i].entity.GetComponent<ColorComponent>();
+                Color &color = m_buttons[i].entity.GetComponent<Color>();
                 ButtonComponent &button = m_buttons[i].entity.GetComponent<ButtonComponent>();
 
                 positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,

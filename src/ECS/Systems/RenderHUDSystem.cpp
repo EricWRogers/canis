@@ -14,7 +14,7 @@
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
 #include <Canis/ECS/Components/RectTransform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
@@ -64,8 +64,8 @@ namespace Canis
         }
 
         // Draw
-        auto viewUIImage = _registry.view<RectTransform, ColorComponent, UIImageComponent>();
-        auto viewText = _registry.view<RectTransform, ColorComponent, TextComponent>();
+        auto viewUIImage = _registry.view<RectTransform, Color, UIImageComponent>();
+        auto viewText = _registry.view<RectTransform, Color, TextComponent>();
 
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         Canis::Entity e;
@@ -131,7 +131,7 @@ namespace Canis
 
                     lastWasText = false;
 
-                    ColorComponent &color = _registry.get<ColorComponent>(elements[i].element);
+                    Color &color = _registry.get<Color>(elements[i].element);
                     UIImageComponent &image = _registry.get<UIImageComponent>(elements[i].element);
 
                     if (image.textureHandle.id == -1)
@@ -200,7 +200,7 @@ namespace Canis
 
                     lastWasText = true;
 
-                    ColorComponent color = _registry.get<ColorComponent>(elements[i].element);
+                    Color color = _registry.get<Color>(elements[i].element);
                     TextComponent &text = _registry.get<TextComponent>(elements[i].element);
 
                     if (text.assetId == -1)

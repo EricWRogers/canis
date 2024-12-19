@@ -14,7 +14,7 @@
 
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/BoxColliderComponent.hpp>
-#include <Canis/ECS/Components/SphereColliderComponent.hpp>
+#include <Canis/ECS/Components/SphereCollider.hpp>
 
 namespace Canis
 {
@@ -301,7 +301,7 @@ namespace Canis
 
         void LoadLayers(entt::registry &registry)
         {
-            auto sphereView = registry.view<Transform, SphereColliderComponent>();
+            auto sphereView = registry.view<Transform, SphereCollider>();
             for (auto [entity, transform, sphere] : sphereView.each())
             {
                 CollisionSystemPoint point = {};

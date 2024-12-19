@@ -6,7 +6,7 @@
 #include <Canis/External/OpenGl.hpp>
 
 #include <Canis/ECS/Components/RectTransform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 
 #include <Canis/Scene.hpp>
@@ -174,7 +174,7 @@ namespace Canis
         projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
         glUniformMatrix4fv(glGetUniformLocation(textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
 
-        auto view = _registry.view<RectTransform, ColorComponent, TextComponent>();
+        auto view = _registry.view<RectTransform, Color, TextComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         Canis::Entity e;
         e.scene = scene;

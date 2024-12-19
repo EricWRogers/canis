@@ -3,7 +3,7 @@
 #include <Canis/ECS/Systems/DamageText3DSystem.hpp>
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/DamageText3DComponent.hpp>
 
@@ -12,7 +12,7 @@ namespace Canis
 {
     void DamageText3DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
-        auto view = _registry.view<Transform, RectTransform, ColorComponent, DamageText3DComponent>();
+        auto view = _registry.view<Transform, RectTransform, Color, DamageText3DComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         for (auto [entity, transform, rectTransform, color, damageText] : view.each())
         {

@@ -4,10 +4,10 @@
 
 namespace Canis
 {
-	struct MeshComponent
+	struct Mesh
 	{
 		MeshHandle modelHandle;
-		bool castShadow = false;
+		bool castShadow = true;
 		int material = -1;
 		bool useInstance = false;
 		bool castDepth = true;

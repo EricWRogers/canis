@@ -3,7 +3,7 @@
 #include <Canis/Camera2D.hpp>
 
 #include <Canis/ECS/Components/RectTransform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 
@@ -126,7 +126,7 @@ namespace Canis
         CreateRenderBatches();
     }
 
-    void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset)
+    void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset)
     {
 
         Glyph *newGlyph;
@@ -220,7 +220,7 @@ namespace Canis
         glyphsCurrentIndex++;
     }
 
-    void SpriteRenderer2DSystem::Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin)
+    void SpriteRenderer2DSystem::Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const glm::vec2 &origin)
     {
         Glyph *newGlyph;
 
@@ -418,7 +418,7 @@ namespace Canis
             GetAnchor(Canis::RectAnchor::BOTTOMLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
             GetAnchor(Canis::RectAnchor::BOTTOMCENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
             GetAnchor(Canis::RectAnchor::BOTTOMRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight())};
-        ColorComponent color;
+        Color color;
         glm::vec2 p;
         glm::vec2 s;
 
@@ -433,7 +433,7 @@ namespace Canis
                 p.y < camPos.y + s.y &&
                 rect_transform.active)
             {
-                color = _registry.get<const ColorComponent>(entity);
+                color = _registry.get<const Color>(entity);
                 Draw(
                     glm::vec4(rect_transform.position.x + anchorTable[rect_transform.anchor].x, rect_transform.position.y + anchorTable[rect_transform.anchor].y, rect_transform.size.x, rect_transform.size.y),
                     sprite.uv,

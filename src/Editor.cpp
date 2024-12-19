@@ -8,9 +8,9 @@
 #include <Canis/Math.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/MeshComponent.hpp>
-#include <Canis/ECS/Components/SphereColliderComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
+#include <Canis/ECS/Components/Mesh.hpp>
+#include <Canis/ECS/Components/SphereCollider.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/Sprite2DComponent.hpp>
@@ -378,11 +378,11 @@ namespace Canis
                 }
             }
 
-            if (entity.HasComponent<SphereColliderComponent>())
+            if (entity.HasComponent<SphereCollider>())
             {
                 if (ImGui::CollapsingHeader("Canis::SphereCollider", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto &scc = entity.GetComponent<SphereColliderComponent>();
+                    auto &scc = entity.GetComponent<SphereCollider>();
 
                     ImGui::InputFloat3("center", glm::value_ptr(scc.center), "%.3f");
                     ImGui::InputFloat("radius", &scc.radius);
@@ -394,7 +394,7 @@ namespace Canis
                 {
                     if (ImGui::MenuItem("Remove##Canis::SphereCollider"))
                     {
-                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::SphereColliderComponent>())](entity);
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::SphereCollider>())](entity);
                     }
 
                     ImGui::EndPopup();
@@ -434,11 +434,11 @@ namespace Canis
                 }
             }
 
-            if (entity.HasComponent<ColorComponent>())
+            if (entity.HasComponent<Color>())
             {
                 if (ImGui::CollapsingHeader("Canis::Color"))
                 {
-                    auto &cc = entity.GetComponent<ColorComponent>();
+                    auto &cc = entity.GetComponent<Color>();
                     ImGui::InputFloat4("color", glm::value_ptr(cc.color), "%.3f");
                     ImGui::InputFloat3("emission", glm::value_ptr(cc.emission), "%.3f");
                     ImGui::InputFloat("emissionUsingAlbedoIntesity", &cc.emissionUsingAlbedoIntesity);
@@ -448,21 +448,21 @@ namespace Canis
                 {
                     if (ImGui::MenuItem("Remove##Canis::Color"))
                     {
-                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::ColorComponent>())](entity);
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::Color>())](entity);
                     }
 
                     ImGui::EndPopup();
                 }
             }
 
-            if (entity.HasComponent<MeshComponent>())
+            if (entity.HasComponent<Mesh>())
             {
                 static std::string path = "";
                 static int selectedPath = 0;
                 static std::string materialPath = "";
                 static int materialSelectedPath = 0;
 
-                auto &mc = entity.GetComponent<MeshComponent>();
+                auto &mc = entity.GetComponent<Mesh>();
 
                 if (refresh)
                 {

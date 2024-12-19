@@ -19,10 +19,10 @@
 #include <Canis/ECS/Systems/System.hpp>
 
 #include "../Components/Transform.hpp"
-#include "../Components/ColorComponent.hpp"
-#include "../Components/MeshComponent.hpp"
+#include "../Components/Color.hpp"
+#include "../Components/Mesh.hpp"
 #include "../Components/BoxColliderComponent.hpp"
-#include "../Components/SphereColliderComponent.hpp"
+#include "../Components/SphereCollider.hpp"
 #include "../Components/PointLightComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
 #include "../Components/ParticleComponent.hpp"
@@ -159,12 +159,12 @@ namespace Canis
 			return frustum;
 		}
 
-		bool isOnOrForwardPlan(const Plan &plan, const SphereColliderComponent &sphere)
+		bool isOnOrForwardPlan(const Plan &plan, const SphereCollider &sphere)
 		{
 			return plan.getSignedDistanceToPlan(sphere.center) > -sphere.radius;
 		}
 
-		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
+		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereCollider &sphere)
 		{
 			// Get global scale thanks to our transform
 			const glm::vec3 globalScale = transform.scale;
@@ -177,8 +177,8 @@ namespace Canis
 			// const float maxScale = std::max(std::max(transform.position.x, transform.position.y), transform.position.z);
 
 			// Max scale is assuming for the diameter. So, we need the half to apply it to our radius
-			// SphereColliderComponent globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
-			SphereColliderComponent globalSphere = {};
+			// SphereCollider globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
+			SphereCollider globalSphere = {};
 			globalSphere.center = globalCenter;
 			globalSphere.radius = sphere.radius * (maxScale * 0.5f);
 
@@ -282,7 +282,7 @@ namespace Canis
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
+				Mesh &mesh = registry.get<Mesh>(rer.e);
 				const Transform &transform = registry.get<const Transform>(rer.e);
 
 				if (!mesh.castShadow)
@@ -407,7 +407,7 @@ namespace Canis
 
 			for (RenderEnttRapper rer : sortingEntities)
 			{
-				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
+				Mesh &mesh = registry.get<Mesh>(rer.e);
 				const Transform &transform = registry.get<const Transform>(rer.e);
 
 				if (!mesh.castDepth)
@@ -534,9 +534,9 @@ namespace Canis
 			for (RenderEnttRapper rer : sortingEntities)
 			{
 				const Transform &transform = registry.get<const Transform>(rer.e);
-				const ColorComponent &color = registry.get<const ColorComponent>(rer.e);
-				MeshComponent &mesh = registry.get<MeshComponent>(rer.e);
-				// const SphereColliderComponent &sphere = registry.get<const SphereColliderComponent>(rer.e);
+				const Color &color = registry.get<const Color>(rer.e);
+				Mesh &mesh = registry.get<Mesh>(rer.e);
+				// const SphereCollider &sphere = registry.get<const SphereCollider>(rer.e);
 				unsigned int textureCount = 0;
 
 				if (!mesh.useInstance)
@@ -1062,7 +1062,7 @@ namespace Canis
 
 			// Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
-			auto view = _registry.view<Transform, const MeshComponent, const SphereColliderComponent>();
+			auto view = _registry.view<Transform, const Mesh, const SphereCollider>();
 
 			for (auto [entity, transform, mesh, sphere] : view.each())
 			{
@@ -1088,7 +1088,7 @@ namespace Canis
 				sortingEntities.push_back(rer);
 			}
 
-			auto viewBox = _registry.view<Transform, const MeshComponent, const BoxColliderComponent>();
+			auto viewBox = _registry.view<Transform, const Mesh, const BoxColliderComponent>();
 
 			for (auto [entity, transform, mesh, box] : viewBox.each())
 			{

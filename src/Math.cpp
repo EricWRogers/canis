@@ -14,7 +14,7 @@
 #include <Canis/InputManager.hpp>
 #include <Canis/AssetManager.hpp>
 
-#include <Canis/ECS/Components/MeshComponent.hpp>
+#include <Canis/ECS/Components/Mesh.hpp>
 #include <Canis/ECS/Components/Transform.hpp>
 
 namespace Canis
@@ -53,7 +53,7 @@ namespace Canis
 
     bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit) {
         Transform& transform = _entity.GetComponent<Transform>();
-        MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
+        Mesh& mesh = _entity.GetComponent<Mesh>();
         ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
         float min_t = std::numeric_limits<float>::max();
@@ -92,7 +92,7 @@ namespace Canis
     bool CheckRay(Entity _entity, Ray _ray, Hit &_hit)
     {
         Transform& transform = _entity.GetComponent<Transform>();
-        MeshComponent& mesh = _entity.GetComponent<MeshComponent>();
+        Mesh& mesh = _entity.GetComponent<Mesh>();
         ModelAsset& model = *AssetManager::Get<ModelAsset>(mesh.modelHandle.id);
 
         bool didHit = false;

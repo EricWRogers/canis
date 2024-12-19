@@ -15,9 +15,9 @@
 #include <Canis/ECS/Systems/System.hpp>
 
 #include "../Components/Transform.hpp"
-#include "../Components/ColorComponent.hpp"
-#include "../Components/MeshComponent.hpp"
-#include "../Components/SphereColliderComponent.hpp"
+#include "../Components/Color.hpp"
+#include "../Components/Mesh.hpp"
+#include "../Components/SphereCollider.hpp"
 #include "../Components/SpotLightComponent.hpp"
 #include "../Components/PointLightComponent.hpp"
 #include "../Components/DirectionalLightComponent.hpp"
@@ -83,12 +83,12 @@ namespace Canis
 			return frustum;
 		}
 
-		bool isOnOrForwardPlan(const Plan &plan, const SphereColliderComponent &sphere)
+		bool isOnOrForwardPlan(const Plan &plan, const SphereCollider &sphere)
 		{
 			return plan.getSignedDistanceToPlan(sphere.center) > -sphere.radius;
 		}
 
-		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereColliderComponent &sphere)
+		bool isOnFrustum(const Frustum &camFrustum, const Canis::Transform &transform, const glm::mat4 &modelMatrix, const SphereCollider &sphere)
 		{
 			// Get global scale thanks to our transform
 			const glm::vec3 globalScale = transform.scale;
@@ -101,8 +101,8 @@ namespace Canis
 			// const float maxScale = std::max(std::max(transform.position.x, transform.position.y), transform.position.z);
 
 			// Max scale is assuming for the diameter. So, we need the half to apply it to our radius
-			// SphereColliderComponent globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
-			SphereColliderComponent globalSphere = {};
+			// SphereCollider globalSphere(transform.position + sphere.center, sphere.radius * (maxScale * 0.5f));
+			SphereCollider globalSphere = {};
 			globalSphere.center = globalCenter;
 			globalSphere.radius = sphere.radius * (maxScale * 0.5f);
 
@@ -232,7 +232,7 @@ namespace Canis
 
 			shader->SetFloat("material.shininess", 32.0f);
 
-			auto view = _registry.view<Canis::Transform, ColorComponent, MeshComponent, SphereColliderComponent>();
+			auto view = _registry.view<Canis::Transform, Color, Mesh, SphereCollider>();
 
 			for (auto [entity, transform, color, mesh, sphere] : view.each())
 			{

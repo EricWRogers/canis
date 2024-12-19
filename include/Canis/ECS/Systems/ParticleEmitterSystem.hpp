@@ -7,9 +7,9 @@
 #include <Canis/ECS/Systems/System.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/MeshComponent.hpp>
-#include <Canis/ECS/Components/SphereColliderComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
+#include <Canis/ECS/Components/Mesh.hpp>
+#include <Canis/ECS/Components/SphereCollider.hpp>
 #include <Canis/ECS/Components/ParticleEmitterComponent.hpp>
 #include <Canis/ECS/Components/ParticleComponent.hpp>
 
@@ -26,7 +26,7 @@ public:
     void Ready() override {}
 
     void Update(entt::registry &_registry, float _deltaTime) override {
-        auto view = _registry.view<Transform, SphereColliderComponent, ParticleEmitterComponent>();
+        auto view = _registry.view<Transform, SphereCollider, ParticleEmitterComponent>();
         for (auto [entity, transform, sphere, emitter] : view.each())
         {
             // check if the particles system is seen by camera
@@ -61,23 +61,23 @@ public:
                     if (emitter.state & ParticleEmitterState::GRAVITY)
                         particleComponent.gravity = emitter.gravity;
                     
-                    ColorComponent colorComponent = {};
+                    Color colorComponent = {};
                     colorComponent.color = emitter.colorStart;
                     colorComponent.emission = emitter.emission;
                     colorComponent.emissionUsingAlbedoIntesity = emitter.emissionUsingAlbedoIntesity;
 
-                    MeshComponent meshComponent = {};
+                    Mesh meshComponent = {};
                     meshComponent.modelHandle.id = emitter.modelID;
                     meshComponent.castShadow = emitter.castShadow;
                     meshComponent.material = emitter.material;
                     meshComponent.castDepth = false;
 
-                    SphereColliderComponent sphereColliderComponent = {};
+                    SphereCollider sphereColliderComponent = {};
 
                     // create entity
-                    e.AddComponent<ColorComponent>(colorComponent);
-                    e.AddComponent<MeshComponent>(meshComponent);
-                    e.AddComponent<SphereColliderComponent>(sphereColliderComponent);
+                    e.AddComponent<Color>(colorComponent);
+                    e.AddComponent<Mesh>(meshComponent);
+                    e.AddComponent<SphereCollider>(sphereColliderComponent);
                     e.AddComponent<ParticleComponent>(particleComponent);
 
                     emitter.particles.push_back(e);
@@ -89,7 +89,7 @@ public:
                 for(int i = 0; i < emitter.numOfParticle; i++)
                 {
                     Transform &t = _registry.get<Transform>(emitter.particles[i]);
-                    ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
+                    Color &c = _registry.get<Color>(emitter.particles[i]);
                     ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
                     if (emitter.state & ParticleEmitterState::LOCAL)
@@ -139,7 +139,7 @@ public:
                         if (t.active == false) {
                             numHaveSpawned++;
 
-                            ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
+                            Color &c = _registry.get<Color>(emitter.particles[i]);
                             ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
                             float scaleMul = RandomFloat(emitter.minScalePercentage, emitter.maxScalePercentage);
@@ -217,7 +217,7 @@ public:
                 Transform &t = _registry.get<Transform>(emitter.particles[i]);
 
                 if (t.active) {
-                    ColorComponent &c = _registry.get<ColorComponent>(emitter.particles[i]);
+                    Color &c = _registry.get<Color>(emitter.particles[i]);
                     ParticleComponent &p = _registry.get<ParticleComponent>(emitter.particles[i]);
 
                     p.velocity.y = p.velocity.y + (p.gravity*_deltaTime);

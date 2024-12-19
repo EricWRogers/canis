@@ -7,7 +7,7 @@
 namespace Canis
 {
     class Glyph;
-    struct ColorComponent;
+    struct Color;
 
     class RenderBatch
     {
@@ -52,9 +52,9 @@ namespace Canis
 
         void End();
 
-        void DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset);
+        void DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset);
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const ColorComponent &color, const float &angle, const glm::vec2 &origin);
+        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const glm::vec2 &origin);
 
         void SpriteRenderBatch(bool use2DCamera);
 

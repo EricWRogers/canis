@@ -4,7 +4,7 @@
 
 namespace Canis
 {
-	struct ColorComponent
+	struct Color
 	{
 		glm::vec4 color = glm::vec4(1.0f);
 		glm::vec3 emission = glm::vec3(0.0f);
@@ -12,9 +12,9 @@ namespace Canis
 
 		static void RegisterProperties()
 		{
-			REGISTER_PROPERTY(ColorComponent, color, glm::vec4);
-			REGISTER_PROPERTY(ColorComponent, emission, glm::vec3);
-			REGISTER_PROPERTY(ColorComponent, emissionUsingAlbedoIntesity, float);
+			REGISTER_PROPERTY(Color, color, glm::vec4);
+			REGISTER_PROPERTY(Color, emission, glm::vec3);
+			REGISTER_PROPERTY(Color, emissionUsingAlbedoIntesity, float);
 		}
 	};
 } // end of Canis namespace

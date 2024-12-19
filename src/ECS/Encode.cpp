@@ -4,14 +4,14 @@
 #include <Canis/AssetManager.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
-#include <Canis/ECS/Components/ColorComponent.hpp>
-#include <Canis/ECS/Components/SphereColliderComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
+#include <Canis/ECS/Components/SphereCollider.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
-#include <Canis/ECS/Components/MeshComponent.hpp>
+#include <Canis/ECS/Components/Mesh.hpp>
 
 namespace Canis
 {
@@ -33,13 +33,13 @@ namespace Canis
         }
     }
 
-	void EncodeColorComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	void EncodeColor(YAML::Emitter &_out, Canis::Entity &_entity)
 	{
-		if (_entity.HasComponent<ColorComponent>())
+		if (_entity.HasComponent<Color>())
         {
-            ColorComponent& cc = _entity.GetComponent<ColorComponent>();
+            Color& cc = _entity.GetComponent<Color>();
 
-            _out << YAML::Key << "Canis::ColorComponent";
+            _out << YAML::Key << "Canis::Color";
             _out << YAML::BeginMap;
 
             _out << YAML::Key << "color" << YAML::Value << cc.color;
@@ -50,13 +50,13 @@ namespace Canis
         }
 	}
 
-	void EncodeSphereColliderComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	void EncodeSphereCollider(YAML::Emitter &_out, Canis::Entity &_entity)
 	{
-		if (_entity.HasComponent<SphereColliderComponent>())
+		if (_entity.HasComponent<SphereCollider>())
         {
-            SphereColliderComponent& scc = _entity.GetComponent<SphereColliderComponent>();
+            SphereCollider& scc = _entity.GetComponent<SphereCollider>();
 
-            _out << YAML::Key << "Canis::SphereColliderComponent";
+            _out << YAML::Key << "Canis::SphereCollider";
             _out << YAML::BeginMap;
 
             _out << YAML::Key << "center" << YAML::Value << scc.center;
@@ -201,13 +201,13 @@ namespace Canis
 		}
 	}
 
-	void EncodeMeshComponent(YAML::Emitter &_out, Canis::Entity &_entity)
+	void EncodeMesh(YAML::Emitter &_out, Canis::Entity &_entity)
 	{
-		if (_entity.HasComponent<MeshComponent>())
+		if (_entity.HasComponent<Mesh>())
 		{
-			MeshComponent& mc = _entity.GetComponent<MeshComponent>();
+			Mesh& mc = _entity.GetComponent<Mesh>();
 
-			_out << YAML::Key << "Canis::MeshComponent";
+			_out << YAML::Key << "Canis::Mesh";
             _out << YAML::BeginMap;
 
 			_out << YAML::Key << "modelPath" << YAML::Value << AssetManager::GetPath(mc.modelHandle.id);

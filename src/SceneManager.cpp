@@ -3,7 +3,7 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/Canis.hpp>
 
-#include <Canis/ECS/Components/ColorComponent.hpp>
+#include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 #include <Canis/ECS/Components/ButtonComponent.hpp>
 #include <Canis/ECS/Components/UISliderComponent.hpp>

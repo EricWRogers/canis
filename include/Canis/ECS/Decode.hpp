@@ -10,7 +10,7 @@ namespace Canis
     extern void DecodeCamera2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeRectTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeButtonComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
-    extern void DecodeColorComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
+    extern void DecodeColor(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeTextComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeSprite2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeUIImageComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
@@ -18,8 +18,8 @@ namespace Canis
     extern void DecodeSpriteAnimationComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeCircleColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
-    extern void DecodeMeshComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
-    extern void DecodeSphereColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
+    extern void DecodeMesh(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
+    extern void DecodeSphereCollider(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
     extern void DecodeDirectionalLightComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager);
 
     extern bool DecodeRenderMeshSystem(const std::string &_name, Canis::Scene *_scene);
