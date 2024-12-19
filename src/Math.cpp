@@ -443,7 +443,7 @@ namespace Canis
 
     void RotateTowardsLookAt(TransformComponent &_transform, vec3 _target, vec3 _up, float _maxAngle)
     {
-        vec3 direction = normalize(_transform.position - _target);
+        vec3 direction = normalize(_target - GetGlobalPosition(_transform));
         quat targetQuat = quatLookAt(direction, _up);
         _transform.rotation = RotateTowards(_transform.rotation, targetQuat, _maxAngle);
         UpdateModelMatrix(_transform);
