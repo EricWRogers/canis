@@ -75,8 +75,12 @@ namespace Canis
         glm::mat4 projection = glm::mat4(1.0f);
         projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
 
+        m_textRenderer.textShader.Use();
+        glUniformMatrix4fv(glGetUniformLocation(m_textRenderer.textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+        m_textRenderer.textShader.UnUse();
+
         float depthOffset = 0.0;
-        
+
         for (auto [entity, rect_transform, color, image] : viewUIImage.each())
         {
             HUDElementDepth hudElementDepth;
@@ -115,130 +119,127 @@ namespace Canis
         {
             Canis::RectTransform &rect_transform = _registry.get<RectTransform>(elements[i].element);
 
+            if (rect_transform.active == false)
+                continue;
+
             if (elements[i].isText == false)
             {
-                if (rect_transform.active)
+                if (lastWasText)
                 {
-                    if (lastWasText)
-                    {
-                        glEnable(GL_DEPTH_TEST);
-                        glEnable(GL_BLEND);
-                        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                        glDepthFunc(GL_ALWAYS);
+                    // glEnable(GL_DEPTH_TEST);
+                    // glEnable(GL_BLEND);
+                    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                    // glDepthFunc(GL_ALWAYS);
 
-                        m_spriteRenderer.Begin(m_glyphSortType);
-                    }
-
-                    lastWasText = false;
-
-                    Color &color = _registry.get<Color>(elements[i].element);
-                    UIImageComponent &image = _registry.get<UIImageComponent>(elements[i].element);
-
-                    if (image.textureHandle.id == -1)
-                    {
-                        continue;
-                    }
-
-                    positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                               (float)window->GetScreenWidth(),
-                                               (float)window->GetScreenHeight());
-
-                    glm::vec2 size = rect_transform.size;
-                    glm::vec2 offset = rect_transform.originOffset;
-
-                    if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTH)
-                    {
-                        float scaleX = static_cast<float>(window->GetScreenWidth()) / 1280.0f;
-                        size.x *= scaleX;
-                        size.y *= scaleX;
-                        offset.x *= scaleX;
-                        offset.y *= scaleX;
-                    }
-
-                    if (rect_transform.scaleWithScreen == ScaleWithScreen::HEIGHT)
-                    {
-                        float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
-                        size.x *= scaleY;
-                        size.y *= scaleY;
-                        offset.x *= scaleY;
-                        offset.y *= scaleY;
-                    }
-
-                    if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTHANDHEIGHT)
-                    {
-                        float scaleX = static_cast<float>(window->GetScreenWidth()) / 1280.0f;
-                        float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
-                        size.x *= scaleX;
-                        size.y *= scaleY;
-                        offset.x *= scaleX;
-                        offset.y *= scaleY;
-                    }
-
-                    m_spriteRenderer.DrawUI(
-                        glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
-                        image.uv,
-                        image.textureHandle.texture,
-                        rect_transform.depth,
-                        color,
-                        rect_transform.rotation,
-                        offset,
-                        rect_transform.rotationOriginOffset);
+                    m_spriteRenderer.Begin(m_glyphSortType);
                 }
+
+                lastWasText = false;
+
+                Color &color = _registry.get<Color>(elements[i].element);
+                UIImageComponent &image = _registry.get<UIImageComponent>(elements[i].element);
+
+                if (image.textureHandle.id == -1)
+                {
+                    continue;
+                }
+
+                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
+                                           (float)window->GetScreenWidth(),
+                                           (float)window->GetScreenHeight());
+
+                glm::vec2 size = rect_transform.size;
+                glm::vec2 offset = rect_transform.originOffset;
+
+                if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTH)
+                {
+                    float scaleX = static_cast<float>(window->GetScreenWidth()) / 1280.0f;
+                    size.x *= scaleX;
+                    size.y *= scaleX;
+                    offset.x *= scaleX;
+                    offset.y *= scaleX;
+                }
+
+                if (rect_transform.scaleWithScreen == ScaleWithScreen::HEIGHT)
+                {
+                    float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
+                    size.x *= scaleY;
+                    size.y *= scaleY;
+                    offset.x *= scaleY;
+                    offset.y *= scaleY;
+                }
+
+                if (rect_transform.scaleWithScreen == ScaleWithScreen::WIDTHANDHEIGHT)
+                {
+                    float scaleX = static_cast<float>(window->GetScreenWidth()) / 1280.0f;
+                    float scaleY = static_cast<float>(window->GetScreenHeight()) / 800.0f;
+                    size.x *= scaleX;
+                    size.y *= scaleY;
+                    offset.x *= scaleX;
+                    offset.y *= scaleY;
+                }
+
+                m_spriteRenderer.DrawUI(
+                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
+                    image.uv,
+                    image.textureHandle.texture,
+                    rect_transform.depth,
+                    color,
+                    rect_transform.rotation,
+                    offset,
+                    rect_transform.rotationOriginOffset);
             }
             else
             {
-                if (rect_transform.active)
+                if (lastWasText == false)
                 {
-                    if (lastWasText == false)
-                    {
-                        m_spriteRenderer.End();
-                        m_spriteRenderer.SpriteRenderBatch(false);
-
-                        glDisable(GL_DEPTH_TEST);
-                        glDisable(GL_BLEND);
-                    }
-
-                    lastWasText = true;
-
-                    Color color = _registry.get<Color>(elements[i].element);
-                    TextComponent &text = _registry.get<TextComponent>(elements[i].element);
-
-                    if (text.assetId == -1)
-                    {
-                        continue;
-                    }
-
-                    glEnable(GL_DEPTH_TEST);
-                    glEnable(GL_BLEND);
-                    glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                    glDepthFunc(GL_ALWAYS);
-
+                    m_spriteRenderer.End();
+                    m_spriteRenderer.SpriteRenderBatch(false);
                     m_textRenderer.textShader.Use();
-                    glUniformMatrix4fv(glGetUniformLocation(m_textRenderer.textShader.GetProgramID(), "projection"), 1, GL_FALSE, glm::value_ptr(projection));
+                    
 
-                    e.entityHandle = elements[i].element;
-                    positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                               (float)window->GetScreenWidth(),
-                                               (float)window->GetScreenHeight());
-
-                    m_textRenderer.RenderText(&e,
-                               m_textRenderer.textShader,
-                               text.text,
-                               rect_transform.position.x + positionAnchor.x,
-                               rect_transform.position.y + positionAnchor.y,
-                               rect_transform.scale,
-                               color.color,
-                               text.assetId,
-                               text.alignment,
-                               rect_transform.originOffset,
-                               text._status,
-                               rect_transform.rotation);
-
-                    m_textRenderer.textShader.UnUse();
-
-                    glDisable(GL_DEPTH_TEST);
-                    glDisable(GL_BLEND);
+                    // glDisable(GL_DEPTH_TEST);
+                    // glDisable(GL_BLEND);
                 }
+
+                lastWasText = true;
+
+                Color color = _registry.get<Color>(elements[i].element);
+                TextComponent &text = _registry.get<TextComponent>(elements[i].element);
+
+                if (text.assetId == -1)
+                {
+                    continue;
+                }
+
+                // glEnable(GL_DEPTH_TEST);
+                // glEnable(GL_BLEND);
+                // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+                // glDepthFunc(GL_ALWAYS);                
+                
+
+                e.entityHandle = elements[i].element;
+                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
+                                           (float)window->GetScreenWidth(),
+                                           (float)window->GetScreenHeight());
+
+                m_textRenderer.RenderText(&e,
+                                          m_textRenderer.textShader,
+                                          text.text,
+                                          rect_transform.position.x + positionAnchor.x,
+                                          rect_transform.position.y + positionAnchor.y,
+                                          rect_transform.scale,
+                                          color.color,
+                                          text.assetId,
+                                          text.alignment,
+                                          rect_transform.originOffset,
+                                          text._status,
+                                          rect_transform.rotation);
+
+                // m_textRenderer.textShader.UnUse();
+
+                // glDisable(GL_DEPTH_TEST);
+                // glDisable(GL_BLEND);
             }
         }
 
@@ -246,9 +247,6 @@ namespace Canis
         {
             m_spriteRenderer.End();
             m_spriteRenderer.SpriteRenderBatch(false);
-
-            glDisable(GL_DEPTH_TEST);
-            glDisable(GL_BLEND);
         }
     }
 } // end of Canis namespace
