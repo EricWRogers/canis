@@ -5,9 +5,10 @@ namespace Canis
 {
     struct Character
     {
-        unsigned int textureID; // ID handle of the glyph texture
-        glm::ivec2 size;        // Size of glyph
-        glm::ivec2 bearing;     // Offset from baseline to left/top of glyph
-        unsigned int advance;   // Horizontal offset to advance to next glyph
+        glm::ivec2 size;
+        glm::ivec2 bearing;
+        unsigned int advance;
+        glm::vec2 atlasPos;
+        glm::vec2 atlasSize;
     };
 } // end of Canis namespace

@@ -21,8 +21,8 @@ namespace Canis
         Asset();
         ~Asset();
 
-        Asset(const Asset&) = delete;
-        Asset& operator= (const Asset&) = delete;
+        Asset(const Asset &) = delete;
+        Asset &operator=(const Asset &) = delete;
 
         virtual bool Load(std::string _path) = 0;
         virtual bool Free() = 0;
@@ -33,11 +33,12 @@ namespace Canis
     private:
         GLTexture m_texture;
         std::string m_path = "";
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         GLTexture GetGLTexture() { return m_texture; }
-        GLTexture* GetPointerToTexture() { return &m_texture; }
+        GLTexture *GetPointerToTexture() { return &m_texture; }
         std::string GetPath() { return m_path; }
     };
 
@@ -47,12 +48,13 @@ namespace Canis
         Canis::Shader *m_skyboxShader;
         unsigned int m_skyboxVAO, m_skyboxVBO;
         unsigned int m_cubemapTexture;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
         unsigned int GetVAO() { return m_skyboxVAO; }
         unsigned int GetTexture() { return m_cubemapTexture; }
-        Canis::Shader* GetShader() { return m_skyboxShader; }
+        Canis::Shader *GetShader() { return m_skyboxShader; }
     };
 
     class ModelAsset : public Asset
@@ -68,6 +70,7 @@ namespace Canis
         unsigned int vbo;
         unsigned int ebo;
         int size;
+
     private:
         void Bind();
         void CalculateIndicesFromVertices(const std::vector<Canis::Vertex> &_vertices);
@@ -90,15 +93,21 @@ namespace Canis
     {
     private:
         std::string m_path = "";
-        unsigned int m_vao, m_vbo, m_font_size;
+        unsigned int m_texture;
+        unsigned int m_vao, m_vbo, m_fontSize;
+        // guessing the size
+        const static int atlasWidth = 512;
+        const static int atlasHeight = 512;
+        GLubyte m_atlasData[atlasWidth * atlasHeight] = {};
     public:
-        TextAsset(unsigned int _font_size) { m_font_size = _font_size; }
-        std::map<GLchar, Character> Characters;
+        TextAsset(unsigned int _fontSize) { m_fontSize = _fontSize; }
+        Character characters[127];
         bool Load(std::string _path) override;
         bool Free() override;
+        unsigned int GetTexture() { return m_texture; }
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
-        unsigned int GetFontSize() { return m_font_size; }
+        unsigned int GetFontSize() { return m_fontSize; }
 
         std::string GetPath() { return m_path; }
     };
@@ -108,10 +117,11 @@ namespace Canis
     private:
         void *m_chunk = nullptr;
         float m_volume = 0.0f;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        
+
         void Play();
         void Play(float _volume);
         int Play(float _volume, bool _loop);
@@ -122,10 +132,11 @@ namespace Canis
     private:
         void *m_music = nullptr;
         float m_volume = 0.0f;
+
     public:
         bool Load(std::string _path) override;
         bool Free() override;
-        
+
         void Play(int _loops);
         void Play(int _loops, float _volume);
         void UpdateVolume();
@@ -138,13 +149,14 @@ namespace Canis
     {
     private:
         Canis::Shader *m_shader;
+
     public:
         ShaderAsset() { m_shader = new Canis::Shader(); }
 
         bool Load(std::string _path) override;
         bool Free() override;
 
-        Canis::Shader* GetShader() { return m_shader; }
+        Canis::Shader *GetShader() { return m_shader; }
     };
 
     struct SpriteFrame
@@ -181,42 +193,47 @@ namespace Canis
 
         unsigned int GetTileWidth();
         unsigned int GetTileHeight();
-        
+
         std::vector<std::vector<unsigned int>> GetTiles(std::string _layer);
 
-        void* GetLoader() { return loader; }
+        void *GetLoader() { return loader; }
 
     private:
-        void* loader = nullptr;
+        void *loader = nullptr;
     };
 
     enum MaterialInfo
     {
-        HASSHADER                           = 1u,
-        HASALBEDO                           = 2u,
-        HASSPECULAR                         = 4u,
-        HASEMISSION                         = 8u,
-        HASSCREENTEXTURE                    = 16u,
-        HASCOLOR                            = 32u,
-        HASEMISSIONCOLOR                    = 64u,
-        HASEMISSIONUSINGALEDOPLUSINTESITY   = 128u,
-        HASDEPTH                            = 256u,
-        HASBACKFACECULLING                  = 512u,
-        HASFRONTFACECULLING                 = 1024u,
-        HASCUSTOMDEPTHSHADER                = 2048u,
+        HASSHADER = 1u,
+        HASALBEDO = 2u,
+        HASSPECULAR = 4u,
+        HASEMISSION = 8u,
+        HASSCREENTEXTURE = 16u,
+        HASCOLOR = 32u,
+        HASEMISSIONCOLOR = 64u,
+        HASEMISSIONUSINGALEDOPLUSINTESITY = 128u,
+        HASDEPTH = 256u,
+        HASBACKFACECULLING = 512u,
+        HASFRONTFACECULLING = 1024u,
+        HASCUSTOMDEPTHSHADER = 2048u,
     };
 
     class MaterialFields
     {
     private:
-        struct FloatUniformData { std::string name; float value; };
+        struct FloatUniformData
+        {
+            std::string name;
+            float value;
+        };
         std::vector<FloatUniformData> floatUniformData = {};
+
     public:
         void Use(Shader &_shader);
 
-        void SetFloat(const std::string& _string, float _value);
+        void SetFloat(const std::string &_string, float _value);
     };
-    
+
     struct MaterialAsset
     {
         unsigned int info = 0u;
@@ -235,12 +252,13 @@ namespace Canis
 
     class PrefabAsset : public Asset
     {
-        private:
-            YAML::Node m_node;
-        public:
-            bool Load(const std::string _path);
-            bool Free();
+    private:
+        YAML::Node m_node;
 
-            YAML::Node& GetNode();
+    public:
+        bool Load(const std::string _path);
+        bool Free();
+
+        YAML::Node &GetNode();
     };
 } // end of Canis namespace

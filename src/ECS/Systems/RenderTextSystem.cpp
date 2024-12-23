@@ -21,22 +21,27 @@ namespace Canis
         // stop crashes that happen when string empty
         if (t.size() == 0)
             return;
-        
+
         if (fontId < 0)
-                return;
+            return;
         
-        // activate corresponding render state
+        TextAsset *asset = AssetManager::Get<TextAsset>(fontId);
+
         shader.Use();
         shader.SetVec4("textColor", color);
         glActiveTexture(GL_TEXTURE0);
-        glBindVertexArray(AssetManager::Get<TextAsset>(fontId)->GetVAO());
+        glBindTexture(GL_TEXTURE_2D, asset->GetTexture());
+
+        glBindVertexArray(asset->GetVAO());
+
+        std::vector<float> vertices;
 
         glm::vec2 pos = glm::vec2(x,y);
 
         bool setPivot = false;
 
         if ((_status & BIT::ONE) > 0) { // check if we need to recalculate the size &| alignment
-            
+
             float left  =  FLT_MAX;
             float right = -FLT_MAX;
             float bigestH = -FLT_MAX;
@@ -46,7 +51,7 @@ namespace Canis
             c--;
             for (; true; c--)
             {
-                Character ch = AssetManager::Get<TextAsset>(fontId)->Characters[*c];
+                Character ch = AssetManager::Get<TextAsset>(fontId)->characters[*c];
 
                 float xpos = x + ch.bearing.x * scale;
                 float ypos = y - (ch.size.y - ch.bearing.y) * scale;
@@ -56,21 +61,12 @@ namespace Canis
 
                 if (h > bigestH)
                     bigestH = h;
-                
-                // update VBO for each character
-                float vertices[6][4] = {
-                    {xpos - w, ypos + h, 0.0f, 0.0f},
-                    {xpos - w, ypos, 0.0f, 1.0f},
-                    {xpos, ypos, 1.0f, 1.0f},
-                    {xpos - w, ypos + h, 0.0f, 0.0f},
-                    {xpos, ypos, 1.0f, 1.0f},
-                    {xpos, ypos + h, 1.0f, 0.0f}};
-                
+
                 if ((xpos - w) < left)
                     left = xpos - w;
                 if ((xpos) > right)
                     right = xpos;
-                
+
                 x -= (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
 
                 if (c == t.begin())
@@ -95,11 +91,9 @@ namespace Canis
             }
         }
 
-        // draw text
-        std::string::const_iterator c;
-        for (c = t.begin(); c != t.end(); c++)
+        for (const char &c : t)
         {
-            Character ch = AssetManager::Get<TextAsset>(fontId)->Characters[*c];
+            Character ch = asset->characters[c];
 
             float xpos = _textOffset.x + x + ch.bearing.x * scale;
             float ypos = _textOffset.y + y - (ch.size.y - ch.bearing.y) * scale;
@@ -126,30 +120,29 @@ namespace Canis
                 RotatePointAroundPivot(bottomRight, pos, _angle);
                 RotatePointAroundPivot(topRight, pos, _angle);
             }
+        
+            vertices.push_back(topLeft.x);       vertices.push_back(topLeft.y);     vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(bottomRight.x);    vertices.push_back(bottomRight.y);       vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
+            vertices.push_back(bottomLeft.x);   vertices.push_back(bottomLeft.y);       vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
 
-            float vertices[6][4] = {
-                {topLeft.x, topLeft.y, 0.0f, 0.0f},
-                {bottomLeft.x, bottomLeft.y, 0.0f, 1.0f},
-                {bottomRight.x, bottomRight.y, 1.0f, 1.0f},
+            vertices.push_back(topLeft.x);       vertices.push_back(topLeft.y);  vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(topRight.x);   vertices.push_back(topRight.y);  vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(bottomRight.x);      vertices.push_back(bottomRight.y);       vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
 
-                {topLeft.x, topLeft.y, 0.0f, 0.0f},
-                {bottomRight.x, bottomRight.y, 1.0f, 1.0f},
-                {topRight.x, topRight.y, 1.0f, 0.0f}};
-            // render glyph texture over quad
-            glBindTexture(GL_TEXTURE_2D, ch.textureID);
-            // update content of VBO memory
-            glBindBuffer(GL_ARRAY_BUFFER, AssetManager::Get<TextAsset>(fontId)->GetVBO());
-            glBufferSubData(GL_ARRAY_BUFFER, 0, sizeof(vertices), vertices); // be sure to use glBufferSubData and not glBufferData
-
-            glBindBuffer(GL_ARRAY_BUFFER, 0);
-            // render quad
-            glDrawArrays(GL_TRIANGLES, 0, 6);
+            
             // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
             x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
         }
-    
-        // iterate through all characters
-        /**/
+
+        // Upload all vertex data to the GPU at once
+        glBindBuffer(GL_ARRAY_BUFFER, asset->GetVBO());
+        glBufferData(GL_ARRAY_BUFFER, sizeof(float) * vertices.size(), vertices.data(), GL_DYNAMIC_DRAW);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+
+        // Render the entire string in one draw call
+        glDrawArrays(GL_TRIANGLES, 0, vertices.size() / 4); // 4 components per vertex (x, y, texX, texY)
+
+        // Unbind resources
         glBindVertexArray(0);
         glBindTexture(GL_TEXTURE_2D, 0);
     }
@@ -190,19 +183,19 @@ namespace Canis
                 positionAnchor = GetAnchor((Canis::RectAnchor)transform.anchor,
                                            (float)window->GetScreenWidth(),
                                            (float)window->GetScreenHeight());
-                
+
                 RenderText(&e,
-                            textShader,
-                            text.text,
-                            transform.position.x + positionAnchor.x,
-                            transform.position.y + positionAnchor.y,
-                            transform.scale,
-                            color.color,
-                            text.assetId,
-                            text.alignment,
-                            transform.originOffset,
-                            text._status,
-                            transform.rotation);
+                           textShader,
+                           text.text,
+                           transform.position.x + positionAnchor.x,
+                           transform.position.y + positionAnchor.y,
+                           transform.scale,
+                           color.color,
+                           text.assetId,
+                           text.alignment,
+                           transform.originOffset,
+                           text._status,
+                           transform.rotation);
             }
         }
 

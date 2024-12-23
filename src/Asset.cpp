@@ -367,7 +367,7 @@ namespace Canis
 
         return true;
     }
-    
+
     bool ModelAsset::LoadWithVertex(const std::vector<Canis::Vertex> &_vertices)
     {
         CalculateIndicesFromVertices(_vertices);
@@ -424,87 +424,94 @@ namespace Canis
     bool TextAsset::Load(std::string _path)
     {
         m_path = _path;
-        // FreeType
-        // --------
-        // All functions return a value different than 0 whenever an error occurred
-        FT_Library ft;
-        FT_Face face;
 
-        if (FT_Init_FreeType(&ft))
+        FT_Library fontLibrary;
+        if (FT_Init_FreeType(&fontLibrary))
         {
             Canis::Error("ERROR::FREETYPE: Could not init FreeType Library");
+            return false;
         }
 
-        if (FT_New_Face(ft, _path.c_str(), 0, &face))
+        FT_Face fontFace;
+
+        if (FT_New_Face(fontLibrary, _path.c_str(), 0, &fontFace))
         {
             Canis::Error("ERROR::FREETYPE: Failed to load font");
+            return false;
         }
-        else
+
+        FT_Set_Pixel_Sizes(fontFace, 0, m_fontSize);
+        
+        int currentX = 0, currentY = 0;
+        int maxHeightInRow = 0;
+
+        for (GLubyte c = 32; c < 127; c++)
         {
-            // set size to load glyphs as
-            FT_Set_Pixel_Sizes(face, 0, m_font_size);
-
-            // disable byte-alignment restriction
-            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
-
-            // load first 128 characters of ASCII set
-            for (unsigned char c = 0; c < 128; c++)
+            // Load the character bitmap
+            if (FT_Load_Char(fontFace, c, FT_LOAD_RENDER))
             {
-                // Load character glyph
-                if (FT_Load_Char(face, c, FT_LOAD_RENDER))
-                {
-                    std::cout << "ERROR::FREETYTPE: Failed to load Glyph" << std::endl;
-                    continue;
-                }
-                // generate texture
-                unsigned int texture;
-                glGenTextures(1, &texture);
-                glBindTexture(GL_TEXTURE_2D, texture);
-                #ifdef __EMSCRIPTEN__
-                glTexImage2D(
-                    GL_TEXTURE_2D,
-                    0,
-                    GL_LUMINANCE,
-                    face->glyph->bitmap.width,
-                    face->glyph->bitmap.rows,
-                    0,
-                    GL_LUMINANCE,
-                    GL_UNSIGNED_BYTE,
-                    face->glyph->bitmap.buffer);
-                #else
-                glTexImage2D(
-                    GL_TEXTURE_2D,
-                    0,
-                    GL_RED,
-                    face->glyph->bitmap.width,
-                    face->glyph->bitmap.rows,
-                    0,
-                    GL_RED,
-                    GL_UNSIGNED_BYTE,
-                    face->glyph->bitmap.buffer);
-                #endif
-                
-                // set texture options
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-                // now store character for later use
-                Character character = {
-                    texture,
-                    glm::ivec2(face->glyph->bitmap.width, face->glyph->bitmap.rows),
-                    glm::ivec2(face->glyph->bitmap_left, face->glyph->bitmap_top),
-                    static_cast<unsigned int>(face->glyph->advance.x)};
-                Characters.insert(std::pair<char, Character>(c, character));
+                std::cerr << "Failed to load Glyph: " << c << std::endl;
+                continue;
             }
-            glBindTexture(GL_TEXTURE_2D, 0);
+
+            // if (!fontFace->glyph->bitmap.buffer)
+            //{
+            //     std::cerr << "Bitmap buffer is empty for character: " << c << std::endl;
+            //     continue; // Skip if the bitmap buffer is invalid
+            // }
+
+            // Bound check for the texture atlas
+            if (currentX + fontFace->glyph->bitmap.width > atlasWidth)
+            {
+                currentX = 0;
+                currentY += maxHeightInRow;
+                maxHeightInRow = 0;
+            }
+
+            if (currentY + fontFace->glyph->bitmap.rows > atlasHeight)
+            {
+                Canis::FatalError("Texture Atlas is too small Eric make the texture atlas size dynamic!");
+                break;
+            }
+
+            // Copy bitmap into the texture atlas (m_atlasData)
+            for (int y = 0; y < fontFace->glyph->bitmap.rows; y++)
+            {
+                for (int x = 0; x < fontFace->glyph->bitmap.width; x++)
+                {
+                    m_atlasData[(currentY + y) * atlasWidth + (currentX + x)] = fontFace->glyph->bitmap.buffer[y * fontFace->glyph->bitmap.width + x];
+                }
+            }
+
+            Character character;
+            character.size = glm::ivec2(fontFace->glyph->bitmap.width, fontFace->glyph->bitmap.rows);
+            character.bearing = glm::ivec2(fontFace->glyph->bitmap_left, fontFace->glyph->bitmap_top);
+            character.advance = static_cast<GLuint>(fontFace->glyph->advance.x);
+            character.atlasPos = glm::vec2((float)currentX / atlasWidth, (float)currentY / atlasHeight);
+            character.atlasSize = glm::vec2((float)fontFace->glyph->bitmap.width / atlasWidth, (float)fontFace->glyph->bitmap.rows / atlasHeight);
+
+            characters[c] = character;
+
+            currentX += fontFace->glyph->bitmap.width;
+            maxHeightInRow = std::max(maxHeightInRow, (int)fontFace->glyph->bitmap.rows);
         }
 
-        FT_Done_Face(face);
-        FT_Done_FreeType(ft);
+        glGenTextures(1, &m_texture);
+        glBindTexture(GL_TEXTURE_2D, m_texture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RED, atlasWidth, atlasHeight, 0, GL_RED, GL_UNSIGNED_BYTE, m_atlasData);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+
+        // clean up freetype
+        FT_Done_Face(fontFace);
+        FT_Done_FreeType(fontLibrary);
 
         // configure m_vao/m_vbo for texture quads
         // -----------------------------------
+        m_vao = 0;
+        m_vbo = 0;
         glGenVertexArrays(1, &m_vao);
         glGenBuffers(1, &m_vbo);
         glBindVertexArray(m_vao);
@@ -673,7 +680,7 @@ namespace Canis
             _shader.SetFloat(floatUniformData[i].name, floatUniformData[i].value);
     }
 
-    void MaterialFields::SetFloat(const std::string& _name, float _value)
+    void MaterialFields::SetFloat(const std::string &_name, float _value)
     {
         floatUniformData.push_back({_name, _value});
     }
