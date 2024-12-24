@@ -97,6 +97,8 @@ namespace Canis
 
     void Lerp(vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction);
 
+    float Lerp(float _min, float _max, float _fraction);
+
     void AnimationBellCurve(float &_value, const float &_min, const float &_max, const float &_fraction);
 
     void AnimationBellCurve(vec3 &_value, const vec3 &_min, const vec3 &_max, const float &_fraction);

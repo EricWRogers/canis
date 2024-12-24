@@ -114,6 +114,10 @@ namespace Canis
                          { return ((a.depth + a.depthOffset) > (b.depth + b.depthOffset)); });
 
         bool lastWasText = true;
+        glEnable(GL_DEPTH_TEST);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthFunc(GL_ALWAYS);
 
         for (int i = 0; i < elements.size(); i++)
         {
@@ -126,11 +130,6 @@ namespace Canis
             {
                 if (lastWasText)
                 {
-                    // glEnable(GL_DEPTH_TEST);
-                    // glEnable(GL_BLEND);
-                    // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                    // glDepthFunc(GL_ALWAYS);
-
                     m_spriteRenderer.Begin(m_glyphSortType);
                 }
 
