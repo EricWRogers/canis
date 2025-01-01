@@ -499,6 +499,11 @@ namespace Canis
         _value = _min + _fraction * (_max - _min);
     }
 
+    float Lerp(float _min, float _max, float _fraction)
+    {
+        return _min + _fraction * (_max - _min);
+    }
+
     void AnimationBellCurve(float &_value, const float &_min, const float &_max, const float &_fraction)
     {
         _value = _min + sin(Canis::PI * _fraction) * (_max - _min);
