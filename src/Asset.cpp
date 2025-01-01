@@ -382,19 +382,19 @@ namespace Canis
         return false;
     }
 
-    bool InstanceMeshAsset::Load(unsigned int _modelID, const std::vector<glm::mat4> &_modelMatrices, unsigned int _vao)
+    bool InstanceMeshAsset::Load(std::string _path, const std::vector<glm::mat4> &_modelMatrices)
     {
         modelMatrices = _modelMatrices;
 
-        modelID = _modelID;
+        model.Load(_path);
 
-        glBindVertexArray(_vao);
+        glBindVertexArray(model.vao);
 
         glGenBuffers(1, &buffer);
         glBindBuffer(GL_ARRAY_BUFFER, buffer);
         glBufferData(GL_ARRAY_BUFFER, modelMatrices.size() * sizeof(glm::mat4), &modelMatrices[0], GL_STATIC_DRAW);
 
-        glBindVertexArray(_vao);
+        glBindVertexArray(model.vao);
         // set attribute pointers for matrix (4 times vec4)
         glEnableVertexAttribArray(3);
         glVertexAttribPointer(3, 4, GL_FLOAT, GL_FALSE, sizeof(glm::mat4), (void *)0);
@@ -418,6 +418,7 @@ namespace Canis
     bool InstanceMeshAsset::Free()
     {
         glDeleteBuffers(1, &buffer);
+        model.Free();
         return false;
     }
 

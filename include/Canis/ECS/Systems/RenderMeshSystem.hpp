@@ -270,6 +270,7 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
+			ModelAsset* model = nullptr;
 			unsigned int modelId = 0;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -310,10 +311,10 @@ namespace Canis
 				else
 				{
 					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.modelHandle.id);
-					modelId = instanceMeshAsset->modelID;
-					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
-					size = AssetManager::Get<ModelAsset>(modelId)->size;
-					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+					model = &(instanceMeshAsset->model);
+					vao = model->vao;
+					size = model->size;
+					ebo = model->ebo;
 
 					material = AssetManager::Get<MaterialAsset>(mesh.material);
 
@@ -345,7 +346,7 @@ namespace Canis
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											static_cast<unsigned int>(model->indices.size()),
 											GL_UNSIGNED_INT,
 											0,
 											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
@@ -395,6 +396,7 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
+			ModelAsset* model = nullptr;
 			unsigned int modelId = 0;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -438,10 +440,10 @@ namespace Canis
 				else
 				{
 					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.modelHandle.id);
-					modelId = instanceMeshAsset->modelID;
-					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
-					size = AssetManager::Get<ModelAsset>(modelId)->size;
-					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+					model = &(instanceMeshAsset->model);
+					vao = model->vao;
+					size = model->size;
+					ebo = model->ebo;
 
 					material = AssetManager::Get<MaterialAsset>(mesh.material);
 
@@ -474,7 +476,7 @@ namespace Canis
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											static_cast<unsigned int>(model->indices.size()),
 											GL_UNSIGNED_INT,
 											0,
 											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));
@@ -521,6 +523,7 @@ namespace Canis
 			std::string emissionUsingAlbedoIntesityKey = "EMISSIONUSINGALBEDOINTESITY";
 
 			int modelId = -1;
+			ModelAsset* model = nullptr;
 			int materialId = -1;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -552,10 +555,10 @@ namespace Canis
 				else
 				{
 					instanceMeshAsset = AssetManager::Get<InstanceMeshAsset>(mesh.modelHandle.id);
-					modelId = instanceMeshAsset->modelID;
-					vao = AssetManager::Get<ModelAsset>(modelId)->vao;
-					size = AssetManager::Get<ModelAsset>(modelId)->size;
-					ebo = AssetManager::Get<ModelAsset>(modelId)->ebo;
+					model = &(instanceMeshAsset->model);
+					vao = model->vao;
+					size = model->size;
+					ebo = model->ebo;
 
 					// glBindBuffer(GL_ARRAY_BUFFER, instanceMeshAsset->buffer);
 				}
@@ -781,7 +784,7 @@ namespace Canis
 					glDrawElements(GL_TRIANGLES, AssetManager::Get<ModelAsset>(modelId)->indices.size(), GL_UNSIGNED_INT, 0);
 				else
 					glDrawElementsInstanced(GL_TRIANGLES,
-											static_cast<unsigned int>(AssetManager::Get<ModelAsset>(modelId)->indices.size()),
+											static_cast<unsigned int>(model->indices.size()),
 											GL_UNSIGNED_INT,
 											0,
 											static_cast<unsigned int>(instanceMeshAsset->modelMatrices.size()));

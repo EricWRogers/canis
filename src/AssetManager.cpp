@@ -561,7 +561,7 @@ namespace Canis
 
             // create instance
             InstanceMeshAsset *meshInstance = new InstanceMeshAsset();
-            meshInstance->Load(_modelID, _modelMatrices, Get<ModelAsset>(_modelID)->vao);
+            meshInstance->Load(GetPath(_modelID), _modelMatrices);
             int id = assetLibrary.nextId;
 
             // cache meshInstance
