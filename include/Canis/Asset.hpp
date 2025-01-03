@@ -63,6 +63,7 @@ namespace Canis
         bool Load(std::string _path) override;
         bool Free() override;
         bool LoadWithVertex(const std::vector<Canis::Vertex> &_vertices);
+        void Bind();
 
         std::vector<Vertex> vertices;
         std::vector<unsigned int> indices;
@@ -72,7 +73,6 @@ namespace Canis
         int size;
 
     private:
-        void Bind();
         void CalculateIndicesFromVertices(const std::vector<Canis::Vertex> &_vertices);
     };
 
@@ -82,12 +82,15 @@ namespace Canis
         bool Load(std::string _path) override;
         bool Free() override;
         bool Load(std::string _path, const std::vector<glm::mat4> &_modelMatrices);
+        bool Load(const std::vector<Vertex> &_vertices, const std::vector<unsigned int> &_indices, const std::vector<glm::mat4> &_modelMatrices);
 
         unsigned int buffer;
         
         ModelAsset model;
 
         std::vector<glm::mat4> modelMatrices = {};
+    private:
+        void Bind();
     };
 
     class TextAsset : public Asset

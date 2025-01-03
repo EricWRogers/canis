@@ -388,6 +388,26 @@ namespace Canis
 
         model.Load(_path);
 
+        Bind();
+
+        return true;
+    }
+
+    bool InstanceMeshAsset::Load(const std::vector<Vertex> &_vertices, const std::vector<unsigned int> &_indices, const std::vector<glm::mat4> &_modelMatrices)
+    {
+        modelMatrices = _modelMatrices;
+
+        model.vertices = _vertices;
+        model.indices = _indices;
+        model.Bind();
+
+        Bind();
+
+        return true;
+    }
+
+    void InstanceMeshAsset::Bind()
+    {
         glBindVertexArray(model.vao);
 
         glGenBuffers(1, &buffer);
@@ -411,8 +431,6 @@ namespace Canis
         glVertexAttribDivisor(6, 1);
 
         glBindVertexArray(0);
-
-        return true;
     }
 
     bool InstanceMeshAsset::Free()
