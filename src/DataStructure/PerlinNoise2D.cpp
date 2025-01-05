@@ -52,10 +52,10 @@ namespace Canis
 
     float PerlinNoise2D::Get(int _x, int _y)
     {
-        if (_y >= m_noise.size())
+        if (_y >= m_noise.size() || _y < 0)
             return 0.0f;
 
-        if (_x >= m_noise[_y].size())
+        if (_x >= m_noise[_y].size() || _x < 0)
             return 0.0f;
 
         return m_noise[_y][_x];
