@@ -6,6 +6,7 @@
 #include <Canis/Window.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Math.hpp>
+#include <Canis/AudioManager.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/Color.hpp>
@@ -1429,6 +1430,12 @@ namespace Canis
                 GetSceneManager().Load(m_scene->name);
 
                 ImGui::End();
+
+                // reset camera
+
+                // stop audio when leaving play mode
+                AudioManager::StopMusic();
+                AudioManager::StopAllSounds();
 
                 return;
             }
