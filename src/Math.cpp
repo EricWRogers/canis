@@ -449,6 +449,14 @@ namespace Canis
         UpdateModelMatrix(_transform);
     }
 
+    void RotateTowardsLookAtYAxis(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle)
+    {
+        vec3 direction = normalize(ZeroY(_target) - ZeroY(GetGlobalPosition(_transform)));
+        quat targetQuat = quatLookAt(direction, _up);
+        _transform.rotation = RotateTowards(_transform.rotation, targetQuat, _maxAngle);
+        UpdateModelMatrix(_transform);
+    }
+
     float RandomFloat(float min, float max)
     {
         if (max > min)

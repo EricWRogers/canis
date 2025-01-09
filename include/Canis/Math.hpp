@@ -85,6 +85,8 @@ namespace Canis
 
     void RotateTowardsLookAt(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
 
+    void RotateTowardsLookAtYAxis(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
+
     float RandomFloat(float min, float max);
 
     vec4 HexToRGBA(unsigned int _RRGGBBAA);
