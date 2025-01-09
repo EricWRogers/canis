@@ -6,6 +6,7 @@
 #include <Canis/ECS/Components/TagComponent.hpp>
 #include <Canis/ECS/Components/ScriptComponent.hpp>
 #include <Canis/ECS/Components/Transform.hpp>
+#include <Canis/ECS/Components/TextComponent.hpp>
 
 namespace Canis
 {
@@ -209,4 +210,18 @@ public:
         return !(*this == other);
     }
 };
+
+namespace Text {
+
+	inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, const std::string &_text) {
+		_textComponent.text = _text;
+		_rectComponent.originOffset = glm::vec2(0.0f);
+		_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
+	}
+
+	inline void Set(Entity &_entity, const std::string &_text) {
+		Set(_entity.GetComponent<TextComponent>(), _entity.GetComponent<RectTransform>(), _text);
+	}
+}
+
 } // end of Canis namespace

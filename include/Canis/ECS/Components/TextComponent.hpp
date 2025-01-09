@@ -20,12 +20,6 @@ namespace Text {
 	const unsigned int LEFT   = 0u;
 	const unsigned int RIGHT  = 1u;
 	const unsigned int CENTER = 2u;
-
-	inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, std::string _text) {
-		_textComponent.text = _text;
-		_rectComponent.originOffset = glm::vec2(0.0f);
-		_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
-	}
 }
 
 inline void RemoveTrialingZeros(std::string &_word)
