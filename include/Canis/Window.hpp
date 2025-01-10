@@ -10,8 +10,8 @@ namespace Canis
     enum WindowFlags
     {
         FULLSCREEN = 1,
-        BORDERLESS = 16,
-        RESIZEABLE = 32
+        BORDERLESS = 2,
+        RESIZEABLE = 4
     };
 
     class Window

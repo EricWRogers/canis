@@ -27,6 +27,8 @@ namespace Canis
         std::map<std::string,std::string> data = {};
 
         data["fullscreen"] = (projectConfig.fullscreen) ? "true" : "false";
+        data["borderless"] = (projectConfig.borderless) ? "true" : "false";
+        data["resizeable"] = (projectConfig.resizeable) ? "true" : "false";
         data["width"] = std::to_string(projectConfig.width);
         data["height"] = std::to_string(projectConfig.heigth);
         data["use_frame_limit"] = (projectConfig.useFrameLimit) ? "true" : "false";
@@ -72,6 +74,26 @@ namespace Canis
                         GetProjectConfig().fullscreen = true;
                     else
                         GetProjectConfig().fullscreen = false;
+                    
+                    continue;
+                }
+            }
+            if (word == "borderless"){
+                if (file >> word) {
+                    if (word == "true")
+                        GetProjectConfig().borderless = true;
+                    else
+                        GetProjectConfig().borderless = false;
+                    
+                    continue;
+                }
+            }
+            if (word == "resizeable"){
+                if (file >> word) {
+                    if (word == "true")
+                        GetProjectConfig().resizeable = true;
+                    else
+                        GetProjectConfig().resizeable = false;
                     
                     continue;
                 }

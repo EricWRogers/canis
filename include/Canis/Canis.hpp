@@ -5,6 +5,8 @@ namespace Canis
     struct ProjectConfig
     {
         bool fullscreen = false;
+        bool borderless = false;
+        bool resizeable = false;
         int width = 1280;
         int heigth = 720;
         bool useFrameLimit = false;

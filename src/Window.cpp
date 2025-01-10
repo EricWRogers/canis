@@ -53,10 +53,19 @@ namespace Canis
             flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
             m_fullscreen = true;
         }
-        if (_currentFlags & WindowFlags::BORDERLESS)
+
+        if (_currentFlags & WindowFlags::BORDERLESS) {
             flags |= SDL_WINDOW_BORDERLESS;
-        if (_currentFlags & WindowFlags::RESIZEABLE)
+        }
+
+        if (_currentFlags & WindowFlags::RESIZEABLE) {
             flags |= SDL_WINDOW_RESIZABLE;
+            Log("Resize");
+        }
+
+        Log("why are you here: " + std::to_string(_currentFlags));
+
+            //flags |= SDL_WINDOW_RESIZABLE;
 
         #ifdef __EMSCRIPTEN__
         // Create Window
