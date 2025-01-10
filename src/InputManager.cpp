@@ -28,6 +28,9 @@ namespace Canis
         mouseRel = glm::vec2(0.0f);
         m_scrollVertical = 0;
 
+        Window* window = (Window*)_window;
+        window->SetResized(false);
+
         SDL_Event event;
         while (SDL_PollEvent(&event))
         {
@@ -38,8 +41,6 @@ namespace Canis
             }
             #endif
 
-            Window* window = (Window*)_window;
-
             if (event.type == SDL_WINDOWEVENT && event.window.event == SDL_WINDOWEVENT_CLOSE && event.window.windowID == SDL_GetWindowID((SDL_Window*)window->GetSDLWindow()))
                 return false;
 
@@ -47,6 +48,13 @@ namespace Canis
             {
             case SDL_QUIT:
                 return false;
+                break;
+            case SDL_WINDOWEVENT:
+                if(event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                    _screenWidth = event.window.data1;
+                    _screenHeight = event.window.data2;
+                    window->SetWindowSize(_screenWidth, _screenHeight);
+                }
                 break;
             case SDL_MOUSEMOTION:
                     mouse.x = event.motion.x;

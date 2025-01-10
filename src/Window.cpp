@@ -55,6 +55,8 @@ namespace Canis
         }
         if (_currentFlags & WindowFlags::BORDERLESS)
             flags |= SDL_WINDOW_BORDERLESS;
+        
+        flags |= SDL_WINDOW_RESIZABLE;
 
         #ifdef __EMSCRIPTEN__
         // Create Window
@@ -210,5 +212,28 @@ namespace Canis
     void Window::SetVSync(bool _vsync)
     {
         SDL_GL_SetSwapInterval((int)_vsync);
+    }
+
+    void Window::SetWindowSize(int _width, int _height)
+    {
+        if ( _width == screenWidth && _height == screenHeight)
+            return;
+        
+        m_resized = true;
+
+        screenWidth = _width;
+        screenHeight = _height;
+
+        //Log("width: " + std::to_string(screenWidth) + " height: " + std::to_string(screenHeight));
+    }
+
+    void Window::SetResized(bool _resized)
+    {
+        m_resized = _resized;
+    }
+
+    bool Window::IsResized()
+    {
+        return m_resized;
     }
 } // end of Canis namespace

@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <glm/glm.hpp>
+#include <vector>
 
 #include "Debug.hpp"
 
@@ -38,6 +39,10 @@ namespace Canis
         int GetScreenHeight() { return screenHeight; }
 
         void ToggleFullScreen();
+        void SetWindowSize(int _width, int _height);
+        void SetResized(bool _resized);
+        bool IsResized();
+
 
         void* GetSDLWindow() { return m_sdlWindow; }
         void* GetGLContext() { return m_glContext; }
@@ -50,6 +55,7 @@ namespace Canis
     private:
         void *m_sdlWindow;
         void *m_glContext;
+        bool m_resized = false;
         int screenWidth, screenHeight;
         bool m_fullscreen = false;
         bool mouseLock = false;
