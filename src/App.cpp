@@ -141,6 +141,7 @@ namespace Canis
 
         // windowFlags |= Canis::WindowFlags::FULLSCREEN;
         // windowFlags |= Canis::WindowFlags::BORDERLESS;
+        windowFlags != WindowFlags::RESIZEABLE;
 
         if (GetProjectConfig().fullscreen)
             window.CreateFullScreen(_windowName);

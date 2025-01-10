@@ -55,8 +55,8 @@ namespace Canis
         }
         if (_currentFlags & WindowFlags::BORDERLESS)
             flags |= SDL_WINDOW_BORDERLESS;
-        
-        flags |= SDL_WINDOW_RESIZABLE;
+        if (_currentFlags & WindowFlags::RESIZEABLE)
+            flags |= SDL_WINDOW_RESIZABLE;
 
         #ifdef __EMSCRIPTEN__
         // Create Window
