@@ -77,12 +77,13 @@ namespace Canis
 		unsigned int screenSpaceFBO = 0;
 		unsigned int screenSpace = 0;
 		unsigned int hdrFBO = 0;
-		unsigned int colorBuffers[2] = {0,0};
+		unsigned int colorBuffers[2] = {0, 0};
 		unsigned int rboDepth = 0;
+		float borderColor[4] = {1.0, 1.0, 1.0, 1.0};
 		int skyboxAssetId = 0;
 		bool horizontal = true, first_iteration = true;
-		unsigned int pingpongFBO[2] = {0,0};
-		unsigned int pingpongColorbuffers[2] = {0,0};
+		unsigned int pingpongFBO[2] = {0, 0};
+		unsigned int pingpongColorbuffers[2] = {0, 0};
 		float lightProjectionSize = 20.0f;
 		glm::mat4 lightProjection, lightView;
 		glm::mat4 lightSpaceMatrix;
@@ -270,7 +271,7 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
-			ModelAsset* model = nullptr;
+			ModelAsset *model = nullptr;
 			unsigned int modelId = 0;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -396,7 +397,7 @@ namespace Canis
 			// render scene
 			std::string modelKey = "model";
 
-			ModelAsset* model = nullptr;
+			ModelAsset *model = nullptr;
 			unsigned int modelId = 0;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -523,7 +524,7 @@ namespace Canis
 			std::string emissionUsingAlbedoIntesityKey = "EMISSIONUSINGALBEDOINTESITY";
 
 			int modelId = -1;
-			ModelAsset* model = nullptr;
+			ModelAsset *model = nullptr;
 			int materialId = -1;
 			unsigned int vao = 0;
 			unsigned int size = 0;
@@ -858,90 +859,22 @@ namespace Canis
 
 		void ConfigureBuffers()
 		{
-			float borderColor[] = {1.0, 1.0, 1.0, 1.0};
-			if (shadowMultiplier != PlayerPrefs::GetInt("shadow_multiplier", 4) || shadowMap == 0)
-			{
-				// free the texture
-				if (shadowMap) {
-					glDeleteTextures(1, &shadowMap);
-					shadowMap = 0;
+			{ // hdr leak found
+				if (rboDepth)
+				{
+					glDeleteRenderbuffers(1, &rboDepth);
+					rboDepth = 0;
 				}
-
-				// free the framebuffer
-				if (shadowMapFBO) {
-					glDeleteFramebuffers(1, &shadowMapFBO);
-					shadowMapFBO = 0;
+				for (auto &colorBuffer : colorBuffers)
+				{
+					if (colorBuffer)
+					{
+						glDeleteTextures(1, &colorBuffer);
+						colorBuffer = 0;
+					}
 				}
-
-				// configure shadow map
-				shadowMultiplier = PlayerPrefs::GetInt("shadow_multiplier", 4);
-				SHADOW_WIDTH = 1024 * shadowMultiplier;
-				SHADOW_HEIGHT = 1024 * shadowMultiplier;
-				glGenFramebuffers(1, &shadowMapFBO);
-				// create depth texture
-				glGenTextures(1, &shadowMap);
-				glBindTexture(GL_TEXTURE_2D, shadowMap);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-				
-				glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-				// attach depth texture as FBO's depth buffer
-				glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
-				#ifndef GL_ES_VERSION_3_0
-					glDrawBuffer(GL_NONE);
-					glReadBuffer(GL_NONE);
-				#endif
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-			}
-
-			// free the depth map texture
-				if (depthMap) {
-					glDeleteTextures(1, &depthMap);
-					depthMap = 0;
-				}
-
-				// free the depth map framebuffer
-				if (depthMapFBO) {
-					glDeleteFramebuffers(1, &depthMapFBO);
-					depthMapFBO = 0;
-				}
-
-				// configure depth map FBO
-				// -----------------------
-				glGenFramebuffers(1, &depthMapFBO);
-				// create depth texture
-				glGenTextures(1, &depthMap);
-				glBindTexture(GL_TEXTURE_2D, depthMap);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
-				glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
-				// attach depth texture as FBO's depth buffer
-				glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
-				#ifndef GL_ES_VERSION_3_0
-					glDrawBuffer(GL_NONE);
-					glReadBuffer(GL_NONE);
-				#endif
-				glBindTexture(GL_TEXTURE_2D, 0);
-				glBindFramebuffer(GL_FRAMEBUFFER, 0);
-				
-
-				// free the texture
-				if (colorBuffers[0] || colorBuffers[1]) {
-					glDeleteTextures(2, colorBuffers);
-					colorBuffers[0] = 0;
-					colorBuffers[1] = 0;
-				}
-
-				// free the framebuffer
-				if (hdrFBO) {
+				if (hdrFBO)
+				{
 					glDeleteFramebuffers(1, &hdrFBO);
 					hdrFBO = 0;
 				}
@@ -950,10 +883,9 @@ namespace Canis
 				// ---------------------------------------
 				glGenFramebuffers(1, &hdrFBO);
 				glBindFramebuffer(GL_FRAMEBUFFER, hdrFBO);
-				// create 2 floating point color buffers (1 for normal rendering, other for brightness threshold values)
-				glGenTextures(2, colorBuffers);
 
 				/////////////////////////////////////
+				glGenTextures(1, &colorBuffers[0]);
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[0]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -964,6 +896,7 @@ namespace Canis
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, colorBuffers[0], 0);
 
 				/////////////////////////////////////
+				glGenTextures(1, &colorBuffers[1]);
 				glBindTexture(GL_TEXTURE_2D, colorBuffers[1]);
 				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
@@ -972,12 +905,6 @@ namespace Canis
 				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
 				// attach texture to framebuffer
 				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, colorBuffers[1], 0);
-
-				// free the framebuffer
-				if (rboDepth) {
-					glDeleteRenderbuffers(1, &rboDepth);
-					rboDepth = 0;
-				}
 
 				// create and attach depth buffer (renderbuffer)
 				glGenRenderbuffers(1, &rboDepth);
@@ -992,64 +919,153 @@ namespace Canis
 					std::cout << "Framebuffer not complete!" << std::endl;
 				glBindFramebuffer(GL_FRAMEBUFFER, 0);
 				///////////////////////
+			}
 
-				// free the texture
-				if (pingpongColorbuffers[0] || pingpongColorbuffers[1]) {
-					glDeleteTextures(2, pingpongColorbuffers);
-					pingpongColorbuffers[0] = 0;
-					pingpongColorbuffers[1] = 0;
-				}
-
-				// free the framebuffer
-				if (pingpongFBO[0] || pingpongFBO[1]) {
-					glDeleteFramebuffers(2, pingpongFBO);
-					pingpongFBO[0] = 0;
-					pingpongFBO[1] = 0;
-				}
-
-				// ping-pong-framebuffer for blurring
-				glGenFramebuffers(2, pingpongFBO);
-				glGenTextures(2, pingpongColorbuffers);
-				for (unsigned int i = 0; i < 2; i++)
+			{																						   // good section
+				if (shadowMultiplier != PlayerPrefs::GetInt("shadow_multiplier", 4) || shadowMap == 0) // shadow maps
 				{
-					glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
-					glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
-					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
+					// free the texture
+					if (shadowMap != 0)
+					{
+						glDeleteTextures(1, &shadowMap);
+						shadowMap = 0;
+					}
+
+					// free the framebuffer
+					if (shadowMapFBO != 0)
+					{
+						glDeleteFramebuffers(1, &shadowMapFBO);
+						shadowMapFBO = 0;
+					}
+
+					// configure shadow map
+					shadowMultiplier = PlayerPrefs::GetInt("shadow_multiplier", 4);
+					SHADOW_WIDTH = 1024 * shadowMultiplier;
+					SHADOW_HEIGHT = 1024 * shadowMultiplier;
+					glGenFramebuffers(1, &shadowMapFBO);
+					// create depth texture
+					glGenTextures(1, &shadowMap);
+					glBindTexture(GL_TEXTURE_2D, shadowMap);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, SHADOW_WIDTH, SHADOW_HEIGHT, 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+
+					glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+					// attach depth texture as FBO's depth buffer
+					glBindFramebuffer(GL_FRAMEBUFFER, shadowMapFBO);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, shadowMap, 0);
+#ifndef GL_ES_VERSION_3_0
+					glDrawBuffer(GL_NONE);
+					glReadBuffer(GL_NONE);
+#endif
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				}
+
+				{ // depth map
+					// free the depth map texture
+					if (depthMap)
+					{
+						glDeleteTextures(1, &depthMap);
+						depthMap = 0;
+					}
+
+					// free the depth map framebuffer
+					if (depthMapFBO)
+					{
+						glDeleteFramebuffers(1, &depthMapFBO);
+						depthMapFBO = 0;
+					}
+
+					// configure depth map FBO
+					// -----------------------
+					glGenFramebuffers(1, &depthMapFBO);
+					// create depth texture
+					glGenTextures(1, &depthMap);
+					glBindTexture(GL_TEXTURE_2D, depthMap);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_DEPTH_COMPONENT, GL_FLOAT, NULL);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+					glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+					// attach depth texture as FBO's depth buffer
+					glBindFramebuffer(GL_FRAMEBUFFER, depthMapFBO);
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, depthMap, 0);
+#ifndef GL_ES_VERSION_3_0
+					glDrawBuffer(GL_NONE);
+					glReadBuffer(GL_NONE);
+#endif
+					glBindFramebuffer(GL_FRAMEBUFFER, 0);
+				}
+
+				{ // pingpong
+				  // free the texture
+					if (pingpongColorbuffers[0] != 0 || pingpongColorbuffers[1] != 0)
+					{
+						glDeleteTextures(2, pingpongColorbuffers);
+						pingpongColorbuffers[0] = 0;
+						pingpongColorbuffers[1] = 0;
+					}
+
+					// free the framebuffer
+					if (pingpongFBO[0] != 0 || pingpongFBO[1] != 0)
+					{
+						glDeleteFramebuffers(2, pingpongFBO);
+						pingpongFBO[0] = 0;
+						pingpongFBO[1] = 0;
+					}
+
+					// ping-pong-framebuffer for blurring
+					glGenFramebuffers(2, pingpongFBO);
+					glGenTextures(2, pingpongColorbuffers);
+					for (unsigned int i = 0; i < 2; i++)
+					{
+						glBindFramebuffer(GL_FRAMEBUFFER, pingpongFBO[i]);
+						glBindTexture(GL_TEXTURE_2D, pingpongColorbuffers[i]);
+						glTexImage2D(GL_TEXTURE_2D, 0, GL_RGB16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGB, GL_FLOAT, NULL);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+						glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+						glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
+						// also check if framebuffers are complete (no need for depth buffer)
+						if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+							std::cout << "Framebuffer not complete!" << std::endl;
+					}
+				}
+
+				{ // screen space
+					// free the texture
+					if (screenSpace != 0)
+					{
+						glDeleteTextures(1, &screenSpace);
+						screenSpace = 0;
+					}
+
+					// free the framebuffer
+					if (screenSpaceFBO != 0)
+					{
+						glDeleteFramebuffers(1, &screenSpaceFBO);
+						screenSpaceFBO = 0;
+					}
+
+					glGenFramebuffers(1, &screenSpaceFBO);
+					glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
+					// create 2 floating point color buffers (1 for normal rendering, other for brightness threshold values)
+					glGenTextures(1, &screenSpace);
+					glBindTexture(GL_TEXTURE_2D, screenSpace);
+					glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
 					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, pingpongColorbuffers[i], 0);
-					// also check if framebuffers are complete (no need for depth buffer)
-					if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
-						std::cout << "Framebuffer not complete!" << std::endl;
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
+					glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
+
+					glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenSpace, 0);
 				}
-
-				// free the texture
-				if (screenSpace) {
-					glDeleteTextures(1, &screenSpace);
-					screenSpace = 0;
-				}
-
-				// free the framebuffer
-				if (screenSpaceFBO) {
-					glDeleteFramebuffers(1, &screenSpaceFBO);
-					screenSpaceFBO = 0;
-				}
-
-				glGenFramebuffers(1, &screenSpaceFBO);
-				glBindFramebuffer(GL_FRAMEBUFFER, screenSpaceFBO);
-				// create 2 floating point color buffers (1 for normal rendering, other for brightness threshold values)
-				glGenTextures(1, &screenSpace);
-				glBindTexture(GL_TEXTURE_2D, screenSpace);
-				glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, window->GetScreenWidth(), window->GetScreenHeight(), 0, GL_RGBA, GL_FLOAT, NULL);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_MIRRORED_REPEAT); // we clamp to the edge as the blur filter would otherwise sample repeated texture values!
-				glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_MIRRORED_REPEAT);
-
-				glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, screenSpace, 0);
 			}
+		}
 
 		void Create()
 		{
@@ -1175,29 +1191,29 @@ namespace Canis
 
 			switch (sortBy)
 			{
-				case SortBy::DISTANCE:
-					std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+			case SortBy::DISTANCE:
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
 								 { return (a.value > b.value); });
-					break;
-				case SortBy::HEIGHT:
-					std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
+				break;
+			case SortBy::HEIGHT:
+				std::stable_sort(sortingEntities.begin(), sortingEntities.end(), [](const RenderEnttRapper &a, const RenderEnttRapper &b)
 								 { return (a.value < b.value); });
-					break;
-			}				
-			
+				break;
+			}
+
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
 			glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
-			
+
 			ShadowDepthPass(_deltaTime, _registry);
 
 			glEnable(GL_DEPTH_TEST);
 			glEnable(GL_ALPHA);
 			glDepthFunc(GL_LESS);
 			glEnable(GL_CULL_FACE);
-			
+
 			DepthPass(_deltaTime, _registry);
 			DrawMesh(_deltaTime, _registry);
 			Blur(_deltaTime, _registry);
