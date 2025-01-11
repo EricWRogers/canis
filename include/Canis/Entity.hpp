@@ -209,6 +209,16 @@ public:
     {
         return !(*this == other);
     }
+
+    bool operator==(const bool& _other) const
+    {
+        return (bool)*this == _other;
+    }
+
+    bool operator!=(const bool& _other) const
+    {
+        return !((bool)*this == _other);
+    }
 };
 
 namespace Text {
