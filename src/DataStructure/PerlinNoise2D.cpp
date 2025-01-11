@@ -1,6 +1,8 @@
 #include <Canis/DataStructure/PerlinNoise2D.hpp>
 #include <Canis/Math.hpp>
 
+#include <numeric>
+
 namespace Canis
 {
     PerlinNoise2D::PerlinNoise2D(int seed)
