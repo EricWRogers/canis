@@ -100,8 +100,8 @@ namespace Canis
         unsigned int m_texture;
         unsigned int m_vao, m_vbo, m_fontSize;
         // guessing the size
-        const static int atlasWidth = 512;
-        const static int atlasHeight = 512;
+        const static int atlasWidth = 1024;
+        const static int atlasHeight = 1024;
         GLubyte m_atlasData[atlasWidth * atlasHeight] = {};
     public:
         TextAsset(unsigned int _fontSize) { m_fontSize = _fontSize; }

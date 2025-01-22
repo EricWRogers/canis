@@ -489,6 +489,7 @@ namespace Canis
 
             if (currentY + fontFace->glyph->bitmap.rows > atlasHeight)
             {
+                Canis::Warning("Font Failed to generate " + _path);
                 Canis::FatalError("Texture Atlas is too small Eric make the texture atlas size dynamic!");
                 break;
             }
