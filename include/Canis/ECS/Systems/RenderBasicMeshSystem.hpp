@@ -20,7 +20,7 @@
 #include "../Components/SphereCollider.hpp"
 #include "../Components/SpotLightComponent.hpp"
 #include "../Components/PointLightComponent.hpp"
-#include "../Components/DirectionalLightComponent.hpp"
+#include "../Components/DirectionalLight.hpp"
 
 namespace Canis
 {
@@ -136,7 +136,7 @@ namespace Canis
 			// directional light
 			int numDirLights = 0;
 
-			auto viewDirLight = _registry.view<const Canis::Transform, Canis::DirectionalLightComponent>();
+			auto viewDirLight = _registry.view<const Canis::Transform, Canis::DirectionalLight>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{

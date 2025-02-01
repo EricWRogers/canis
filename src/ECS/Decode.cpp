@@ -14,7 +14,7 @@
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/Mesh.hpp>
 #include <Canis/ECS/Components/SphereCollider.hpp>
-#include <Canis/ECS/Components/DirectionalLightComponent.hpp>
+#include <Canis/ECS/Components/DirectionalLight.hpp>
 
 #include <Canis/ECS/Systems/RenderMeshSystem.hpp>
 #include <Canis/ECS/Systems/ButtonSystem.hpp>
@@ -237,15 +237,15 @@ namespace Canis
         }
     }
     
-    void DecodeDirectionalLightComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    void DecodeDirectionalLight(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
-        if (auto directionalLightComponent = _n["Canis::DirectionalLightComponent"])
+        if (auto DirectionalLight = _n["Canis::DirectionalLight"])
         {
-            auto &dlc = _entity.AddComponent<Canis::DirectionalLightComponent>();
-            dlc.direction = directionalLightComponent["direction"].as<glm::vec3>();
-            dlc.ambient = directionalLightComponent["ambient"].as<glm::vec3>();
-            dlc.diffuse = directionalLightComponent["diffuse"].as<glm::vec3>();
-            dlc.specular = directionalLightComponent["specular"].as<glm::vec3>();
+            auto &dlc = _entity.AddComponent<Canis::DirectionalLight>();
+            dlc.direction = DirectionalLight["direction"].as<glm::vec3>();
+            dlc.ambient = DirectionalLight["ambient"].as<glm::vec3>();
+            dlc.diffuse = DirectionalLight["diffuse"].as<glm::vec3>();
+            dlc.specular = DirectionalLight["specular"].as<glm::vec3>();
         }
     }
 

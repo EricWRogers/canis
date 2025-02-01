@@ -18,7 +18,7 @@
 #include <Canis/ECS/Components/UISliderComponent.hpp>
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
-#include <Canis/ECS/Components/DirectionalLightComponent.hpp>
+#include <Canis/ECS/Components/DirectionalLight.hpp>
 
 #include <Canis/External/OpenGl.hpp>
 
@@ -356,11 +356,11 @@ namespace Canis
                 }
             }
 
-            if (entity.HasComponent<DirectionalLightComponent>())
+            if (entity.HasComponent<DirectionalLight>())
             {
-                if (ImGui::CollapsingHeader("Canis::DirectionalLightComponent", ImGuiTreeNodeFlags_DefaultOpen))
+                if (ImGui::CollapsingHeader("Canis::DirectionalLight", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto &dlc = entity.GetComponent<DirectionalLightComponent>();
+                    auto &dlc = entity.GetComponent<DirectionalLight>();
 
                     ImGui::InputFloat3("direction", glm::value_ptr(dlc.direction), "%.3f");
                     ImGui::InputFloat3("ambient", glm::value_ptr(dlc.ambient), "%.3f");
@@ -368,11 +368,11 @@ namespace Canis
                     ImGui::InputFloat3("specular", glm::value_ptr(dlc.specular), "%.3f");
                 }
 
-                if (ImGui::BeginPopupContextItem("Menu##Canis::DirectionalLightComponent"))
+                if (ImGui::BeginPopupContextItem("Menu##Canis::DirectionalLight"))
                 {
-                    if (ImGui::MenuItem("Remove##Canis::DirectionalLightComponent"))
+                    if (ImGui::MenuItem("Remove##Canis::DirectionalLight"))
                     {
-                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::DirectionalLightComponent>())](entity);
+                        GetComponent().removeComponentFuncs[std::string(type_name<Canis::DirectionalLight>())](entity);
                     }
 
                     ImGui::EndPopup();

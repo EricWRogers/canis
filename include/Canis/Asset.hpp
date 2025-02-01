@@ -6,12 +6,13 @@
 
 #include <map>
 
-#include <Canis/Yaml.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>
 #include <Canis/Data/Vertex.hpp>
 #include <Canis/Data/DefaultMeshData.hpp>
+
+#include <yaml-cpp/node/node.h>
 
 namespace Canis
 {

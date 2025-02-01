@@ -8,14 +8,13 @@
 #include <Canis/External/entt.hpp>
 
 #include <map>
-#include <unordered_map>
 #include <variant>
 #include <type_traits>
 #include <functional>
 #include <string>
+
 #include <glm/glm.hpp>
 #include <glm/gtc/quaternion.hpp>
-#include <yaml-cpp/yaml.h>
 
 namespace Canis {
 	class Entity;

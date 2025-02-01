@@ -4,7 +4,7 @@
 
 namespace Canis
 {
-	struct DirectionalLightComponent
+	struct DirectionalLight
 	{
         // Get this values from the transform
 		glm::vec3 direction;
@@ -14,10 +14,10 @@ namespace Canis
 
         static void RegisterProperties()
 		{
-			REGISTER_PROPERTY(DirectionalLightComponent, direction, glm::vec3);
-			REGISTER_PROPERTY(DirectionalLightComponent,   ambient, glm::vec3);
-			REGISTER_PROPERTY(DirectionalLightComponent,   diffuse, glm::vec3);
-			REGISTER_PROPERTY(DirectionalLightComponent,  specular, glm::vec3);
+			REGISTER_PROPERTY(DirectionalLight, direction, glm::vec3);
+			REGISTER_PROPERTY(DirectionalLight,   ambient, glm::vec3);
+			REGISTER_PROPERTY(DirectionalLight,   diffuse, glm::vec3);
+			REGISTER_PROPERTY(DirectionalLight,  specular, glm::vec3);
 		}
 	};
 } // end of Canis namespace

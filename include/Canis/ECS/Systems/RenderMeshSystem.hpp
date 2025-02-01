@@ -24,7 +24,7 @@
 #include "../Components/BoxColliderComponent.hpp"
 #include "../Components/SphereCollider.hpp"
 #include "../Components/PointLightComponent.hpp"
-#include "../Components/DirectionalLightComponent.hpp"
+#include "../Components/DirectionalLight.hpp"
 #include "../Components/ParticleComponent.hpp"
 
 #include <Canis/Asset.hpp>
@@ -249,7 +249,7 @@ namespace Canis
 			// 1. render depth of scene to texture (from light's perspective)
 			// --------------------------------------------------------------
 
-			auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLightComponent>();
+			auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLight>();
 
 			for (auto [entity, transform, directionalLight] : viewDirLight.each())
 			{
@@ -634,7 +634,7 @@ namespace Canis
 					// directional light
 					int numDirLights = 0;
 
-					auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLightComponent>();
+					auto viewDirLight = registry.view<const Canis::Transform, const Canis::DirectionalLight>();
 
 					for (auto [entity, transform, directionalLight] : viewDirLight.each())
 					{
