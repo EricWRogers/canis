@@ -164,7 +164,7 @@ public:
 
     Entity Duplicate();
 
-    void SetParent(entt::entity _parent);
+    void SetParent(entt::entity _parent, bool _updatePosition = true);
     void AddChild(entt::entity _child);
     int ChildCount();
     Entity GetChild(int _index);

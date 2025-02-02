@@ -225,7 +225,7 @@ Entity Entity::Duplicate()
     return e;
 }
 
-void Entity::SetParent(entt::entity _parent)
+void Entity::SetParent(entt::entity _parent, bool _updatePosition)
 {
     if (HasComponent<Transform>())
     {
@@ -255,7 +255,8 @@ void Entity::SetParent(entt::entity _parent)
 
             parentTransform.children.push_back(entityHandle);
 
-            SetPosition(globalPosition - parentGlobalPosition);
+            if (_adjestPosition)
+                SetPosition(globalPosition - parentGlobalPosition);
 
             UpdateModelMatrix(transform);
         }

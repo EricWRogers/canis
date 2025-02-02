@@ -105,7 +105,6 @@ namespace Canis
         if constexpr (!std::is_same_v<type, Canis::Entity>) {                                          						\
             return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
         } else {                                                                                       						\
-            /* Assuming Canis::UUID has an encode method or operator<< defined */                         					\
             return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
         }                                                                                              						\
     };                                                                                                						\
