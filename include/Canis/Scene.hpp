@@ -9,92 +9,107 @@
 #include <Canis/ECS/Systems/System.hpp>
 #include <Canis/ECS/Components/TagComponent.hpp>
 
+#include <Canis/ECS/Components/IDComponent.hpp>
+
 namespace Canis
 {
+
     class Entity;
 
-    class Scene {
-        private:
-            friend class Entity;
-            friend class SceneManager;
-            friend class Editor;
+    struct EntityAndUUID
+    {
+        Entity *entity = nullptr;
+        UUID uuid;
+    };
 
-            std::vector<System*> m_updateSystems = {};
-            std::vector<System*> m_renderSystems = {};
-            
-            high_resolution_clock::time_point m_drawStart;
-            high_resolution_clock::time_point m_drawEnd;
-            float m_drawTime;
-        public:
-            //Scene() {}
-            Scene(std::string _name);
-            Scene(std::string _name, std::string _path);
-            ~Scene();
+    class Scene
+    {
+    private:
+        friend class Entity;
+        friend class SceneManager;
+        friend class Editor;
 
-            virtual void PreLoad();
-            virtual void Load();
-            virtual void UnLoad();
-            virtual void Update();
-            virtual void LateUpdate();
-            virtual void Draw();
-            virtual void InputUpdate();
+        std::vector<System *> m_updateSystems = {};
+        std::vector<System *> m_renderSystems = {};
 
-            bool IsPreLoaded();
+        high_resolution_clock::time_point m_drawStart;
+        high_resolution_clock::time_point m_drawEnd;
+        float m_drawTime;
 
-            void ReadySystem(System *_system);
+    public:
+        // Scene() {}
+        Scene(std::string _name);
+        Scene(std::string _name, std::string _path);
+        ~Scene();
 
-            void SetTimeScale(double _timeScale) { timeScale = _timeScale; }
+        virtual void PreLoad();
+        virtual void Load();
+        virtual void UnLoad();
+        virtual void Update();
+        virtual void LateUpdate();
+        virtual void Draw();
+        virtual void InputUpdate();
 
-            Entity CreateEntity();
-            Entity CreateEntity(const std::string &_tag);
-            Entity FindEntityWithTag(const std::string &_tag);
+        bool IsPreLoaded();
 
-            std::vector<Canis::Entity> Instantiate(const std::string &_path);
-            std::vector<Canis::Entity> Instantiate(const std::string &_path, glm::vec3 _position);
+        void ReadySystem(System *_system);
 
-            template<typename T>
-            T* GetSystem() {
-                T* castedSystem = nullptr;
+        void SetTimeScale(double _timeScale) { timeScale = _timeScale; }
 
-                for(System* s : systems)
-                    if ((castedSystem = dynamic_cast<T*>(s)) != nullptr)
-                        return castedSystem;
+        Entity CreateEntity();
+        Entity CreateEntity(const std::string &_tag);
+        Entity FindEntityWithTag(const std::string &_tag);
 
-                return nullptr;
-            }
+        std::vector<Canis::Entity> Instantiate(const std::string &_path);
+        std::vector<Canis::Entity> Instantiate(const std::string &_path, glm::vec3 _position);
 
-            template<typename T>
-            void CreateSystem() {
-                System* s = new T();
-                
-                m_updateSystems.push_back(s);
-                ReadySystem(s);
-            }
+        template <typename T>
+        T *GetSystem()
+        {
+            T *castedSystem = nullptr;
 
-            template<typename T>
-            void CreateRenderSystem() {
-                System* s = new T();
+            for (System *s : systems)
+                if ((castedSystem = dynamic_cast<T *>(s)) != nullptr)
+                    return castedSystem;
 
-                m_renderSystems.push_back(s);
-                ReadySystem(s);
-            }
+            return nullptr;
+        }
 
-            std::string name = "";
-            std::string path = "";
+        template <typename T>
+        void CreateSystem()
+        {
+            System *s = new T();
 
-            Window *window;
-            InputManager *inputManager;
-            unsigned int *sceneManager;
-            Time *time;
-            Camera *camera;
-            unsigned int seed;
+            m_updateSystems.push_back(s);
+            ReadySystem(s);
+        }
 
-            std::vector<System*> systems = {};
+        template <typename T>
+        void CreateRenderSystem()
+        {
+            System *s = new T();
 
-            entt::registry entityRegistry;
+            m_renderSystems.push_back(s);
+            ReadySystem(s);
+        }
 
-            double deltaTime = 1.0;
-            double unscaledDeltaTime = 1.0;
-            double timeScale = 1.0;
+        std::string name = "";
+        std::string path = "";
+
+        Window *window;
+        InputManager *inputManager;
+        unsigned int *sceneManager;
+        Time *time;
+        Camera *camera;
+        unsigned int seed;
+
+        std::vector<System *> systems = {};
+        std::vector<EntityAndUUID> entityAndUUIDToConnect = {};
+
+        entt::registry entityRegistry;
+
+        double deltaTime = 1.0;
+        double unscaledDeltaTime = 1.0;
+        double timeScale = 1.0;
     };
 } // end of Canis namespace

@@ -3,6 +3,8 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/SceneManager.hpp>
 
+#include <unordered_map>
+
 namespace Canis
 {
     Scene::Scene(std::string _name)
@@ -129,8 +131,14 @@ namespace Canis
     {
         std::vector<Canis::Entity> entitiesReturn = {};
         YAML::Node& root = AssetManager::GetPrefab(_path).GetNode();
+        SceneManager* sm = (SceneManager*)sceneManager;
+
+        sm->m_loadingType = LoadingType::PREFAB;
+        entityAndUUIDToConnect.clear();
 
         auto entities = root["Entities"];
+
+        std::unordered_map<uint64_t, uint32_t> entityIds = {};
 
         if(entities)
         {
@@ -139,19 +147,39 @@ namespace Canis
                 Canis::Entity entity = CreateEntity();
                 entitiesReturn.push_back(entity);
 
-                for(int d = 0;  d < ((SceneManager*)sceneManager)->decodeEntity.size(); d++) {
-                    ((SceneManager*)sceneManager)->decodeEntity[d](e, entity, ((SceneManager*)sceneManager));
+                uint64_t id = e["Entity"].as<uint64_t>(0);
+                if (id != 0)
+                    entityIds[id] = (uint32_t)(entity.entityHandle);
+
+                for(int d = 0;  d < ((SceneManager*)sceneManager)->decodeEntity.size(); d++)
+                    sm->decodeEntity[d](e, entity, sm);
+                
+                // think of a better way post StopTheSlime
+                if (auto transform = e["Canis::Transform"])
+                {
+                    uint64_t parentId = transform["parent"].as<uint64_t>(0);
+
+                    if (parentId != 0)
+                    {
+                        if (entityIds.find(parentId) != entityIds.end())
+                        {
+                            Canis::Entity parent = Canis::Entity((entt::entity)(entityIds[parentId]), this);
+                            entity.SetParent(parent, false);
+                        }
+                    }
                 }
 
                 if (auto scriptComponent = e["Canis::ScriptComponent"])
                 {
                     std::string secomponent = scriptComponent.as<std::string>();
-                    for (int d = 0; d < ((SceneManager*)sceneManager)->decodeScriptableEntity.size(); d++)
-                        if (((SceneManager*)sceneManager)->decodeScriptableEntity[d](secomponent, entity))
+                    for (int d = 0; d < sm->decodeScriptableEntity.size(); d++)
+                        if (sm->decodeScriptableEntity[d](secomponent, entity))
                             continue;
                 }
             }
         }
+
+        sm->m_loadingType = LoadingType::SCENE;
 
         return entitiesReturn;
     }

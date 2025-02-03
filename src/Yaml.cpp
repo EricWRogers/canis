@@ -30,7 +30,7 @@ void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, voi
     entityAndUUID.entity = (Entity*)_entity;
     entityAndUUID.uuid = _uuid;
 
-    sceneManager->entityAndUUIDToConnect.push_back(entityAndUUID);
+    sceneManager->AddEntityAndUUID(entityAndUUID);
 }
 
 std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle)

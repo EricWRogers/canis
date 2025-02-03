@@ -29,7 +29,7 @@ using namespace glm;
 namespace Canis
 {
 
-    void DecodeTagComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeTagComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto tagComponent = _n["Canis::TagComponent"])
         {
@@ -46,20 +46,24 @@ namespace Canis
             tag[i] = '\0';
 
             strcpy(tc.tag, tag);
+            return true;
         }
+        return false;
     }
 
-    void DecodeCamera2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeCamera2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto camera2dComponent = _n["Canis::Camera2DComponent"])
         {
             auto &c2dc = _entity.AddComponent<Canis::Camera2DComponent>();
             c2dc.position = camera2dComponent["position"].as<glm::vec2>();
             c2dc.scale = camera2dComponent["scale"].as<float>();
+            return true;
         }
+        return false;
     }
 
-    void DecodeRectTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeRectTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto rectTransform = _n["Canis::RectTransform"])
         {
@@ -73,10 +77,12 @@ namespace Canis
             rt.scale = rectTransform["scale"].as<float>();
             rt.depth = rectTransform["depth"].as<float>();
             rt.scaleWithScreen = (ScaleWithScreen)rectTransform["scaleWithScreen"].as<int>(0);
+            return true;
         }
+        return false;
     }
 
-    void DecodeButtonComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeButtonComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto buttonComponent = _n["Canis::ButtonComponent"])
         {
@@ -90,15 +96,17 @@ namespace Canis
             bc.mouseOver = buttonComponent["mouseOver"].as<bool>(defaultButton.mouseOver);
             bc.scale = buttonComponent["scale"].as<float>(defaultButton.scale);
             bc.hoverScale = buttonComponent["hoverScale"].as<float>(defaultButton.hoverScale);
-            //bc.up = buttonComponent["up"].as<uint64_t>(defaultButton.up);
-            //bc.down = buttonComponent["down"].as<std::string>(defaultButton.down);
-            //bc.left = buttonComponent["left"].as<std::string>(defaultButton.left);
-            //bc.right = buttonComponent["right"].as<std::string>(defaultButton.right);
+            // bc.up = buttonComponent["up"].as<uint64_t>(defaultButton.up);
+            // bc.down = buttonComponent["down"].as<std::string>(defaultButton.down);
+            // bc.left = buttonComponent["left"].as<std::string>(defaultButton.left);
+            // bc.right = buttonComponent["right"].as<std::string>(defaultButton.right);
             bc.defaultSelected = buttonComponent["defaultSelected"].as<bool>(defaultButton.defaultSelected);
+            return true;
         }
+        return false;
     }
 
-    void DecodeColor(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeColor(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto colorComponent = _n["Canis::Color"])
         {
@@ -106,10 +114,12 @@ namespace Canis
             cc.color = colorComponent["color"].as<glm::vec4>(cc.color);
             cc.emission = colorComponent["emission"].as<glm::vec3>(cc.emission);
             cc.emissionUsingAlbedoIntesity = colorComponent["emissionUsingAlbedoIntesity"].as<float>(cc.emissionUsingAlbedoIntesity);
+            return true;
         }
+        return false;
     }
 
-    void DecodeTextComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeTextComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto textComponent = _n["Canis::TextComponent"])
         {
@@ -123,20 +133,24 @@ namespace Canis
             }
             tc.text = textComponent["text"].as<std::string>("");
             tc.alignment = textComponent["alignment"].as<unsigned int>();
+            return true;
         }
+        return false;
     }
 
-    void DecodeSprite2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeSprite2DComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto sprite2DComponent = _n["Canis::Sprite2DComponent"])
         {
             auto &s2dc = _entity.AddComponent<Canis::Sprite2DComponent>();
             s2dc.uv = sprite2DComponent["uv"].as<glm::vec4>();
-            s2dc.textureHandle = sprite2DComponent["textureHandle"].as<TextureHandle>();//AssetManager::GetTextureHandle(sprite2DComponent["textureHandle"].as<std::string>());
+            s2dc.textureHandle = sprite2DComponent["textureHandle"].as<TextureHandle>(); // AssetManager::GetTextureHandle(sprite2DComponent["textureHandle"].as<std::string>());
+            return true;
         }
+        return false;
     }
 
-    void DecodeUIImageComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeUIImageComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto uiImageComponent = _n["Canis::UIImageComponent"])
         {
@@ -146,10 +160,12 @@ namespace Canis
             {
                 uiic.textureHandle = AssetManager::GetTextureHandle(textureAsset["path"].as<std::string>());
             }
+            return true;
         }
+        return false;
     }
 
-    void DecodeUISliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeUISliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto uiSliderComponent = _n["Canis::UISliderComponent"])
         {
@@ -159,10 +175,12 @@ namespace Canis
             uisc.maxUVX = uiSliderComponent["maxUVX"].as<float>();
             uisc.value = uiSliderComponent["value"].as<float>();
             uisc.targetValue = uisc.value;
+            return true;
         }
+        return false;
     }
 
-    void DecodeSpriteAnimationComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeSpriteAnimationComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto spriteAnimationComponent = _n["Canis::SpriteAnimationComponent"])
         {
@@ -174,10 +192,12 @@ namespace Canis
             sac.flipX = spriteAnimationComponent["flipX"].as<bool>();
             sac.flipY = spriteAnimationComponent["flipY"].as<bool>();
             sac.speed = spriteAnimationComponent["speed"].as<float>();
+            return true;
         }
+        return false;
     }
 
-    void DecodeCircleColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeCircleColliderComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto circleColliderComponent = _n["Canis::CircleColliderComponent"])
         {
@@ -186,10 +206,12 @@ namespace Canis
             ccc.radius = circleColliderComponent["radius"].as<float>();
             ccc.layer = (Canis::BIT)circleColliderComponent["layer"].as<unsigned int>();
             ccc.mask = (Canis::BIT)circleColliderComponent["mask"].as<unsigned int>();
+            return true;
         }
+        return false;
     }
 
-    void DecodeTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeTransform(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto transformComponent = _n["Canis::Transform"])
         {
@@ -199,10 +221,12 @@ namespace Canis
             tc.rotation = glm::quat(glm::degrees(transformComponent["rotation"].as<glm::vec3>(glm::vec3(0.0f))));
             tc.scale = transformComponent["scale"].as<glm::vec3>(glm::vec3(1.0f));
             UpdateModelMatrix(tc);
+            return true;
         }
+        return false;
     }
 
-    void DecodeMesh(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeMesh(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto meshComponent = _n["Canis::Mesh"])
         {
@@ -214,18 +238,20 @@ namespace Canis
             std::string modelPath = meshComponent["modelPath"].as<std::string>("");
             if (modelPath == "")
                 Canis::FatalError("Decode mesh component: modelPath was empty");
-            
+
             mc.modelHandle.id = AssetManager::LoadModel(modelPath);
 
             std::string materialPath = meshComponent["materialPath"].as<std::string>("");
             if (materialPath == "")
                 Canis::FatalError("Decode mesh component: materialPath was empty");
-            
+
             mc.material = AssetManager::LoadMaterial(materialPath);
+            return true;
         }
+        return false;
     }
 
-    void DecodeSphereCollider(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+    bool DecodeSphereCollider(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto sphereColliderComponent = _n["Canis::SphereCollider"])
         {
@@ -234,10 +260,12 @@ namespace Canis
             scc.radius = sphereColliderComponent["radius"].as<float>(scc.radius);
             scc.layer = sphereColliderComponent["layer"].as<unsigned int>(scc.layer);
             scc.mask = sphereColliderComponent["mask"].as<unsigned int>(scc.mask);
+            return true;
         }
+        return false;
     }
-    
-    void DecodeDirectionalLight(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+
+    bool DecodeDirectionalLight(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
     {
         if (auto DirectionalLight = _n["Canis::DirectionalLight"])
         {
@@ -246,11 +274,13 @@ namespace Canis
             dlc.ambient = DirectionalLight["ambient"].as<glm::vec3>();
             dlc.diffuse = DirectionalLight["diffuse"].as<glm::vec3>();
             dlc.specular = DirectionalLight["specular"].as<glm::vec3>();
+            return true;
         }
+        return false;
     }
 
     bool DecodeRenderMeshSystem(const std::string &_name, Canis::Scene *_scene)
-	{
+    {
         if (_name == "Canis::RenderMeshSystem")
         {
             _scene->CreateRenderSystem<RenderMeshSystem>();

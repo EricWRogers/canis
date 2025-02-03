@@ -1,7 +1,7 @@
 #pragma once
 #ifdef __ANDROID__
-    #include <android/log.h>
-    #define LOGW(...) __android_log_print(ANDROID_LOG_WARN,__VA_ARGS__)
+#include <android/log.h>
+#define LOGW(...) __android_log_print(ANDROID_LOG_WARN, __VA_ARGS__)
 #endif
 
 #include <Canis/Canis.hpp>
@@ -11,7 +11,7 @@
 //////////////// HELL
 
 template <typename ComponentType>
-void DecodeComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
+bool DecodeComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)
 {
     if (auto componentNode = _n[std::string(type_name<ComponentType>())])
     {
@@ -26,7 +26,9 @@ void DecodeComponent(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager
                 setter(propertyNode, &component, _sceneManager);
             }
         }
+        return true;
     }
+    return false;
 }
 
 template <typename ComponentType>
@@ -34,7 +36,7 @@ void EncodeComponent(YAML::Emitter &_out, Canis::Entity &_entity)
 {
     if (_entity.HasComponent<ComponentType>())
     {
-        ComponentType& component = _entity.GetComponent<ComponentType>();
+        ComponentType &component = _entity.GetComponent<ComponentType>();
 
         _out << YAML::Key << std::string(type_name<ComponentType>());
         _out << YAML::BeginMap;
@@ -49,41 +51,37 @@ void EncodeComponent(YAML::Emitter &_out, Canis::Entity &_entity)
     }
 }
 
-#define REGISTER_COMPONENT(AppInstance, ComponentType)                      \
-{                                                                           \
-    static bool registered = (ComponentType::RegisterProperties(), true);   \
-    AppInstance.AddDecodeComponent(DecodeComponent<ComponentType>);         \
-    /*AppInstance.AddEncodeComponent(EncodeComponent<ComponentType>);*/     \
-}
+#define REGISTER_COMPONENT(AppInstance, ComponentType)                        \
+    {                                                                         \
+        static bool registered = (ComponentType::RegisterProperties(), true); \
+        AppInstance.AddDecodeComponent(DecodeComponent<ComponentType>);       \
+        /*AppInstance.AddEncodeComponent(EncodeComponent<ComponentType>);*/   \
+    }
 
-#define REGISTER_UPDATE_SYSTEM(system)                                      \
-{                                                                           \
-    GetSystemRegistry().updateSystems.push_back(#system);                   \
-}
+#define REGISTER_UPDATE_SYSTEM(system)                        \
+    {                                                         \
+        GetSystemRegistry().updateSystems.push_back(#system); \
+    }
 
-#define REGISTER_RENDER_SYSTEM(system)                                      \
-{                                                                           \
-    GetSystemRegistry().renderSystems.push_back(#system);                   \
-}
+#define REGISTER_RENDER_SYSTEM(system)                        \
+    {                                                         \
+        GetSystemRegistry().renderSystems.push_back(#system); \
+    }
 
-#define REGISTER_COMPONENT_NAME(component)                                  \
-{                                                                           \
-    GetComponent().names.push_back(#component);                             \
-}
+#define REGISTER_COMPONENT_NAME(component)          \
+    {                                               \
+        GetComponent().names.push_back(#component); \
+    }
 
-#define REGISTER_COMPONENT_EDITOR(component)                                                    \
-{                                                                                               \
-	GetComponent().addComponentFuncs[#component] = [](Canis::Entity &_entity) { 			    \
-		if (_entity.HasComponent<component>() == false) { _entity.AddComponent<component>(); }  \
-	};                                                                                          \
-    GetComponent().removeComponentFuncs[#component] = [](Canis::Entity &_entity) {              \
-        if (_entity.HasComponent<component>()) { _entity.RemoveComponent<component>(); }        \
-    };                                                                                          \
-    GetComponent().hasComponentFuncs[#component] = [](Canis::Entity &_entity) -> bool {         \
-        return _entity.HasComponent<component>();                                               \
-    };                                                                                          \
-	GetComponent().names.push_back(#component);  									            \
-}
+#define REGISTER_COMPONENT_EDITOR(component)                                                                                             \
+    {                                                                                                                                    \
+        GetComponent().addComponentFuncs[#component] = [](Canis::Entity &_entity) { 			    \
+		if (_entity.HasComponent<component>() == false) { _entity.AddComponent<component>(); } };                                                   \
+        GetComponent().removeComponentFuncs[#component] = [](Canis::Entity &_entity) {              \
+        if (_entity.HasComponent<component>()) { _entity.RemoveComponent<component>(); } };                                                \
+        GetComponent().hasComponentFuncs[#component] = [](Canis::Entity &_entity) -> bool { return _entity.HasComponent<component>(); }; \
+        GetComponent().names.push_back(#component);                                                                                      \
+    }
 
 //////////////// EXIT HELL
 
@@ -131,65 +129,60 @@ std::function<bool(YAML::Emitter &, Canis::ScriptableEntity *)> CreateEncodeFunc
     };
 }
 
-#define REGISTER_SCRIPTABLE_COMPONENT(AppInstance, ComponentType)                                                   \
-{                                                                                                                   \
-    AppInstance.AddEncodeScriptableEntity(CreateEncodeFunction<ComponentType>());                                   \
-    AppInstance.AddDecodeScriptableEntity(CreateDecodeFunction<ComponentType>());                                   \
-    GetScriptableComponentRegistry().addScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) { 		    \
-		if (_entity.HasScript<ComponentType>() == false) { _entity.AddScript<ComponentType>(); }                    \
-	};                                                                                                              \
-    GetScriptableComponentRegistry().removeScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) {       \
-        if (_entity.HasScript<ComponentType>()) { _entity.RemoveScript(); }                                         \
-    };                                                                                                              \
-    GetScriptableComponentRegistry().hasScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) -> bool {  \
-        return _entity.HasScript<ComponentType>();                                                                  \
-    };                                                                                                              \
-    GetScriptableComponentRegistry().names.push_back(#ComponentType);                                               \
-}
+#define REGISTER_SCRIPTABLE_COMPONENT(AppInstance, ComponentType)                                                                                                    \
+    {                                                                                                                                                                \
+        AppInstance.AddEncodeScriptableEntity(CreateEncodeFunction<ComponentType>());                                                                                \
+        AppInstance.AddDecodeScriptableEntity(CreateDecodeFunction<ComponentType>());                                                                                \
+        GetScriptableComponentRegistry().addScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) { 		    \
+		if (_entity.HasScript<ComponentType>() == false) { _entity.AddScript<ComponentType>(); } };                                                    \
+        GetScriptableComponentRegistry().removeScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) {       \
+        if (_entity.HasScript<ComponentType>()) { _entity.RemoveScript(); } };                                                 \
+        GetScriptableComponentRegistry().hasScriptableComponent[#ComponentType] = [](Canis::Entity &_entity) -> bool { return _entity.HasScript<ComponentType>(); }; \
+        GetScriptableComponentRegistry().names.push_back(#ComponentType);                                                                                            \
+    }
 
 namespace Canis
 {
 
-enum AppState
-{
-    ON,
-    OFF
-};
+    enum AppState
+    {
+        ON,
+        OFF
+    };
 
-class App
-{
-public:
-    App(const std::string &_organization, const std::string &_app);
-    ~App();
+    class App
+    {
+    public:
+        App(const std::string &_organization, const std::string &_app);
+        ~App();
 
-    void AddDecodeSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func);
-    void AddDecodeRenderSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func);
-    void AddDecodeComponent(std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)> _func);
-    void AddDecodeScriptableEntity(std::function<bool(const std::string &_name, Canis::Entity &_entity)> _func);
+        void AddDecodeSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func);
+        void AddDecodeRenderSystem(std::function<bool(const std::string &_name, Canis::Scene *scene)> _func);
+        void AddDecodeComponent(std::function<bool(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)> _func);
+        void AddDecodeScriptableEntity(std::function<bool(const std::string &_name, Canis::Entity &_entity)> _func);
 
-    void AddEncodeComponent(std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)> _func);
-    void AddEncodeScriptableEntity(std::function<bool(YAML::Emitter &_out, Canis::ScriptableEntity* _scriptableEntity)> _func);
+        void AddEncodeComponent(std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)> _func);
+        void AddEncodeScriptableEntity(std::function<bool(YAML::Emitter &_out, Canis::ScriptableEntity *_scriptableEntity)> _func);
 
-    void AddScene(Scene *_scene);
-    void AddSplashScene(Scene *_scene);
+        void AddScene(Scene *_scene);
+        void AddSplashScene(Scene *_scene);
 
-    void Run(std::string _windowName);
-    void Run(std::string _windowName, std::string _sceneName);
-    void Loop();
+        void Run(std::string _windowName);
+        void Run(std::string _windowName, std::string _sceneName);
+        void Loop();
 
-private:
+    private:
+        Canis::SceneManager sceneManager;
 
-    Canis::SceneManager sceneManager;
+        AppState appState = AppState::OFF;
 
-    AppState appState = AppState::OFF;
+        Canis::Window window;
+        Canis::Time time;
+        Canis::InputManager inputManager;
+        Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.15f, -0.3f), glm::vec3(0.0f, 1.0f, 0.0f), Canis::YAW + 90.0f, Canis::PITCH + 0.0f);
 
-    Canis::Window window;
-    Canis::Time time;
-    Canis::InputManager inputManager;
-    Canis::Camera camera = Canis::Camera(glm::vec3(0.0f, 0.15f, -0.3f),glm::vec3(0.0f, 1.0f, 0.0f),Canis::YAW+90.0f,Canis::PITCH+0.0f);
-    
-    double deltaTime;
+        double deltaTime;
 
-    unsigned int seed;
-};
-} 
+        unsigned int seed;
+    };
+}

@@ -50,7 +50,7 @@ namespace Canis
         sceneManager.decodeRenderSystem.push_back(_func);
     }
 
-    void App::AddDecodeComponent(std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)> _func)
+    void App::AddDecodeComponent(std::function<bool(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)> _func)
     {
         sceneManager.decodeEntity.push_back(_func);
     }

@@ -255,7 +255,7 @@ void Entity::SetParent(entt::entity _parent, bool _updatePosition)
 
             parentTransform.children.push_back(entityHandle);
 
-            if (_adjestPosition)
+            if (_updatePosition)
                 SetPosition(globalPosition - parentGlobalPosition);
 
             UpdateModelMatrix(transform);

@@ -17,18 +17,19 @@ struct SceneData
     bool splashScreenHasCalledLoadAll = false;
 };
 
-struct EntityAndUUID {
-    Entity *entity = nullptr;
-    UUID uuid;
-};
-
 struct HierarchyElementInfo {
     std::string name;
     Entity entity;
 };
 
+enum LoadingType {
+    SCENE,
+    PREFAB
+};
+
 class SceneManager
 {
+friend class Scene;
 friend class Editor;
 
 private:
@@ -42,6 +43,8 @@ private:
     high_resolution_clock::time_point m_drawEnd;
 
     Editor m_editor;
+
+    LoadingType m_loadingType = LoadingType::SCENE;
 
     void Load(int _index);
     void SetUpIMGUI(Window *_window);
@@ -74,9 +77,16 @@ public:
 
     void FindEntityEditor(Entity& _entity, UUID &_uuid);
 
+    void AddEntityAndUUID(EntityAndUUID _entityAndUUID) {
+        if (m_loadingType == LoadingType::SCENE)
+            entityAndUUIDToConnect.push_back(_entityAndUUID);
+        else
+            scene->entityAndUUIDToConnect.push_back(_entityAndUUID);
+    }
+
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeSystem = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Scene *scene)>> decodeRenderSystem = {};
-    std::vector<std::function<void(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)>> decodeEntity = {};
+    std::vector<std::function<bool(YAML::Node &_n, Canis::Entity &_entity, Canis::SceneManager *_sceneManager)>> decodeEntity = {};
     std::vector<std::function<bool(const std::string &_name, Canis::Entity &_entity)>> decodeScriptableEntity = {};
 
     std::vector<std::function<void(YAML::Emitter &_out, Canis::Entity &_entity)>> encodeEntity = {};
