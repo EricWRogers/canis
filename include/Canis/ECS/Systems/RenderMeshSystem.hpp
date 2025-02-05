@@ -740,7 +740,7 @@ namespace Canis
 				int numPointLights = 0;
 				int maxPointLights = 10;
 
-				auto viewPointLight = registry.view<const Canis::Transform, const Canis::PointLightComponent>();
+				auto viewPointLight = registry.view<Canis::Transform, const Canis::PointLightComponent>();
 
 				for (auto [entity, t, pointLight] : viewPointLight.each())
 				{
@@ -748,7 +748,10 @@ namespace Canis
 						break;
 
 					// float distance = glm::distance(t.position, (transform.position + sphere.center)) - sphere.radius;
-					float distance = glm::distance(t.position, transform.position) - 1.0;
+					if (t.isDirty)
+            			UpdateModelMatrix(t);
+
+					float distance = glm::distance(GetGlobalPosition(t), transform.position) - 1.0;
 					float attenuation = 1.0 / (pointLight.constant + pointLight.linear * distance + pointLight.quadratic * (distance * distance));
 
 					if (attenuation <= 0.0001)
@@ -756,6 +759,7 @@ namespace Canis
 
 					if (t.active)
 					{
+						Canis::Log("NumPointLight: " + std::to_string(numPointLights) + " pos: " + glm::to_string(GetGlobalPosition(t)));
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].position", t.position);
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].ambient", pointLight.ambient);
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].diffuse", pointLight.diffuse);
