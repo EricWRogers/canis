@@ -25,7 +25,7 @@ namespace Canis
         SPHERE
     };
 
-    struct ParticleEmitterComponent
+    struct ParticleEmitter
     {
         unsigned int state = ParticleEmitterState::EMPYTYEMITTERSTATE;
         EmitterShape shape = EmitterShape::POINT;

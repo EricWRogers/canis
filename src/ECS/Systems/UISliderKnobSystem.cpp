@@ -1,5 +1,6 @@
 #include <Canis/ECS/Systems/UISliderKnobSystem.hpp>
 
+#include <Canis/Entity.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Math.hpp>
 

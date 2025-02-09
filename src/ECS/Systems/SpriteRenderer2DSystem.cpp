@@ -8,6 +8,7 @@
 #include <Canis/ECS/Components/Camera2DComponent.hpp>
 
 #include <Canis/Math.hpp>
+#include <Canis/Entity.hpp>
 
 namespace Canis
 {

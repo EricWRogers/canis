@@ -1,9 +1,7 @@
 #pragma once
 
 #include <glm/glm.hpp>
-#include <Canis/External/entt.hpp>
 #include <Canis/Entity.hpp>
-#include <Canis/ECS/Components/Transform.hpp>
 
 using namespace glm;
 
@@ -28,12 +26,11 @@ namespace Canis
 
     struct Hit
     {
-        Entity entity;
+        Canis::Entity entity;
         vec3 position;
     };
 
     const float PI = 3.14159265f;
-
     const float RAD2DEG = 180.0f / PI;
     const float DEG2RAD = PI / 180.0f;
 

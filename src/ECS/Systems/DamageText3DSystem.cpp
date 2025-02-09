@@ -1,6 +1,8 @@
+#include <Canis/ECS/Systems/DamageText3DSystem.hpp>
+
 #include <Canis/Math.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/ECS/Systems/DamageText3DSystem.hpp>
+#include <Canis/Entity.hpp>
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/Color.hpp>

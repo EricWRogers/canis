@@ -1,6 +1,5 @@
 #pragma once
 #include <glm/glm.hpp>
-#include <unordered_map>
 #include <vector>
 #include <SDL_keyboard.h>
 #include <SDL_gamecontroller.h>

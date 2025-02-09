@@ -10,7 +10,7 @@
 #include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/Mesh.hpp>
 #include <Canis/ECS/Components/SphereCollider.hpp>
-#include <Canis/ECS/Components/ParticleEmitterComponent.hpp>
+#include <Canis/ECS/Components/ParticleEmitter.hpp>
 #include <Canis/ECS/Components/ParticleComponent.hpp>
 
 namespace Canis
@@ -26,7 +26,7 @@ public:
     void Ready() override {}
 
     void Update(entt::registry &_registry, float _deltaTime) override {
-        auto view = _registry.view<Transform, SphereCollider, ParticleEmitterComponent>();
+        auto view = _registry.view<Transform, SphereCollider, ParticleEmitter>();
         for (auto [entity, transform, sphere, emitter] : view.each())
         {
             // check if the particles system is seen by camera

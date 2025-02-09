@@ -1,7 +1,15 @@
 #include <Canis/IOManager.hpp>
+
+#include <fstream>
+
 #include <Canis/Math.hpp>
+#include <Canis/Debug.hpp>
 #include <Canis/External/OpenGl.hpp>
+#include <Canis/External/picoPNG.h>
+
 #include <stb_image.h>
+
+#include <SDL.h>
 
 namespace Canis
 {

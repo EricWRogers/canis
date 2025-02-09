@@ -1,16 +1,10 @@
 #pragma once
 #include <vector>
-#include <stdio.h>
-#include <fstream>
-#include <cstring>
+
 #include <string>
-#include <glm/glm.hpp>
-#include <SDL.h>
 
 #include "Data/GLTexture.hpp"
 #include "Data/Vertex.hpp"
-#include "External/picoPNG.h"
-#include "Debug.hpp"
 
 
 namespace Canis
