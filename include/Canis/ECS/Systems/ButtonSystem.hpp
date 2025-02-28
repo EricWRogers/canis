@@ -26,7 +26,7 @@ namespace Canis
 
         ButtonListener() = default;
 
-        ButtonListener(ButtonListener &&other) noexcept
+        /*ButtonListener(ButtonListener &&other) noexcept
             : name(std::move(other.name)),
               data(other.data),
               func(std::move(other.func)),
@@ -38,7 +38,7 @@ namespace Canis
             other._id = 0;
         }
         
-        /*ButtonListener &operator=(ButtonListener &&other) noexcept
+        ButtonListener &operator=(ButtonListener &&other) noexcept
         {
             if (this != &other)
             {

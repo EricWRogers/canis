@@ -51,14 +51,11 @@ namespace Canis
                 bad.entity = Entity(entity, scene);
                 bad.depth = rect_transform.depth;
 
-                if (button.mouseOver &&
-                    (button.up || button.down || button.left || button.right))
+                if (button.mouseOver)
                     targetButton.entityHandle = entity;
 
-                if (button.defaultSelected &&
-                    (button.up || button.down || button.left || button.right))
+                if (button.defaultSelected)
                     defaultButton.entityHandle = entity;
-
 
                 if (inputManager->GetLastDeviceType() != InputDevice::MOUSE)
                 {

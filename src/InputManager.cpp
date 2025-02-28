@@ -50,7 +50,7 @@ namespace Canis
                 return false;
                 break;
             case SDL_WINDOWEVENT:
-                if(event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED) {
+                if(event.window.event == SDL_WINDOWEVENT_SIZE_CHANGED && event.window.windowID == SDL_GetWindowID((SDL_Window*)window->GetSDLWindow())) {
                     _screenWidth = event.window.data1;
                     _screenHeight = event.window.data2;
                     window->SetWindowSize(_screenWidth, _screenHeight);
@@ -61,13 +61,13 @@ namespace Canis
                     mouse.y = _screenHeight - event.motion.y;
                     mouseRel.x = event.motion.xrel;
                     mouseRel.y = event.motion.yrel;
-                    m_lastInputDeviceType = InputDevice::MOUSE;
+                    
+                    m_lastInputDeviceType = (mouseRel != glm::vec2(0.0f)) ? InputDevice::MOUSE : m_lastInputDeviceType;
                 break;
             case SDL_MOUSEWHEEL:
                 m_scrollVertical = event.wheel.y;
-                //Log("Y: " + std::to_string(event.wheel.y));
-                //Log("Float Y: " + std::to_string(event.wheel.preciseY));
-                //Log("Direction: " + std::to_string(event.wheel.direction));
+                
+                m_lastInputDeviceType = (m_scrollVertical != 0.0f) ? InputDevice::MOUSE : m_lastInputDeviceType;
                 break;
             case SDL_KEYUP:
                 ReleasedKey(event.key.keysym.sym);
@@ -396,6 +396,11 @@ namespace Canis
             {
                 SDL_Joystick* j = SDL_GameControllerGetJoystick((SDL_GameController*)gameController.controller);
                 gameController.joyId = SDL_JoystickInstanceID(j);
+
+                m_lastInputDeviceType = InputDevice::GAMEPAD;
+                gameController.lastButtonsPressed = ControllerButton::DPAD_UP;
+                m_lastControllerID = m_gameControllers.size();
+
                 m_gameControllers.push_back(gameController);
 
                 Log("Game Controller Connected Joy ID: " + std::to_string(gameController.joyId));

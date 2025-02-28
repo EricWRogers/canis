@@ -759,7 +759,7 @@ namespace Canis
 
 					if (t.active)
 					{
-						Canis::Log("NumPointLight: " + std::to_string(numPointLights) + " pos: " + glm::to_string(GetGlobalPosition(t)));
+						// Canis::Log("NumPointLight: " + std::to_string(numPointLights) + " pos: " + glm::to_string(GetGlobalPosition(t)));
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].position", t.position);
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].ambient", pointLight.ambient);
 						shadow_mapping_shader->SetVec3("pointLights[" + std::to_string(numPointLights) + "].diffuse", pointLight.diffuse);
