@@ -533,6 +533,7 @@ namespace Canis
         {
             Load(patientLoadIndex);
             patientLoadIndex = -1;
+            Update(); // spawn in objects from scene before drawing scene
         }
 
         scene->Draw();
