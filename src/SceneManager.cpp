@@ -271,6 +271,7 @@ namespace Canis
 
             if (entities)
             {
+                // create entities
                 for (auto e : entities)
                 {
                     Canis::Entity entity = scene->CreateEntity();
@@ -298,6 +299,7 @@ namespace Canis
                     }
                 }
 
+                // connect entities
                 for (auto euuid : entityAndUUIDToConnect)
                 {
                     euuid.entity->scene = scene;

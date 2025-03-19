@@ -9,6 +9,7 @@
 #include <Canis/AudioManager.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/ECS/Components/Color.hpp>
 #include <Canis/ECS/Components/Mesh.hpp>
 #include <Canis/ECS/Components/SphereCollider.hpp>

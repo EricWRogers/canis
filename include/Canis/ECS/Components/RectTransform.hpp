@@ -2,6 +2,9 @@
 #include <glm/glm.hpp>
 #include <string>
 #include <Canis/Yaml.hpp>
+#include <Canis/Entity.hpp>
+#include <Canis/ECS/Components/TextComponent.hpp>
+
 
 namespace Canis
 {
@@ -95,6 +98,8 @@ namespace Canis
 		float depth = 1.0f;
 		int scaleWithScreen = ScaleWithScreen::NONE;
 		glm::vec2 rotationOriginOffset = glm::vec2(0.0f);
+		Canis::Entity parent;
+		//std::vector<entt::entity> children;
 
 		static void RegisterProperties()
 		{
@@ -108,6 +113,16 @@ namespace Canis
 			REGISTER_PROPERTY(Canis::RectTransform, depth, float);
 			REGISTER_PROPERTY(Canis::RectTransform, scaleWithScreen, int);
 			REGISTER_PROPERTY(Canis::RectTransform, rotationOriginOffset, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, parent, Canis::Entity);
+			//REGISTER_PROPERTY(Canis::RectTransform, children, std::vector<entt::entity>);
 		}
 	};
+
+	namespace Text {	
+		inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, const std::string &_text) {
+			_textComponent.text = _text;
+			_rectComponent.originOffset = glm::vec2(0.0f);
+			_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
+		}
+	}
 } // end of Canis namespace

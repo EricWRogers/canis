@@ -1,5 +1,4 @@
 #pragma once
-#include <Canis/ECS/Components/RectTransform.hpp>
 #include <Canis/Data/Bit.hpp>
 
 namespace Canis
