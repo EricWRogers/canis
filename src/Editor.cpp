@@ -108,7 +108,7 @@ namespace Canis
     std::vector<const char *> HierarchyElementInfoToCString(std::vector<HierarchyElementInfo> &_hierarchyElementInfos)
     {
         std::vector<const char *> cStringVector;
-        
+
         for (const auto &hei : _hierarchyElementInfos)
         {
             cStringVector.push_back(hei.name.c_str());
@@ -150,8 +150,24 @@ namespace Canis
     {
         if (m_scene->sceneManager == nullptr)
             Canis::Error("sceneManager is null");
-        
+
         return *((SceneManager *)m_scene->sceneManager);
+    }
+
+    HierarchyElementInfo GetHierarchyElementInfo(SceneManager &_sceneManager, Entity &_entity)
+    {
+        Canis::UUID eid = _entity.GetComponent<IDComponent>().ID;
+        for (HierarchyElementInfo hei : _sceneManager.hierarchyElements)
+        {
+            if (eid == hei.entity.GetUUID().ID)
+            {
+                return hei;
+            }
+        }
+
+        HierarchyElementInfo h = {};
+        h.name = "[NONE]";
+        return h;
     }
 
     void Editor::Init(Window *_window)
@@ -341,7 +357,7 @@ namespace Canis
                     }
                     if (ImGui::InputFloat3("scale", glm::value_ptr(tc.scale), "%.3f"))
                         update = true;
-                    
+
                     if (update)
                         UpdateModelMatrix(tc);
                 }
@@ -410,6 +426,102 @@ namespace Canis
                     auto &rtc = entity.GetComponent<RectTransform>();
 
                     ImGui::Checkbox("active", &rtc.active);
+
+                    {
+                        static uint64_t tempIDparent = (rtc.parent) ? ((rtc.parent.HasComponent<IDComponent>()) ? (uint64_t)rtc.parent.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+
+                        if (refresh)
+                        {
+                            tempIDparent = (rtc.parent) ? ((rtc.parent.HasComponent<IDComponent>()) ? (uint64_t)rtc.parent.GetComponent<IDComponent>().ID : 0lu) : 0lu;
+                        }
+
+                        int parentIndex = 0;
+
+                        std::vector<HierarchyElementInfo> otherRectTransformEntities = {};
+
+                        HierarchyElementInfo h = {};
+                        h.name = "[NONE]";
+                        otherRectTransformEntities.push_back(h);
+
+                        int i = 1;
+                        for (HierarchyElementInfo hei : GetSceneManager().hierarchyElements)
+                        {
+                            if (id != hei.entity.GetUUID().ID)
+                            {
+                                if (hei.entity.HasComponent<RectTransform>())
+                                {
+                                    otherRectTransformEntities.push_back(hei);
+
+                                    if (tempIDparent != 0lu)
+                                    {
+                                        if (rtc.parent)
+                                        {
+                                            if (rtc.parent.GetUUID() == hei.entity.GetUUID())
+                                            {
+                                                parentIndex = i;
+                                            }
+                                        }
+                                    }
+
+                                    i++;
+                                }
+                            }
+                        }
+
+                        std::vector<const char *> otherRectTransformNames = HierarchyElementInfoToCString(otherRectTransformEntities);
+
+                        if (ImGui::Combo("parent", &parentIndex, otherRectTransformNames.data(), static_cast<int>(otherRectTransformNames.size())))
+                        {
+                            if (otherRectTransformEntities.size() > 0)
+                            {
+                                tempIDparent = otherRectTransformEntities[parentIndex].entity.GetUUID();
+
+                                if (rtc.parent != otherRectTransformEntities[parentIndex].entity)
+                                {
+
+                                    Entity oldParent = rtc.parent;
+                                    rtc.parent = otherRectTransformEntities[parentIndex].entity;
+
+                                    if (oldParent)
+                                    {
+                                        // remove from parent children vector
+                                        for (int c = 0; c < oldParent.GetComponent<RectTransform>().children.size(); c++)
+                                        {
+                                            if (entity == oldParent.GetComponent<RectTransform>().children[c])
+                                            {
+                                                oldParent.GetComponent<RectTransform>().children.erase(
+                                                    oldParent.GetComponent<RectTransform>().children.begin() + c);
+                                                break;
+                                            }
+                                        }
+                                    }
+
+                                    // add to new parent vector
+                                    rtc.parent.GetComponent<RectTransform>().children.push_back(entity);
+                                }
+                            }
+                        }
+                    }
+
+                    if (rtc.children.size() > 0)
+                    {
+                        if (ImGui::CollapsingHeader("children"))
+                        {
+                            std::vector<HierarchyElementInfo> childrenEntity = {};
+
+                            for (int c = 0; c < rtc.children.size(); c++)
+                            {
+                                childrenEntity.push_back(GetHierarchyElementInfo(GetSceneManager(), rtc.children[c]));
+                            }
+
+                            std::vector<const char *> childrenEntityNames = HierarchyElementInfoToCString(childrenEntity);
+
+                            for (int c = 0; c < childrenEntityNames.size(); c++)
+                            {
+                                ImGui::Text("%s", childrenEntityNames[c]);
+                            }
+                        }
+                    }
 
                     ImGui::Combo("anchor", &rtc.anchor, RectAnchorLabels, IM_ARRAYSIZE(RectAnchorLabels));
 
@@ -776,7 +888,7 @@ namespace Canis
                     HierarchyElementInfo h = {};
                     h.name = "[NONE]";
                     otherButtonEntities.push_back(h);
-                    
+
                     int i = 1;
                     for (HierarchyElementInfo hei : GetSceneManager().hierarchyElements)
                     {
@@ -796,7 +908,7 @@ namespace Canis
                                         }
                                     }
                                 }
-                                
+
                                 if (tempIDDown != 0lu)
                                 {
                                     if (bc.down)
@@ -807,7 +919,7 @@ namespace Canis
                                         }
                                     }
                                 }
-                                
+
                                 if (tempIDLeft != 0lu)
                                 {
                                     if (bc.left)
@@ -818,7 +930,7 @@ namespace Canis
                                         }
                                     }
                                 }
-                                
+
                                 if (tempIDRight != 0lu)
                                 {
                                     if (bc.right)
@@ -829,7 +941,7 @@ namespace Canis
                                         }
                                     }
                                 }
-                            
+
                                 i++;
                             }
                         }
@@ -1395,7 +1507,7 @@ namespace Canis
             int i = 0;
 
             for (SceneData sceneData : GetSceneManager().m_scenes)
-            {                
+            {
                 sceneNames.push_back(sceneData.scene->name);
 
                 if (sceneData.scene->name == m_scene->name)

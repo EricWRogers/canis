@@ -99,7 +99,7 @@ namespace Canis
 		int scaleWithScreen = ScaleWithScreen::NONE;
 		glm::vec2 rotationOriginOffset = glm::vec2(0.0f);
 		Canis::Entity parent;
-		//std::vector<entt::entity> children;
+		std::vector<Canis::Entity> children;
 
 		static void RegisterProperties()
 		{
