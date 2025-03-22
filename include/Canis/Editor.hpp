@@ -31,6 +31,8 @@ namespace Canis
         void DrawHierarchyElement(int _index);
         void DrawScenePanel(Window* _window, Time *_time);
 
+        bool IsDescendantOf(Entity _potentialAncestor, Entity _entity);
+
         SceneManager& GetSceneManager();
 
         Scene *m_scene;
