@@ -9,6 +9,7 @@
 
 #include <map>
 #include <variant>
+#include <vector>
 #include <type_traits>
 #include <functional>
 #include <string>
@@ -87,18 +88,49 @@ namespace Canis
 	void AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager);
 }
 
-#define REGISTER_PROPERTY(component, property, type)                                                 						\
+#define REGISTER_PROPERTY(component, property, type)                                                                 \
+{                                                                                                                    \
+    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
+        if constexpr (std::is_same_v<type, Canis::Entity>) {                                                         \
+            Canis::AddEntityAndUUIDToSceneManager(                                                                   \
+                (void*)(&static_cast<component *>(componentPtr)->property),                               \
+                node.as<Canis::UUID>(),                                                                               \
+                _sceneManager);                                                                                      \
+        }  else {                                                                                                     \
+            static_cast<component *>(componentPtr)->property = node.as<type>();                                      \
+        }                                                                                                            \
+    };                                                                                                               \
+                                                                                                                     \
+    GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {                     \
+        if constexpr (std::is_same_v<type, Canis::Entity>) {                                                         \
+			Canis::Log("Save Entity"); \
+            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));            \
+        } else {                                                                                                     \
+            return YAML::Node(static_cast<component *>(componentPtr)->property);                                     \
+        }                                                                                                            \
+    };                                                                                                               \
+                                                                                                                     \
+    GetPropertyRegistry<component>().propertyOrder.push_back(#property);                                             \
+}
+
+#define REGISTER_PROPERTY_VECTOR(component, property, type)                                                                 \
 {                                                                                                    						\
 	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
 		if constexpr (std::is_same_v<type, Canis::Entity>) {   																\
 			Canis::AddEntityAndUUIDToSceneManager( 																			\
-				(void*)(&static_cast<component *>(componentPtr)->property), 												\
+				static_cast<void*>(&static_cast<component *>(componentPtr)->property), 										\
 				node.as<Canis::UUID>(), 																					\
 				_sceneManager); 																							\
 		} else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
-			Canis::Log("LOAD"); 																							\
-		} else 																												\
-		{ 																													\
+			auto &vec = static_cast<component *>(componentPtr)->property;													\
+			vec.clear();																									\
+			for (const auto &uuidNode : node) {																			\
+				Canis::Entity entity;																						\
+				Canis::AddEntityAndUUIDToSceneManager(																		\
+					static_cast<void*>(&entity), uuidNode.as<Canis::UUID>(), _sceneManager);								\
+				vec.push_back(entity);																						\
+			}																												\
+		} else { 																											\
 			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
 		}  																													\
 	};                                                                                       								\
@@ -106,16 +138,20 @@ namespace Canis
         if constexpr (std::is_same_v<type, Canis::Entity>) {                                          						\
 			return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
         } else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
-			Canis::Log("SAVE"); 																							\
+			const auto &vec = static_cast<component *>(componentPtr)->property;												\
 			YAML::Node node;																								\
-    		node.push_back("TODO: serialize vector<Canis::Entity>"); 														\
+			for (const auto &entity : vec) {																				\
+				node.push_back(((EntityData)entity));																\
+			}																												\
     		return node; 																									\
 		} else {                                                                                       						\
             return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
         }                                                                                              						\
     };                                                                                                						\
-	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  \
+	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  													\
 }
+
+
 
 namespace YAML
 {

@@ -5,7 +5,6 @@
 #include <Canis/Entity.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 
-
 namespace Canis
 {
 	enum RectAnchor
@@ -21,11 +20,10 @@ namespace Canis
 		BOTTOMRIGHT = 8
 	};
 
-	static const char* RectAnchorLabels[] = {
+	static const char *RectAnchorLabels[] = {
 		"Top Left", "Top Center", "Top Right",
 		"Center Left", "Center", "Center Right",
-		"Bottom Left", "Bottom Center", "Bottom Right"
-	};
+		"Bottom Left", "Bottom Center", "Bottom Right"};
 
 	enum ScaleWithScreen
 	{
@@ -35,9 +33,8 @@ namespace Canis
 		WIDTHANDHEIGHT = 3
 	};
 
-	static const char* ScaleWithScreenLabels[] = {
-		"None", "Width", "Height", "Width And Height"
-	};
+	static const char *ScaleWithScreenLabels[] = {
+		"None", "Width", "Height", "Width And Height"};
 
 	glm::vec2 static GetAnchor(const RectAnchor &_anchor, const float &_windowWidth, const float &_windowHeight)
 	{
@@ -85,7 +82,7 @@ namespace Canis
 		}
 		}
 	}
-	
+
 	struct RectTransform
 	{
 		bool active = true;
@@ -114,12 +111,14 @@ namespace Canis
 			REGISTER_PROPERTY(Canis::RectTransform, scaleWithScreen, int);
 			REGISTER_PROPERTY(Canis::RectTransform, rotationOriginOffset, glm::vec2);
 			REGISTER_PROPERTY(Canis::RectTransform, parent, Canis::Entity);
-			REGISTER_PROPERTY(Canis::RectTransform, children, std::vector<Canis::Entity>);
+			REGISTER_PROPERTY_VECTOR(Canis::RectTransform, children, std::vector<Canis::Entity>);
 		}
 	};
 
-	namespace Text {	
-		inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, const std::string &_text) {
+	namespace Text
+	{
+		inline void Set(TextComponent &_textComponent, RectTransform &_rectComponent, const std::string &_text)
+		{
 			_textComponent.text = _text;
 			_rectComponent.originOffset = glm::vec2(0.0f);
 			_textComponent._status = _textComponent._status | BIT::ONE; // the alignment should be recalculated
