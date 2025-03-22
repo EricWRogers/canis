@@ -156,6 +156,8 @@ namespace Canis
 
     HierarchyElementInfo GetHierarchyElementInfo(SceneManager &_sceneManager, Entity &_entity)
     {
+        Canis::Log("scene " + _entity.scene->name);
+        std::cout << std::endl;
         Canis::UUID eid = _entity.GetComponent<IDComponent>().ID;
         for (HierarchyElementInfo hei : _sceneManager.hierarchyElements)
         {
@@ -511,6 +513,7 @@ namespace Canis
 
                             for (int c = 0; c < rtc.children.size(); c++)
                             {
+                                rtc.children[c].scene = entity.scene;
                                 childrenEntity.push_back(GetHierarchyElementInfo(GetSceneManager(), rtc.children[c]));
                             }
 

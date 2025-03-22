@@ -30,6 +30,8 @@ void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, voi
     entityAndUUID.entity = (Entity*)_entity;
     entityAndUUID.uuid = _uuid;
 
+    Canis::Log("UUID " + std::to_string(_uuid));
+
     sceneManager->AddEntityAndUUID(entityAndUUID);
 }
 

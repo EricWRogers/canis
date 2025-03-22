@@ -140,8 +140,9 @@ namespace Canis
         } else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
 			const auto &vec = static_cast<component *>(componentPtr)->property;												\
 			YAML::Node node;																								\
+			node.SetStyle(YAML::EmitterStyle::Flow); \
 			for (const auto &entity : vec) {																				\
-				node.push_back(((EntityData)entity));																\
+				node.push_back(*(EntityData*)(void*)&(entity));																\
 			}																												\
     		return node; 																									\
 		} else {                                                                                       						\
