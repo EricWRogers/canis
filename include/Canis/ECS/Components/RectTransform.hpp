@@ -114,7 +114,7 @@ namespace Canis
 			REGISTER_PROPERTY(Canis::RectTransform, scaleWithScreen, int);
 			REGISTER_PROPERTY(Canis::RectTransform, rotationOriginOffset, glm::vec2);
 			REGISTER_PROPERTY(Canis::RectTransform, parent, Canis::Entity);
-			//REGISTER_PROPERTY(Canis::RectTransform, children, std::vector<entt::entity>);
+			REGISTER_PROPERTY(Canis::RectTransform, children, std::vector<Canis::Entity>);
 		}
 	};
 

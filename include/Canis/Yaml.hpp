@@ -90,22 +90,28 @@ namespace Canis
 #define REGISTER_PROPERTY(component, property, type)                                                 						\
 {                                                                                                    						\
 	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
-		if constexpr (!std::is_same_v<type, Canis::Entity>) {   															\
-			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
-		} 																													\
-		else 																												\
-		{ 																													\
+		if constexpr (std::is_same_v<type, Canis::Entity>) {   																\
 			Canis::AddEntityAndUUIDToSceneManager( 																			\
 				(void*)(&static_cast<component *>(componentPtr)->property), 												\
 				node.as<Canis::UUID>(), 																					\
 				_sceneManager); 																							\
+		} else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
+			Canis::Log("LOAD"); 																							\
+		} else 																												\
+		{ 																													\
+			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
 		}  																													\
 	};                                                                                       								\
     GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {       						\
-        if constexpr (!std::is_same_v<type, Canis::Entity>) {                                          						\
+        if constexpr (std::is_same_v<type, Canis::Entity>) {                                          						\
+			return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
+        } else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
+			Canis::Log("SAVE"); 																							\
+			YAML::Node node;																								\
+    		node.push_back("TODO: serialize vector<Canis::Entity>"); 														\
+    		return node; 																									\
+		} else {                                                                                       						\
             return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
-        } else {                                                                                       						\
-            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
         }                                                                                              						\
     };                                                                                                						\
 	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  \
