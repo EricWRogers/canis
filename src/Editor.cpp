@@ -1436,7 +1436,7 @@ namespace Canis
         // ─────────────────────────────────────────────────────
         std::string dropBeforeID = "##drop_before_" + uuidStr;
         ImGui::PushID(dropBeforeID.c_str());
-        ImGui::Selectable(" ", false, ImGuiSelectableFlags_AllowItemOverlap, ImVec2(ImGui::GetContentRegionAvail().x, 4));
+        ImGui::Selectable(" ", false, ImGuiSelectableFlags_AllowItemOverlap, ImVec2(ImGui::GetContentRegionAvail().x, 0.1f));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -1450,14 +1450,17 @@ namespace Canis
                         Entity oldParent = dropped.GetComponent<RectTransform>().parent;
                         auto &hierarchy = GetSceneManager().hierarchyElements;
 
-                        // Remove from old parent
+                        // remove from old parent
                         if (oldParent)
                         {
                             auto &siblings = oldParent.GetComponent<RectTransform>().children;
                             siblings.erase(std::remove(siblings.begin(), siblings.end(), dropped), siblings.end());
                         }
 
-                        // Set new parent (same as current entity’s parent)
+                        // remove old parent
+                        dropped.GetComponent<RectTransform>().parent.entityHandle = entt::null;
+
+                        // set new parent (same as current entity’s parent)
                         if (entity.HasComponent<RectTransform>())
                             if (entity.GetComponent<RectTransform>().parent)
                                 dropped.GetComponent<RectTransform>().parent = entity.GetComponent<RectTransform>().parent;
@@ -1470,11 +1473,21 @@ namespace Canis
                         }
                         else
                         {
-                            // Root-level reorder
-                            // list = &GetSceneManager().rootEntities; // You may need to maintain this
-                            HierarchyElementInfo temp = GetSceneManager().hierarchyElements[_index];
-                            GetSceneManager().hierarchyElements[_index] = GetSceneManager().hierarchyElements[_index + 1];
-                            GetSceneManager().hierarchyElements[_index + 1] = temp;
+                            int dropIndex = 0;
+
+                            for (int i = 0; i < GetSceneManager().hierarchyElements.size(); i++)
+                            {
+                                if (dropped == GetSceneManager().hierarchyElements[i].entity)
+                                {
+                                    dropIndex = i;
+                                    break;
+                                }
+                            }
+
+                            HierarchyElementInfo tempDropped = GetSceneManager().hierarchyElements[dropIndex];
+
+                            GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + dropIndex);
+                            GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + _index, tempDropped);
                         }
 
                         // Insert before current entity
@@ -1489,10 +1502,21 @@ namespace Canis
                     }
                     else
                     {
-                        Canis::Log("Area 2");
-                        HierarchyElementInfo temp = GetSceneManager().hierarchyElements[_index];
-                        GetSceneManager().hierarchyElements[_index] = GetSceneManager().hierarchyElements[_index + 1];
-                        GetSceneManager().hierarchyElements[_index + 1] = temp;
+                        int dropIndex = 0;
+
+                        for (int i = 0; i < GetSceneManager().hierarchyElements.size(); i++)
+                        {
+                            if (dropped == GetSceneManager().hierarchyElements[i].entity)
+                            {
+                                dropIndex = i;
+                                break;
+                            }
+                        }
+
+                        HierarchyElementInfo tempDropped = GetSceneManager().hierarchyElements[dropIndex];
+
+                        GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + dropIndex);
+                        GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + _index, tempDropped);
                     }
                 }
             }
@@ -1503,7 +1527,7 @@ namespace Canis
         // ─────────────────────────────────────────────────────
         // TREE NODE + DRAG SOURCE + DROP TARGET
         // ─────────────────────────────────────────────────────
-        ImGuiTreeNodeFlags flags = (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf);
+        ImGuiTreeNodeFlags flags = (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf) | ImGuiTreeNodeFlags_Framed;
         bool opened = ImGui::TreeNodeEx(label.c_str(), flags);
 
         if (ImGui::BeginDragDropSource())
@@ -1517,24 +1541,27 @@ namespace Canis
         {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_HIERARCHY"))
             {
-                Entity dropped = *(Entity *)payload->Data;
-
-                if (dropped != entity && !IsDescendantOf(entity, dropped))
+                if (entity.HasComponent<RectTransform>())
                 {
-                    if (dropped.HasComponent<RectTransform>())
+                    Entity dropped = *(Entity *)payload->Data;
+
+                    if (dropped != entity && !IsDescendantOf(entity, dropped))
                     {
-                        Entity oldParent = dropped.GetComponent<RectTransform>().parent;
-                        if (oldParent)
+                        if (dropped.HasComponent<RectTransform>())
                         {
-                            auto &siblings = oldParent.GetComponent<RectTransform>().children;
-                            siblings.erase(std::remove(siblings.begin(), siblings.end(), dropped), siblings.end());
+                            Entity oldParent = dropped.GetComponent<RectTransform>().parent;
+                            if (oldParent)
+                            {
+                                auto &siblings = oldParent.GetComponent<RectTransform>().children;
+                                siblings.erase(std::remove(siblings.begin(), siblings.end(), dropped), siblings.end());
+                            }
                         }
+
+                        dropped.GetComponent<RectTransform>().parent = entity;
+                        entity.GetComponent<RectTransform>().children.push_back(dropped);
+
+                        m_forceRefresh = true;
                     }
-
-                    dropped.GetComponent<RectTransform>().parent = entity;
-                    entity.GetComponent<RectTransform>().children.push_back(dropped);
-
-                    m_forceRefresh = true;
                 }
             }
             ImGui::EndDragDropTarget();
