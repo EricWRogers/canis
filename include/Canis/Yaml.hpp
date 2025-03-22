@@ -103,7 +103,6 @@ namespace Canis
                                                                                                                      \
     GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {                     \
         if constexpr (std::is_same_v<type, Canis::Entity>) {                                                         \
-			Canis::Log("Save Entity"); \
             return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));            \
         } else {                                                                                                     \
             return YAML::Node(static_cast<component *>(componentPtr)->property);                                     \
@@ -116,31 +115,25 @@ namespace Canis
 #define REGISTER_PROPERTY_VECTOR(component, property, type)                                                                 \
 {                                                                                                    						\
 	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
-		if constexpr (std::is_same_v<type, Canis::Entity>) {   																\
-			Canis::AddEntityAndUUIDToSceneManager( 																			\
-				static_cast<void*>(&static_cast<component *>(componentPtr)->property), 										\
-				node.as<Canis::UUID>(), 																					\
-				_sceneManager); 																							\
-		} else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
+		if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {										\
 			auto &vec = static_cast<component *>(componentPtr)->property;													\
 			vec.clear();																									\
-			for (const auto &uuidNode : node) {																			\
+			vec.reserve(node.size());																						\
+			for (const auto &uuidNode : node) {																				\
 				Canis::Entity entity;																						\
-				Canis::AddEntityAndUUIDToSceneManager(																		\
-					static_cast<void*>(&entity), uuidNode.as<Canis::UUID>(), _sceneManager);								\
 				vec.push_back(entity);																						\
+				Canis::AddEntityAndUUIDToSceneManager(																		\
+					static_cast<void*>(&(vec.back())), uuidNode.as<Canis::UUID>(), _sceneManager);							\
 			}																												\
 		} else { 																											\
 			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
 		}  																													\
 	};                                                                                       								\
     GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {       						\
-        if constexpr (std::is_same_v<type, Canis::Entity>) {                                          						\
-			return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));                    \
-        } else if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {								\
+        if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {										\
 			const auto &vec = static_cast<component *>(componentPtr)->property;												\
 			YAML::Node node;																								\
-			node.SetStyle(YAML::EmitterStyle::Flow); \
+			node.SetStyle(YAML::EmitterStyle::Flow); 																		\
 			for (const auto &entity : vec) {																				\
 				node.push_back(*(EntityData*)(void*)&(entity));																\
 			}																												\

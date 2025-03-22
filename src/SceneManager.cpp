@@ -26,11 +26,12 @@ namespace Canis
 {
     void SceneManager::FindEntityEditor(Entity &_entity, UUID &_uuid)
     {
-        for (auto euuid : entityAndUUIDToConnect)
+        auto view = scene->entityRegistry.view<Canis::IDComponent>();
+        for (auto [entity, ID] : view.each())
         {
-            if (_uuid == euuid.uuid)
+            if (_uuid == ID.ID)
             {
-                _entity.entityHandle = euuid.entity->entityHandle;
+                _entity.entityHandle = entity;
                 return;
             }
         }
@@ -315,6 +316,9 @@ namespace Canis
                         }
                     }
                 }
+
+                // refactor later - do not use exept on load
+                entityAndUUIDToConnect.clear();
             }
         }
 

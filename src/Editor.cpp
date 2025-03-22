@@ -156,8 +156,6 @@ namespace Canis
 
     HierarchyElementInfo GetHierarchyElementInfo(SceneManager &_sceneManager, Entity &_entity)
     {
-        Canis::Log("scene " + _entity.scene->name);
-        std::cout << std::endl;
         Canis::UUID eid = _entity.GetComponent<IDComponent>().ID;
         for (HierarchyElementInfo hei : _sceneManager.hierarchyElements)
         {
@@ -1398,74 +1396,13 @@ namespace Canis
 
         for (int i = 0; i < GetSceneManager().hierarchyElements.size(); i++)
         {
-            // Convert UUID to string
-            std::string uuidStr = std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
+            Entity entity = GetSceneManager().hierarchyElements[i].entity;
 
-            // Create a unique ID for each selectable item to ensure ImGui can differentiate them
-            std::string selectableID = "##" + uuidStr;
-
-            // Use ImGui::Selectable to create a clickable text item
-            ImGui::InputText((selectableID).c_str(), &GetSceneManager().hierarchyElements[i].name); // ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == i, ImGuiSelectableFlags_AllowOverlap))
-
-            if (ImGui::IsItemFocused())
-            {
-                m_index = i;
-            }
-
-            ImGui::SameLine();
-            ImGui::Text(" ");
-
-            if (i != 0)
-            {
-                ImGui::SameLine();
-                std::string upButtonLabel = "^##" + std::to_string(i);
-                upButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
-                if (ImGui::Button(upButtonLabel.c_str()))
-                {
-                    HierarchyElementInfo temp = GetSceneManager().hierarchyElements[i - 1];
-                    GetSceneManager().hierarchyElements[i - 1] = GetSceneManager().hierarchyElements[i];
-                    GetSceneManager().hierarchyElements[i] = temp;
-                    m_forceRefresh = true;
-                }
-            }
-
-            if (i != GetSceneManager().hierarchyElements.size() - 1)
-            {
-                ImGui::SameLine();
-                std::string downButtonLabel = "v##" + std::to_string(i);
-                downButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
-                if (ImGui::Button(downButtonLabel.c_str()))
-                {
-                    HierarchyElementInfo temp = GetSceneManager().hierarchyElements[i];
-                    GetSceneManager().hierarchyElements[i] = GetSceneManager().hierarchyElements[i + 1];
-                    GetSceneManager().hierarchyElements[i + 1] = temp;
-                    m_forceRefresh = true;
-                }
-            }
-
-            ImGui::SameLine();
-            std::string removeButtonLabel = "x##" + std::to_string(i);
-            removeButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
-            if (ImGui::Button(removeButtonLabel.c_str()))
-            {
-                GetSceneManager().hierarchyElements[i].entity.Destroy();
-                GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + i);
-                m_forceRefresh = true;
-                continue;
-            }
-
-            ImGui::SameLine();
-            std::string duplicateButtonLabel = "d##" + std::to_string(i);
-            duplicateButtonLabel += std::to_string(GetSceneManager().hierarchyElements[i].entity.GetUUID());
-            if (ImGui::Button(duplicateButtonLabel.c_str()))
-            {
-                Canis::HierarchyElementInfo hei;
-                hei.entity = GetSceneManager().hierarchyElements[i].entity.Duplicate();
-                hei.name = GetSceneManager().hierarchyElements[i].name + " copy";
-                GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + i + 1, hei);
-                m_forceRefresh = true;
-                continue;
-            }
+            if (entity.HasComponent<Canis::RectTransform>())
+                if (entity.GetComponent<Canis::RectTransform>().parent)
+                    continue;
+            
+            DrawHierarchyElement(i);
         }
 
         if (ImGui::Button("New Entity"))
@@ -1484,6 +1421,97 @@ namespace Canis
         ImGui::End();
     }
 
+    void Editor::DrawHierarchyElement(int _index)
+    {
+        Entity entity = GetSceneManager().hierarchyElements[_index].entity;
+
+        // Convert UUID to string
+        std::string uuidStr = std::to_string(entity.GetUUID());
+
+        // Create a unique ID for each selectable item to ensure ImGui can differentiate them
+        std::string selectableID = "##" + uuidStr;
+
+        // Use ImGui::Selectable to create a clickable text item
+        ImGui::InputText((selectableID).c_str(), &GetSceneManager().hierarchyElements[_index].name); // ImGui::Selectable((uuidStr + selectableID).c_str(), m_index == _index, ImGuiSelectableFlags_AllowOverlap))
+
+        if (ImGui::IsItemFocused())
+        {
+            m_index = _index;
+        }
+
+        ImGui::SameLine();
+        ImGui::Text(" ");
+
+        if (_index != 0)
+        {
+            ImGui::SameLine();
+            std::string upButtonLabel = "^##" + std::to_string(_index);
+            upButtonLabel += std::to_string(GetSceneManager().hierarchyElements[_index].entity.GetUUID());
+            if (ImGui::Button(upButtonLabel.c_str()))
+            {
+                HierarchyElementInfo temp = GetSceneManager().hierarchyElements[_index - 1];
+                GetSceneManager().hierarchyElements[_index - 1] = GetSceneManager().hierarchyElements[_index];
+                GetSceneManager().hierarchyElements[_index] = temp;
+                m_forceRefresh = true;
+            }
+        }
+
+        if (_index != GetSceneManager().hierarchyElements.size() - 1)
+        {
+            ImGui::SameLine();
+            std::string downButtonLabel = "v##" + std::to_string(_index);
+            downButtonLabel += std::to_string(GetSceneManager().hierarchyElements[_index].entity.GetUUID());
+            if (ImGui::Button(downButtonLabel.c_str()))
+            {
+                HierarchyElementInfo temp = GetSceneManager().hierarchyElements[_index];
+                GetSceneManager().hierarchyElements[_index] = GetSceneManager().hierarchyElements[_index + 1];
+                GetSceneManager().hierarchyElements[_index + 1] = temp;
+                m_forceRefresh = true;
+            }
+        }
+
+        ImGui::SameLine();
+        std::string removeButtonLabel = "x##" + std::to_string(_index);
+        removeButtonLabel += std::to_string(GetSceneManager().hierarchyElements[_index].entity.GetUUID());
+        if (ImGui::Button(removeButtonLabel.c_str()))
+        {
+            GetSceneManager().hierarchyElements[_index].entity.Destroy();
+            GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + _index);
+            m_forceRefresh = true;
+            return;
+        }
+
+        ImGui::SameLine();
+        std::string duplicateButtonLabel = "d##" + std::to_string(_index);
+        duplicateButtonLabel += std::to_string(GetSceneManager().hierarchyElements[_index].entity.GetUUID());
+        if (ImGui::Button(duplicateButtonLabel.c_str()))
+        {
+            Canis::HierarchyElementInfo hei;
+            hei.entity = GetSceneManager().hierarchyElements[_index].entity.Duplicate();
+            hei.name = GetSceneManager().hierarchyElements[_index].name + " copy";
+            GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + _index + 1, hei);
+            m_forceRefresh = true;
+            return;
+        }
+    
+        if (entity.HasComponent<Canis::RectTransform>())
+        {
+            auto& rtc = entity.GetComponent<Canis::RectTransform>();
+
+            for (Canis::Entity child : rtc.children)
+            {
+                for (int i = 0; i < GetSceneManager().hierarchyElements.size(); i++)
+                {
+                    if (child.entityHandle == GetSceneManager().hierarchyElements[i].entity.entityHandle)
+                    {
+                        DrawHierarchyElement(i);
+                        break;
+                    }
+                }
+            }
+        }
+    }
+    
     void Editor::DrawScenePanel(Window *_window, Time *_time)
     {
         ImGui::Begin("Scene");
