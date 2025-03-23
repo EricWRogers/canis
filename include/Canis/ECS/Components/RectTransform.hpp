@@ -113,6 +113,28 @@ namespace Canis
 			REGISTER_PROPERTY(Canis::RectTransform, parent, Canis::Entity);
 			REGISTER_PROPERTY_VECTOR(Canis::RectTransform, children, std::vector<Canis::Entity>);
 		}
+
+		bool IsActive()
+		{
+			if (active == false)
+				return false;
+			
+			Canis::Entity currentParent = parent;
+			while (currentParent)
+			{
+				RectTransform &rtc = currentParent.GetComponent<RectTransform>();
+				if (rtc.active)
+				{
+					currentParent = rtc.parent;
+				}
+				else
+				{
+					return false;
+				}
+			}
+
+			return active;
+		}
 	};
 
 	namespace Text

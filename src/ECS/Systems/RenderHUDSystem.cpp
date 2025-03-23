@@ -85,13 +85,16 @@ namespace Canis
         {
             if (rect_transform.active)
             {
+                if (rect_transform.parent)
+                    if (rect_transform.IsActive() == false)
+                        continue;
+                
                 HUDElementDepth hudElementDepth;
                 hudElementDepth.element = entity;
                 hudElementDepth.depth = rect_transform.depth;
                 hudElementDepth.isText = false;
 
-                if (!rect_transform.parent)
-                    elements.push_back(hudElementDepth);
+                elements.push_back(hudElementDepth);
 
                 if (depthOffset > hudElementDepth.depth)
                     depthOffset = hudElementDepth.depth;
@@ -102,20 +105,9 @@ namespace Canis
         {
             if (rect_transform.active)
             {
-                bool skip = false;
-                Canis::Entity parent = rect_transform.parent;
-                while (parent) {
-                    RectTransform& rtc = parent.GetComponent<RectTransform>();
-                    if (rtc.active) {
-                        parent = rtc.parent;
-                    } else {
-                        skip = true;
-                        break;
-                    }
-                }
-
-                if (skip)
-                    continue;
+                if (rect_transform.parent)
+                    if (rect_transform.IsActive() == false)
+                        continue;
 
                 HUDElementDepth hudElementDepth;
                 hudElementDepth.element = entity;
