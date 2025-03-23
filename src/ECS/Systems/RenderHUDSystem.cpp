@@ -83,26 +83,36 @@ namespace Canis
 
         for (auto [entity, rect_transform, color, image] : viewUIImage.each())
         {
-            HUDElementDepth hudElementDepth;
-            hudElementDepth.element = entity;
-            hudElementDepth.depth = rect_transform.depth;
-            hudElementDepth.isText = false;
-            elements.push_back(hudElementDepth);
+            if (rect_transform.active)
+            {
+                HUDElementDepth hudElementDepth;
+                hudElementDepth.element = entity;
+                hudElementDepth.depth = rect_transform.depth;
+                hudElementDepth.isText = false;
 
-            if (depthOffset > hudElementDepth.depth)
-                depthOffset = hudElementDepth.depth;
+                if (!rect_transform.parent)
+                    elements.push_back(hudElementDepth);
+
+                if (depthOffset > hudElementDepth.depth)
+                    depthOffset = hudElementDepth.depth;
+            }
         }
 
         for (auto [entity, rect_transform, color, text] : viewText.each())
         {
-            HUDElementDepth hudElementDepth;
-            hudElementDepth.element = entity;
-            hudElementDepth.depth = rect_transform.depth;
-            hudElementDepth.isText = true;
-            elements.push_back(hudElementDepth);
+            if (rect_transform.active)
+            {
+                HUDElementDepth hudElementDepth;
+                hudElementDepth.element = entity;
+                hudElementDepth.depth = rect_transform.depth;
+                hudElementDepth.isText = true;
 
-            if (depthOffset > hudElementDepth.depth)
-                depthOffset = hudElementDepth.depth;
+                if (!rect_transform.parent)
+                    elements.push_back(hudElementDepth);
+
+                if (depthOffset > hudElementDepth.depth)
+                    depthOffset = hudElementDepth.depth;
+            }
         }
 
         for (int i = 0; i < elements.size(); i++)
@@ -195,7 +205,6 @@ namespace Canis
                     m_spriteRenderer.End();
                     m_spriteRenderer.SpriteRenderBatch(false);
                     m_textRenderer.textShader.Use();
-                    
 
                     // glDisable(GL_DEPTH_TEST);
                     // glDisable(GL_BLEND);
@@ -214,8 +223,7 @@ namespace Canis
                 // glEnable(GL_DEPTH_TEST);
                 // glEnable(GL_BLEND);
                 // glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-                // glDepthFunc(GL_ALWAYS);                
-                
+                // glDepthFunc(GL_ALWAYS);
 
                 e.entityHandle = elements[i].element;
                 positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
