@@ -1527,7 +1527,7 @@ namespace Canis
         // ─────────────────────────────────────────────────────
         // TREE NODE + DRAG SOURCE + DROP TARGET
         // ─────────────────────────────────────────────────────
-        ImGuiTreeNodeFlags flags = (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf) | ImGuiTreeNodeFlags_Framed;
+        ImGuiTreeNodeFlags flags = (hasChildren ? 0 : ImGuiTreeNodeFlags_Leaf) | ImGuiTreeNodeFlags_FramePadding;
         bool opened = ImGui::TreeNodeEx(label.c_str(), flags);
 
         if (ImGui::BeginDragDropSource())
