@@ -114,7 +114,7 @@ namespace Canis
 			REGISTER_PROPERTY_VECTOR(Canis::RectTransform, children, std::vector<Canis::Entity>);
 		}
 
-		bool IsActive()
+		bool GetGlobalActive()
 		{
 			if (active == false)
 				return false;
@@ -134,6 +134,59 @@ namespace Canis
 			}
 
 			return active;
+		}
+
+		float GetGlobalDepth()
+		{
+			float depthOffset = 0.0f;			
+			Canis::Entity currentParent = parent;
+			while (currentParent)
+			{
+				RectTransform &rtc = currentParent.GetComponent<RectTransform>();
+				depthOffset += rtc.depth;
+				if (rtc.active)
+				{
+					currentParent = rtc.parent;
+				}
+			}
+
+			return depth + depthOffset;
+		}
+
+		glm::vec2 GetGlobalPosition(Window *_window)
+		{
+			glm::vec2 offset = glm::vec2(0.0f);			
+			Canis::Entity currentParent = parent;
+			while (currentParent)
+			{
+				RectTransform &rtc = currentParent.GetComponent<RectTransform>();
+				offset += rtc.position;
+				offset += rtc.GetGlobalArchor(_window);
+				if (rtc.active)
+				{
+					currentParent = rtc.parent;
+				}
+			}
+
+			offset += GetGlobalArchor(_window);
+			return position + offset;
+		}
+
+		glm::vec2 GetGlobalArchor(Window *_window)
+		{
+			if (parent)
+			{
+				RectTransform& parentRect = parent.GetComponent<RectTransform>();
+				return GetAnchor((Canis::RectAnchor)anchor,
+										parentRect.size.x * parentRect.scale,
+										parentRect.size.y * parentRect.scale);
+			}
+			else
+			{
+				return GetAnchor((Canis::RectAnchor)anchor,
+										(float)_window->GetScreenWidth(),
+										(float)_window->GetScreenHeight());
+			}
 		}
 	};
 

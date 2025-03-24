@@ -86,12 +86,12 @@ namespace Canis
             if (rect_transform.active)
             {
                 if (rect_transform.parent)
-                    if (rect_transform.IsActive() == false)
+                    if (rect_transform.GetGlobalActive() == false)
                         continue;
                 
                 HUDElementDepth hudElementDepth;
                 hudElementDepth.element = entity;
-                hudElementDepth.depth = rect_transform.depth;
+                hudElementDepth.depth = rect_transform.GetGlobalDepth();
                 hudElementDepth.isText = false;
 
                 elements.push_back(hudElementDepth);
@@ -106,12 +106,12 @@ namespace Canis
             if (rect_transform.active)
             {
                 if (rect_transform.parent)
-                    if (rect_transform.IsActive() == false)
+                    if (rect_transform.GetGlobalActive() == false)
                         continue;
 
                 HUDElementDepth hudElementDepth;
                 hudElementDepth.element = entity;
-                hudElementDepth.depth = rect_transform.depth;
+                hudElementDepth.depth = rect_transform.GetGlobalDepth();
                 hudElementDepth.isText = true;
 
                 elements.push_back(hudElementDepth);
@@ -159,9 +159,7 @@ namespace Canis
                     continue;
                 }
 
-                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                           (float)window->GetScreenWidth(),
-                                           (float)window->GetScreenHeight());
+                positionAnchor = rect_transform.GetGlobalPosition(window);
 
                 glm::vec2 size = rect_transform.size;
                 glm::vec2 offset = rect_transform.originOffset;
@@ -195,10 +193,10 @@ namespace Canis
                 }
 
                 m_spriteRenderer.DrawUI(
-                    glm::vec4(rect_transform.position.x + positionAnchor.x, rect_transform.position.y + positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
+                    glm::vec4(positionAnchor.x, positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
                     image.textureHandle.texture,
-                    rect_transform.depth,
+                    elements[i].depth,
                     color,
                     rect_transform.rotation,
                     offset,
@@ -232,15 +230,14 @@ namespace Canis
                 // glDepthFunc(GL_ALWAYS);
 
                 e.entityHandle = elements[i].element;
-                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                           (float)window->GetScreenWidth(),
-                                           (float)window->GetScreenHeight());
+                
+                positionAnchor = rect_transform.GetGlobalPosition(window);
 
                 m_textRenderer.RenderText(&e,
                                           m_textRenderer.textShader,
                                           text.text,
-                                          rect_transform.position.x + positionAnchor.x,
-                                          rect_transform.position.y + positionAnchor.y,
+                                          positionAnchor.x,
+                                          positionAnchor.y,
                                           rect_transform.scale,
                                           color.color,
                                           text.assetId,
