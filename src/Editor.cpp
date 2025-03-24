@@ -1541,10 +1541,10 @@ namespace Canis
         {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_HIERARCHY"))
             {
-                if (entity.HasComponent<RectTransform>())
-                {
-                    Entity dropped = *(Entity *)payload->Data;
+                Entity dropped = *(Entity *)payload->Data;
 
+                if (entity.HasComponent<RectTransform>() && dropped.HasComponent<RectTransform>())
+                {
                     if (dropped != entity && !IsDescendantOf(entity, dropped))
                     {
                         if (dropped.HasComponent<RectTransform>())
