@@ -159,7 +159,10 @@ namespace Canis
                     continue;
                 }
 
-                positionAnchor = rect_transform.GetGlobalPosition(window);
+                //if (Entity(elements[i].element, scene).TagEquals("QUEST_1_X") || Entity(elements[i].element, scene).TagEquals("QUEST_2_X"))
+                //    Log("Hey");
+
+                positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
 
                 glm::vec2 size = rect_transform.size;
                 glm::vec2 offset = rect_transform.originOffset;
@@ -192,6 +195,15 @@ namespace Canis
                     offset.y *= scaleY;
                 }
 
+                /*if (Entity(elements[i].element, scene).TagEquals("QUEST_1_CHECK"))
+                    Log("QUEST_1_CHECK x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
+                if (Entity(elements[i].element, scene).TagEquals("QUEST_2_CHECK"))
+                    Log("QUEST_2_CHECK x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
+                if (Entity(elements[i].element, scene).TagEquals("QUEST_1_X"))
+                    Log("QUEST_1_X x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
+                if (Entity(elements[i].element, scene).TagEquals("QUEST_2_X"))
+                    Log("QUEST_2_X x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));*/
+                
                 m_spriteRenderer.DrawUI(
                     glm::vec4(positionAnchor.x, positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
@@ -231,7 +243,10 @@ namespace Canis
 
                 e.entityHandle = elements[i].element;
                 
-                positionAnchor = rect_transform.GetGlobalPosition(window);
+                positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
+
+                //if (Entity(elements[i].element, scene).TagEquals("QUEST_1_TEXT"))
+                //    Log("QUEST_1_TEXT x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
 
                 m_textRenderer.RenderText(&e,
                                           m_textRenderer.textShader,

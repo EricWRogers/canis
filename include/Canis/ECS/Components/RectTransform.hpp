@@ -153,7 +153,7 @@ namespace Canis
 			return depth + depthOffset;
 		}
 
-		glm::vec2 GetGlobalPosition(Window *_window)
+		glm::vec2 GetGlobalPosition(int _canvasWidth, int _canvasHeight)
 		{
 			glm::vec2 offset = glm::vec2(0.0f);			
 			Canis::Entity currentParent = parent;
@@ -161,18 +161,15 @@ namespace Canis
 			{
 				RectTransform &rtc = currentParent.GetComponent<RectTransform>();
 				offset += rtc.position;
-				offset += rtc.GetGlobalArchor(_window);
-				if (rtc.active)
-				{
-					currentParent = rtc.parent;
-				}
+				offset += rtc.GetGlobalArchor(_canvasWidth, _canvasHeight);
+				currentParent = rtc.parent;
 			}
 
-			offset += GetGlobalArchor(_window);
+			offset += GetGlobalArchor(_canvasWidth, _canvasHeight);
 			return position + offset;
 		}
 
-		glm::vec2 GetGlobalArchor(Window *_window)
+		glm::vec2 GetGlobalArchor(int _canvasWidth, int _canvasHeight)
 		{
 			if (parent)
 			{
@@ -184,8 +181,8 @@ namespace Canis
 			else
 			{
 				return GetAnchor((Canis::RectAnchor)anchor,
-										(float)_window->GetScreenWidth(),
-										(float)_window->GetScreenHeight());
+										(float)_canvasWidth,
+										(float)_canvasHeight);
 			}
 		}
 	};
