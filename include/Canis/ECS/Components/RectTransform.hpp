@@ -89,6 +89,8 @@ namespace Canis
 		int anchor = RectAnchor::BOTTOMLEFT;
 		glm::vec2 position = glm::vec2(0.0f);
 		glm::vec2 size = glm::vec2(1.0f);
+		bool inheritWidth = false;
+		bool inheritHeight = false;
 		glm::vec2 originOffset = glm::vec2(0.0f);
 		float rotation = 0.0f;
 		float scale = 1.0f;
@@ -104,6 +106,8 @@ namespace Canis
 			REGISTER_PROPERTY(Canis::RectTransform, anchor, int);
 			REGISTER_PROPERTY(Canis::RectTransform, position, glm::vec2);
 			REGISTER_PROPERTY(Canis::RectTransform, size, glm::vec2);
+			REGISTER_PROPERTY(Canis::RectTransform, inheritWidth, bool);
+			REGISTER_PROPERTY(Canis::RectTransform, inheritHeight, bool);
 			REGISTER_PROPERTY(Canis::RectTransform, originOffset, glm::vec2);
 			REGISTER_PROPERTY(Canis::RectTransform, rotation, float);
 			REGISTER_PROPERTY(Canis::RectTransform, scale, float);
@@ -118,7 +122,7 @@ namespace Canis
 		{
 			if (active == false)
 				return false;
-			
+
 			Canis::Entity currentParent = parent;
 			while (currentParent)
 			{
@@ -138,7 +142,7 @@ namespace Canis
 
 		float GetGlobalDepth()
 		{
-			float depthOffset = 0.0f;			
+			float depthOffset = 0.0f;
 			Canis::Entity currentParent = parent;
 			while (currentParent)
 			{
@@ -155,14 +159,33 @@ namespace Canis
 
 		glm::vec2 GetGlobalPosition(int _canvasWidth, int _canvasHeight)
 		{
-			glm::vec2 offset = glm::vec2(0.0f);			
-			Canis::Entity currentParent = parent;
-			while (currentParent)
+			glm::vec2 offset = glm::vec2(0.0f);
+
+			if (parent)
+				offset = parent.GetComponent<RectTransform>().GetGlobalPosition(_canvasWidth, _canvasHeight);
+
+			if (inheritWidth)
 			{
-				RectTransform &rtc = currentParent.GetComponent<RectTransform>();
-				offset += rtc.position;
-				offset += rtc.GetGlobalArchor(_canvasWidth, _canvasHeight);
-				currentParent = rtc.parent;
+				if (parent)
+				{
+					size.x = parent.GetComponent<RectTransform>().size.x;
+				}
+				else
+				{
+					size.x = _canvasWidth;
+				}
+			}
+
+			if (inheritHeight)
+			{
+				if (parent)
+				{
+					size.y = parent.GetComponent<RectTransform>().size.y;
+				}
+				else
+				{
+					size.y = _canvasHeight;
+				}
 			}
 
 			offset += GetGlobalArchor(_canvasWidth, _canvasHeight);
@@ -173,16 +196,16 @@ namespace Canis
 		{
 			if (parent)
 			{
-				RectTransform& parentRect = parent.GetComponent<RectTransform>();
+				RectTransform &parentRect = parent.GetComponent<RectTransform>();
 				return GetAnchor((Canis::RectAnchor)anchor,
-										parentRect.size.x * parentRect.scale,
-										parentRect.size.y * parentRect.scale);
+								 parentRect.size.x * parentRect.scale,
+								 parentRect.size.y * parentRect.scale);
 			}
 			else
 			{
 				return GetAnchor((Canis::RectAnchor)anchor,
-										(float)_canvasWidth,
-										(float)_canvasHeight);
+								 (float)_canvasWidth,
+								 (float)_canvasHeight);
 			}
 		}
 	};

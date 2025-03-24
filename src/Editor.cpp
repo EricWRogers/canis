@@ -527,7 +527,12 @@ namespace Canis
                     ImGui::Combo("anchor", &rtc.anchor, RectAnchorLabels, IM_ARRAYSIZE(RectAnchorLabels));
 
                     ImGui::InputFloat2("position", glm::value_ptr(rtc.position), "%.3f");
-                    ImGui::InputFloat2("size", glm::value_ptr(rtc.size), "%.3f");
+                    ImGui::Checkbox("inheritWidth", &rtc.inheritWidth);
+                    ImGui::Checkbox("inheritHeight", &rtc.inheritHeight);
+
+                    if (!rtc.inheritWidth || !rtc.inheritHeight)
+                        ImGui::InputFloat2("size", glm::value_ptr(rtc.size), "%.3f");
+                    
                     ImGui::InputFloat2("originOffset", glm::value_ptr(rtc.originOffset), "%.3f");
                     ImGui::InputFloat("rotation", &rtc.rotation);
                     ImGui::InputFloat("scale", &rtc.scale);
