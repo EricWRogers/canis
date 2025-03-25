@@ -158,7 +158,7 @@ namespace Canis
                 {
                     continue;
                 }
-
+                
                 positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
 
                 glm::vec2 size = rect_transform.size;
@@ -241,6 +241,9 @@ namespace Canis
                 e.entityHandle = elements[i].element;
                 
                 positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
+
+                //if (Entity(elements[i].element, scene).TagEquals("QUEST_1_TEXT"))
+                //    Log("QUEST_1_TEXT x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
 
                 m_textRenderer.RenderText(&e,
                                           m_textRenderer.textShader,
