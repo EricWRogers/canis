@@ -32,6 +32,8 @@
 #include <imgui_impl_sdl2.h>
 #include <imgui_impl_opengl3.h>
 
+#include <ImGuizmo.h>
+
 #include <glm/gtc/type_ptr.hpp>
 
 #include <filesystem>
@@ -227,6 +229,96 @@ namespace Canis
             DrawHierarchyPanel();
             DrawScenePanel(_window, _time);
 
+            if (m_debugDraw == DebugDraw::RECT)
+            {
+                SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
+                SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
+                SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
+
+                ImGuizmo::BeginFrame();
+
+                // Get the main viewport
+                ImGuiViewport *mainViewport = ImGui::GetMainViewport();
+
+                // Force gizmo window to cover the main viewport
+                ImGui::SetNextWindowPos(mainViewport->WorkPos);
+                ImGui::SetNextWindowSize(mainViewport->WorkSize);
+                ImGui::SetNextWindowViewport(mainViewport->ID);
+
+                ImGuizmo::BeginFrame();
+                ImGui::Begin("##GuizmoWindow", nullptr,
+                             ImGuiWindowFlags_NoTitleBar |
+                                 ImGuiWindowFlags_NoMove |
+                                 ImGuiWindowFlags_NoScrollbar |
+                                 ImGuiWindowFlags_NoSavedSettings |
+                                 ImGuiWindowFlags_NoBackground);
+
+                Camera2D camera2D;
+                camera2D.Init((int)_window->GetScreenWidth(), (int)_window->GetScreenHeight());
+                bool camFound = false;
+                auto cam = _scene->entityRegistry.view<const Camera2DComponent>();
+                for (auto [entity, camera] : cam.each())
+                {
+                    camera2D.SetPosition(camera.position);
+                    camera2D.SetScale(camera.scale);
+                    camera2D.Update();
+                    camFound = true;
+                    continue;
+                }
+
+                glm::mat4 projection = glm::mat4(1.0f);
+
+                if (camFound)
+                    projection = camera2D.GetProjectionMatrix();
+                else
+                    projection = glm::ortho(0.0f, static_cast<float>(_window->GetScreenWidth()), 0.0f, static_cast<float>(_window->GetScreenHeight()));
+
+                RectTransform &debugRectTransform = debugRectTransformEntity.GetComponent<RectTransform>();
+                glm::vec2 pos = debugRectTransform.GetGlobalPosition(_window->GetScreenWidth(), _window->GetScreenHeight());
+                pos += debugRectTransform.originOffset;
+                // pos += glm::vec2(_window->GetScreenWidth()*0.5f, -_window->GetScreenHeight()*0.5f);
+
+                // imguizmo
+                // Set up ImGuizmo for 2D ortho
+                ImGuizmo::SetOrthographic(true);
+                ImGuizmo::SetDrawlist();
+                ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, _window->GetScreenWidth(), _window->GetScreenHeight());
+
+                // Build the model matrix using current position only
+                glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos, 0.0f));
+
+                // Use identity for view matrix (no camera movement in 2D)
+                glm::mat4 view = camera2D.GetViewMatrix();
+
+                ImGuiIO &io = ImGui::GetIO();
+
+                ImGui::Text("MousePos: %.1f, %.1f", io.MousePos.x, io.MousePos.y);
+                ImGui::Text("Pos: %.1f, %.1f", pos.x, pos.y);
+
+                ImGuizmo::Enable(true);
+
+                // Call ImGuizmo
+                ImGuizmo::Manipulate(
+                    glm::value_ptr(view),
+                    glm::value_ptr(projection),
+                    ImGuizmo::TRANSLATE,
+                    ImGuizmo::LOCAL,
+                    glm::value_ptr(model));
+
+                // If the gizmo is active, update position only
+                if (ImGuizmo::IsUsing())
+                {
+                    Log("USING");
+                    glm::vec3 translation, rotation, scale;
+                    ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), glm::value_ptr(translation), glm::value_ptr(rotation), glm::value_ptr(scale));
+
+                    // Update only the position
+                    debugRectTransform.position = glm::vec2(translation.x, translation.y) - pos;
+                }
+
+                ImGui::End();
+            }
+
             // Rendering
             ImGui::Render();
             ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
@@ -270,7 +362,7 @@ namespace Canis
                     projection = glm::ortho(0.0f, static_cast<float>(_window->GetScreenWidth()), 0.0f, static_cast<float>(_window->GetScreenHeight()));
 
                 static Canis::Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
-
+                RectTransform &debugRectTransform = debugRectTransformEntity.GetComponent<RectTransform>();
                 glm::vec2 pos = debugRectTransform.GetGlobalPosition(_window->GetScreenWidth(), _window->GetScreenHeight());
                 pos += debugRectTransform.originOffset;
                 glm::vec2 vertices[] = {
@@ -278,8 +370,8 @@ namespace Canis
                     {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y},
                     {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y + (debugRectTransform.size.y * debugRectTransform.scale)},
                     {pos.x, pos.y + (debugRectTransform.size.y * debugRectTransform.scale)}};
-                
-                for(glm::vec2& v : vertices)
+
+                for (glm::vec2 &v : vertices)
                     v = glm::vec2(projection * glm::vec4(v.x, v.y, 0.0f, 1.0f));
 
                 GLuint VAO, VBO;
@@ -492,7 +584,7 @@ namespace Canis
                 {
                     m_debugDraw = DebugDraw::RECT;
 
-                    debugRectTransform = rtc;
+                    debugRectTransformEntity = entity;
                 }
 
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))

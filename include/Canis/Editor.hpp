@@ -49,6 +49,6 @@ namespace Canis
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
         DebugDraw m_debugDraw = DebugDraw::NONE;
-        RectTransform debugRectTransform;
+        Entity debugRectTransformEntity;
     };
 }

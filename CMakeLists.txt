@@ -47,15 +47,21 @@ add_subdirectory(external/stb)
 add_subdirectory(external/freetype)
 add_subdirectory(external/SDL_mixer)
 
-# Set where the ImGui files are stored
+# imgui
 set(IMGUI_PATH  "external/imgui")
-    
-# Compile as static library 
 file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp ${IMGUI_PATH}/backends/imgui_impl_opengl3.cpp ${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp ${IMGUI_PATH}/misc/cpp/imgui_stdlib.cpp) 
 file(GLOB IMGUI_HEADERS ${IMGUI_PATH}/*.h ${IMGUI_PATH}/backends/imgui_impl_opengl3.h ${IMGUI_PATH}/backends/imgui_impl_sdl2.h ${IMGUI_PATH}/misc/cpp/imgui_stdlib.h) 
 add_library("imgui" STATIC ${IMGUI_SOURCES})
 target_include_directories("imgui" PUBLIC ${IMGUI_PATH} ${IMGUI_PATH}/backends/ ${IMGUI_PATH}/misc/cpp/)
 target_link_libraries("imgui" PRIVATE SDL2main SDL2-static)
+
+# imguizmo
+set(IMGUIZMO_PATH "external/imguizmo")
+file(GLOB IMGUIZMO_SOURCES ${IMGUIZMO_PATH}/*.cpp)
+file(GLOB IMGUIZMO_HEADERS ${IMGUIZMO_PATH}/*.h)
+add_library("imguizmo" STATIC ${IMGUIZMO_SOURCES})
+target_include_directories("imguizmo" PUBLIC ${IMGUIZMO_PATH})
+target_link_libraries("imguizmo" PRIVATE "imgui" SDL2main SDL2-static)
 
 include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
 include_directories("${PROJECT_SOURCE_DIR}/include")
@@ -99,6 +105,7 @@ target_link_libraries(${PROJECT_NAME}
     SDL2main
     SDL2_mixer
     imgui
+    imguizmo
 )
 else()
 target_link_libraries(${PROJECT_NAME}
@@ -112,6 +119,7 @@ target_link_libraries(${PROJECT_NAME}
     SDL2main
     SDL2_mixer
     imgui
+    imguizmo
 )
 endif()
 
@@ -125,6 +133,7 @@ target_include_directories(${PROJECT_NAME}
         SDL2main
         SDL2_mixer
         imgui
+        imguizmo
         "${PROJECT_SOURCE_DIR}/include"
 )
 

@@ -16,25 +16,28 @@ namespace Canis
 
         void SetPosition(const glm::vec2 &newPosition)
         {
-            _position = newPosition;
-            _needsMatrixUpdate = true;
+            m_position = newPosition;
+            m_needsMatrixUpdate = true;
         }
         void SetScale(float newScale)
         {
-            _scale = newScale;
-            _needsMatrixUpdate = true;
+            m_scale = newScale;
+            m_needsMatrixUpdate = true;
         }
 
-        glm::vec2 GetPosition() { return _position; }
-        glm::mat4 GetCameraMatrix() { return _cameraMatrix; }
-        float GetScale() { return _scale; }
+        glm::vec2 GetPosition() { return m_position; }
+        glm::mat4 GetCameraMatrix() { return m_cameraMatrix; }
+        glm::mat4 GetViewMatrix() { return m_view; }
+        glm::mat4 GetProjectionMatrix() { return m_projection; }
+        float GetScale() { return m_scale; }
 
     private:
-        int _screenWidth, _screenHeight;
-        bool _needsMatrixUpdate;
-        float _scale;
-        glm::vec2 _position;
-        glm::mat4 _cameraMatrix;
-        glm::mat4 _orthoMatrix;
+        int m_screenWidth, m_screenHeight;
+        bool m_needsMatrixUpdate;
+        float m_scale;
+        glm::vec2 m_position;
+        glm::mat4 m_cameraMatrix;
+        glm::mat4 m_view;
+        glm::mat4 m_projection;
     };
 } // end of Canis namespace
