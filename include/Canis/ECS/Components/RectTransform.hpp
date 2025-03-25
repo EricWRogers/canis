@@ -144,6 +144,7 @@ namespace Canis
 		{
 			float depthOffset = 0.0f;
 			Canis::Entity currentParent = parent;
+
 			while (currentParent)
 			{
 				RectTransform &rtc = currentParent.GetComponent<RectTransform>();

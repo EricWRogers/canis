@@ -7,6 +7,7 @@
 #include <Canis/Time.hpp>
 #include <Canis/Math.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/Camera2D.hpp>
 
 #include <Canis/ECS/Components/Transform.hpp>
 #include <Canis/ECS/Components/RectTransform.hpp>
@@ -20,6 +21,7 @@
 #include <Canis/ECS/Components/UISliderKnobComponent.hpp>
 #include <Canis/ECS/Components/UIImageComponent.hpp>
 #include <Canis/ECS/Components/DirectionalLight.hpp>
+#include <Canis/ECS/Components/Camera2DComponent.hpp>
 
 #include <Canis/External/OpenGl.hpp>
 
@@ -244,6 +246,68 @@ namespace Canis
                 SDL_GL_MakeCurrent(backup_current_window, backup_current_context);
             }
 
+            // debug draw
+            if (m_debugDraw == DebugDraw::RECT)
+            {
+                Camera2D camera2D;
+                camera2D.Init((int)_window->GetScreenWidth(), (int)_window->GetScreenHeight());
+                bool camFound = false;
+                auto cam = _scene->entityRegistry.view<const Camera2DComponent>();
+                for (auto [entity, camera] : cam.each())
+                {
+                    camera2D.SetPosition(camera.position);
+                    camera2D.SetScale(camera.scale);
+                    camera2D.Update();
+                    camFound = true;
+                    continue;
+                }
+
+                glm::mat4 projection = glm::mat4(1.0f);
+
+                if (camFound)
+                    projection = camera2D.GetCameraMatrix();
+                else
+                    projection = glm::ortho(0.0f, static_cast<float>(_window->GetScreenWidth()), 0.0f, static_cast<float>(_window->GetScreenHeight()));
+
+                static Canis::Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
+
+                glm::vec2 pos = debugRectTransform.GetGlobalPosition(_window->GetScreenWidth(), _window->GetScreenHeight());
+                pos += debugRectTransform.originOffset;
+                glm::vec2 vertices[] = {
+                    {pos.x, pos.y},
+                    {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y},
+                    {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y + (debugRectTransform.size.y * debugRectTransform.scale)},
+                    {pos.x, pos.y + (debugRectTransform.size.y * debugRectTransform.scale)}};
+                
+                for(glm::vec2& v : vertices)
+                    v = glm::vec2(projection * glm::vec4(v.x, v.y, 0.0f, 1.0f));
+
+                GLuint VAO, VBO;
+                glGenVertexArrays(1, &VAO);
+                glGenBuffers(1, &VBO);
+
+                glBindVertexArray(VAO);
+
+                glBindBuffer(GL_ARRAY_BUFFER, VBO);
+                glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_STATIC_DRAW);
+
+                glVertexAttribPointer(0, 2, GL_FLOAT, GL_FALSE, 2 * sizeof(float), (void *)0);
+                glEnableVertexAttribArray(0);
+
+                glBindBuffer(GL_ARRAY_BUFFER, 0);
+                glBindVertexArray(0);
+
+                debugLineShader.Use();
+
+                glBindVertexArray(VAO);
+                glDrawArrays(GL_LINE_LOOP, 0, 4);
+                debugLineShader.UnUse();
+
+                // clean up
+                glDeleteVertexArrays(1, &VAO);
+                glDeleteBuffers(1, &VBO);
+            }
+
             // Save
             if (m_mode == EditorMode::EDIT && GetSceneManager().inputManager->JustPressedKey(SDLK_F5))
             {
@@ -261,6 +325,8 @@ namespace Canis
         static UUID id = 0;
         static Entity entity(m_scene);
         static bool refresh = true;
+
+        m_debugDraw = DebugDraw::NONE;
 
         static std::vector<std::string> pngFilePaths = FindFilesInFolder("assets", ".png");
         static std::vector<std::string> materialFilePaths = FindFilesInFolder("assets", ".material");
@@ -421,10 +487,16 @@ namespace Canis
 
             if (entity.HasComponent<RectTransform>())
             {
+                auto &rtc = entity.GetComponent<RectTransform>();
+
+                {
+                    m_debugDraw = DebugDraw::RECT;
+
+                    debugRectTransform = rtc;
+                }
+
                 if (ImGui::CollapsingHeader("Canis::RectTransform", ImGuiTreeNodeFlags_DefaultOpen))
                 {
-                    auto &rtc = entity.GetComponent<RectTransform>();
-
                     ImGui::Checkbox("active", &rtc.active);
 
                     {
@@ -532,7 +604,7 @@ namespace Canis
 
                     if (!rtc.inheritWidth || !rtc.inheritHeight)
                         ImGui::InputFloat2("size", glm::value_ptr(rtc.size), "%.3f");
-                    
+
                     ImGui::InputFloat2("originOffset", glm::value_ptr(rtc.originOffset), "%.3f");
                     ImGui::InputFloat("rotation", &rtc.rotation);
                     ImGui::InputFloat("scale", &rtc.scale);

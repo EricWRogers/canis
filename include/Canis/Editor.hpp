@@ -1,5 +1,6 @@
 #pragma once
 #include <Canis/Scene.hpp>
+#include <Canis/ECS/Components/RectTransform.hpp>
 
 namespace Canis
 {
@@ -35,9 +36,19 @@ namespace Canis
 
         SceneManager& GetSceneManager();
 
+        // this should be a seperate system that runs after editor draw
+        // that can take elements to draw queue them then draw at the end of a frame
+        enum DebugDraw
+        {
+            NONE,
+            RECT,
+        };
+
         Scene *m_scene;
         int m_index = 0;
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
+        DebugDraw m_debugDraw = DebugDraw::NONE;
+        RectTransform debugRectTransform;
     };
 }
