@@ -245,16 +245,17 @@ namespace Canis
                 ImGui::SetNextWindowSize(mainViewport->WorkSize);
                 ImGui::SetNextWindowViewport(mainViewport->ID);
 
-                ImGuizmo::BeginFrame();
                 ImGui::Begin("##GuizmoWindow", nullptr,
                              ImGuiWindowFlags_NoTitleBar |
                                  ImGuiWindowFlags_NoMove |
                                  ImGuiWindowFlags_NoScrollbar |
                                  ImGuiWindowFlags_NoSavedSettings |
-                                 ImGuiWindowFlags_NoBackground);
+                                 ImGuiWindowFlags_NoBackground
+                );
 
                 Camera2D camera2D;
                 camera2D.Init((int)_window->GetScreenWidth(), (int)_window->GetScreenHeight());
+
                 bool camFound = false;
                 auto cam = _scene->entityRegistry.view<const Camera2DComponent>();
                 for (auto [entity, camera] : cam.each())
@@ -263,31 +264,24 @@ namespace Canis
                     camera2D.SetScale(camera.scale);
                     camera2D.Update();
                     camFound = true;
-                    continue;
+                    break;
                 }
 
-                glm::mat4 projection = glm::mat4(1.0f);
-
-                if (camFound)
-                    projection = camera2D.GetProjectionMatrix();
-                else
-                    projection = glm::ortho(0.0f, static_cast<float>(_window->GetScreenWidth()), 0.0f, static_cast<float>(_window->GetScreenHeight()));
+                glm::mat4 projection = camFound
+                                           ? camera2D.GetProjectionMatrix()
+                                           : glm::ortho(0.0f, static_cast<float>(_window->GetScreenWidth()), 0.0f, static_cast<float>(_window->GetScreenHeight()));
 
                 RectTransform &debugRectTransform = debugRectTransformEntity.GetComponent<RectTransform>();
                 glm::vec2 pos = debugRectTransform.GetGlobalPosition(_window->GetScreenWidth(), _window->GetScreenHeight());
                 pos += debugRectTransform.originOffset;
-                // pos += glm::vec2(_window->GetScreenWidth()*0.5f, -_window->GetScreenHeight()*0.5f);
 
-                // imguizmo
-                // Set up ImGuizmo for 2D ortho
+                // Set ImGuizmo draw area to full screen using absolute viewport position
                 ImGuizmo::SetOrthographic(true);
                 ImGuizmo::SetDrawlist();
-                ImGuizmo::SetRect(ImGui::GetWindowPos().x, ImGui::GetWindowPos().y, _window->GetScreenWidth(), _window->GetScreenHeight());
+                ImGuizmo::SetRect(mainViewport->WorkPos.x, mainViewport->WorkPos.y, mainViewport->WorkSize.x, mainViewport->WorkSize.y);
 
-                // Build the model matrix using current position only
+                // Build the model matrix using world position only
                 glm::mat4 model = glm::translate(glm::mat4(1.0f), glm::vec3(pos, 0.0f));
-
-                // Use identity for view matrix (no camera movement in 2D)
                 glm::mat4 view = camera2D.GetViewMatrix();
 
                 ImGuiIO &io = ImGui::GetIO();
@@ -297,7 +291,6 @@ namespace Canis
 
                 ImGuizmo::Enable(true);
 
-                // Call ImGuizmo
                 ImGuizmo::Manipulate(
                     glm::value_ptr(view),
                     glm::value_ptr(projection),
@@ -305,15 +298,15 @@ namespace Canis
                     ImGuizmo::LOCAL,
                     glm::value_ptr(model));
 
-                // If the gizmo is active, update position only
                 if (ImGuizmo::IsUsing())
                 {
                     Log("USING");
                     glm::vec3 translation, rotation, scale;
                     ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), glm::value_ptr(translation), glm::value_ptr(rotation), glm::value_ptr(scale));
 
-                    // Update only the position
-                    debugRectTransform.position = glm::vec2(translation.x, translation.y) - pos;
+                    glm::vec2 newWorldPos = glm::vec2(translation.x, translation.y);
+                    glm::vec2 delta = newWorldPos - pos;
+                    debugRectTransform.originOffset += delta;
                 }
 
                 ImGui::End();
