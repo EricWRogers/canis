@@ -377,6 +377,13 @@ namespace Canis
                     {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y},
                     {pos.x + (debugRectTransform.size.x * debugRectTransform.scale), pos.y + (debugRectTransform.size.y * debugRectTransform.scale)},
                     {pos.x, pos.y + (debugRectTransform.size.y * debugRectTransform.scale)}};
+                
+                for (glm::vec2 &v : vertices)
+                    RotatePointAroundPivot(
+                        v,
+                        vertices[0] + debugRectTransform.originOffset + debugRectTransform.rotationOriginOffset,
+                        debugRectTransform.GetGlobalRotation()
+                    );
 
                 for (glm::vec2 &v : vertices)
                     v = glm::vec2(projection * glm::vec4(v.x, v.y, 0.0f, 1.0f));

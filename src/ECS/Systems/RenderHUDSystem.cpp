@@ -207,7 +207,7 @@ namespace Canis
                     image.textureHandle.texture,
                     elements[i].depth,
                     color,
-                    rect_transform.rotation,
+                    rect_transform.GetGlobalRotation(),
                     offset,
                     rect_transform.rotationOriginOffset);
             }
@@ -256,7 +256,7 @@ namespace Canis
                                           text.alignment,
                                           rect_transform.originOffset,
                                           text._status,
-                                          rect_transform.rotation);
+                                          rect_transform.GetGlobalRotation());
 
                 // m_textRenderer.textShader.UnUse();
 

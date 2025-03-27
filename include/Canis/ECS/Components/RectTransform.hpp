@@ -1,7 +1,9 @@
 #pragma once
 #include <glm/glm.hpp>
+#include <glm/gtx/string_cast.hpp>
 #include <string>
 #include <Canis/Yaml.hpp>
+#include <Canis/Math.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/ECS/Components/TextComponent.hpp>
 
@@ -158,12 +160,28 @@ namespace Canis
 			return depth + depthOffset;
 		}
 
+		float GetGlobalRotation()
+		{
+			float inheritedRotated = 0.0f;
+			
+			if (parent)
+			{
+				RectTransform& prtc = parent.GetComponent<RectTransform>();
+				inheritedRotated = prtc.GetGlobalRotation();
+			}
+
+			return rotation + inheritedRotated;
+		}
+
 		glm::vec2 GetGlobalPosition(int _canvasWidth, int _canvasHeight)
 		{
 			glm::vec2 offset = glm::vec2(0.0f);
 
 			if (parent)
-				offset = parent.GetComponent<RectTransform>().GetGlobalPosition(_canvasWidth, _canvasHeight);
+			{
+				RectTransform& prtc = parent.GetComponent<RectTransform>();
+				offset = prtc.GetGlobalPosition(_canvasWidth, _canvasHeight);
+			}
 
 			if (inheritWidth)
 			{
@@ -189,6 +207,28 @@ namespace Canis
 				}
 			}
 
+			if (parent)
+			{
+				RectTransform& prtc = parent.GetComponent<RectTransform>();
+				
+				if (prtc.rotation != 0.0f)
+				{
+					glm::vec2 pivot = offset + prtc.originOffset + prtc.rotationOriginOffset;// - prtc.GetGlobalArchor(_canvasWidth, _canvasHeight);
+
+					Canis::Log("pivot: " + glm::to_string(pivot));
+					
+					offset += GetGlobalArchor(_canvasWidth, _canvasHeight);
+					offset += position;
+					
+					Canis::RotatePointAroundPivot(
+						offset,
+						pivot,
+						prtc.rotation
+					);
+
+					return offset;
+				}
+			}
 			offset += GetGlobalArchor(_canvasWidth, _canvasHeight);
 			return position + offset;
 		}
