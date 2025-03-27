@@ -211,11 +211,9 @@ namespace Canis
 			{
 				RectTransform& prtc = parent.GetComponent<RectTransform>();
 				
-				if (prtc.rotation != 0.0f)
+				if (prtc.GetGlobalRotation() != 0.0f)
 				{
-					glm::vec2 pivot = offset + prtc.originOffset + prtc.rotationOriginOffset;// - prtc.GetGlobalArchor(_canvasWidth, _canvasHeight);
-
-					Canis::Log("pivot: " + glm::to_string(pivot));
+					glm::vec2 pivot = offset + prtc.originOffset + prtc.rotationOriginOffset;// - prtc.GetGlobalArchor(_canvasWidth, _canvasHeight);					
 					
 					offset += GetGlobalArchor(_canvasWidth, _canvasHeight);
 					offset += position;
@@ -223,7 +221,7 @@ namespace Canis
 					Canis::RotatePointAroundPivot(
 						offset,
 						pivot,
-						prtc.rotation
+						GetGlobalRotation()
 					);
 
 					return offset;
