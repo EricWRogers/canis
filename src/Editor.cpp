@@ -288,7 +288,7 @@ namespace Canis
 
                 glm::mat4 model = glm::mat4(1.0f);
                 model = glm::translate(model, glm::vec3(pos, 0.0f));
-                model = glm::rotate(model, glm::radians(rtc.rotation), glm::vec3(0.0f, 0.0f, 1.0f));
+                model = glm::rotate(model, -rtc.rotation, glm::vec3(0.0f, 0.0f, 1.0f));
                 model = glm::scale(model, glm::vec3(rtc.size * rtc.scale, 1.0f)); // Scale affects size
 
                 ImGuizmo::SetOrthographic(true);
@@ -317,7 +317,7 @@ namespace Canis
                     rtc.position += newPos - oldPos;
 
                     // update rotation
-                    rtc.rotation = rotation.z;
+                    rtc.rotation = -glm::radians(rotation.z);
 
                     // update size (scale stays constant, we resize the actual size)
                     rtc.size = glm::vec2(scale.x, scale.y) / rtc.scale;
