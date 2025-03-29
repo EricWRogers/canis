@@ -8,6 +8,7 @@ struct TextComponent
 	int assetId = -1;
 	std::string text = "";
 	unsigned int alignment = 0; // 0 is left align | 1 is right align | 2 is center align
+	unsigned int horizontalBoundary = 0; // 0 overflow | 1 wrap
 	unsigned int _status = BIT::ONE; // this will make the RenderTextSystem recalculate rect size &| alignment
 };
 
@@ -19,6 +20,9 @@ namespace Text {
 	const unsigned int LEFT   = 0u;
 	const unsigned int RIGHT  = 1u;
 	const unsigned int CENTER = 2u;
+
+	static const char *AlignmentLabels[] = {"Left", "Right", "Center"};
+	static const char *HorizontalBoundaryLabels[] = {"Overflow", "Wrap"};
 }
 
 inline void RemoveTrialingZeros(std::string &_word)

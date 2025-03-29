@@ -29,7 +29,7 @@ namespace Canis
         void DrawInspectorPanel();
         void DrawSystemPanel();
         void DrawHierarchyPanel();
-        void DrawHierarchyElement(int _index);
+        bool DrawHierarchyElement(int _index);
         void DrawScenePanel(Window* _window, Time *_time);
 
         bool IsDescendantOf(Entity _potentialAncestor, Entity _entity);

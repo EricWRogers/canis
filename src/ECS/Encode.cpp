@@ -124,6 +124,7 @@ namespace Canis
 
 			_out << YAML::Key << "text" << YAML::Value << tc.text;
 			_out << YAML::Key << "alignment" << YAML::Value << tc.alignment;
+			_out << YAML::Key << "horizontalBoundary" << YAML::Value << tc.horizontalBoundary;
 
 			_out << YAML::Key << "TextAsset";
             _out << YAML::BeginMap;

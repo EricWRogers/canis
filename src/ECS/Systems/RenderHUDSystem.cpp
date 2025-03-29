@@ -88,7 +88,7 @@ namespace Canis
                 if (rect_transform.parent)
                     if (rect_transform.GetGlobalActive() == false)
                         continue;
-                
+
                 HUDElementDepth hudElementDepth;
                 hudElementDepth.element = entity;
                 hudElementDepth.depth = rect_transform.GetGlobalDepth();
@@ -158,7 +158,7 @@ namespace Canis
                 {
                     continue;
                 }
-                
+
                 positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
 
                 glm::vec2 size = rect_transform.size;
@@ -200,7 +200,7 @@ namespace Canis
                     Log("QUEST_1_X x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
                 if (Entity(elements[i].element, scene).TagEquals("QUEST_2_X"))
                     Log("QUEST_2_X x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));*/
-                
+
                 m_spriteRenderer.DrawUI(
                     glm::vec4(positionAnchor.x, positionAnchor.y, size.x * rect_transform.scale, size.y * rect_transform.scale),
                     image.uv,
@@ -239,11 +239,11 @@ namespace Canis
                 // glDepthFunc(GL_ALWAYS);
 
                 e.entityHandle = elements[i].element;
-                
+
                 positionAnchor = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
 
-                //if (Entity(elements[i].element, scene).TagEquals("QUEST_1_TEXT"))
-                //    Log("QUEST_1_TEXT x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
+                // if (Entity(elements[i].element, scene).TagEquals("QUEST_1_TEXT"))
+                //     Log("QUEST_1_TEXT x: " + std::to_string(positionAnchor.x) + " y: " + std::to_string(positionAnchor.y));
 
                 m_textRenderer.RenderText(&e,
                                           m_textRenderer.textShader,
@@ -254,9 +254,11 @@ namespace Canis
                                           color.color,
                                           text.assetId,
                                           text.alignment,
+                                          text.horizontalBoundary,
                                           rect_transform.originOffset,
                                           text._status,
-                                          rect_transform.GetGlobalRotation());
+                                          rect_transform.GetGlobalRotation(),
+                                          rect_transform.size);
 
                 // m_textRenderer.textShader.UnUse();
 

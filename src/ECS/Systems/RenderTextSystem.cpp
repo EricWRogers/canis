@@ -16,7 +16,7 @@
 
 namespace Canis
 {
-    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, glm::vec2 &_textOffset, unsigned int &_status, float _angle)
+    void RenderTextSystem::RenderText(void *_entity, Canis::Shader &shader, std::string &t, float x, float y, float scale, glm::vec4 color, int fontId, unsigned int align, unsigned int _horizontalBoundary, glm::vec2 &_textOffset, unsigned int &_status, float _angle, glm::vec2 _size)
     {
         // stop crashes that happen when string empty
         if (t.size() == 0)
@@ -24,7 +24,7 @@ namespace Canis
 
         if (fontId < 0)
             return;
-        
+
         TextAsset *asset = AssetManager::Get<TextAsset>(fontId);
 
         shader.Use();
@@ -36,16 +36,21 @@ namespace Canis
 
         std::vector<float> vertices;
 
-        glm::vec2 pos = glm::vec2(x,y);
+        glm::vec2 pos = glm::vec2(x, y);
+
+        float rowOffset = (asset->characters['A'].size.y * scale) + 10.0f;
+        int currectRow = 0;
+        float xBackUp = x;
 
         bool setPivot = false;
 
-        if ((_status & BIT::ONE) > 0) { // check if we need to recalculate the size &| alignment
+        if ((_status & BIT::ONE) > 0 && _horizontalBoundary == 0u)
+        { // check if we need to recalculate the size &| alignment
 
-            float left  =  FLT_MAX;
+            float left = FLT_MAX;
             float right = -FLT_MAX;
             float bigestH = -FLT_MAX;
-            float xBackUp = x;
+
             std::string::const_iterator c;
             c = t.end();
             c--;
@@ -77,7 +82,7 @@ namespace Canis
             float deltaX = right - left;
             x = xBackUp;
 
-            RectTransform& rectTransform = ((Entity*)_entity)->GetComponent<RectTransform>();
+            RectTransform &rectTransform = ((Entity *)_entity)->GetComponent<RectTransform>();
             rectTransform.size.x = deltaX;
             rectTransform.size.y = bigestH;
 
@@ -86,13 +91,21 @@ namespace Canis
                 _textOffset.x = -deltaX;
             }
 
-            if (align == Text::CENTER) {
-                _textOffset.x = -(deltaX/2);
+            if (align == Text::CENTER)
+            {
+                _textOffset.x = -(deltaX / 2);
             }
         }
 
         for (const char &c : t)
         {
+            if (c == '\n') // not working yet
+            {
+                x = xBackUp;
+                currectRow++;
+                continue;
+            }
+
             Character ch = asset->characters[c];
 
             float xpos = _textOffset.x + x + ch.bearing.x * scale;
@@ -108,10 +121,10 @@ namespace Canis
             float w = ch.size.x * scale;
             float h = ch.size.y * scale;
             // update VBO for each character
-            glm::vec2 bottomLeft = glm::vec2(xpos, ypos);
-            glm::vec2 bottomRight = glm::vec2(xpos + w, ypos);
-            glm::vec2 topLeft = glm::vec2(xpos, ypos + h);
-            glm::vec2 topRight = glm::vec2(xpos + w, ypos + h);
+            glm::vec2 bottomLeft = glm::vec2(xpos, ypos - (currectRow * rowOffset));
+            glm::vec2 bottomRight = glm::vec2(xpos + w, ypos - (currectRow * rowOffset));
+            glm::vec2 topLeft = glm::vec2(xpos, ypos + h - (currectRow * rowOffset));
+            glm::vec2 topRight = glm::vec2(xpos + w, ypos + h - (currectRow * rowOffset));
 
             if (_angle != 0.0f)
             {
@@ -120,18 +133,44 @@ namespace Canis
                 RotatePointAroundPivot(bottomRight, pos, _angle);
                 RotatePointAroundPivot(topRight, pos, _angle);
             }
-        
-            vertices.push_back(topLeft.x);       vertices.push_back(topLeft.y);     vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y);
-            vertices.push_back(bottomRight.x);    vertices.push_back(bottomRight.y);       vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
-            vertices.push_back(bottomLeft.x);   vertices.push_back(bottomLeft.y);       vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
 
-            vertices.push_back(topLeft.x);       vertices.push_back(topLeft.y);  vertices.push_back(ch.atlasPos.x);       vertices.push_back(ch.atlasPos.y);
-            vertices.push_back(topRight.x);   vertices.push_back(topRight.y);  vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y);
-            vertices.push_back(bottomRight.x);      vertices.push_back(bottomRight.y);       vertices.push_back(ch.atlasPos.x + ch.atlasSize.x); vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
+            vertices.push_back(topLeft.x);
+            vertices.push_back(topLeft.y);
+            vertices.push_back(ch.atlasPos.x);
+            vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(bottomRight.x);
+            vertices.push_back(bottomRight.y);
+            vertices.push_back(ch.atlasPos.x + ch.atlasSize.x);
+            vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
+            vertices.push_back(bottomLeft.x);
+            vertices.push_back(bottomLeft.y);
+            vertices.push_back(ch.atlasPos.x);
+            vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
 
-            
+            vertices.push_back(topLeft.x);
+            vertices.push_back(topLeft.y);
+            vertices.push_back(ch.atlasPos.x);
+            vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(topRight.x);
+            vertices.push_back(topRight.y);
+            vertices.push_back(ch.atlasPos.x + ch.atlasSize.x);
+            vertices.push_back(ch.atlasPos.y);
+            vertices.push_back(bottomRight.x);
+            vertices.push_back(bottomRight.y);
+            vertices.push_back(ch.atlasPos.x + ch.atlasSize.x);
+            vertices.push_back(ch.atlasPos.y + ch.atlasSize.y);
+
             // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
             x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
+
+            if (c == ' ')
+            {
+                if (x - xBackUp > _size.x)
+                {
+                    x = xBackUp;
+                    currectRow++;
+                }
+            }
         }
 
         // Upload all vertex data to the GPU at once
@@ -193,9 +232,11 @@ namespace Canis
                            color.color,
                            text.assetId,
                            text.alignment,
+                           text.horizontalBoundary,
                            transform.originOffset,
                            text._status,
-                           transform.rotation);
+                           transform.rotation,
+                           transform.size);
             }
         }
 

@@ -1002,14 +1002,13 @@ namespace Canis
                         }
                     }
 
-                    ImGui::InputText("text", &tc.text);
-
-                    static const char *AlignmentLabels[] = {
-                        "Left", "Right", "Center"};
+                    ImGui::InputText("text", &tc.text);                    
 
                     int *a = ((int *)&tc.alignment); // this might be bad because imgui uses -1 as error
+                    ImGui::Combo("alignment", a, Text::AlignmentLabels, IM_ARRAYSIZE(Text::AlignmentLabels));
 
-                    ImGui::Combo("alignment", a, AlignmentLabels, IM_ARRAYSIZE(AlignmentLabels));
+                    int *hb = ((int *)&tc.horizontalBoundary); // this might be bad because imgui uses -1 as error
+                    ImGui::Combo("horizontalBoundary", hb, Text::HorizontalBoundaryLabels, IM_ARRAYSIZE(Text::HorizontalBoundaryLabels));
                 }
 
                 if (ImGui::BeginPopupContextItem("Menu##Canis::Text"))
@@ -1585,7 +1584,10 @@ namespace Canis
                 if (entity.GetComponent<Canis::RectTransform>().parent)
                     continue;
 
-            DrawHierarchyElement(i);
+            bool skip = DrawHierarchyElement(i);
+
+            if (skip)
+                break;
         }
 
         if (ImGui::Button("New Entity"))
@@ -1604,7 +1606,8 @@ namespace Canis
         ImGui::End();
     }
 
-    void Editor::DrawHierarchyElement(int _index)
+    // returns true if it should skip
+    bool Editor::DrawHierarchyElement(int _index)
     {
         Canis::HierarchyElementInfo elementInfo = GetSceneManager().hierarchyElements[_index];
         Entity entity = elementInfo.entity;
@@ -1766,7 +1769,8 @@ namespace Canis
             entity.Destroy();
             GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + _index);
             m_forceRefresh = true;
-            return;
+            ImGui::TreePop();
+            return true;
         }
 
         ImGui::SameLine();
@@ -1777,8 +1781,11 @@ namespace Canis
             hei.name = GetSceneManager().hierarchyElements[_index].name + " copy";
             GetSceneManager().hierarchyElements.insert(GetSceneManager().hierarchyElements.begin() + _index + 1, hei);
             m_forceRefresh = true;
-            return;
+            ImGui::TreePop();
+            return true;
         }
+
+        
 
         // ─────────────────────────────────────────────────────
         // CHILDREN RECURSION
@@ -1801,6 +1808,8 @@ namespace Canis
 
         if (hasChildren == false || opened)
             ImGui::TreePop();
+        
+        return false;
     }
 
     void Editor::DrawScenePanel(Window *_window, Time *_time)

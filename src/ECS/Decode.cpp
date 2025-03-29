@@ -132,7 +132,8 @@ namespace Canis
                     asset["size"].as<unsigned int>());
             }
             tc.text = textComponent["text"].as<std::string>("");
-            tc.alignment = textComponent["alignment"].as<unsigned int>();
+            tc.alignment = textComponent["alignment"].as<unsigned int>(0u);
+            tc.horizontalBoundary = textComponent["horizontalBoundary"].as<unsigned int>(0u);
             return true;
         }
         return false;
