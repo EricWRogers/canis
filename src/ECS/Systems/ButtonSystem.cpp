@@ -135,23 +135,18 @@ namespace Canis
                 Color &color = m_buttons[i].entity.GetComponent<Color>();
                 ButtonComponent &button = m_buttons[i].entity.GetComponent<ButtonComponent>();
 
-                positionAnchor = GetAnchor((Canis::RectAnchor)rect_transform.anchor,
-                                           (float)window->GetScreenWidth(),
-                                           (float)window->GetScreenHeight());
-
                 mouse = GetInputManager().mouse;
+                glm::vec2 globalPos = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
+                float globalRotation = rect_transform.GetGlobalRotation();
 
-                if (rect_transform.rotation != 0.0f)
+                if (globalRotation != 0.0f)
                 {
                     RotatePointAroundPivot(
                         mouse,
-                        rect_transform.position + rect_transform.originOffset +
-                            positionAnchor + rect_transform.rotationOriginOffset,
-                        -rect_transform.rotation);
+                        globalPos + rect_transform.originOffset + rect_transform.rotationOriginOffset,
+                        -globalRotation);
                 }
 
-                glm::vec2 globalPos = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
-                
                 if (mouse.x > globalPos.x + rect_transform.originOffset.x &&
                     mouse.x < globalPos.x + rect_transform.originOffset.x + (rect_transform.size.x * rect_transform.scale) &&
                     mouse.y > globalPos.y + rect_transform.originOffset.y &&
