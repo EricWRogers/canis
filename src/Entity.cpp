@@ -283,15 +283,26 @@ int Entity::ChildCount()
 
 Entity Entity::GetChild(int _index)
 {
-    if (HasComponent<Transform>() == false)
-        return Entity(scene);
-    
-    auto& transform = GetComponent<Transform>();
+    if (HasComponent<Transform>())
+    {
+        auto& transform = GetComponent<Transform>();
 
-    if (transform.children.size() >= _index || _index < 0)
-        return Entity(scene);
-    
-    return Entity(GetComponent<Transform>().children[_index], scene);
+        if (transform.children.size() >= _index || _index < 0)
+            return Entity(scene);
+        
+        return Entity(GetComponent<Transform>().children[_index], scene);
+    }
+    else if (HasComponent<RectTransform>())
+    {
+        auto& rectTransform = GetComponent<RectTransform>();
+
+        if (rectTransform.children.size() >= _index || _index < 0)
+            return Entity(scene);
+        
+        return Entity(GetComponent<RectTransform>().children[_index], scene);
+    }
+
+    return Entity(scene);
 }
 
 void Entity::SetPosition(glm::vec3 _postion)
