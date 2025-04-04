@@ -222,6 +222,22 @@ Entity Entity::Duplicate()
         e.AddComponent<IDComponent>();
     }
 
+    // RectTransform Parent
+    if (e.HasComponent<RectTransform>())
+    {
+        auto& rectTransform = e.GetComponent<RectTransform>();
+        if (rectTransform.parent)
+        {
+            rectTransform.parent.GetComponent<RectTransform>().children.push_back(e);
+        }
+    }
+
+    // RectTransform Children
+
+    // Transform Parent
+
+    // Transform Children
+
     return e;
 }
 
