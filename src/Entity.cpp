@@ -287,7 +287,7 @@ Entity Entity::GetChild(int _index)
     {
         auto& transform = GetComponent<Transform>();
 
-        if (transform.children.size() >= _index || _index < 0)
+        if (transform.children.size() <= _index || _index < 0)
             return Entity(scene);
         
         return Entity(GetComponent<Transform>().children[_index], scene);
@@ -296,7 +296,7 @@ Entity Entity::GetChild(int _index)
     {
         auto& rectTransform = GetComponent<RectTransform>();
 
-        if (rectTransform.children.size() >= _index || _index < 0)
+        if (rectTransform.children.size() <= _index || _index < 0)
             return Entity(scene);
         
         return Entity(GetComponent<RectTransform>().children[_index], scene);
