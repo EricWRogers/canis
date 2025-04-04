@@ -70,10 +70,10 @@ namespace Canis
 
         if (inputManager->GetLastDeviceType() == InputDevice::GAMEPAD &&
             (inputManager->LastButtonsPressed(ControllerButton::DPAD_UP) ||
-            inputManager->LastButtonsPressed(ControllerButton::DPAD_DOWN) ||
-            inputManager->LastButtonsPressed(ControllerButton::DPAD_LEFT) ||
-            inputManager->LastButtonsPressed(ControllerButton::DPAD_RIGHT) ||
-            inputManager->LastButtonsPressed(ControllerButton::A)))
+             inputManager->LastButtonsPressed(ControllerButton::DPAD_DOWN) ||
+             inputManager->LastButtonsPressed(ControllerButton::DPAD_LEFT) ||
+             inputManager->LastButtonsPressed(ControllerButton::DPAD_RIGHT) ||
+             inputManager->LastButtonsPressed(ControllerButton::A)))
         {
             if (!targetButton && defaultButton)
             {
@@ -150,16 +150,12 @@ namespace Canis
                         -rect_transform.rotation);
                 }
 
-                if (mouse.x > rect_transform.position.x + positionAnchor.x +
-                                  rect_transform.originOffset.x &&
-                    mouse.x < rect_transform.position.x +
-                                  (rect_transform.size.x * rect_transform.scale) +
-                                  rect_transform.originOffset.x + positionAnchor.x &&
-                    mouse.y > rect_transform.position.y + positionAnchor.y +
-                                  rect_transform.originOffset.y &&
-                    mouse.y < rect_transform.position.y +
-                                  (rect_transform.size.y * rect_transform.scale) +
-                                  rect_transform.originOffset.y + positionAnchor.y &&
+                glm::vec2 globalPos = rect_transform.GetGlobalPosition(window->GetScreenWidth(), window->GetScreenHeight());
+                
+                if (mouse.x > globalPos.x + rect_transform.originOffset.x &&
+                    mouse.x < globalPos.x + rect_transform.originOffset.x + (rect_transform.size.x * rect_transform.scale) &&
+                    mouse.y > globalPos.y + rect_transform.originOffset.y &&
+                    mouse.y < globalPos.y + rect_transform.originOffset.y + (rect_transform.size.y * rect_transform.scale) &&
                     !targetButton && !mouseLook)
                 {
                     color.color = button.hoverColor;
@@ -209,12 +205,12 @@ namespace Canis
                     }
                 }
             }
-        
+
             if (clicked)
             {
                 for (int i = 0; i < m_buttonListeners.size(); i++)
                 {
-                    ButtonListener& bl = *m_buttonListeners[i];
+                    ButtonListener &bl = *m_buttonListeners[i];
 
                     if (m_buttonListeners[i]->name == button.eventName)
                     {
@@ -225,17 +221,17 @@ namespace Canis
         }
     }
 
-    ButtonListener& ButtonSystem::AddButtonListener(std::string _name, void *_data,
-                                      std::function<void(Entity _entity, void* _data)> _func)
+    ButtonListener &ButtonSystem::AddButtonListener(std::string _name, void *_data,
+                                                    std::function<void(Entity _entity, void *_data)> _func)
     {
-        ButtonListener* buttonListener = new ButtonListener();
+        ButtonListener *buttonListener = new ButtonListener();
         buttonListener->_system = this;
         buttonListener->_id = nextId;
         nextId++;
 
         m_buttonListeners.push_back(buttonListener);
 
-        ButtonListener &bl = *m_buttonListeners[ m_buttonListeners.size() - 1 ];
+        ButtonListener &bl = *m_buttonListeners[m_buttonListeners.size() - 1];
 
         bl.name = _name;
         bl.data = _data;
