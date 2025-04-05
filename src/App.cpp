@@ -228,12 +228,28 @@ namespace Canis
 
         sceneManager.Update();
 
+        if (sceneManager.PatientLoad())
+        {
+            if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
+                appState = AppState::OFF;
+
+            return;
+        }
+
         sceneManager.Draw();
 
         // Get SDL to swap our buffer
         window.SwapBuffer();
 
         sceneManager.LateUpdate();
+
+        if (sceneManager.PatientLoad())
+        {
+            if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
+                appState = AppState::OFF;
+            
+            return;
+        }
         
         if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
             appState = AppState::OFF;

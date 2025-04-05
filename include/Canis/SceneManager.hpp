@@ -102,6 +102,7 @@ public:
 
     unsigned int seed = 0;
     bool running = true;
+    bool PatientLoad() { return patientLoadIndex != -1; }
 
     std::unordered_map<std::string, std::string> message = {};
     std::unordered_map<std::string, std::string> nextMessage = {};

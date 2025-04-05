@@ -33,8 +33,7 @@ namespace Canis
 
     void ButtonSystem::Update(entt::registry &_registry, float _deltaTime)
     {
-        auto view =
-            _registry.view<RectTransform, Color, ButtonComponent>();
+        auto view = _registry.view<RectTransform, Color, ButtonComponent>();
         glm::vec2 positionAnchor = glm::vec2(0.0f);
         glm::vec2 mouse = glm::vec2(0.0f);
         bool mouseLook = window->GetMouseLock();
