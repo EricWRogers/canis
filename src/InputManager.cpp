@@ -232,14 +232,14 @@ namespace Canis
     bool InputManager::GetKey(unsigned int _keyID)
     {
         const Uint8 *keystate = SDL_GetKeyboardState(NULL);
-        return keystate[_keyID];
+        return keystate[_keyID] && active;
     }
 
     bool InputManager::GetButton(unsigned int _gameControllerId, unsigned int _buttonId)
     {
         if (m_gameControllers.size() > _gameControllerId)
         {
-            return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0);
+            return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0) && active;
         }
 
         return false;
@@ -250,7 +250,7 @@ namespace Canis
         if (m_gameControllers.size() > _gameControllerId)
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0 &&
-            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) == 0);
+            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) == 0) && active;
         }
 
         return false;
@@ -261,7 +261,7 @@ namespace Canis
         if (m_gameControllers.size() > _gameControllerId)
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) == 0 &&
-            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) > 0);
+            (m_gameControllers[_gameControllerId].oldData.buttons & _buttonId) > 0) && active;
         }
 
         return false;
@@ -271,7 +271,7 @@ namespace Canis
     {
         if (m_gameControllers.size() > _gameControllerId)
         {
-            return m_gameControllers[_gameControllerId].lastButtonsPressed & _buttonId;
+            return m_gameControllers[_gameControllerId].lastButtonsPressed & _buttonId && active;
         }
 
         return false;
@@ -279,7 +279,7 @@ namespace Canis
 
     glm::vec2 InputManager::GetLeftStick(unsigned int _gameControllerId)
     {
-        if (m_gameControllers.size() > _gameControllerId)
+        if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.leftStick;
         }
@@ -289,7 +289,7 @@ namespace Canis
 
     glm::vec2 InputManager::GetRightStick(unsigned int _gameControllerId)
     {
-        if (m_gameControllers.size() > _gameControllerId)
+        if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.rightStick;
         }
@@ -299,7 +299,7 @@ namespace Canis
 
     float InputManager::GetLeftTrigger(unsigned int _gameControllerId)
     {
-        if (m_gameControllers.size() > _gameControllerId)
+        if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.leftTrigger;
         }
@@ -309,7 +309,7 @@ namespace Canis
 
     float InputManager::GetRightTrigger(unsigned int _gameControllerId)
     {
-        if (m_gameControllers.size() > _gameControllerId)
+        if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.rightTrigger;
         }
@@ -329,7 +329,7 @@ namespace Canis
             lastKnownValue = m_lastKnown[index].value;
         }
 
-        if (currentValue && !lastKnownValue)
+        if (currentValue && !lastKnownValue && active)
             return true;
         
         return false;       
@@ -337,7 +337,7 @@ namespace Canis
 
     bool InputManager::JustReleasedKey(unsigned int _keyID)
     {
-        return IsKeyUpInVec(&m_keyVec, _keyID);
+        return IsKeyUpInVec(&m_keyVec, _keyID) && active;
     }
 
     bool InputManager::IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _value)
@@ -345,7 +345,7 @@ namespace Canis
         for (int i = 0; i < _arr->size(); i++)
         {
             if ((*_arr)[i].key == _value)
-                return !(*_arr)[i].value;
+                return !(*_arr)[i].value && active;
         }
         
         return false;
@@ -356,7 +356,7 @@ namespace Canis
         for (int i = 0; i < _arr->size(); i++)
         {
             if ((*_arr)[i].key == _value)
-                return (*_arr)[i].value;
+                return (*_arr)[i].value && active;
         }
         
         return false;
@@ -378,7 +378,7 @@ namespace Canis
         for (int i = 0; i < m_lastKnown.size(); i++)
         {
             if (m_lastKnown[i].key == _value)
-                return m_lastKnown[i].value;
+                return m_lastKnown[i].value && active;
         }
         
         return false;

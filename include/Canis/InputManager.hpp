@@ -76,15 +76,15 @@ namespace Canis
         float GetLeftTrigger(unsigned int _gameControllerId);
         float GetRightTrigger(unsigned int _gameControllerId);
 
-        int VerticalScroll() { return m_scrollVertical; }
+        int VerticalScroll() { return (active) ? m_scrollVertical : 0; }
 
-        bool GetLeftClick() { return  m_leftClick; }
-        bool LeftClickReleased() { return  m_leftClick == false && m_wasLeftClick == true; }
-        bool JustLeftClicked() { return  m_leftClick == true && m_wasLeftClick == false; }
+        bool GetLeftClick() { return  m_leftClick && active; }
+        bool LeftClickReleased() { return  m_leftClick == false && m_wasLeftClick == true && active; }
+        bool JustLeftClicked() { return  m_leftClick == true && m_wasLeftClick == false && active; }
 
-        bool GetRightClick() { return  m_rightClick; }
-        bool RightClickReleased() { return  m_rightClick == false && m_wasRightClick == true; }
-        bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false; }
+        bool GetRightClick() { return  m_rightClick && active; }
+        bool RightClickReleased() { return  m_rightClick == false && m_wasRightClick == true && active; }
+        bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false && active; }
         
         InputDevice GetLastDeviceType() { return m_lastInputDeviceType; }
 
@@ -100,6 +100,8 @@ namespace Canis
 
         glm::vec2 mouse = glm::vec2(0,0);
         glm::vec2 mouseRel = glm::vec2(0);
+
+        bool active = true;
         
     private:
         void PressKey(unsigned int _keyID);
