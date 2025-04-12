@@ -393,7 +393,7 @@ namespace Canis
             GameController gameController = {};
             gameController.controller = SDL_GameControllerOpen(device.which);
             if (gameController.controller)
-            {
+            { 
                 SDL_Joystick* j = SDL_GameControllerGetJoystick((SDL_GameController*)gameController.controller);
                 gameController.joyId = SDL_JoystickInstanceID(j);
 
@@ -401,9 +401,16 @@ namespace Canis
                 gameController.lastButtonsPressed = ControllerButton::DPAD_UP;
                 m_lastControllerID = m_gameControllers.size();
 
+                std::string controllerName = std::string(SDL_GameControllerName(gameController.controller));
+
+                if (controllerName[0] == 'P')
+                {
+                    gameController.gameControllerType = GameControllerType::PLAYSTATION;
+                }
+
                 m_gameControllers.push_back(gameController);
 
-                Log("Game Controller Connected Joy ID: " + std::to_string(gameController.joyId));
+                Log("Game Controller Connected Joy ID: " + std::to_string(gameController.joyId) + " Name: " + controllerName);
             }
         }
     }

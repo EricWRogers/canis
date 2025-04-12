@@ -31,6 +31,14 @@ namespace Canis
         DPAD_LEFT       = 8192u,
         DPAD_RIGHT      = 16384u
     };
+
+    enum GameControllerType
+    {
+        XBOX,
+        PLAYSTATION,
+        NINTENDO
+    };
+
     struct GameControllerData
     {
         glm::vec2 leftStick = glm::vec2(0.0f);
@@ -42,6 +50,7 @@ namespace Canis
     struct GameController
     {
         SDL_GameController *controller = nullptr;
+        GameControllerType gameControllerType = GameControllerType::XBOX;
         unsigned int index = 0;
         SDL_JoystickID joyId;
         GameControllerData currentData = {};
