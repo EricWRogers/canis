@@ -106,6 +106,15 @@ namespace Canis
                 continue;
             }
 
+            if (c == ' ' && _horizontalBoundary == 1u)
+            {
+                if (x - xBackUp > _size.x)
+                {
+                    x = xBackUp;
+                    currectRow++;
+                }
+            }
+
             Character ch = asset->characters[c];
 
             float xpos = _textOffset.x + x + ch.bearing.x * scale;
@@ -162,15 +171,6 @@ namespace Canis
 
             // now advance cursors for next glyph (note that advance is number of 1/64 pixels)
             x += (ch.advance >> 6) * scale; // bitshift by 6 to get value in pixels (2^6 = 64 (divide amount of 1/64th pixels by 64 to get amount of pixels))
-
-            if (c == ' ' && _horizontalBoundary == 1u)
-            {
-                if (x - xBackUp > _size.x)
-                {
-                    x = xBackUp;
-                    currectRow++;
-                }
-            }
         }
 
         // Upload all vertex data to the GPU at once
