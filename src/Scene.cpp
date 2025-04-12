@@ -150,6 +150,8 @@ namespace Canis
                 uint64_t id = e["Entity"].as<uint64_t>(0);
                 if (id != 0)
                     entityIds[id] = (uint32_t)(entity.entityHandle);
+                
+                entity.AddComponent<IDComponent>(UUID(e["Entity"].as<uint64_t>(0)));
 
                 for(int d = 0;  d < ((SceneManager*)sceneManager)->decodeEntity.size(); d++)
                     sm->decodeEntity[d](e, entity, sm);
@@ -177,6 +179,29 @@ namespace Canis
                             continue;
                 }
             }
+        
+            // connect entities
+            for (auto euuid : entityAndUUIDToConnect)
+            {
+                euuid.entity->scene = this;
+
+                //Canis::Log("try " + std::to_string(euuid.uuid));
+
+                auto view = entityRegistry.view<IDComponent>();
+
+                for (auto [entity, id] : view.each())
+                {
+                    if (id.ID == euuid.uuid)
+                    {
+                        //Canis::Log("Connect");
+                        euuid.entity->entityHandle = entity;
+                        break;
+                    }
+                }
+            }
+
+            // refactor later - do not use exept on load
+            entityAndUUIDToConnect.clear();
         }
 
         sm->m_loadingType = LoadingType::SCENE;
