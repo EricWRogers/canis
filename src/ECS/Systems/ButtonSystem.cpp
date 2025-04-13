@@ -42,6 +42,9 @@ namespace Canis
 
         List::Clear(&m_buttons);
 
+        if (inputManager->active == false)
+            return;
+
         for (auto [entity, rect_transform, color, button] : view.each())
         {
             if (rect_transform.active)
