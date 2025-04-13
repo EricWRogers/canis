@@ -38,7 +38,7 @@ namespace Canis
 {
 
 
-void Entity::Destroy()
+void Entity::Destroy() // this does not tell the parent about the child being destroyed
 {
     if (scene != nullptr)
     {
@@ -55,6 +55,31 @@ void Entity::Destroy()
                     child.entityHandle = transform.children[i];
 
                     child.Destroy();
+                }
+            }
+            if (HasComponent<RectTransform>())
+            {
+                RectTransform& transform = GetComponent<RectTransform>();
+
+                if(transform.parent)
+                {
+                    RectTransform& pt = transform.parent.GetComponent<RectTransform>();
+
+                    for (int i = 0; i < pt.children.size();)
+                        if (pt.children[i] == this)
+                            pt.children.erase(pt.children.begin()+i);
+                        else
+                            i++;
+                    
+                    transform.parent.entityHandle = entt::null;
+                }
+
+                std::vector<Canis::Entity> rememberTheChildren = transform.children;
+                transform.children = {};
+
+                for (int i = 0; i < rememberTheChildren.size(); i++)
+                {
+                    rememberTheChildren[i].Destroy();
                 }
             }
             scene->entityRegistry.destroy(entityHandle);
