@@ -42,9 +42,10 @@ namespace fs = std::filesystem;
 
 std::vector<std::string> FindFilesInFolder(const std::string &_folder, const std::string &_extension)
 {
+    std::string folder = Canis::GetResourcesPath() + _folder;
     std::vector<std::string> files;
 
-    for (const auto &entry : fs::recursive_directory_iterator(_folder))
+    for (const auto &entry : fs::recursive_directory_iterator(folder))
     {
         if (entry.is_regular_file() && entry.path().extension() == _extension)
         {
@@ -59,7 +60,7 @@ namespace Canis
 {
     bool FileExists(const char *filename)
     {
-        FILE *file = fopen(filename, "r");
+        FILE *file = fopen((GetResourcesPath() + std::string(filename)).c_str(), "r");
         if (file)
         {
             fclose(file);

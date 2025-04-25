@@ -84,7 +84,7 @@ namespace Canis
     {
         // load project.canis
         std::ifstream file;
-        file.open("assets/project.canis");
+        file.open(GetResourcesPath() + "assets/project.canis");
 
         if (!file.is_open())
         {

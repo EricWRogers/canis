@@ -1,3 +1,4 @@
+#include <Canis/Canis.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Debug.hpp>
@@ -16,7 +17,7 @@ namespace Canis
         bool Has(std::string _name)
         {
             auto &assetLibrary = GetAssetLibrary();
-            return assetLibrary.assetPath.contains(_name);
+            return assetLibrary.assetPath.contains(GetResourcesPath() + _name);
         }
 
         int LoadTexture(const std::string &_path)
@@ -24,7 +25,7 @@ namespace Canis
             auto &assetLibrary = GetAssetLibrary();
 
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if texture already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -34,14 +35,14 @@ namespace Canis
 
             // create texture
             Asset *texture = new TextureAsset();
-            texture->Load(_path);
+            texture->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache texture
             assetLibrary.assets[id] = texture;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -80,7 +81,7 @@ namespace Canis
             auto &assetLibrary = GetAssetLibrary();
 
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if prefab already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -90,14 +91,14 @@ namespace Canis
 
             // create texture
             Asset *prefab = new PrefabAsset();
-            prefab->Load(_path);
+            prefab->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache prefab
             assetLibrary.assets[id] = prefab;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -114,7 +115,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if skybox already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -124,14 +125,14 @@ namespace Canis
 
             // create skybox
             Asset *skybox = new SkyboxAsset();
-            skybox->Load(_path);
+            skybox->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache skybox
             assetLibrary.assets[id] = skybox;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -143,7 +144,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if model already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -153,14 +154,14 @@ namespace Canis
 
             // create model
             Asset *model = new ModelAsset();
-            model->Load(_path);
+            model->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache model
             assetLibrary.assets[id] = model;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -168,7 +169,7 @@ namespace Canis
             return id;
         }
 
-        int LoadModel(const std::string &_name, const std::vector<Canis::Vertex> &_vertices)
+        int LoadModel(const std::string &_name, const std::vector<Vertex> &_vertices)
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
@@ -201,7 +202,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if model already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -211,14 +212,14 @@ namespace Canis
 
             // create sound
             Asset *sound = new SoundAsset();
-            sound->Load(_path);
+            sound->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache model
             assetLibrary.assets[id] = sound;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -230,7 +231,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if model already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -240,14 +241,14 @@ namespace Canis
 
             // create sound
             Asset *music = new MusicAsset();
-            music->Load(_path);
+            music->Load(GetResourcesPath() + _path);
             int id = assetLibrary.nextId;
 
             // cache music
             assetLibrary.assets[id] = music;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -259,7 +260,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path + std::to_string(fontSize));
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path + std::to_string(fontSize));
 
             // check if text already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -269,7 +270,7 @@ namespace Canis
 
             // create text
             Asset *text = new TextAsset(fontSize);
-            text->Load(_path);
+            text->Load(GetResourcesPath() + _path);
 
             int id = assetLibrary.nextId;
 
@@ -277,7 +278,7 @@ namespace Canis
             assetLibrary.assets[id] = text;
 
             // cache id
-            assetLibrary.assetPath[_path + std::to_string(fontSize)] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path + std::to_string(fontSize)] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -289,7 +290,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_pathWithOutExtension);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _pathWithOutExtension);
 
             // check if shader already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -299,14 +300,14 @@ namespace Canis
 
             // create shader
             Asset *shader = new ShaderAsset();
-            shader->Load(_pathWithOutExtension);
+            shader->Load(GetResourcesPath() + _pathWithOutExtension);
             int id = assetLibrary.nextId;
 
             // cache shader
             assetLibrary.assets[id] = shader;
 
             // cache id
-            assetLibrary.assetPath[_pathWithOutExtension] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _pathWithOutExtension] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -318,7 +319,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if animation already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -329,7 +330,7 @@ namespace Canis
             // create animation
             MaterialAsset *material = new MaterialAsset();
 
-            YAML::Node root = YAML::LoadFile(_path);
+            YAML::Node root = YAML::LoadFile(GetResourcesPath() + _path);
 
             if (YAML::Node shaderNode = root["shader"])
             {
@@ -446,7 +447,7 @@ namespace Canis
             assetLibrary.assets[id] = material;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -458,7 +459,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if animation already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -468,9 +469,9 @@ namespace Canis
 
             // create animation
             Asset *anim = new SpriteAnimationAsset();
-            anim->Load(_path);
+            anim->Load(GetResourcesPath() + _path);
 
-            YAML::Node root = YAML::LoadFile(_path);
+            YAML::Node root = YAML::LoadFile(GetResourcesPath() + _path);
 
             if (YAML::Node animation = root["Animation"])
             {
@@ -498,7 +499,7 @@ namespace Canis
             assetLibrary.assets[id] = anim;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -510,7 +511,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
+            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
 
             // check if map already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -520,7 +521,7 @@ namespace Canis
 
             // create map
             Asset* tiledMap = new TiledMapAsset();
-            tiledMap->Load(_path);
+            tiledMap->Load(GetResourcesPath() + _path);
 
             // load image tileset
             std::vector<std::string> spriteSheetPath = ((TMXLoader*)((TiledMapAsset*)tiledMap)->GetLoader())->getMap("map")->getTilesetNames();
@@ -539,7 +540,7 @@ namespace Canis
             assetLibrary.assets[id] = tiledMap;
 
             // cache id
-            assetLibrary.assetPath[_path] = id;
+            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
 
             // increment id
             assetLibrary.nextId++;
