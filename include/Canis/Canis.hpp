@@ -1,4 +1,8 @@
 #pragma once
+#ifdef __APPLE__
+#include <string>
+#include <CoreFoundation/CoreFoundation.h>
+#endif
 
 namespace Canis
 {
@@ -27,4 +31,21 @@ namespace Canis
     bool SaveProjectConfig();
 
     int Init();
+
+static std::string GetResourcesPath() {
+#ifdef __APPLE__
+    CFBundleRef mainBundle = CFBundleGetMainBundle();
+    CFURLRef resourcesURL = CFBundleCopyResourcesDirectoryURL(mainBundle);
+    char path[PATH_MAX];
+    if (CFURLGetFileSystemRepresentation(resourcesURL, TRUE, (UInt8 *)path, PATH_MAX)) {
+        CFRelease(resourcesURL);
+        return std::string(path) + "/";
+    }
+    CFRelease(resourcesURL);
+    return "./"; // fallback
+#else
+    return "./"; // non-macOS platforms
+#endif
+}
+
 } // end of Canis namespace

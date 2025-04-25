@@ -1,3 +1,4 @@
+#include <Canis/Canis.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
@@ -15,7 +16,7 @@ namespace Canis
     Scene::Scene(std::string _name, std::string _path)
     {
         name = _name;
-        path = _path;
+        path = GetResourcesPath() + _path;
     }
 
     Scene::~Scene()
