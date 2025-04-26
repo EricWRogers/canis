@@ -100,7 +100,7 @@ namespace Canis
             {
                 if (file >> word)
                 {
-                    YAML::Node root = YAML::LoadFile(word);
+                    YAML::Node root = Canis::LoadYAML(word);
                     std::string name = root["Scene"].as<std::string>();
 
                     AddSplashScene(new Scene(name, word));
@@ -110,7 +110,7 @@ namespace Canis
             {
                 if (file >> word)
                 {
-                    YAML::Node root = YAML::LoadFile(word);
+                    YAML::Node root = Canis::LoadYAML(word);
                     std::string name = root["Scene"].as<std::string>();
 
                     AddScene(new Scene(name, word));
@@ -228,13 +228,13 @@ namespace Canis
 
         sceneManager.Update();
 
-        if (sceneManager.PatientLoad())
+        /*if (sceneManager.PatientLoad())
         {
             if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
                 appState = AppState::OFF;
 
             return;
-        }
+        }*/
 
         sceneManager.Draw();
 
@@ -243,13 +243,13 @@ namespace Canis
 
         sceneManager.LateUpdate();
 
-        if (sceneManager.PatientLoad())
+        /*if (sceneManager.PatientLoad())
         {
             if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
                 appState = AppState::OFF;
             
             return;
-        }
+        }*/
         
         if (!inputManager.Update(window.GetScreenWidth(), window.GetScreenHeight(), (void*)&window))
             appState = AppState::OFF;

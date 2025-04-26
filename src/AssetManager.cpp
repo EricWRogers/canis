@@ -81,7 +81,7 @@ namespace Canis
             auto &assetLibrary = GetAssetLibrary();
 
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
+            it = assetLibrary.assetPath.find(_path);
 
             // check if prefab already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -91,14 +91,14 @@ namespace Canis
 
             // create texture
             Asset *prefab = new PrefabAsset();
-            prefab->Load(GetResourcesPath() + _path);
+            prefab->Load(_path);
             int id = assetLibrary.nextId;
 
             // cache prefab
             assetLibrary.assets[id] = prefab;
 
             // cache id
-            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
+            assetLibrary.assetPath[_path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -319,7 +319,7 @@ namespace Canis
         {
             auto &assetLibrary = GetAssetLibrary();
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(GetResourcesPath() + _path);
+            it = assetLibrary.assetPath.find(_path);
 
             // check if animation already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -330,7 +330,7 @@ namespace Canis
             // create animation
             MaterialAsset *material = new MaterialAsset();
 
-            YAML::Node root = YAML::LoadFile(GetResourcesPath() + _path);
+            YAML::Node root = Canis::LoadYAML(_path);
 
             if (YAML::Node shaderNode = root["shader"])
             {
@@ -447,7 +447,7 @@ namespace Canis
             assetLibrary.assets[id] = material;
 
             // cache id
-            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
+            assetLibrary.assetPath[_path] = id;
 
             // increment id
             assetLibrary.nextId++;
@@ -469,9 +469,9 @@ namespace Canis
 
             // create animation
             Asset *anim = new SpriteAnimationAsset();
-            anim->Load(GetResourcesPath() + _path);
+            anim->Load(_path);
 
-            YAML::Node root = YAML::LoadFile(GetResourcesPath() + _path);
+            YAML::Node root = Canis::LoadYAML(_path);
 
             if (YAML::Node animation = root["Animation"])
             {
@@ -499,7 +499,7 @@ namespace Canis
             assetLibrary.assets[id] = anim;
 
             // cache id
-            assetLibrary.assetPath[GetResourcesPath() + _path] = id;
+            assetLibrary.assetPath[_path] = id;
 
             // increment id
             assetLibrary.nextId++;

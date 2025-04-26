@@ -707,7 +707,7 @@ namespace Canis
 
     bool PrefabAsset::Load(const std::string _path)
     {
-        m_node = YAML::LoadFile(_path);
+        m_node = Canis::LoadYAML(_path);
         return true;
     }
 

@@ -85,6 +85,7 @@ extern Canis::TextureHandle YAMLDecodeTexture(std::string &_path);
 
 namespace Canis
 {
+	YAML::Node LoadYAML(std::string _path);
 	void AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager);
 }
 

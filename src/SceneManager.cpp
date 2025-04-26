@@ -111,7 +111,7 @@ namespace Canis
 
                 if (m_scenes[i].scene->path != "")
                 {
-                    YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
+                    YAML::Node root = Canis::LoadYAML(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
 
@@ -165,7 +165,7 @@ namespace Canis
 
                 if (m_scenes[i].scene->path != "")
                 {
-                    YAML::Node root = YAML::LoadFile(m_scenes[i].scene->path);
+                    YAML::Node root = Canis::LoadYAML(m_scenes[i].scene->path);
 
                     m_scenes[i].scene->name = root["Scene"].as<std::string>();
 
@@ -261,7 +261,7 @@ namespace Canis
 
         if (scene->path != "")
         {
-            YAML::Node root = YAML::LoadFile(scene->path);
+            YAML::Node root = Canis::LoadYAML(scene->path);
 
             window->SetClearColor(
                 root["ClearColor"].as<glm::vec4>(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f)));

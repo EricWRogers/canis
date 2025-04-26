@@ -16,7 +16,7 @@ namespace Canis
     Scene::Scene(std::string _name, std::string _path)
     {
         name = _name;
-        path = GetResourcesPath() + _path;
+        path = _path;
     }
 
     Scene::~Scene()

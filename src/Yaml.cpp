@@ -1,4 +1,5 @@
 #include <Canis/Yaml.hpp>
+#include <Canis/Canis.hpp>
 #include <Canis/SceneManager.hpp>
 #include <Canis/AssetManager.hpp>
 
@@ -20,6 +21,11 @@ ScriptableComponentRegistry& GetScriptableComponentRegistry()
 {
     static ScriptableComponentRegistry registry;
     return registry;
+}
+
+YAML::Node Canis::LoadYAML(std::string _path)
+{
+    return YAML::LoadFile(Canis::GetResourcesPath() + _path);
 }
 
 void Canis::AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager)

@@ -66,7 +66,7 @@ void Entity::Destroy() // this does not tell the parent about the child being de
                     RectTransform& pt = transform.parent.GetComponent<RectTransform>();
 
                     for (int i = 0; i < pt.children.size();)
-                        if (pt.children[i] == this)
+                        if (pt.children[i] == *this)
                             pt.children.erase(pt.children.begin()+i);
                         else
                             i++;
