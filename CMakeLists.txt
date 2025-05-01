@@ -12,10 +12,10 @@ set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
 
 set(BUILD_SHARED_LIBS               FALSE)
 
-set(YAML_CPP_BUILD_TOOLS            FALSE)
-set(YAML_CPP_BUILD_TESTS            FALSE)
-set(YAML_CPP_BUILD_TOOLS            FALSE)
-set(YAML_BUILD_SHARED_LIBS          FALSE)
+set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Disable yaml-cpp tools" FORCE)
+set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Disable yaml-cpp tests" FORCE)
+set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libs" FORCE)
+
 
 set(FT_DISABLE_PNG                  TRUE)
 set(FT_DISABLE_HARFBUZZ             TRUE)
