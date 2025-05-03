@@ -1,5 +1,6 @@
 #pragma once
 #include <glm/glm.hpp>
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtx/string_cast.hpp>
 #include <string>
 #include <Canis/Yaml.hpp>

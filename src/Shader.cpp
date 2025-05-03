@@ -2,6 +2,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/External/OpenGl.hpp>
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include "glm/gtx/hash.hpp"
 
 #include <SDL.h>
