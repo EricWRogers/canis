@@ -223,7 +223,16 @@ namespace Canis
 		}
 
 		fclose(file);
-		return true;
+
+        if (out_vertices.size() == 0)
+        {
+            Canis::Warning("Model file " + path + " was empty or error loading");
+            return false;
+        }
+        else
+        {
+		    return true;
+        }
 	}
 
 	bool LoadOBJ(std::string path,
@@ -331,7 +340,17 @@ namespace Canis
 		}
 
 		fclose(file);
-		return true;
+        
+        if (_vertices.size() == 0)
+        {
+            Canis::Warning("Model file " + path + " was empty or error loading");
+            return false;
+        }
+        else
+        {
+		    return true;
+        }
+
 	}
 
 } // end of Canis namespace
