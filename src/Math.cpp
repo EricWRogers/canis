@@ -400,6 +400,13 @@ namespace Canis
         UpdateModelMatrix(_transform);
     }
 
+    void LookAtZeroY(Transform &_transform, vec3 _target, vec3 _up)
+    {
+        vec3 direction = normalize(ZeroY(_target) - ZeroY(GetGlobalPosition(_transform)));
+        _transform.rotation = quatLookAt(direction, _up);
+        UpdateModelMatrix(_transform);
+    }
+
     // Like SLERP, but forbids rotation greater than maxAngle (in radians)
     // In conjunction to LookAt, can make your characters
     quat RotateTowards(quat _q1, quat _q2, float _maxAngle)

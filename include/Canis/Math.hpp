@@ -78,6 +78,8 @@ namespace Canis
 
     void LookAt(Transform &_transform, vec3 _target, vec3 _up);
 
+    void LookAtZeroY(Transform &_transform, vec3 _target, vec3 _up);
+
     quat RotateTowards(quat _q1, quat _q2, float _maxAngle);
 
     void RotateTowardsLookAt(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
