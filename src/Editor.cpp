@@ -1819,11 +1819,11 @@ namespace Canis
         {
             if (ImGui::Button("Play##ScenePanel"))
             {
-                m_mode = EditorMode::PLAY;
-
                 GetSceneManager().nextMessage.clear();
 
-                GetSceneManager().Load(m_scene->name);
+                GetSceneManager().ForceLoad(m_scene->name);
+
+                m_mode = EditorMode::PLAY;
 
                 ImGui::End();
 
