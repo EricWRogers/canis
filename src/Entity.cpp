@@ -82,6 +82,21 @@ void Entity::Destroy() // this does not tell the parent about the child being de
                     rememberTheChildren[i].Destroy();
                 }
             }
+            
+
+            #if CANIS_EDITOR
+                std::vector<HierarchyElementInfo>& elements = ((SceneManager*)scene->sceneManager)->hierarchyElements;
+                
+                for (int i = 0; i < elements.size(); i++)
+                {
+                    if (elements[i].entity == *this)
+                    {
+                        elements.erase(elements.begin() + i);
+                        break;
+                    }
+                }
+            #endif
+
             scene->entityRegistry.destroy(entityHandle);
         }
     }

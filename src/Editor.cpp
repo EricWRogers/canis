@@ -1767,7 +1767,6 @@ namespace Canis
         if (ImGui::Button(("x##" + uuidStr).c_str()))
         {
             entity.Destroy();
-            GetSceneManager().hierarchyElements.erase(GetSceneManager().hierarchyElements.begin() + _index);
             m_forceRefresh = true;
             ImGui::TreePop();
             return true;
