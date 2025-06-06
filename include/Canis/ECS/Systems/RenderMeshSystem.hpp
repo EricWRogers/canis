@@ -1167,9 +1167,9 @@ namespace Canis
 				sortingEntities.push_back(rer);
 			}
 
-			auto viewBox = _registry.view<Transform, const Mesh, const BoxColliderComponent>();
+			auto viewBox = _registry.view<Transform, const Color, const Mesh, const BoxColliderComponent>();
 
-			for (auto [entity, transform, mesh, box] : viewBox.each())
+			for (auto [entity, transform, color, mesh, box] : viewBox.each())
 			{
 				if (!transform.active)
 					continue;
