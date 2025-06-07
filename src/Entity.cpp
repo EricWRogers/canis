@@ -97,6 +97,17 @@ void Entity::Destroy() // this does not tell the parent about the child being de
                 }
             #endif
 
+            if (HasComponent<ScriptComponent>())
+            {
+                ScriptComponent& script = GetComponent<ScriptComponent>();
+                
+                if (script.Instance)
+                {
+                    script.Instance->OnDestroy();
+                    delete script.Instance;
+                }
+            }
+
             scene->entityRegistry.destroy(entityHandle);
         }
     }
