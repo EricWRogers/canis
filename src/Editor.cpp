@@ -48,7 +48,7 @@ std::vector<std::string> FindFilesInFolder(const std::string &_folder, const std
     {
         if (entry.is_regular_file() && entry.path().extension() == _extension)
         {
-            files.push_back(entry.path().string());
+            files.push_back(entry.path().generic_string());
         }
     }
 
