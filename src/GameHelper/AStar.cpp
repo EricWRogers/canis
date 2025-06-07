@@ -111,6 +111,14 @@ namespace Canis
 
         if (graph.size() <= idTo)
             FatalError("AStar::GetPath idTo has not been added to the graph.");
+
+        // find better solution for reseting the graph
+        for(AStarNode& node : graph) {
+            node.f = 0.0f;
+            node.g = 0.0f;
+            node.h = 0.0f;
+            node.predecessorID = 0;
+        }
         
         std::vector<unsigned int> searchingSet;
         std::vector<unsigned int> hasSearchedSet;
@@ -129,8 +137,6 @@ namespace Canis
                     lowestPath = i;
                 }
             }
-
-            
 
             AStarNode *node = &graph[searchingSet[lowestPath]];
             graphNodeIndex = searchingSet[lowestPath];
