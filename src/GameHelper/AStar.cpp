@@ -33,7 +33,7 @@ namespace Canis
         {
             distance = glm::distance(position, graph[i].position);
 
-            if (minDistance < distance)
+            if (minDistance > distance)
             {
                 id = i;
                 minDistance = distance;
