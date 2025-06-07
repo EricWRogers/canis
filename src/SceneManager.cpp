@@ -470,25 +470,27 @@ namespace Canis
             patientLoadIndex = -1;
         }
 
-        if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
-        {
+        
 
         
-            auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
+        auto view = scene->entityRegistry.view<Canis::ScriptComponent>();
 
-            for (auto [_entity, _scriptComponent] : view.each())
+        for (auto [_entity, _scriptComponent] : view.each())
+        {
+            if (!_scriptComponent.Instance)
             {
-                if (!_scriptComponent.Instance)
-                {
-                    _scriptComponent.Instance = _scriptComponent.InstantiateScript();
-                    _scriptComponent.Instance->entity = Entity{_entity, this->scene};
+                _scriptComponent.Instance = _scriptComponent.InstantiateScript();
+                _scriptComponent.Instance->entity = Entity{_entity, this->scene};
 
-                    if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
-                    {
-                        _scriptComponent.Instance->OnCreate();
-                    }
+                if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
+                {
+                    _scriptComponent.Instance->OnCreate();
                 }
             }
+        }
+
+        if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
+        {
 
             scene->Update();
 
