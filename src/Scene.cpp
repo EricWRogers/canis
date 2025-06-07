@@ -1,3 +1,4 @@
+#include <Canis/Canis.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Yaml.hpp>
@@ -36,7 +37,17 @@ namespace Canis
 
     void Scene::UnLoad()
     {
+        // Clean up ScriptableEntity pointer
+        entityRegistry.view<ScriptComponent>().each([this](auto entity, auto &scriptComponent) {
+            if (((SceneManager*)sceneManager)->m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
+                Entity(entity, this).RemoveScript();
+            else if(scriptComponent.Instance)
+                delete scriptComponent.Instance; // skip calling OnDestroy
+            
+            scriptComponent.Instance = nullptr;
+        });
 
+        entityRegistry = entt::registry();
     }
 
     void Scene::Update()

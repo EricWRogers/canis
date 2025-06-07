@@ -1821,9 +1821,9 @@ namespace Canis
             {
                 GetSceneManager().nextMessage.clear();
 
-                m_mode = EditorMode::PLAY;
+                GetSceneManager().ForceLoad(m_scene->name);
 
-                GetSceneManager().Load(m_scene->name);
+                m_mode = EditorMode::PLAY;
 
                 ImGui::End();
 

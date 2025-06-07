@@ -224,21 +224,10 @@ namespace Canis
         {
 
             scene->UnLoad();
-            {
-                // Clean up ScriptableEntity pointer
-                scene->entityRegistry.view<ScriptComponent>().each([this](auto entity, auto &scriptComponent) {
-                    if (m_editor.GetMode() == EditorMode::PLAY || GetProjectConfig().editor == false)
-                        Entity(entity, scene).RemoveScript();
-                    else if(scriptComponent.Instance)
-                        delete scriptComponent.Instance; // skip calling OnDestroy
-                });
-            }
 
             // swap maps
             message.swap(nextMessage);
             nextMessage.clear();
-
-            scene->entityRegistry = entt::registry();
         }
 
         scene = m_scenes[_index].scene;
