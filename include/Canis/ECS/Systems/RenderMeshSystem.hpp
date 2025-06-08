@@ -545,7 +545,7 @@ namespace Canis
 
 				if (!mesh.useInstance)
 				{
-					if (mesh.modelHandle.id != modelId)
+					//if (mesh.modelHandle.id != modelId)
 					{
 						modelId = mesh.modelHandle.id;
 						vao = AssetManager::Get<ModelAsset>(modelId)->vao;
@@ -567,7 +567,7 @@ namespace Canis
 				materialId = mesh.material;
 				MaterialAsset *currentMaterial = AssetManager::Get<MaterialAsset>(materialId);
 
-				if (currentMaterial != material || mesh.albedoIdOverride != -1)
+				if (true)//(currentMaterial != material || mesh.albedoIdOverride != -1)
 				{
 					material = currentMaterial;
 					materialInfo = material->info;
