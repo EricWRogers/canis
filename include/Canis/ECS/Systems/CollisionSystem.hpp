@@ -481,4 +481,14 @@ namespace Canis
             return std::vector<entt::entity>{};
         }
     };
+
+    static bool DecodeCollisionSystem(const std::string &_name, Canis::Scene *_scene)
+    {
+        if (_name == "Canis::CollisionSystem")
+        {
+            _scene->CreateSystem<Canis::CollisionSystem>();
+            return true;
+        }
+        return false;
+    }
 } // end of Canis namespace
