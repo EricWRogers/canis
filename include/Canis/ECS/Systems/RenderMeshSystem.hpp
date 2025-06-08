@@ -567,7 +567,7 @@ namespace Canis
 				materialId = mesh.material;
 				MaterialAsset *currentMaterial = AssetManager::Get<MaterialAsset>(materialId);
 
-				if (currentMaterial != material)
+				if (currentMaterial != material || mesh.albedoIdOverride != -1)
 				{
 					material = currentMaterial;
 					materialInfo = material->info;
