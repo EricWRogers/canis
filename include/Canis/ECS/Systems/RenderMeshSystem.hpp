@@ -661,7 +661,8 @@ namespace Canis
 					shadow_mapping_shader->SetFloat("NEARPLANE", camera->nearPlane);
 					shadow_mapping_shader->SetFloat("FARPLANE", camera->farPlane);
 
-					diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->albedoId)->GetPointerToTexture();
+					int albedoId = (mesh.albedoIdOverride == -1) ? material->albedoId : mesh.albedoIdOverride;
+					diffuseColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(albedoId)->GetPointerToTexture();
 					specularColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->specularId)->GetPointerToTexture();
 					emissionColorPaletteTexture = AssetManager::Get<Canis::TextureAsset>(material->emissionId)->GetPointerToTexture();
 
@@ -1141,9 +1142,9 @@ namespace Canis
 
 			// Frustum camFrustum = CreateFrustumFromCamera(camera, (float)window->GetScreenWidth() / (float)window->GetScreenHeight(), camera->FOV, camera->nearPlane, camera->farPlane);
 
-			auto view = _registry.view<Transform, const Mesh, const SphereCollider>();
+			auto view = _registry.view<Transform, const Color, const Mesh, const SphereCollider>();
 
-			for (auto [entity, transform, mesh, sphere] : view.each())
+			for (auto [entity, transform, color, mesh, sphere] : view.each())
 			{
 				if (!transform.active)
 					continue;
