@@ -34,6 +34,7 @@ namespace Canis
             unsigned int GetPointByPosition(glm::vec3 position); // returns id
 
             void ConnectPoints(unsigned int idFrom, unsigned int idTo);
+            void RemovePoint(unsigned int id);
 
             bool ArePointsConnected(unsigned int idFrom, unsigned int idTo);
             bool ValidPoint(glm::vec3 position);

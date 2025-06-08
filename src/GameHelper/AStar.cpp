@@ -72,6 +72,20 @@ namespace Canis
             graph[idTo].adjacentPointIDs.push_back(idFrom);
     }
 
+    void AStar::RemovePoint(unsigned int id) {
+        if (graph.size() <= id)
+            FatalError("AStar::RemovePoint id has not been added to the graph.");
+        for (int i = 0; i < graph[id].adjacentPointIDs.size(); i++) { //remove from adjacent points
+            for (int j = 0; j < graph[i].adjacentPointIDs.size(); j++) { //iterate over adjacent points of neighbor
+                if (graph[i].adjacentPointIDs[j] == id) { 
+                    graph[i].adjacentPointIDs.erase(graph[i].adjacentPointIDs.begin()+j);
+                    continue;
+                }
+            }
+        }
+        graph.erase(graph.begin()+id);
+    }
+
     bool AStar::ArePointsConnected(unsigned int idFrom, unsigned int idTo)
     {
         if (graph.size() <= idFrom)
