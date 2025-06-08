@@ -14,5 +14,6 @@ namespace Canis
 		bool animatedModel = false;
 		bool overrideMaterialField = false;
 		MaterialFields overrideMaterialFields; // this could be a seperate component
+		int albedoIdOverride = -1;
 	};
 } // end of Canis namespace
