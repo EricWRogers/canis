@@ -5,6 +5,8 @@ namespace Canis
     AStar::AStar()
     {
         AStarNode node = {};
+        
+        graph.reserve(1000);
 
         graph.push_back(node);
     }
