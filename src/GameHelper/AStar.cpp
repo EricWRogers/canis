@@ -11,18 +11,19 @@ namespace Canis
         graph.push_back(node);
     }
 
-    unsigned int AStar::AddPoint(glm::vec3 position)
+    unsigned int AStar::AddPoint(glm::vec3 _position)
     {
         AStarNode node = {};
 
-        node.position = position;
+        node.position = _position;
 
         graph.push_back(node);
+        m_umap[_position] = graph.size() - 1;
 
-        return graph.size();
+        return graph.size() - 1;
     }
 
-    unsigned int AStar::GetClosestPoint(glm::vec3 position)
+    unsigned int AStar::GetClosestPoint(glm::vec3 _position)
     {
         if (graph.size() == 0)
             FatalError("AStar::GetClosetPoint was called before a point was added to the graph.");
@@ -33,7 +34,7 @@ namespace Canis
 
         for(int i = 1; i < graph.size(); i++)
         {
-            distance = glm::distance(position, graph[i].position);
+            distance = glm::distance(_position, graph[i].position);
 
             if (minDistance > distance)
             {
@@ -45,16 +46,13 @@ namespace Canis
         return id;
     }
 
-    unsigned int AStar::GetPointByPosition(glm::vec3 position)
+    unsigned int AStar::GetPointByPosition(glm::vec3 _position)
     {
-        for (unsigned int i = 1; i < graph.size();i++)
-        {
-            if (graph[i].position == position)
-                return i;
-        }
-
-
-        return 0;
+        
+        if (m_umap.contains(_position))
+            return m_umap[_position];
+        else
+            return 0;
     }
 
     void AStar::ConnectPoints(unsigned int idFrom, unsigned int idTo)
