@@ -1889,6 +1889,10 @@ namespace Canis
         std::string cpuTime = std::to_string(GetSceneManager().updateTime);
         std::string gpuTime = std::to_string(GetSceneManager().drawTime);
 
+        auto view = m_scene->entityRegistry.view<Canis::Transform>();
+        std::string entityCount = std::to_string(view.size());
+
+        ImGui::Text("Entity Count: %s", entityCount.c_str());
         ImGui::Text("FPS: %s", fps.c_str());
         ImGui::Text("Delta Time: %s", deltaTime.c_str());
         ImGui::Text("CPU Time: %s", cpuTime.c_str());
