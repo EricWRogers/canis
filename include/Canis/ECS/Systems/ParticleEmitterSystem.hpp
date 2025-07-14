@@ -40,7 +40,6 @@ public:
                 for(int i = 0; i < emitter.numOfParticle; i++) {
                     Entity e = scene->CreateEntity();
                     Transform& transformComponent = e.AddComponent<Transform>();
-                    transformComponent.registry = &(scene->entityRegistry);
                     
                     if (emitter.state & ParticleEmitterState::LOCAL)
                     {
@@ -53,6 +52,8 @@ public:
                     {
                         transformComponent.position = Canis::GetGlobalPosition(transform);
                         transformComponent.scale = Canis::GetGlobalScale(transform);
+
+                        // [FIX] global particle might not get delete because they are not children
                     }
 
                     transformComponent.active = false;
