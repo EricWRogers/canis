@@ -244,10 +244,7 @@ namespace Canis
             if (_id == m_buttonListeners[i]->_id)
             {
                 m_buttonListeners.erase(m_buttonListeners.begin() + i);
-            }
-            else
-            {
-                i++;
+                return;
             }
         }
     }
