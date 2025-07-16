@@ -239,7 +239,7 @@ namespace Canis
 
     void ButtonSystem::RemoveButtonListener(int _id)
     {
-        for (int i = 0; i < m_buttonListeners.size();)
+        for (int i = 0; i < m_buttonListeners.size(); i++)
         {
             if (_id == m_buttonListeners[i]->_id)
             {
