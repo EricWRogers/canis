@@ -16,13 +16,15 @@
 
 #include <Canis/External/entt.hpp>
 
-
-entt::entity DuplicateEntity(entt::registry& _from, entt::registry& _to, entt::entity _original) {
+entt::entity DuplicateEntity(entt::registry &_from, entt::registry &_to, entt::entity _original)
+{
     entt::entity newEntity = _to.create();
 
-    for(auto &&curr: _from.storage()) {
-        if(auto &storage = curr.second; storage.contains(_original)) {
-            auto* destinationStorage = _to.storage(curr.first);
+    for (auto &&curr : _from.storage())
+    {
+        if (auto &storage = curr.second; storage.contains(_original))
+        {
+            auto *destinationStorage = _to.storage(curr.first);
 
             if (destinationStorage)
             {
@@ -37,56 +39,54 @@ entt::entity DuplicateEntity(entt::registry& _from, entt::registry& _to, entt::e
 namespace Canis
 {
 
-
-void Entity::Destroy() // this does not tell the parent about the child being destroyed
-{
-    if (scene != nullptr)
+    void Entity::Destroy() // this does not tell the parent about the child being destroyed
     {
-        if (scene->entityRegistry.valid(entityHandle))
+        if (scene != nullptr)
         {
-            if (HasComponent<Transform>())
+            if (scene->entityRegistry.valid(entityHandle))
             {
-                Transform& transform = GetComponent<Transform>();
-
-                Entity child(scene);
-
-                for (int i = 0; i < transform.children.size(); i++)
+                if (HasComponent<Transform>())
                 {
-                    child.entityHandle = transform.children[i];
+                    Transform &transform = GetComponent<Transform>();
 
-                    child.Destroy();
+                    Entity child(scene);
+
+                    for (int i = 0; i < transform.children.size(); i++)
+                    {
+                        child.entityHandle = transform.children[i];
+
+                        child.Destroy();
+                    }
                 }
-            }
-            if (HasComponent<RectTransform>())
-            {
-                RectTransform& transform = GetComponent<RectTransform>();
-
-                if(transform.parent)
+                if (HasComponent<RectTransform>())
                 {
-                    RectTransform& pt = transform.parent.GetComponent<RectTransform>();
+                    RectTransform &transform = GetComponent<RectTransform>();
 
-                    for (int i = 0; i < pt.children.size();)
-                        if (pt.children[i] == this)
-                            pt.children.erase(pt.children.begin()+i);
-                        else
-                            i++;
-                    
-                    transform.parent.entityHandle = entt::null;
+                    if (transform.parent)
+                    {
+                        RectTransform &pt = transform.parent.GetComponent<RectTransform>();
+
+                        for (int i = 0; i < pt.children.size();)
+                            if (pt.children[i] == this)
+                                pt.children.erase(pt.children.begin() + i);
+                            else
+                                i++;
+
+                        transform.parent.entityHandle = entt::null;
+                    }
+
+                    std::vector<Canis::Entity> rememberTheChildren = transform.children;
+                    transform.children = {};
+
+                    for (int i = 0; i < rememberTheChildren.size(); i++)
+                    {
+                        rememberTheChildren[i].Destroy();
+                    }
                 }
 
-                std::vector<Canis::Entity> rememberTheChildren = transform.children;
-                transform.children = {};
+#if CANIS_EDITOR
+                std::vector<HierarchyElementInfo> &elements = ((SceneManager *)scene->sceneManager)->hierarchyElements;
 
-                for (int i = 0; i < rememberTheChildren.size(); i++)
-                {
-                    rememberTheChildren[i].Destroy();
-                }
-            }
-            
-
-            #if CANIS_EDITOR
-                std::vector<HierarchyElementInfo>& elements = ((SceneManager*)scene->sceneManager)->hierarchyElements;
-                
                 for (int i = 0; i < elements.size(); i++)
                 {
                     if (elements[i].entity == *this)
@@ -95,91 +95,79 @@ void Entity::Destroy() // this does not tell the parent about the child being de
                         break;
                     }
                 }
-            #endif
+#endif
 
-            if (HasComponent<ScriptComponent>())
-            {
-                ScriptComponent& script = GetComponent<ScriptComponent>();
-                
-                if (script.Instance)
+                if (HasComponent<ScriptComponent>())
                 {
-                    script.Instance->OnDestroy();
-                    delete script.Instance;
+                    ScriptComponent &script = GetComponent<ScriptComponent>();
+
+                    if (script.Instance)
+                    {
+                        script.Instance->OnDestroy();
+                        delete script.Instance;
+                    }
                 }
+
+                scene->entityRegistry.destroy(entityHandle);
             }
-
-            scene->entityRegistry.destroy(entityHandle);
         }
     }
-}
 
-SceneManager& Entity::GetSceneManager()
-{
-    return *(Canis::SceneManager*)scene->sceneManager;
-}
-
-void* Entity::InitScriptableComponent()
-{
-    Canis::ScriptComponent& sc = GetComponent<Canis::ScriptComponent>();
-    sc.Instance = sc.InstantiateScript();
-    sc.Instance->entity.entityHandle = entityHandle;
-    sc.Instance->entity.scene = scene;
-    sc.Instance->OnCreate();
-    return sc.Instance;
-}
-
-void Entity::RemoveScriptable(Canis::ScriptComponent &script)
-{
-    if (script.Instance)
+    SceneManager &Entity::GetSceneManager()
     {
-        script.Instance->OnDestroy();
-        delete script.Instance;
-        script.Instance = nullptr;
+        return *(Canis::SceneManager *)scene->sceneManager;
     }
-}
 
-void Entity::SetTag(std::string _tag)
-{
-    if (HasComponent<TagComponent>() == false)
-        AddComponent<TagComponent>();
-    
-    TagComponent& tagComponent = GetComponent<TagComponent>();
-
-    char tag[20] = "";
-
-    int i = 0;
-    while(i < 20-1 && i < _tag.size())
+    void *Entity::InitScriptableComponent()
     {
-        tag[i] = _tag[i];
-        i++;
+        Canis::ScriptComponent &sc = GetComponent<Canis::ScriptComponent>();
+        sc.Instance = sc.InstantiateScript();
+        sc.Instance->entity.entityHandle = entityHandle;
+        sc.Instance->entity.scene = scene;
+        sc.Instance->OnCreate();
+        return sc.Instance;
     }
-    tag[i] = '\0';
 
-    strcpy(tagComponent.tag, tag);
-}
-
-bool Entity::TagEquals(const std::string &_tag)
-{
-    if (HasComponent<TagComponent>() == false)
-        AddComponent<TagComponent>();
-    
-    TagComponent& tagComponent = GetComponent<TagComponent>();
-
-    if (_tag.size() == 0)
+    void Entity::RemoveScriptable(Canis::ScriptComponent &script)
     {
-        if (tagComponent.tag[0] == 0)
+        if (script.Instance)
         {
-            return true;
+            script.Instance->OnDestroy();
+            delete script.Instance;
+            script.Instance = nullptr;
         }
-
-        return false;
     }
 
-    for (int i = 0; i < 20; i++)
+    void Entity::SetTag(std::string _tag)
     {
-        if (_tag.size() <= i)
+        if (HasComponent<TagComponent>() == false)
+            AddComponent<TagComponent>();
+
+        TagComponent &tagComponent = GetComponent<TagComponent>();
+
+        char tag[20] = "";
+
+        int i = 0;
+        while (i < 20 - 1 && i < _tag.size())
         {
-            if (tagComponent.tag[i] == 0)
+            tag[i] = _tag[i];
+            i++;
+        }
+        tag[i] = '\0';
+
+        strcpy(tagComponent.tag, tag);
+    }
+
+    bool Entity::TagEquals(const std::string &_tag)
+    {
+        if (HasComponent<TagComponent>() == false)
+            AddComponent<TagComponent>();
+
+        TagComponent &tagComponent = GetComponent<TagComponent>();
+
+        if (_tag.size() == 0)
+        {
+            if (tagComponent.tag[0] == 0)
             {
                 return true;
             }
@@ -187,123 +175,131 @@ bool Entity::TagEquals(const std::string &_tag)
             return false;
         }
 
-        if (tagComponent.tag[i] != _tag[i])
+        for (int i = 0; i < 20; i++)
         {
-            return false;
+            if (_tag.size() <= i)
+            {
+                if (tagComponent.tag[i] == 0)
+                {
+                    return true;
+                }
+
+                return false;
+            }
+
+            if (tagComponent.tag[i] != _tag[i])
+            {
+                return false;
+            }
         }
+
+        return true;
     }
 
-    return true;
-}
-
-Entity Entity::GetEntityWithTag(std::string _tag)
-{
-    Entity e = {};
-    e.scene = scene;
-
-    char tag[20] = "";
-
-    int i = 0;
-    while(i < 20-1 && i < _tag.size())
+    Entity Entity::GetEntityWithTag(std::string _tag)
     {
-        tag[i] = _tag[i];
-        i++;
-    }
-    tag[i] = '\0';
+        Entity e = {};
+        e.scene = scene;
 
-    auto view = scene->entityRegistry.view<TagComponent>();
+        char tag[20] = "";
 
-    for(auto [entity, tagComponent] : view.each())
-    {
-        if(TagEquals(tagComponent.tag, tag))
+        int i = 0;
+        while (i < 20 - 1 && i < _tag.size())
         {
-            e.entityHandle = entity;
-            break;
+            tag[i] = _tag[i];
+            i++;
         }
-    }
+        tag[i] = '\0';
 
-    return e;
-}
+        auto view = scene->entityRegistry.view<TagComponent>();
 
-std::vector<Entity> Entity::GetEntitiesWithTag(std::string _tag)
-{
-    std::vector<Entity> entities = {};
-    char tag[20] = "";
-
-    int i = 0;
-    while(i < 20-1 && i < _tag.size())
-    {
-        tag[i] = _tag[i];
-        i++;
-    }
-    tag[i] = '\0';
-
-    auto view = scene->entityRegistry.view<const TagComponent>();
-
-    for(auto [entity, tagComponent] : view.each())
-        if(TagEquals(tagComponent.tag, tag))
-            entities.push_back(Entity(entity, scene));
-
-    return entities;
-}
-
-bool Entity::TagEquals(const char a[20], const char b[20])
-{
-    int i = 0;
-    while(i < 20)
-    {
-        if ((int)a[i] - (int)b[i] != 0)
-            return false;
-        
-        i++;
-    }
-    return true;
-}
-
-Entity Entity::Duplicate()
-{
-    Entity e(
-        DuplicateEntity(scene->entityRegistry, scene->entityRegistry, entityHandle)
-        ,scene
-    );
-
-    if (e.HasComponent<IDComponent>())
-    {
-        e.RemoveComponent<IDComponent>();
-        e.AddComponent<IDComponent>();
-    }
-
-    // RectTransform Parent
-    if (e.HasComponent<RectTransform>())
-    {
-        auto& rectTransform = e.GetComponent<RectTransform>();
-        if (rectTransform.parent)
+        for (auto [entity, tagComponent] : view.each())
         {
-            rectTransform.parent.GetComponent<RectTransform>().children.push_back(e);
+            if (TagEquals(tagComponent.tag, tag))
+            {
+                e.entityHandle = entity;
+                break;
+            }
         }
+
+        return e;
     }
 
-    // RectTransform Children
-
-    // Transform Parent
-
-    // Transform Children
-
-    return e;
-}
-
-void Entity::SetParent(entt::entity _parent, bool _updatePosition)
-{
-    if (HasComponent<Transform>())
+    std::vector<Entity> Entity::GetEntitiesWithTag(std::string _tag)
     {
-        if (scene->entityRegistry.all_of<Transform>(_parent))
+        std::vector<Entity> entities = {};
+        char tag[20] = "";
+
+        int i = 0;
+        while (i < 20 - 1 && i < _tag.size())
         {
-            Transform& transform = GetComponent<Transform>();
+            tag[i] = _tag[i];
+            i++;
+        }
+        tag[i] = '\0';
+
+        auto view = scene->entityRegistry.view<const TagComponent>();
+
+        for (auto [entity, tagComponent] : view.each())
+            if (TagEquals(tagComponent.tag, tag))
+                entities.push_back(Entity(entity, scene));
+
+        return entities;
+    }
+
+    bool Entity::TagEquals(const char a[20], const char b[20])
+    {
+        int i = 0;
+        while (i < 20)
+        {
+            if ((int)a[i] - (int)b[i] != 0)
+                return false;
+
+            i++;
+        }
+        return true;
+    }
+
+    Entity Entity::Duplicate()
+    {
+        Entity e(
+            DuplicateEntity(scene->entityRegistry, scene->entityRegistry, entityHandle), scene);
+
+        if (e.HasComponent<IDComponent>())
+        {
+            e.RemoveComponent<IDComponent>();
+            e.AddComponent<IDComponent>();
+        }
+
+        // RectTransform Parent
+        if (e.HasComponent<RectTransform>())
+        {
+            auto &rectTransform = e.GetComponent<RectTransform>();
+            if (rectTransform.parent)
+            {
+                rectTransform.parent.GetComponent<RectTransform>().children.push_back(e);
+            }
+        }
+
+        // RectTransform Children
+
+        // Transform Parent
+
+        // Transform Children
+
+        return e;
+    }
+
+    void Entity::SetParent(entt::entity _parent, bool _updatePosition)
+    {
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
             glm::vec3 globalPosition = GetGlobalPosition();
 
             if (transform.parent != entt::null)
             {
-                Transform& parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
+                Transform &parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
 
                 for (int i = 0; i < parentTransform.children.size(); i++)
                 {
@@ -317,119 +313,121 @@ void Entity::SetParent(entt::entity _parent, bool _updatePosition)
 
             transform.parent = _parent;
 
-            Transform& parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
-            glm::vec3 parentGlobalPosition = Entity(transform.parent, scene).GetGlobalPosition();
+            if (scene->entityRegistry.all_of<Transform>(_parent))
+            {
+                Transform &parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
+                glm::vec3 parentGlobalPosition = Entity(transform.parent, scene).GetGlobalPosition();
 
-            parentTransform.children.push_back(entityHandle);
+                parentTransform.children.push_back(entityHandle);
 
-            if (_updatePosition)
-                SetPosition(globalPosition - parentGlobalPosition);
+                if (_updatePosition)
+                    SetPosition(globalPosition - parentGlobalPosition);
+            }
 
             UpdateModelMatrix(transform);
         }
     }
-}
 
-void Entity::AddChild(entt::entity _child)
-{
-    if (HasComponent<Transform>())
+    void Entity::AddChild(entt::entity _child)
     {
-        SetParent(_child);
-    }
-}
-
-int Entity::ChildCount()
-{
-    if (HasComponent<Transform>() == false)
-        return 0;
-
-    auto& transform = GetComponent<Transform>();
-
-    return transform.children.size();
-}
-
-Entity Entity::GetChild(int _index)
-{
-    if (HasComponent<Transform>())
-    {
-        auto& transform = GetComponent<Transform>();
-
-        if (transform.children.size() <= _index || _index < 0)
-            return Entity(scene);
-        
-        return Entity(GetComponent<Transform>().children[_index], scene);
-    }
-    else if (HasComponent<RectTransform>())
-    {
-        auto& rectTransform = GetComponent<RectTransform>();
-
-        if (rectTransform.children.size() <= _index || _index < 0)
-            return Entity(scene);
-        
-        return Entity(GetComponent<RectTransform>().children[_index], scene);
+        if (HasComponent<Transform>())
+        {
+            SetParent(_child);
+        }
     }
 
-    return Entity(scene);
-}
-
-void Entity::SetPosition(glm::vec3 _postion)
-{
-    if (HasComponent<Transform>())
+    int Entity::ChildCount()
     {
-        Transform& transform = GetComponent<Transform>();
-        SetTransformPosition(transform, _postion);
+        if (HasComponent<Transform>() == false)
+            return 0;
+
+        auto &transform = GetComponent<Transform>();
+
+        return transform.children.size();
     }
-}
 
-void Entity::MovePosition(glm::vec3 _delta)
-{
-    if (HasComponent<Transform>())
+    Entity Entity::GetChild(int _index)
     {
-        Transform& transform = GetComponent<Transform>();
-        MoveTransformPosition(transform, _delta);
+        if (HasComponent<Transform>())
+        {
+            auto &transform = GetComponent<Transform>();
+
+            if (transform.children.size() <= _index || _index < 0)
+                return Entity(scene);
+
+            return Entity(GetComponent<Transform>().children[_index], scene);
+        }
+        else if (HasComponent<RectTransform>())
+        {
+            auto &rectTransform = GetComponent<RectTransform>();
+
+            if (rectTransform.children.size() <= _index || _index < 0)
+                return Entity(scene);
+
+            return Entity(GetComponent<RectTransform>().children[_index], scene);
+        }
+
+        return Entity(scene);
     }
-}
 
-void Entity::SetRotation(glm::vec3 _radians)
-{
-    if (HasComponent<Transform>())
+    void Entity::SetPosition(glm::vec3 _postion)
     {
-        Transform& transform = GetComponent<Transform>();
-        SetTransformRotation(transform, _radians);
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+            SetTransformPosition(transform, _postion);
+        }
     }
-}
 
-void Entity::Rotate(glm::vec3 _radians)
-{
-    if (HasComponent<Transform>())
+    void Entity::MovePosition(glm::vec3 _delta)
     {
-        Transform& transform = GetComponent<Transform>();
-        Canis::Rotate(transform, _radians);
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+            MoveTransformPosition(transform, _delta);
+        }
     }
-}
 
-void Entity::SetScale(glm::vec3 _scale)
-{
-    if (HasComponent<Transform>())
+    void Entity::SetRotation(glm::vec3 _radians)
     {
-        Transform& transform = GetComponent<Transform>();
-        transform.scale = _scale;
-        UpdateModelMatrix(transform);
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+            SetTransformRotation(transform, _radians);
+        }
     }
-}
 
-glm::vec3 Entity::GetGlobalPosition()
-{
-    if (HasComponent<Transform>())
+    void Entity::Rotate(glm::vec3 _radians)
     {
-        Transform& transform = GetComponent<Transform>();
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+            Canis::Rotate(transform, _radians);
+        }
+    }
 
-        if (transform.isDirty) // it would be nice to remove this
+    void Entity::SetScale(glm::vec3 _scale)
+    {
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+            transform.scale = _scale;
             UpdateModelMatrix(transform);
-        
-        return glm::vec3(transform.modelMatrix[3]);
+        }
     }
 
-    return glm::vec3(0.0f);
-}
+    glm::vec3 Entity::GetGlobalPosition()
+    {
+        if (HasComponent<Transform>())
+        {
+            Transform &transform = GetComponent<Transform>();
+
+            if (transform.isDirty) // it would be nice to remove this
+                UpdateModelMatrix(transform);
+
+            return glm::vec3(transform.modelMatrix[3]);
+        }
+
+        return glm::vec3(0.0f);
+    }
 } // end of Canis namespace
