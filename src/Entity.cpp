@@ -49,6 +49,7 @@ namespace Canis
                 {
                     Transform &transform = GetComponent<Transform>();
 
+<<<<<<< Updated upstream
                     Entity child(scene);
 
                     for (int i = 0; i < transform.children.size(); i++)
@@ -56,6 +57,13 @@ namespace Canis
                         child.entityHandle = transform.children[i];
 
                         child.Destroy();
+=======
+                    child.Destroy();
+
+                    if (scene->entityRegistry.valid(child.entityHandle))
+                    {
+                        Log("WTF");
+>>>>>>> Stashed changes
                     }
                 }
                 if (HasComponent<RectTransform>())
@@ -110,6 +118,16 @@ namespace Canis
 
                 scene->entityRegistry.destroy(entityHandle);
             }
+<<<<<<< Updated upstream
+=======
+
+            scene->entityRegistry.destroy(entityHandle);
+
+            if (scene->entityRegistry.valid(entityHandle))
+            {
+                Log("Realy wtf");
+            }
+>>>>>>> Stashed changes
         }
     }
 

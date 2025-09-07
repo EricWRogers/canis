@@ -280,16 +280,32 @@ namespace Canis
 
         if (_transform.parent != entt::null)
         {
-            Transform &parentTransform = _transform.registry->get<Transform>(_transform.parent);
+            if (_transform.registry->valid(_transform.parent))
+            {
+                Transform &parentTransform = _transform.registry->get<Transform>(_transform.parent);
 
-            _transform.modelMatrix = parentTransform.modelMatrix * _transform.modelMatrix;
+                _transform.modelMatrix = parentTransform.modelMatrix * _transform.modelMatrix;
+            }
+            else
+            {
+                Canis::Error("Canis::Math::UpdateModelMatrix parent has invalid id.");
+            }
         }
 
+        entt::entity child = entt::null;
         for (int i = 0; i < _transform.children.size(); i++)
         {
-            Transform &childTransform = _transform.registry->get<Transform>(_transform.children[i]);
+            child = _transform.children[i];
+            if (_transform.registry->valid(child))
+            {
+                Transform &childTransform = _transform.registry->get<Transform>(_transform.children[i]);
 
-            UpdateModelMatrix(childTransform);
+                UpdateModelMatrix(childTransform);
+            }
+            else
+            {
+                Canis::Error("Canis::Math::UpdateModelMatrix child has invalid id.");
+            }
         }
     }
 
