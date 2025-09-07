@@ -49,21 +49,29 @@ namespace Canis
                 {
                     Transform &transform = GetComponent<Transform>();
 
-<<<<<<< Updated upstream
                     Entity child(scene);
 
-                    for (int i = 0; i < transform.children.size(); i++)
+                    
+                    /* this cause a very bad bug where children vector would randomly drop to 0
+                    int childCount = transform.children.size();
+                    std::vector<entt::entity>& children = transform.children;
+                    for (int i = 0; i < childCount; i++)
                     {
-                        child.entityHandle = transform.children[i];
+                        Log(std::to_string((int)entityHandle) + " Destroy Child: " + std::to_string(i) + " of " + std::to_string(transform.children.size()));
+                        child.entityHandle = children[i];
 
                         child.Destroy();
-=======
-                    child.Destroy();
 
-                    if (scene->entityRegistry.valid(child.entityHandle))
+                        if (scene->entityRegistry.valid(child.entityHandle))
+                        {
+                            Log("How");
+                        }
+                    }*/
+                    
+                    for(entt::entity e : transform.children)
                     {
-                        Log("WTF");
->>>>>>> Stashed changes
+                        child.entityHandle = e;
+                        child.Destroy();
                     }
                 }
                 if (HasComponent<RectTransform>())
@@ -118,16 +126,6 @@ namespace Canis
 
                 scene->entityRegistry.destroy(entityHandle);
             }
-<<<<<<< Updated upstream
-=======
-
-            scene->entityRegistry.destroy(entityHandle);
-
-            if (scene->entityRegistry.valid(entityHandle))
-            {
-                Log("Realy wtf");
-            }
->>>>>>> Stashed changes
         }
     }
 
