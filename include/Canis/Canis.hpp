@@ -22,6 +22,7 @@ namespace Canis
         bool logToFile = false;
         bool editor = false;
         bool vsync = false;
+        bool demo = false;
     };
 
     ProjectConfig& GetProjectConfig();

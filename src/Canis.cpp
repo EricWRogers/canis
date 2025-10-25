@@ -39,6 +39,7 @@ namespace Canis
         data["log"] = (projectConfig.log) ? "true" : "false";
         data["editor"] = (projectConfig.editor) ? "true" : "false";
         data["vsync"] = (projectConfig.vsync) ? "true" : "false";
+        data["demo"] = (projectConfig.demo) ? "true" : "false";
 
         for(const auto& pair : data)
         {
@@ -163,6 +164,15 @@ namespace Canis
                 if (file >> word)
                 {
                     GetProjectConfig().editor = (word == "true");
+                    continue;
+                }
+            }
+            if (word == "demo")
+            {
+                if (file >> word)
+                {
+                    Log("demo: " + word);
+                    GetProjectConfig().demo = (word == "true");
                     continue;
                 }
             }
