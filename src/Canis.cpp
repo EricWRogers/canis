@@ -171,7 +171,6 @@ namespace Canis
             {
                 if (file >> word)
                 {
-                    Log("demo: " + word);
                     GetProjectConfig().demo = (word == "true");
                     continue;
                 }
