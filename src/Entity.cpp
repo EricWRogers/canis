@@ -1,449 +1,379 @@
+#include <Canis/App.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/SceneManager.hpp>
-#include <Canis/Math.hpp>
+#include <Canis/Window.hpp>
+#include <Canis/AssetManager.hpp>
+#include <Canis/Debug.hpp>
 
-#include <Canis/ScriptableEntity.hpp>
-#include <Canis/ECS/Components/ScriptComponent.hpp>
-#include <Canis/ECS/Components/Transform.hpp>
+#include <cmath>
 
-#include <iomanip>
-#include <iostream>
-#include <string>
-#include <type_traits>
-#include <variant>
-#include <vector>
 
-#include <Canis/External/entt.hpp>
+namespace Canis {
 
-entt::entity DuplicateEntity(entt::registry &_from, entt::registry &_to, entt::entity _original)
+namespace
 {
-    entt::entity newEntity = _to.create();
-
-    for (auto &&curr : _from.storage())
+    Vector2 AbsVector2(const Vector2& _value)
     {
-        if (auto &storage = curr.second; storage.contains(_original))
-        {
-            auto *destinationStorage = _to.storage(curr.first);
-
-            if (destinationStorage)
-            {
-                destinationStorage->push(newEntity, storage.value(_original));
-            }
-        }
+        return Vector2(std::abs(_value.x), std::abs(_value.y));
     }
 
-    return newEntity;
+    Vector2 GetActiveCamera2DPosition(const Scene& _scene)
+    {
+        if (_scene.HasEditorCamera2DOverride())
+            return _scene.GetEditorCamera2DPosition();
+
+        auto cameraView = _scene.GetRegistry().view<Camera2D>();
+        for (const entt::entity entityHandle : cameraView)
+            return cameraView.get<Camera2D>(entityHandle).GetPosition();
+
+        return Vector2(0.0f);
+    }
 }
 
-namespace Canis
+ScriptableEntity* Entity::AddScriptDirect(const ScriptConf& _conf, ScriptableEntity* _scriptableEntity, bool _callCreate)
 {
+    if (_scriptableEntity == nullptr)
+        return nullptr;
 
-    void Entity::Destroy() // this does not tell the parent about the child being destroyed
+    if (ScriptableEntity* existing = GetScriptDirect(_conf))
     {
-        if (scene != nullptr)
+        if (existing != _scriptableEntity)
+            delete _scriptableEntity;
+        return existing;
+    }
+
+    m_scriptComponents.push_back(_scriptableEntity);
+
+    if (_callCreate)
+        _scriptableEntity->Create();
+
+    return _scriptableEntity;
+}
+
+ScriptableEntity* Entity::GetScriptDirect(const ScriptConf& _conf)
+{
+    if (_conf.Get == nullptr)
+        return nullptr;
+
+    return static_cast<ScriptableEntity*>(_conf.Get(*this));
+}
+
+const ScriptableEntity* Entity::GetScriptDirect(const ScriptConf& _conf) const
+{
+    if (_conf.Get == nullptr)
+        return nullptr;
+
+    return static_cast<const ScriptableEntity*>(_conf.Get(const_cast<Entity&>(*this)));
+}
+
+void Entity::RemoveScriptDirect(const ScriptConf& _conf)
+{
+    ScriptableEntity* script = GetScriptDirect(_conf);
+    if (script == nullptr)
+        return;
+
+    for (size_t i = 0; i < m_scriptComponents.size(); ++i)
+    {
+        if (m_scriptComponents[i] != script)
+            continue;
+
+        script->Destroy();
+        delete script;
+        m_scriptComponents.erase(m_scriptComponents.begin() + i);
+        break;
+    }
+}
+
+ScriptableEntity* Entity::AttachScript(const std::string& _scriptName, ScriptableEntity* _scriptableEntity, bool _callCreate)
+{
+    if (scene.app == nullptr)
+    {
+        delete _scriptableEntity;
+        return nullptr;
+    }
+
+    ScriptConf* conf = scene.app->GetScriptConf(_scriptName);
+    if (conf == nullptr)
+    {
+        delete _scriptableEntity;
+        return nullptr;
+    }
+
+    return AddScriptDirect(*conf, _scriptableEntity, _callCreate);
+}
+
+void Entity::RemoveScript(const std::string& _scriptName)
+{
+    if (scene.app == nullptr)
+        return;
+
+    ScriptConf* conf = scene.app->GetScriptConf(_scriptName);
+    if (conf == nullptr)
+        return;
+
+    RemoveScriptDirect(*conf);
+}
+
+void Entity::RemoveAllScripts()
+{
+    for (int i = static_cast<int>(m_scriptComponents.size()) - 1; i >= 0; --i)
+    {
+        ScriptableEntity* script = m_scriptComponents[static_cast<size_t>(i)];
+
+        if (script != nullptr)
         {
-            if (scene->entityRegistry.valid(entityHandle))
-            {
-                if (HasComponent<Transform>())
-                {
-                    Transform &transform = GetComponent<Transform>();
-
-                    Entity child(scene);
-
-                    
-                    /* this cause a very bad bug where children vector would randomly drop to 0
-                    int childCount = transform.children.size();
-                    std::vector<entt::entity>& children = transform.children;
-                    for (int i = 0; i < childCount; i++)
-                    {
-                        Log(std::to_string((int)entityHandle) + " Destroy Child: " + std::to_string(i) + " of " + std::to_string(transform.children.size()));
-                        child.entityHandle = children[i];
-
-                        child.Destroy();
-
-                        if (scene->entityRegistry.valid(child.entityHandle))
-                        {
-                            Log("How");
-                        }
-                    }*/
-                    
-                    for(entt::entity e : transform.children)
-                    {
-                        child.entityHandle = e;
-                        child.Destroy();
-                    }
-                }
-                if (HasComponent<RectTransform>())
-                {
-                    RectTransform &transform = GetComponent<RectTransform>();
-
-                    if (transform.parent)
-                    {
-                        RectTransform &pt = transform.parent.GetComponent<RectTransform>();
-
-                        for (int i = 0; i < pt.children.size();)
-                            if (pt.children[i] == this)
-                                pt.children.erase(pt.children.begin() + i);
-                            else
-                                i++;
-
-                        transform.parent.entityHandle = entt::null;
-                    }
-
-                    std::vector<Canis::Entity> rememberTheChildren = transform.children;
-                    transform.children = {};
-
-                    for (int i = 0; i < rememberTheChildren.size(); i++)
-                    {
-                        rememberTheChildren[i].Destroy();
-                    }
-                }
-
-#if CANIS_EDITOR
-                std::vector<HierarchyElementInfo> &elements = ((SceneManager *)scene->sceneManager)->hierarchyElements;
-
-                for (int i = 0; i < elements.size(); i++)
-                {
-                    if (elements[i].entity == *this)
-                    {
-                        elements.erase(elements.begin() + i);
-                        break;
-                    }
-                }
-#endif
-
-                if (HasComponent<ScriptComponent>())
-                {
-                    ScriptComponent &script = GetComponent<ScriptComponent>();
-
-                    if (script.Instance)
-                    {
-                        script.Instance->OnDestroy();
-                        delete script.Instance;
-                    }
-                }
-
-                scene->entityRegistry.destroy(entityHandle);
-            }
+            script->Destroy();
+            delete script;
         }
     }
 
-    SceneManager &Entity::GetSceneManager()
+    m_scriptComponents.clear();
+}
+
+void Entity::Destroy() {
+    scene.Destroy(id);
+}
+
+RectTransform::LayoutData RectTransform::GetLayout() const
+{
+    LayoutData layout = {};
+
+    if (entity == nullptr)
+        return layout;
+
+    const bool hasParentRect = parent != nullptr && parent->HasComponent<RectTransform>();
+    const unsigned int renderMode = GetCanvasRenderMode();
+
+    Vector2 parentMin = Vector2(0.0f);
+    Vector2 parentSize = Vector2(0.0f);
+    Vector2 parentPivot = Vector2(0.0f);
+    Vector2 parentScale = Vector2(1.0f);
+    float parentRotation = 0.0f;
+
+    if (hasParentRect)
     {
-        return *(Canis::SceneManager *)scene->sceneManager;
+        const RectTransform& parentRect = parent->GetComponent<RectTransform>();
+        parentMin = parentRect.GetRectMin();
+        parentSize = parentRect.GetResolvedSize();
+        parentPivot = parentRect.GetPosition();
+        parentScale = AbsVector2(parentRect.GetScale());
+        parentRotation = parentRect.GetRotation();
     }
-
-    void *Entity::InitScriptableComponent()
+    else if (renderMode != CanvasRenderMode::WORLD_SPACE)
     {
-        Canis::ScriptComponent &sc = GetComponent<Canis::ScriptComponent>();
-        sc.Instance = sc.InstantiateScript();
-        sc.Instance->entity.entityHandle = entityHandle;
-        sc.Instance->entity.scene = scene;
-        sc.Instance->OnCreate();
-        return sc.Instance;
-    }
+        const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
+        const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
 
-    void Entity::RemoveScriptable(Canis::ScriptComponent &script)
-    {
-        if (script.Instance)
+        parentSize = Vector2(screenWidth, screenHeight);
+        if (renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
         {
-            script.Instance->OnDestroy();
-            delete script.Instance;
-            script.Instance = nullptr;
+            parentMin = Vector2(-screenWidth * 0.5f, -screenHeight * 0.5f);
+            parentPivot = Vector2(0.0f);
         }
-    }
-
-    void Entity::SetTag(std::string _tag)
-    {
-        if (HasComponent<TagComponent>() == false)
-            AddComponent<TagComponent>();
-
-        TagComponent &tagComponent = GetComponent<TagComponent>();
-
-        char tag[20] = "";
-
-        int i = 0;
-        while (i < 20 - 1 && i < _tag.size())
+        else
         {
-            tag[i] = _tag[i];
-            i++;
-        }
-        tag[i] = '\0';
-
-        strcpy(tagComponent.tag, tag);
-    }
-
-    bool Entity::TagEquals(const std::string &_tag)
-    {
-        if (HasComponent<TagComponent>() == false)
-            AddComponent<TagComponent>();
-
-        TagComponent &tagComponent = GetComponent<TagComponent>();
-
-        if (_tag.size() == 0)
-        {
-            if (tagComponent.tag[0] == 0)
-            {
-                return true;
-            }
-
-            return false;
-        }
-
-        for (int i = 0; i < 20; i++)
-        {
-            if (_tag.size() <= i)
-            {
-                if (tagComponent.tag[i] == 0)
-                {
-                    return true;
-                }
-
-                return false;
-            }
-
-            if (tagComponent.tag[i] != _tag[i])
-            {
-                return false;
-            }
-        }
-
-        return true;
-    }
-
-    Entity Entity::GetEntityWithTag(std::string _tag)
-    {
-        Entity e = {};
-        e.scene = scene;
-
-        char tag[20] = "";
-
-        int i = 0;
-        while (i < 20 - 1 && i < _tag.size())
-        {
-            tag[i] = _tag[i];
-            i++;
-        }
-        tag[i] = '\0';
-
-        auto view = scene->entityRegistry.view<TagComponent>();
-
-        for (auto [entity, tagComponent] : view.each())
-        {
-            if (TagEquals(tagComponent.tag, tag))
-            {
-                e.entityHandle = entity;
-                break;
-            }
-        }
-
-        return e;
-    }
-
-    std::vector<Entity> Entity::GetEntitiesWithTag(std::string _tag)
-    {
-        std::vector<Entity> entities = {};
-        char tag[20] = "";
-
-        int i = 0;
-        while (i < 20 - 1 && i < _tag.size())
-        {
-            tag[i] = _tag[i];
-            i++;
-        }
-        tag[i] = '\0';
-
-        auto view = scene->entityRegistry.view<const TagComponent>();
-
-        for (auto [entity, tagComponent] : view.each())
-            if (TagEquals(tagComponent.tag, tag))
-                entities.push_back(Entity(entity, scene));
-
-        return entities;
-    }
-
-    bool Entity::TagEquals(const char a[20], const char b[20])
-    {
-        int i = 0;
-        while (i < 20)
-        {
-            if ((int)a[i] - (int)b[i] != 0)
-                return false;
-
-            i++;
-        }
-        return true;
-    }
-
-    Entity Entity::Duplicate()
-    {
-        Entity e(
-            DuplicateEntity(scene->entityRegistry, scene->entityRegistry, entityHandle), scene);
-
-        if (e.HasComponent<IDComponent>())
-        {
-            e.RemoveComponent<IDComponent>();
-            e.AddComponent<IDComponent>();
-        }
-
-        // RectTransform Parent
-        if (e.HasComponent<RectTransform>())
-        {
-            auto &rectTransform = e.GetComponent<RectTransform>();
-            if (rectTransform.parent)
-            {
-                rectTransform.parent.GetComponent<RectTransform>().children.push_back(e);
-            }
-        }
-
-        // RectTransform Children
-
-        // Transform Parent
-
-        // Transform Children
-
-        return e;
-    }
-
-    void Entity::SetParent(entt::entity _parent, bool _updatePosition)
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            glm::vec3 globalPosition = GetGlobalPosition();
-
-            if (transform.parent != entt::null)
-            {
-                Transform &parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
-
-                for (int i = 0; i < parentTransform.children.size(); i++)
-                {
-                    if (parentTransform.children[i] == entityHandle)
-                    {
-                        parentTransform.children.erase(parentTransform.children.begin() + i);
-                        break;
-                    }
-                }
-            }
-
-            transform.parent = _parent;
-
-            if (scene->entityRegistry.all_of<Transform>(_parent))
-            {
-                Transform &parentTransform = scene->entityRegistry.get<Transform>(transform.parent);
-                glm::vec3 parentGlobalPosition = Entity(transform.parent, scene).GetGlobalPosition();
-
-                parentTransform.children.push_back(entityHandle);
-
-                if (_updatePosition)
-                    SetPosition(globalPosition - parentGlobalPosition);
-            }
-
-            UpdateModelMatrix(transform);
+            parentMin = GetActiveCamera2DPosition(entity->scene) - (parentSize * 0.5f);
+            parentPivot = parentMin + (parentSize * 0.5f);
         }
     }
 
-    void Entity::AddChild(entt::entity _child)
+    Vector2 resolvedSize = size;
+    if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
+        resolvedSize += parentSize * (anchorMax - anchorMin);
+
+    resolvedSize.x *= parentScale.x * std::abs(scale.x);
+    resolvedSize.y *= parentScale.y * std::abs(scale.y);
+
+    Vector2 pivotPosition = position;
+
+    if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
     {
-        if (HasComponent<Transform>())
-        {
-            SetParent(_child);
-        }
+        const Vector2 anchorRectMin = parentMin + parentSize * anchorMin;
+        const Vector2 anchorRectMax = parentMin + parentSize * anchorMax;
+        const Vector2 scaledPosition = Vector2(position.x * parentScale.x, position.y * parentScale.y);
+
+        pivotPosition = anchorRectMin + ((anchorRectMax - anchorRectMin) * pivot) + scaledPosition;
+
+        if (hasParentRect && parentRotation != 0.0f)
+            pivotPosition = parentPivot + RotatePoint(pivotPosition - parentPivot, parentRotation);
     }
 
-    int Entity::ChildCount()
+    layout.size = resolvedSize;
+    layout.pivotPosition = pivotPosition;
+    layout.min = pivotPosition - Vector2(layout.size.x * pivot.x, layout.size.y * pivot.y);
+    return layout;
+}
+
+const Canvas* RectTransform::FindCanvas() const
+{
+    const Entity* current = entity;
+
+    while (current != nullptr)
     {
-        if (HasComponent<Transform>() == false)
-            return 0;
+        if (current->HasComponent<Canvas>())
+            return &current->GetComponent<Canvas>();
 
-        auto &transform = GetComponent<Transform>();
+        if (!current->HasComponent<RectTransform>())
+            break;
 
-        return transform.children.size();
+        current = current->GetComponent<RectTransform>().parent;
     }
 
-    Entity Entity::GetChild(int _index)
+    return nullptr;
+}
+
+Vector2 RectTransform::GetNormalizedAnchor(const RectAnchor &_anchor)
+{
+    switch (_anchor)
     {
-        if (HasComponent<Transform>())
-        {
-            auto &transform = GetComponent<Transform>();
+    case RectAnchor::TOPLEFT:
+        return Vector2(0.0f, 1.0f);
+    case RectAnchor::TOPCENTER:
+        return Vector2(0.5f, 1.0f);
+    case RectAnchor::TOPRIGHT:
+        return Vector2(1.0f, 1.0f);
+    case RectAnchor::CENTERLEFT:
+        return Vector2(0.0f, 0.5f);
+    case RectAnchor::CENTER:
+        return Vector2(0.5f, 0.5f);
+    case RectAnchor::CENTERRIGHT:
+        return Vector2(1.0f, 0.5f);
+    case RectAnchor::BOTTOMLEFT:
+        return Vector2(0.0f, 0.0f);
+    case RectAnchor::BOTTOMCENTER:
+        return Vector2(0.5f, 0.0f);
+    case RectAnchor::BOTTOMRIGHT:
+        return Vector2(1.0f, 0.0f);
+    default:
+        return Vector2(0.5f, 0.5f);
+    }
+}
 
-            if (transform.children.size() <= _index || _index < 0)
-                return Entity(scene);
+Vector2 RectTransform::GetPosition() const
+{
+    return GetLayout().pivotPosition;
+}
 
-            return Entity(GetComponent<Transform>().children[_index], scene);
-        }
-        else if (HasComponent<RectTransform>())
-        {
-            auto &rectTransform = GetComponent<RectTransform>();
+void RectTransform::SetPosition(Vector2 _globalPos)
+{
+    Vector2 delta = _globalPos - GetPosition();
 
-            if (rectTransform.children.size() <= _index || _index < 0)
-                return Entity(scene);
+    if (parent != nullptr && parent->HasComponent<RectTransform>())
+    {
+        const RectTransform& parentRect = parent->GetComponent<RectTransform>();
+        const Vector2 parentScale = AbsVector2(parentRect.GetScale());
+        const float parentRotation = parentRect.GetRotation();
 
-            return Entity(GetComponent<RectTransform>().children[_index], scene);
-        }
+        if (parentRotation != 0.0f)
+            delta = RotatePoint(delta, -parentRotation);
 
-        return Entity(scene);
+        if (parentScale.x != 0.0f)
+            delta.x /= parentScale.x;
+        if (parentScale.y != 0.0f)
+            delta.y /= parentScale.y;
     }
 
-    void Entity::SetPosition(glm::vec3 _postion)
+    position += delta;
+}
+
+Vector2 RectTransform::GetResolvedSize() const
+{
+    return GetLayout().size;
+}
+
+Vector2 RectTransform::GetRectMin() const
+{
+    return GetLayout().min;
+}
+
+unsigned int RectTransform::GetCanvasRenderMode() const
+{
+    if (const Canvas* canvas = FindCanvas())
+        return canvas->renderMode;
+
+    return CanvasRenderMode::SCREEN_SPACE_CAMERA;
+}
+
+bool RectTransform::IsActiveInHierarchy() const
+{
+    if (entity == nullptr || !entity->active || !active)
+        return false;
+
+    if (entity->HasComponent<Canvas>() && !entity->GetComponent<Canvas>().active)
+        return false;
+
+    if (parent != nullptr && parent->HasComponent<RectTransform>())
+        return parent->GetComponent<RectTransform>().IsActiveInHierarchy();
+
+    return true;
+}
+
+void RectTransform::SetAnchorPreset(RectAnchor _anchor)
+{
+    const Vector2 normalizedAnchor = GetNormalizedAnchor(_anchor);
+    anchorMin = normalizedAnchor;
+    anchorMax = normalizedAnchor;
+    pivot = normalizedAnchor;
+}
+
+int RectTransform::GetAnchorPreset() const
+{
+    if (anchorMin != anchorMax || pivot != anchorMin)
+        return -1;
+
+    for (int i = 0; i < 9; i++)
     {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            SetTransformPosition(transform, _postion);
-        }
+        if (anchorMin == GetNormalizedAnchor(static_cast<RectAnchor>(i)))
+            return i;
     }
 
-    void Entity::MovePosition(glm::vec3 _delta)
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            MoveTransformPosition(transform, _delta);
-        }
-    }
+    return -1;
+}
 
-    void Entity::SetRotation(glm::vec3 _radians)
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            SetTransformRotation(transform, _radians);
-        }
-    }
+void Camera2D::Create() {
+    if (entity == nullptr)
+        return;
 
-    void Entity::Rotate(glm::vec3 _radians)
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            Canis::Rotate(transform, _radians);
-        }
-    }
+    m_screenWidth = entity->scene.GetWindow().GetScreenWidth();
+    m_screenHeight = entity->scene.GetWindow().GetScreenHeight();
+    m_projection = glm::ortho(0.0f, (float)m_screenWidth, 0.0f,
+                                      (float)m_screenHeight, -100.0f, 100.0f);
+    SetPosition(Vector2(0.0f)); // Vector2((float)m_screenWidth / 2,
+                                // (float)m_screenHeight / 2));
+    SetScale(1.0f);
+}
 
-    void Entity::SetScale(glm::vec3 _scale)
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
-            transform.scale = _scale;
-            UpdateModelMatrix(transform);
-        }
-    }
+void Camera2D::Destroy() {
+    Debug::Log("DestroyCamera");
+}
 
-    glm::vec3 Entity::GetGlobalPosition()
-    {
-        if (HasComponent<Transform>())
-        {
-            Transform &transform = GetComponent<Transform>();
+void Camera2D::Update(float _dt) {}
 
-            if (transform.isDirty) // it would be nice to remove this
-                UpdateModelMatrix(transform);
+void Camera2D::UpdateMatrix()
+{
+    if (entity == nullptr)
+        return;
 
-            return glm::vec3(transform.modelMatrix[3]);
-        }
+    m_screenWidth = entity->scene.GetWindow().GetScreenWidth();
+    m_screenHeight = entity->scene.GetWindow().GetScreenHeight();
+    m_projection = glm::ortho(0.0f, (float)m_screenWidth, 0.0f,
+                                      (float)m_screenHeight, -100.0f, 100.0f);
+                                      
+    m_view = Matrix4(1.0f);
+    m_view = glm::translate(m_view, Vector3(-m_position.x + m_screenWidth / 2,
+                                             -m_position.y + m_screenHeight / 2, 0.0f));
+    m_view = glm::scale(m_view, Vector3(m_scale, m_scale, 0.0f));
 
-        return glm::vec3(0.0f);
-    }
-} // end of Canis namespace
+    m_cameraMatrix = m_projection * m_view;
+
+    m_needsMatrixUpdate = false;
+}
+
+void SpriteAnimation::Play(std::string _path)
+{
+    speed = 1.0f;
+    id = AssetManager::LoadSpriteAnimation(_path);
+    index = 0;
+    redraw = true;
+}
+} // namespace Canis

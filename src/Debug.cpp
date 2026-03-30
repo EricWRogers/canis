@@ -1,89 +1,55 @@
 #include <Canis/Debug.hpp>
-#include <Canis/Canis.hpp>
 
-// https://www.codegrepper.com/code-examples/cpp/c%2B%2B+cout+with+color
+#include <cstdarg>
+#include <cstdio>
+#include <cstdlib>
 
-namespace Canis
+namespace Canis::Debug {
+// helper function to print formatted messages
+void PrintLog(const char* color, const char* prefix, const char* fmt, va_list args)
 {
-    #ifdef _WIN32
-    const char* NULLLOGTARGET = "NUL";
-    const char* DEFAULTLOGTARGET = "CON";
-    #else
-    const char* NULLLOGTARGET = "/dev/null";
-    const char* DEFAULTLOGTARGET = "/dev/tty";
-    #endif
+    //if (GetProjectConfig().log == false)
+    //    return;
 
-    void FatalError(std::string _message)
-    {
-        if (GetProjectConfig().log == false)
-            return;
-        // \033[1;31m red \033[0m reset
-        std::cout << "\033[1;31mFatalError: \033[0m" + _message << std::endl;
-        std::cout << "Press enter to quit";
-        int tmp;
-        std::cin.get();
-        exit(1);
-    }
+    printf("%s%s: \033[0m", color, prefix);
+    vprintf(fmt, args);
+    printf("\n");
+}
 
-    void Error(std::string _message)
-    {
-        if (GetProjectConfig().log == false)
-            return;
-        // \033[1;31m red \033[0m reset
-        std::cout << "\033[1;31mError: \033[0m" + _message << std::endl;
-    }
+void FatalError(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    PrintLog("\033[1;31m", "FatalError", fmt, args);
+    va_end(args);
 
-    void Warning(std::string _message)
-    {
-        if (GetProjectConfig().log == false)
-            return;
-        // \033[1;33m yellow \033[0m reset
-        std::cout << "\033[1;33mWarning: \033[0m" + _message << std::endl;
-    }
+    printf("Press enter to quit");
+    getchar();
+    exit(1);
+}
 
-    void Log(std::string _message)
-    {
-        if (GetProjectConfig().log == false)
-            return;
-        // \033[1;32m green \033[0m reset
-        std::cout << "\033[1;32mLog: \033[0m" + _message << std::endl;
-    }
+void Error(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    PrintLog("\033[1;31m", "Error", fmt, args);
+    va_end(args);
+}
 
-    void TurnOffLog()
-    {
-        if (GetLoggingData().logFile) fclose((FILE*)GetLoggingData().logFile);
-        if (GetLoggingData().logFileError) fclose((FILE*)GetLoggingData().logFileError);
+void Warning(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    PrintLog("\033[1;33m", "Warning", fmt, args);
+    va_end(args);
+}
 
-        GetLoggingData().logFile = freopen(NULLLOGTARGET, "w", stdout);
-        GetLoggingData().logFileError = freopen(NULLLOGTARGET, "w", stderr);
-    }
+void Log(const char* fmt, ...)
+{
+    va_list args;
+    va_start(args, fmt);
+    PrintLog("\033[1;32m", "Log", fmt, args);
+    va_end(args);
+}
+}
 
-    void TurnOnLog()
-    {
-        if (GetLoggingData().logFile) fclose((FILE*)GetLoggingData().logFile);
-        if (GetLoggingData().logFileError) fclose((FILE*)GetLoggingData().logFileError);
-
-        if (GetLoggingData().logTarget == "")
-        {
-            GetLoggingData().logFile = freopen(DEFAULTLOGTARGET, "w", stdout);
-            GetLoggingData().logFileError = freopen(DEFAULTLOGTARGET, "w", stderr);
-        }
-        else
-        {
-            GetLoggingData().logFile = freopen(GetLoggingData().logTarget.c_str(), "a", stdout);
-            GetLoggingData().logFileError = freopen(GetLoggingData().logTarget.c_str(), "a", stderr);
-        }
-    }
-
-    void SetLogTarget(std::string _path)
-    {
-        GetLoggingData().logTarget = _path;
-        TurnOnLog();
-    }
-
-    LoggingData& GetLoggingData()
-    {
-        static LoggingData loggingData = {};
-        return loggingData;
-    }
-} // end of Canis namespace

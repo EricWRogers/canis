@@ -2,6 +2,7 @@
 #include <Canis/Math.hpp>
 
 #include <numeric>
+#include <algorithm>
 
 namespace Canis
 {

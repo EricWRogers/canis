@@ -1,17 +1,162 @@
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
-#include <Canis/Camera2D.hpp>
-
-#include <Canis/ECS/Components/RectTransform.hpp>
-#include <Canis/ECS/Components/Color.hpp>
-#include <Canis/ECS/Components/Sprite2DComponent.hpp>
-#include <Canis/ECS/Components/Camera2DComponent.hpp>
+#include <vector>
+#include <algorithm>
+#include <cfloat>
+#include <cmath>
 
 #include <Canis/Math.hpp>
+#include <Canis/Time.hpp>
 #include <Canis/Entity.hpp>
+#include <Canis/Scene.hpp>
+#include <Canis/Shader.hpp>
+#include <Canis/Window.hpp>
+#include <Canis/AssetHandle.hpp>
+#include <Canis/AssetManager.hpp>
+
+#include <Canis/OpenGL.hpp>
 
 namespace Canis
 {
+    void SpriteRenderer2DSystem::DrawText(Entity* _entity, RectTransform* _transform, Text* _text, const Vector2& _cameraPosition, float _halfWidth, float _halfHeight)
+    {
+        if (_entity == nullptr || _transform == nullptr || _text == nullptr || _text->assetId < 0)
+            return;
+
+        TextAsset* font = AssetManager::GetText(_text->assetId);
+
+        if (font == nullptr || _text->text.empty())
+            return;
+
+        Vector2 transformPos = _transform->GetPosition();
+        Vector2 transformScale = _transform->GetScale();
+        const float scaleX = std::abs(transformScale.x);
+        const float scaleY = std::abs(transformScale.y);
+        const Vector2 rectSize = _transform->GetResolvedSize();
+        const Vector2 rectMin = _transform->GetRectMin() + _transform->originOffset;
+        const float maxWidth = rectSize.x;
+        const bool wrap = (_text->horizontalBoundary == TextBoundary::WRAP) && (maxWidth > 0.0f);
+        const float wrapWidth = (maxWidth > 0.0f) ? maxWidth : 0.0f;
+
+        float lineHeight = 0.0f;
+        for (unsigned char c = 32; c < 127; c++)
+            lineHeight = std::max(lineHeight, (float)font->characters[c].sizeY * scaleY);
+
+        if (lineHeight <= 0.0f)
+            lineHeight = 16.0f * std::max(scaleY, 1.0f);
+
+        std::vector<float> lineWidths = {};
+        lineWidths.reserve(8);
+        float currentLineWidth = 0.0f;
+
+        for (const unsigned char c : _text->text)
+        {
+            if (c == '\n')
+            {
+                lineWidths.push_back(currentLineWidth);
+                currentLineWidth = 0.0f;
+                continue;
+            }
+
+            if (c < 32 || c >= 127)
+                continue;
+
+            const float advance = (font->characters[c].advance >> 6) * scaleX;
+
+            if (wrap && currentLineWidth > 0.0f && (currentLineWidth + advance) > wrapWidth)
+            {
+                lineWidths.push_back(currentLineWidth);
+                currentLineWidth = 0.0f;
+            }
+
+            currentLineWidth += advance;
+        }
+
+        lineWidths.push_back(currentLineWidth);
+
+        float layoutWidth = 0.0f;
+        for (float width : lineWidths)
+            layoutWidth = std::max(layoutWidth, width);
+
+        const float layoutHeight = std::max(lineHeight, lineHeight * (float)lineWidths.size());
+
+        if ((_text->_status & BIT::ONE) > 0)
+        {
+            const bool canResizeWidth = _transform->anchorMin.x == _transform->anchorMax.x;
+            const bool canResizeHeight = _transform->anchorMin.y == _transform->anchorMax.y;
+
+            if (_text->horizontalBoundary == TextBoundary::TB_OVERFLOW && canResizeWidth && scaleX != 0.0f)
+                _transform->size.x = layoutWidth / std::abs(scaleX);
+            if (canResizeHeight && scaleY != 0.0f)
+                _transform->size.y = layoutHeight / std::abs(scaleY);
+            _text->_status &= ~BIT::ONE;
+        }
+
+        auto computeLineStart = [&](float _lineWidth) -> float
+        {
+            if (_text->alignment == TextAlignment::RIGHT)
+                return rectMin.x + rectSize.x - _lineWidth;
+            if (_text->alignment == TextAlignment::CENTER)
+                return rectMin.x + ((rectSize.x - _lineWidth) * 0.5f);
+            return rectMin.x;
+        };
+
+        const Vector2 textRotationPivot = transformPos + _transform->rotationOriginOffset;
+
+        i32 lineIndex = 0;
+        float x = computeLineStart(lineWidths[0]);
+        float y = rectMin.y + ((rectSize.y + layoutHeight) * 0.5f) - lineHeight;
+
+        for (const unsigned char c : _text->text)
+        {
+            if (c == '\n')
+            {
+                lineIndex++;
+                if (lineIndex >= (i32)lineWidths.size())
+                    break;
+                x = computeLineStart(lineWidths[lineIndex]);
+                y -= lineHeight;
+                continue;
+            }
+
+            if (c < 32 || c >= 127)
+                continue;
+
+            Character ch = font->characters[c];
+            const float advance = (ch.advance >> 6) * scaleX;
+
+            if (wrap && (x + advance) > (computeLineStart(lineWidths[lineIndex]) + wrapWidth))
+            {
+                lineIndex++;
+                if (lineIndex >= (i32)lineWidths.size())
+                    break;
+                x = computeLineStart(lineWidths[lineIndex]);
+                y -= lineHeight;
+            }
+
+            const float xpos = x + (ch.bearingX * scaleX);
+            const float ypos = y - ((ch.sizeY - ch.bearingY) * scaleY);
+            const float w = ch.sizeX * scaleX;
+            const float h = ch.sizeY * scaleY;
+
+            if (w > 0.0f && h > 0.0f)
+            {
+                const float uvY = 1.0f - ch.atlasPos.y - ch.atlasSize.y;
+                DrawUI(
+                    Vector4(xpos, ypos, w, h),
+                    Vector4(ch.atlasPos.x, uvY, ch.atlasSize.x, ch.atlasSize.y),
+                    GLTexture{font->GetTexture(), 0, 0},
+                    _transform->GetDepth(),
+                    _text->color,
+                    _transform->GetRotation(),
+                    Vector2(0.0f),
+                    textRotationPivot);
+            }
+
+            x += advance;
+        }
+    }
+
     SpriteRenderer2DSystem::~SpriteRenderer2DSystem()
     {
         for (int i = 0; i < glyphs.size(); i++)
@@ -127,9 +272,8 @@ namespace Canis
         CreateRenderBatches();
     }
 
-    void SpriteRenderer2DSystem::DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset)
+    void SpriteRenderer2DSystem::DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset)
     {
-
         Glyph *newGlyph;
 
         if (glyphsCurrentIndex < glyphs.size())
@@ -142,86 +286,82 @@ namespace Canis
             glyphs.push_back(newGlyph);
         }
 
-        glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
-
-        glm::vec2 topLeft(origin.x, origin.y + destRect.w);
-        glm::vec2 bottomLeft(origin.x, origin.y);
-        glm::vec2 bottomRight(origin.x + destRect.z, origin.y);
-        glm::vec2 topRight(origin.x + destRect.z, origin.y + destRect.w);
+        Vector2 topLeft(destRect.x + origin.x, destRect.y + origin.y + destRect.w);
+        Vector2 bottomLeft(destRect.x + origin.x, destRect.y + origin.y);
+        Vector2 bottomRight(destRect.x + origin.x + destRect.z, destRect.y + origin.y);
+        Vector2 topRight(destRect.x + origin.x + destRect.z, destRect.y + origin.y + destRect.w);
 
          /*
 
-         glm::vec2 topLeft(origin.x, origin.y + destRect.w);
-        glm::vec2 bottomLeft(origin.x, origin.y);
-        glm::vec2 bottomRight(origin.x + destRect.z, origin.y);
-        glm::vec2 topRight(origin.x + destRect.z, origin.y + destRect.w);
+         Vector2 topLeft(origin.x, origin.y + destRect.w);
+        Vector2 bottomLeft(origin.x, origin.y);
+        Vector2 bottomRight(origin.x + destRect.z, origin.y);
+        Vector2 topRight(origin.x + destRect.z, origin.y + destRect.w);
         
         newGlyph->topLeft.position.x = destRect.x;
         newGlyph->topLeft.position.y = destRect.y + destRect.w;
         newGlyph->topLeft.position.z = depth;
-        newGlyph->topLeft.color = color.color;
-        newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
+        newGlyph->topLeft.color = color;
+        newGlyph->topLeft.uv = Vector2(uvRect.x, uvRect.y + uvRect.w);
 
         newGlyph->bottomLeft.position.x = destRect.x;
         newGlyph->bottomLeft.position.y = destRect.y;
         newGlyph->bottomLeft.position.z = depth;
-        newGlyph->bottomLeft.color = color.color;
-        newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+        newGlyph->bottomLeft.color = color;
+        newGlyph->bottomLeft.uv = Vector2(uvRect.x, uvRect.y);
 
         newGlyph->bottomRight.position.x = destRect.x + destRect.z;
         newGlyph->bottomRight.position.y = destRect.y;
         newGlyph->bottomRight.position.z = depth;
-        newGlyph->bottomRight.color = color.color;
-        newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+        newGlyph->bottomRight.color = color;
+        newGlyph->bottomRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y);
 
         newGlyph->topRight.position.x = destRect.x + destRect.z;
         newGlyph->topRight.position.y = destRect.y + destRect.w;
         newGlyph->topRight.position.z = depth;
-        newGlyph->topRight.color = color.color;
-        newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);*/
+        newGlyph->topRight.color = color;
+        newGlyph->topRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);*/
 
         if (angle != 0.0f)
         {
-            RotatePointAroundPivot(topLeft, rotationOriginOffset, angle);
-            RotatePointAroundPivot(bottomLeft, rotationOriginOffset, angle);
-            RotatePointAroundPivot(bottomRight, rotationOriginOffset, angle);
-            RotatePointAroundPivot(topRight, rotationOriginOffset, angle);
+            RotatePointAroundPivot(topLeft, rotationOriginOffset, -angle);
+            RotatePointAroundPivot(bottomLeft, rotationOriginOffset, -angle);
+            RotatePointAroundPivot(bottomRight, rotationOriginOffset, -angle);
+            RotatePointAroundPivot(topRight, rotationOriginOffset, -angle);
         }
 
         newGlyph->textureId = texture.id;
         newGlyph->depth = depth;
-        newGlyph->angle = angle;
+        newGlyph->angle = -angle;
 
-        newGlyph->topLeft.position.x = topLeft.x + destRect.x;
-        newGlyph->topLeft.position.y = topLeft.y + destRect.y;
+        newGlyph->topLeft.position.x = topLeft.x;
+        newGlyph->topLeft.position.y = topLeft.y;
         newGlyph->topLeft.position.z = depth;
-        newGlyph->topLeft.color = color.color;
-        newGlyph->topLeft.uv = glm::vec2(uvRect.x, uvRect.y + uvRect.w);
+        newGlyph->topLeft.color = color;
+        newGlyph->topLeft.uv = Vector2(uvRect.x, uvRect.y + uvRect.w);
 
-        newGlyph->bottomLeft.position.x = bottomLeft.x + destRect.x;
-        newGlyph->bottomLeft.position.y = bottomLeft.y + destRect.y;
+        newGlyph->bottomLeft.position.x = bottomLeft.x;
+        newGlyph->bottomLeft.position.y = bottomLeft.y;
         newGlyph->bottomLeft.position.z = depth;
-        newGlyph->bottomLeft.color = color.color;
-        newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+        newGlyph->bottomLeft.color = color;
+        newGlyph->bottomLeft.uv = Vector2(uvRect.x, uvRect.y);
 
-        newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
-        newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
+        newGlyph->bottomRight.position.x = bottomRight.x;
+        newGlyph->bottomRight.position.y = bottomRight.y;
         newGlyph->bottomRight.position.z = depth;
-        newGlyph->bottomRight.color = color.color;
-        newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+        newGlyph->bottomRight.color = color;
+        newGlyph->bottomRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y);
 
-        newGlyph->topRight.position.x = topRight.x + destRect.x;
-        newGlyph->topRight.position.y = topRight.y + destRect.y;
+        newGlyph->topRight.position.x = topRight.x;
+        newGlyph->topRight.position.y = topRight.y;
         newGlyph->topRight.position.z = depth;
-        newGlyph->topRight.color = color.color;
-        newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
-
-       
-
+        newGlyph->topRight.color = color;
+        newGlyph->topRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+        
         glyphsCurrentIndex++;
     }
 
-    void SpriteRenderer2DSystem::Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const glm::vec2 &origin)
+    void SpriteRenderer2DSystem::Draw(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const Vector2 &origin)
     {
         Glyph *newGlyph;
 
@@ -239,12 +379,12 @@ namespace Canis
         newGlyph->depth = depth;
         newGlyph->angle = angle;
 
-        glm::vec2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
+        Vector2 halfDims(destRect.z / 2.0f, destRect.w / 2.0f);
 
-        glm::vec2 topLeft(-halfDims.x + origin.x, halfDims.y + origin.y);
-        glm::vec2 bottomLeft(-halfDims.x + origin.x, -halfDims.y + origin.y);
-        glm::vec2 bottomRight(halfDims.x + origin.x, -halfDims.y + origin.y);
-        glm::vec2 topRight(halfDims.x + origin.x, halfDims.y + origin.y);
+        Vector2 topLeft(-halfDims.x + origin.x, halfDims.y + origin.y);
+        Vector2 bottomLeft(-halfDims.x + origin.x, -halfDims.y + origin.y);
+        Vector2 bottomRight(halfDims.x + origin.x, -halfDims.y + origin.y);
+        Vector2 topRight(halfDims.x + origin.x, halfDims.y + origin.y);
 
         if (angle != 0.0f)
         {
@@ -258,57 +398,62 @@ namespace Canis
 
         // Glyph
 
-        // newGlyph->topLeft.position = glm::vec3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
+        // newGlyph->topLeft.position = Vector3(topLeft.x + destRect.x, topLeft.y + destRect.y, depth);
         newGlyph->topLeft.position.x = topLeft.x + destRect.x;
         newGlyph->topLeft.position.y = topLeft.y + destRect.y;
         newGlyph->topLeft.position.z = depth;
-        newGlyph->topLeft.color = color.color;
+        newGlyph->topLeft.color = color;
         newGlyph->topLeft.uv.x = uvRect.x;
         newGlyph->topLeft.uv.y = uvRect.y + uvRect.w;
 
-        // newGlyph->bottomLeft.position = glm::vec3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
+        // newGlyph->bottomLeft.position = Vector3(bottomLeft.x + destRect.x, bottomLeft.y + destRect.y, depth);
         newGlyph->bottomLeft.position.x = bottomLeft.x + destRect.x;
         newGlyph->bottomLeft.position.y = bottomLeft.y + destRect.y;
         newGlyph->bottomLeft.position.z = depth;
-        newGlyph->bottomLeft.color = color.color;
-        // newGlyph->bottomLeft.uv = glm::vec2(uvRect.x, uvRect.y);
+        newGlyph->bottomLeft.color = color;
+        // newGlyph->bottomLeft.uv = Vector2(uvRect.x, uvRect.y);
         newGlyph->bottomLeft.uv.x = uvRect.x;
         newGlyph->bottomLeft.uv.y = uvRect.y;
 
-        // newGlyph->bottomRight.position = glm::vec3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
+        // newGlyph->bottomRight.position = Vector3(bottomRight.x + destRect.x, bottomRight.y + destRect.y, depth);
         newGlyph->bottomRight.position.x = bottomRight.x + destRect.x;
         newGlyph->bottomRight.position.y = bottomRight.y + destRect.y;
         newGlyph->bottomRight.position.z = depth;
-        newGlyph->bottomRight.color = color.color;
-        // newGlyph->bottomRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y);
+        newGlyph->bottomRight.color = color;
+        // newGlyph->bottomRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y);
         newGlyph->bottomRight.uv.x = uvRect.x + uvRect.z;
         newGlyph->bottomRight.uv.y = uvRect.y;
 
-        // newGlyph->topRight.position = glm::vec3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
+        // newGlyph->topRight.position = Vector3(topRight.x + destRect.x, topRight.y + destRect.y, depth);
         newGlyph->topRight.position.x = topRight.x + destRect.x;
         newGlyph->topRight.position.y = topRight.y + destRect.y;
         newGlyph->topRight.position.z = depth;
-        newGlyph->topRight.color = color.color;
-        // newGlyph->topRight.uv = glm::vec2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
+        newGlyph->topRight.color = color;
+        // newGlyph->topRight.uv = Vector2(uvRect.x + uvRect.z, uvRect.y + uvRect.w);
         newGlyph->topRight.uv.x = uvRect.x + uvRect.z;
         newGlyph->topRight.uv.y = uvRect.y + uvRect.w;
 
         glyphsCurrentIndex++;
     }
 
-    void SpriteRenderer2DSystem::SpriteRenderBatch(bool use2DCamera)
+    void SpriteRenderer2DSystem::SpriteRenderBatch(bool use2DCamera, const Matrix4* overrideProjection)
     {
         glBindTexture(GL_TEXTURE_2D, 0);
         glActiveTexture(GL_TEXTURE0);
         spriteShader->Use();
         spriteShader->SetFloat("TIME", m_time);
         glBindVertexArray(vao);
-        glm::mat4 projection = glm::mat4(1.0f);
 
-        if (use2DCamera)
-            projection = camera2D.GetCameraMatrix();
-        else
-            projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()));
+        Matrix4 projection = Matrix4(1.0f);
+
+        if (overrideProjection != nullptr) {
+            projection = *overrideProjection;
+        } else if (use2DCamera) {
+            camera2D->UpdateMatrix();
+            projection = camera2D->GetCameraMatrix();
+        } else {
+            projection = glm::ortho(0.0f, static_cast<float>(window->GetScreenWidth()), 0.0f, static_cast<float>(window->GetScreenHeight()), 0.0f, 100.0f);
+        }
 
         spriteShader->SetMat4("P", projection);
 
@@ -365,6 +510,7 @@ namespace Canis
 
         if (!shader->IsLinked())
         {
+            Debug::Log("Link");
             shader->AddAttribute("vertexPosition");
             shader->AddAttribute("vertexColor");
             shader->AddAttribute("vertexUV");
@@ -374,8 +520,12 @@ namespace Canis
 
         spriteShader = shader;
 
-        camera2D.Init((int)window->GetScreenWidth(), (int)window->GetScreenHeight());
         CreateVertexArray();
+    }
+
+    void SpriteRenderer2DSystem::Ready()
+    {
+        // No cached views required.
     }
 
     void SpriteRenderer2DSystem::Update(entt::registry &_registry, float _deltaTime)
@@ -385,69 +535,179 @@ namespace Canis
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glDepthFunc(GL_ALWAYS);
-        
-        bool camFound = false;
-        auto cam = _registry.view<const Camera2DComponent>();
-        for (auto [entity, camera] : cam.each())
+        glDepthFunc(GL_LESS);
+
+        bool cameraFound = false;
+        bool editorCameraOverride = scene->HasEditorCamera2DOverride();
+        Matrix4 overrideProjection = Matrix4(1.0f);
+        camera2D = nullptr;
+
+        auto cameraView = _registry.view<Camera2D>();
+        for (const entt::entity entityHandle : cameraView)
         {
-            camera2D.SetPosition(camera.position);
-            camera2D.SetScale(camera.scale);
-            camera2D.Update();
-            camFound = true;
-            continue;
+            camera2D = &cameraView.get<Camera2D>(entityHandle);
+            cameraFound = true;
+            break;
         }
 
-        if (!camFound)
-            return;
-
-        Begin(glyphSortType);
-
-        // Draw
-        auto view = _registry.view<const RectTransform, const Sprite2DComponent>();
-        glm::vec2 positionAnchor = glm::vec2(0.0f);
-        float halfWidth = window->GetScreenWidth() / 2;
-        float halfHeight = window->GetScreenHeight() / 2;
-        glm::vec2 camPos = camera2D.GetPosition();
-        glm::vec2 anchorTable[] = {
-            GetAnchor(Canis::RectAnchor::TOPLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::TOPCENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::TOPRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::CENTERLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::CENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::CENTERRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::BOTTOMLEFT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::BOTTOMCENTER, (float)window->GetScreenWidth(), (float)window->GetScreenHeight()),
-            GetAnchor(Canis::RectAnchor::BOTTOMRIGHT, (float)window->GetScreenWidth(), (float)window->GetScreenHeight())};
-        Color color;
-        glm::vec2 p;
-        glm::vec2 s;
-
-        for (auto [entity, rect_transform, sprite] : view.each())
+        if (editorCameraOverride)
         {
-            p = rect_transform.position + anchorTable[rect_transform.anchor];
-            s.x = rect_transform.size.x + halfWidth;
-            s.y = rect_transform.size.y + halfHeight;
-            if (p.x > camPos.x - s.x &&
-                p.x < camPos.x + s.x &&
-                p.y > camPos.y - s.y &&
-                p.y < camPos.y + s.y &&
-                rect_transform.active)
+            cameraFound = true;
+            overrideProjection = scene->GetEditorCamera2DMatrix();
+        }
+
+        float halfWidth = window->GetScreenWidth() / 2.0f;
+        float halfHeight = window->GetScreenHeight() / 2.0f;
+        Vector2 camPos;
+
+        if (editorCameraOverride)
+            camPos = scene->GetEditorCamera2DPosition();
+        else if (cameraFound)
+            camPos = camera2D->GetPosition();
+        else
+            camPos = Vector2(0.0f);
+
+        auto renderPass = [&](unsigned int _renderMode, const Matrix4* _projectionOverride, bool _useCameraProjection) -> void
+        {
+            Begin(glyphSortType);
+
+            auto renderView = _registry.view<RectTransform>();
+            const std::vector<Entity*>& sceneEntities = scene->GetEntities();
+            std::vector<bool> visited(sceneEntities.size(), false);
+
+            auto wasVisited = [&](Entity* _entity) -> bool
             {
-                color = _registry.get<const Color>(entity);
-                Draw(
-                    glm::vec4(rect_transform.position.x + anchorTable[rect_transform.anchor].x, rect_transform.position.y + anchorTable[rect_transform.anchor].y, rect_transform.size.x, rect_transform.size.y),
-                    sprite.uv,
-                    sprite.textureHandle.texture,
-                    rect_transform.depth,
-                    color,
-                    rect_transform.rotation,
-                    rect_transform.originOffset);
+                return _entity != nullptr &&
+                    _entity->id >= 0 &&
+                    _entity->id < static_cast<int>(visited.size()) &&
+                    visited[static_cast<std::size_t>(_entity->id)];
+            };
+
+            auto markVisited = [&](Entity* _entity) -> void
+            {
+                if (_entity == nullptr ||
+                    _entity->id < 0 ||
+                    _entity->id >= static_cast<int>(visited.size()))
+                {
+                    return;
+                }
+
+                visited[static_cast<std::size_t>(_entity->id)] = true;
+            };
+
+            auto renderTree = [&](auto&& _self, Entity* _entity) -> void
+            {
+                if (_entity == nullptr || !_entity->HasComponent<RectTransform>() || wasVisited(_entity))
+                    return;
+
+                markVisited(_entity);
+
+                RectTransform &transform = _entity->GetComponent<RectTransform>();
+                const bool shouldRender = transform.IsActiveInHierarchy() &&
+                    transform.GetCanvasRenderMode() == _renderMode;
+
+                if (shouldRender)
+                {
+                    Sprite2D* sprite = _registry.try_get<Sprite2D>(_entity->GetHandle());
+                    Text* text = _registry.try_get<Text>(_entity->GetHandle());
+                    const Vector2 position = transform.GetPosition();
+                    const Vector2 size = transform.GetResolvedSize();
+
+                    if (sprite != nullptr &&
+                        (_renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
+                         (position.x > camPos.x - size.x - halfWidth  &&
+                          position.x < camPos.x + size.x + halfWidth  &&
+                          position.y > camPos.y - size.y - halfHeight &&
+                          position.y < camPos.y + size.y + halfHeight)))
+                    {
+                        const Vector2 pivotOffset(
+                            ((0.5f - transform.pivot.x) * size.x) + transform.originOffset.x,
+                            ((0.5f - transform.pivot.y) * size.y) + transform.originOffset.y);
+
+                        Draw(
+                            Vector4(position.x, position.y, size.x, size.y),
+                            sprite->uv,
+                            sprite->textureHandle.texture,
+                            transform.GetDepth(),
+                            sprite->color,
+                            transform.GetRotation(),
+                            pivotOffset);
+                    }
+
+                    if (text != nullptr)
+                        DrawText(_entity, &transform, text, camPos, halfWidth, halfHeight);
+                }
+
+                for (Entity* child : transform.children)
+                    _self(_self, child);
+            };
+
+            auto renderRootTree = [&](Entity* _entity) -> void
+            {
+                renderTree(renderTree, _entity);
+            };
+
+            auto canvasView = _registry.view<Canvas, RectTransform>();
+            for (const entt::entity entityHandle : canvasView)
+            {
+                RectTransform &transform = canvasView.get<RectTransform>(entityHandle);
+                Entity *entity = transform.entity;
+                if (entity == nullptr || wasVisited(entity))
+                    continue;
+
+                if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
+                    continue;
+
+                renderRootTree(entity);
             }
+
+            for (const entt::entity entityHandle : renderView)
+            {
+                RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                Entity *entity = transform.entity;
+                if (entity == nullptr || wasVisited(entity))
+                    continue;
+
+                if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
+                    continue;
+
+                renderRootTree(entity);
+            }
+
+            for (const entt::entity entityHandle : renderView)
+            {
+                RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                Entity *entity = transform.entity;
+                if (entity == nullptr || wasVisited(entity))
+                    continue;
+
+                renderRootTree(entity);
+            }
+
+            End();
+            SpriteRenderBatch(_useCameraProjection, _projectionOverride);
+        };
+
+        Matrix4 centeredCameraProjection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, -100.0f, 100.0f);
+
+        renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_OVERLAY, &centeredCameraProjection, false);
+
+        const Matrix4* cameraProjectionOverride = nullptr;
+        bool useCameraProjection = true;
+
+        if (editorCameraOverride)
+        {
+            cameraProjectionOverride = &overrideProjection;
+            useCameraProjection = false;
+        }
+        else if (!cameraFound)
+        {
+            cameraProjectionOverride = &centeredCameraProjection;
+            useCameraProjection = false;
         }
 
-        End();
-        SpriteRenderBatch(true);
+        renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
+        renderPass(Canis::CanvasRenderMode::WORLD_SPACE, cameraProjectionOverride, useCameraProjection);
 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);

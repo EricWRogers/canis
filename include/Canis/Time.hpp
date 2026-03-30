@@ -1,46 +1,30 @@
 #pragma once
 
-#include <chrono>
+namespace Canis::Time {
+  // init engine time system
+  void Init(float _targetFPS);
+  // clean up engine time system
+  void Quit();
 
-#include "Debug.hpp"
+  // call when you start working on your frame
+  // return deltaTime
+  float StartFrame();
 
-#ifdef __linux__
-using namespace std::chrono::_V2;
-#elif _WIN32
-using namespace std::chrono;
-#else
-using namespace std::chrono;
-#endif
+  // call when you finish your frame
+  // return fps
+  float EndFrame();
 
-namespace Canis
-{
-    class Time
-    {
-    private:
-        high_resolution_clock::time_point currentTime;
-        high_resolution_clock::time_point previousTime;
+  // game code
 
-        unsigned int nanoSecondsDeltaTime;
-        
-        double maxFPS;
-        double frameTime;
-        double deltaTime;
-        double prevTicks;
-        double carryOverFrameDelay = 0.0f;
+  // set target fps
+  void SetTargetFPS(float _targetFPS);
 
-        unsigned int startTicks;
+  // get deltaTime of last frame
+  float DeltaTime();
 
-    public:
-        Time();
-        ~Time();
+  // get average fps
+  float FPS();
 
-        void Init(float _targetFPS);
-        void SetTargetFPS(float _targetFPS);
-        float StartFrame();
-        void CalculateFPS();
-
-        float EndFrame();
-
-        double fps;
-    };
-} // end of Canis namespace
+  // number of milliseconds that have the start canis
+  unsigned long long TimeSinceLaunch();
+} // namespace Canis

@@ -1,22 +1,26 @@
 #pragma once
 #include <Canis/Scene.hpp>
-#include <Canis/Camera2D.hpp>
+#include <Canis/OpenGL.hpp>
+#include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Glyph.hpp>
-#include <Canis/ECS/Systems/System.hpp>
+#include <Canis/System.hpp>
 
 namespace Canis
 {
-    class Glyph;
-    struct Color;
+    class Shader;
+    class Camera2D;
+    class Entity;
+    class RectTransform;
+    class Text;
 
     class RenderBatch
     {
     public:
-        RenderBatch(GLuint Offset, GLuint NumVertices, GLuint Texture) : offset(Offset),
+        RenderBatch(unsigned int Offset, unsigned int NumVertices, unsigned int Texture) : offset(Offset),
                                                                          numVertices(NumVertices), texture(Texture) {}
-        GLuint offset;
-        GLuint numVertices;
-        GLuint texture;
+        unsigned int offset;
+        unsigned int numVertices;
+        unsigned int texture;
     };
 
     class SpriteRenderer2DSystem : public System
@@ -28,7 +32,7 @@ namespace Canis
         std::vector<unsigned int> indices = {};
         std::vector<RenderBatch> spriteRenderBatch;
         Shader *spriteShader;
-        Camera2D camera2D;
+        Camera2D *camera2D;
 
         unsigned int vbo = 0;
         unsigned int vao = 0;
@@ -52,22 +56,23 @@ namespace Canis
 
         void End();
 
-        void DrawUI(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const glm::vec2 &origin, const glm::vec2 &rotationOriginOffset);
+        void DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset);
 
-        void Draw(const glm::vec4 &destRect, const glm::vec4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const glm::vec2 &origin);
+        void Draw(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const Vector2 &origin);
 
-        void SpriteRenderBatch(bool use2DCamera);
+        void SpriteRenderBatch(bool use2DCamera, const Matrix4* overrideProjection = nullptr);
 
         void CreateVertexArray();
 
         void SetSort(GlyphSortType _sortType);
 
-        void Create();
+        void Create() override;
 
-        void Ready() {}
+        void Ready() override;
 
-        void Update(entt::registry &_registry, float _deltaTime);
+        void Update(entt::registry &_registry, float _deltaTime) override;
     private:
+        void DrawText(Entity* _entity, RectTransform* _transform, Text* _text, const Vector2& _cameraPosition, float _halfWidth, float _halfHeight);
         float m_time = 0.0f;
     };
 } // end of Canis namespace

@@ -1,124 +1,144 @@
 #pragma once
 
-#include <glm/glm.hpp>
-#include <Canis/Entity.hpp>
+#include <cstddef>
+#include <functional>
+#include <string>
 
-using namespace glm;
+#include <glm/glm.hpp>
+#include <glm/gtc/matrix_transform.hpp>
+
+#include <Canis/Data/Types.hpp>
 
 namespace Canis
 {
-    class Camera;
-    class Window;
-    class InputManager;
-    class Transform;
+    inline constexpr float PI = 3.14159265f;
+    inline constexpr float RAD2DEG = 180.0f / PI;
+    inline constexpr float DEG2RAD = PI / 180.0f;
 
-    struct Ray
+    using Vector2 = glm::vec2;
+    using Vector3 = glm::vec3;
+    using Vector4 = glm::vec4;
+    using Matrix4 = glm::mat4;
+    using Color = Vector4;
+
+    inline const Vector2 VECTOR2_ZERO = Vector2(0.0f);
+
+    inline size_t HashCombine(size_t _seed, size_t _value)
     {
-        vec3 origin;
-        vec3 direction;
+        return _seed ^ (_value + 0x9e3779b97f4a7c15ULL + (_seed << 6) + (_seed >> 2));
+    }
 
-        Ray(vec3 _origin, vec3 _direction)
+    inline size_t HashVector(const Vector2 &_v)
+    {
+        std::hash<float> h;
+        size_t out = h(_v.x);
+        out = HashCombine(out, h(_v.y));
+        return out;
+    }
+
+    inline size_t HashVector(const Vector3 &_v)
+    {
+        std::hash<float> h;
+        size_t out = h(_v.x);
+        out = HashCombine(out, h(_v.y));
+        out = HashCombine(out, h(_v.z));
+        return out;
+    }
+
+    inline size_t HashVector(const Vector4 &_v)
+    {
+        std::hash<float> h;
+        size_t out = h(_v.x);
+        out = HashCombine(out, h(_v.y));
+        out = HashCombine(out, h(_v.z));
+        out = HashCombine(out, h(_v.w));
+        return out;
+    }
+
+    inline size_t HashMatrix(const Matrix4 &_m)
+    {
+        std::hash<float> h;
+        size_t out = 0;
+        for (int col = 0; col < 4; ++col)
         {
-            origin = _origin;
-            direction = _direction;
+            for (int row = 0; row < 4; ++row)
+                out = HashCombine(out, h(_m[col][row]));
+        }
+        return out;
+    }
+
+    inline const char *MatrixToCString(const Matrix4 &_m)
+    {
+        static thread_local std::string s;
+        s.clear();
+        s.reserve(256);
+
+        for (int row = 0; row < 4; ++row)
+        {
+            s += "[ ";
+            s += std::to_string(_m[0][row]);
+            s += " ";
+            s += std::to_string(_m[1][row]);
+            s += " ";
+            s += std::to_string(_m[2][row]);
+            s += " ";
+            s += std::to_string(_m[3][row]);
+            s += " ]";
+            if (row < 3)
+                s += "\n";
+        }
+
+        return s.c_str();
+    }
+
+    Vector2 RotatePoint(Vector2 _vector, float _radian);
+    void RotatePoint(Vector2 &_point, const float &_cosAngle, const float &_sinAngle);
+    void RotatePointAroundPivot(Vector2 &_point, const Vector2 &_pivot, float _radian);
+    
+    void Lerp(float &_value, const float &_min, const float &_max, const float &_fraction);
+
+    void Lerp(glm::vec3 &_value, const glm::vec3 &_min, const glm::vec3 &_max, const float &_fraction);
+
+    void Lerp(glm::vec4 &_value, const glm::vec4 &_min, const glm::vec4 &_max, const float &_fraction);
+
+    float Lerp(float _min, float _max, float _fraction);
+}
+
+namespace std
+{
+    template<>
+    struct hash<Canis::Vector2>
+    {
+        size_t operator()(const Canis::Vector2 &v) const
+        {
+            return Canis::HashVector(v);
         }
     };
 
-    struct Hit
+    template<>
+    struct hash<Canis::Vector3>
     {
-        Canis::Entity entity;
-        vec3 position;
+        size_t operator()(const Canis::Vector3 &v) const
+        {
+            return Canis::HashVector(v);
+        }
     };
 
-    const float PI = 3.14159265f;
-    const float RAD2DEG = 180.0f / PI;
-    const float DEG2RAD = PI / 180.0f;
+    template<>
+    struct hash<Canis::Vector4>
+    {
+        size_t operator()(const Canis::Vector4 &v) const
+        {
+            return Canis::HashVector(v);
+        }
+    };
 
-    bool FindRayMeshIntersection(Entity _entity, Ray _ray, Hit &_hit);
-
-    bool CheckRay(Entity _entity, Ray _ray, Hit &_hit);
-
-    Ray RayFromScreen(Camera &_camera, Window &_window, const glm::vec2 &_screenPoint);
-
-    vec2 WorldToScreenSpace(Camera &_camera, Window &_window, InputManager &_inputManager, vec3 _position);
-
-    bool HitSphere(vec3 center, float radius, Ray ray);
-
-    quat RotationBetweenVectors(vec3 start, vec3 dest);
-
-    void UpdateModelMatrix(Transform &_transform);
-
-	const mat4& GetModelMatrix(Transform &_transform);
-
-    extern glm::vec3 GetGlobalPosition(const Transform &_transform);
-
-    vec3 GetGlobalRotation(Transform &_transform);
-
-    vec3 GetGlobalScale(Transform &_transform);
-
-    vec3 GetLocalRotation(Transform &_transform);
-
-    void MoveTransformPosition(Transform &_transform, vec3 _offset);
-
-    void SetTransformPosition(Transform &_transform, vec3 _position);
-
-    void Rotate(Transform &_transform, vec3 _rotate);
-
-    void SetGlobalPosition(Transform &_transform, vec3 _position);
-
-    void SetTransformRotation(Transform &_transform, vec3 _rotation);
-
-    void SetTransformRotation(Transform &_transform, quat _rotation);
-
-    void SetTransformScale(Transform &_transform, vec3 _scale);
-
-    vec3 GetTransformForward(Transform &_transform);
-
-    vec3 GetTransformRight(Transform &_transform);
-
-    void LookAt(Transform &_transform, vec3 _target, vec3 _up);
-
-    void LookAtZeroY(Transform &_transform, vec3 _target, vec3 _up);
-
-    quat RotateTowards(quat _q1, quat _q2, float _maxAngle);
-
-    void RotateTowardsLookAt(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
-
-    void RotateTowardsLookAtYAxis(Transform &_transform, vec3 _target, vec3 _up, float _maxAngle);
-
-    float RandomFloat(float min, float max);
-
-    vec4 HexToRGBA(unsigned int _RRGGBBAA);
-
-    vec4 UIntToRGBA(unsigned int _red, unsigned int _green, unsigned int _blue, unsigned int _alpha);
-
-    void Lerp(float &_value, const float &_min, const float &_max, const float &_fraction);
-
-    void Lerp(vec3 &_value, const vec3 &_min, const vec3 &_max, const float &_fraction);
-
-    void Lerp(vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction);
-
-    float Lerp(float _min, float _max, float _fraction);
-
-    void AnimationBellCurve(float &_value, const float &_min, const float &_max, const float &_fraction);
-
-    void AnimationBellCurve(vec3 &_value, const vec3 &_min, const vec3 &_max, const float &_fraction);
-
-    void AnimationBellCurve(glm::vec4 &_value, const vec4 &_min, const vec4 &_max, const float &_fraction);
-
-    float Min(float _x, float _y);
-
-    float Max(float _x, float _y);
-    
-    void Clamp(float &_value, float _min, float _max);
-
-    void Clamp(int &_value, int _min, int _max);
-
-    void ClampRap(int &_value, int _min, int _max);
-
-    glm::vec3 ZeroY(glm::vec3 _vector);
-
-    void RotatePoint(vec2 &_point, const float &_cosAngle, const float &_sinAngle);
-
-    void RotatePointAroundPivot(vec2 &_point, const vec2 &_pivot, float _radian);
-} 
+    template<>
+    struct hash<Canis::Matrix4>
+    {
+        size_t operator()(const Canis::Matrix4 &m) const
+        {
+            return Canis::HashMatrix(m);
+        }
+    };
+}

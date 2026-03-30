@@ -1,14 +1,16 @@
 #pragma once
-#include <glm/glm.hpp>
+#include <Canis/Math.hpp>
 
 namespace Canis
 {
     struct Character
     {
-        glm::ivec2 size;
-        glm::ivec2 bearing;
-        unsigned int advance;
-        glm::vec2 atlasPos;
-        glm::vec2 atlasSize;
+        int sizeX = 0;
+        int sizeY = 0;
+        int bearingX = 0;
+        int bearingY = 0;
+        unsigned int advance = 0;
+        Vector2 atlasPos = Vector2(0.0f);
+        Vector2 atlasSize = Vector2(0.0f);
     };
-} // end of Canis namespace
+}

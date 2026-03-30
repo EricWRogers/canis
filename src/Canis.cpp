@@ -1,11 +1,27 @@
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
-#include <SDL.h>
+#include <Canis/Yaml.hpp>
+#include <Canis/IOManager.hpp>
 
 #include <fstream>
 
 namespace Canis
 {
+    namespace
+    {
+        int NormalizeProjectSyncMode(int _value)
+        {
+            if (_value == PROJECT_SYNC_ADAPTIVE ||
+                _value == PROJECT_SYNC_OFF ||
+                _value == PROJECT_SYNC_VSYNC)
+            {
+                return _value;
+            }
+
+            return PROJECT_SYNC_OFF;
+        }
+    } // namespace
+
     ProjectConfig& GetProjectConfig()
     {
         static ProjectConfig projectConfig = {};
@@ -16,168 +32,75 @@ namespace Canis
     {
         ProjectConfig projectConfig = GetProjectConfig();
 
-        SDL_RWops *file = SDL_RWFromFile("assets/project.canis", "w+");
+        YAML::Node node;
 
-        if (file == nullptr)
-        {
-            Canis::Warning("Fail to open project config file for saving.");
-            return false;
-        }
+        node["useFrameLimit"] = projectConfig.useFrameLimit;
+        node["frameLimit"] = projectConfig.frameLimit;
+        node["frameLimitEditor"] = projectConfig.frameLimitEditor;
+        node["overrideSeed"] = projectConfig.overrideSeed;
+        node["seed"] = projectConfig.seed;
+        node["editor"] = projectConfig.editor;
+        node["syncMode"] = NormalizeProjectSyncMode(projectConfig.syncMode);
+        node["iconUUID"] = std::to_string(projectConfig.iconUUID);
+        node["editorWindowWidth"] = projectConfig.editorWindowWidth;
+        node["editorWindowHeight"] = projectConfig.editorWindowHeight;
+        node["targetGameWidth"] = projectConfig.targetGameWidth;
+        node["targetGameHeight"] = projectConfig.targetGameHeight;
 
-        std::map<std::string,std::string> data = {};
-
-        data["fullscreen"] = (projectConfig.fullscreen) ? "true" : "false";
-        data["borderless"] = (projectConfig.borderless) ? "true" : "false";
-        data["resizeable"] = (projectConfig.resizeable) ? "true" : "false";
-        data["width"] = std::to_string(projectConfig.width);
-        data["height"] = std::to_string(projectConfig.heigth);
-        data["use_frame_limit"] = (projectConfig.useFrameLimit) ? "true" : "false";
-        data["frame_limit"] = std::to_string(projectConfig.frameLimit);
-        data["override_seed"] = (projectConfig.overrideSeed) ? "true" : "false";
-        data["seed"] = std::to_string(projectConfig.seed);
-        data["volume"] = std::to_string(projectConfig.volume);
-        data["log"] = (projectConfig.log) ? "true" : "false";
-        data["editor"] = (projectConfig.editor) ? "true" : "false";
-        data["vsync"] = (projectConfig.vsync) ? "true" : "false";
-        data["demo"] = (projectConfig.demo) ? "true" : "false";
-
-        for(const auto& pair : data)
-        {
-            std::string line = pair.first + " " + pair.second + "\n";
-            SDL_RWwrite(file, line.c_str(), 1, line.size());
-        }
-
-        SDL_RWclose(file);
+        std::ofstream fout("project.canis");
+        fout << node;
 
         return true;
     }
 
     int Init()
     {
-        SDL_Init(SDL_INIT_EVERYTHING);
+        //SDL_Init(SDL_INIT_EVERYTHING);
 
-        SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
+        //SDL_GL_SetAttribute(SDL_GL_DOUBLEBUFFER, 1);
 
         // load project.canis
-        std::ifstream file;
-        file.open("assets/project.canis");
+        ProjectConfig& projectConfig = GetProjectConfig();
 
-        if (!file.is_open()) return 1;
+        YAML::Node node;
+        if (FileExists("project.canis"))
+            node = YAML::LoadFile("project.canis");
 
-        std::string word;
-        int wholeNumber = 0;
-        unsigned int unsignedWholeNumber = 0;
-        float fNumber = 0.0f;
-        while(file >> word) {
-            if (word == "fullscreen"){
-                if (file >> word) {
-                    if (word == "true")
-                        GetProjectConfig().fullscreen = true;
-                    else
-                        GetProjectConfig().fullscreen = false;
-                    
-                    continue;
-                }
-            }
-            if (word == "borderless"){
-                if (file >> word) {
-                    if (word == "true")
-                        GetProjectConfig().borderless = true;
-                    else
-                        GetProjectConfig().borderless = false;
-                    
-                    continue;
-                }
-            }
-            if (word == "resizeable"){
-                if (file >> word) {
-                    if (word == "true")
-                        GetProjectConfig().resizeable = true;
-                    else
-                        GetProjectConfig().resizeable = false;
-                    
-                    continue;
-                }
-            }
-            if (word == "width") {
-                if (file >> wholeNumber) {
-                    GetProjectConfig().width = wholeNumber;
-                    continue;
-                }
-            }
-            if (word == "heigth") {
-                if (file >> wholeNumber) {
-                    GetProjectConfig().heigth = wholeNumber;
-                    continue;
-                }
-            }
-            if(word == "use_frame_limit")
-            {
-                if(file >> word)
-                {
-                    GetProjectConfig().useFrameLimit = (word == "true");
-                    continue;
-                }
-            }
-            if(word == "frame_limit")
-            {
-                if(file >> wholeNumber)
-                {
-                    GetProjectConfig().frameLimit = wholeNumber;
-                    continue;
-                }
-            }
-            if(word == "override_seed")
-            {
-                if(file >> word)
-                {
-                    GetProjectConfig().overrideSeed = (word == "true");
-                    continue;
-                }
-            }
-            if(word == "seed")
-            {
-                if(file >> unsignedWholeNumber)
-                {
-                    GetProjectConfig().seed = unsignedWholeNumber;
-                    continue;
-                }
-            }
-            if (word == "log")
-            {
-                if (file >> word)
-                {
-                    GetProjectConfig().log = (word == "true");
-                    continue;
-                }
-            }
-            if (word == "logToFile")
-            {
-                if (file >> word)
-                {
-                    GetProjectConfig().logToFile = (word == "true");
-                    continue;
-                }
-            }
-            if (word == "editor")
-            {
-                if (file >> word)
-                {
-                    GetProjectConfig().editor = (word == "true");
-                    continue;
-                }
-            }
-            if (word == "demo")
-            {
-                if (file >> word)
-                {
-                    GetProjectConfig().demo = (word == "true");
-                    continue;
-                }
-            }
-        }
+        projectConfig.useFrameLimit = node["useFrameLimit"].as<bool>(projectConfig.useFrameLimit);
+        projectConfig.frameLimit = node["frameLimit"].as<float>(projectConfig.frameLimit);
+        projectConfig.frameLimitEditor = node["frameLimitEditor"].as<float>(projectConfig.frameLimitEditor);
+        projectConfig.overrideSeed = node["overrideSeed"].as<bool>(projectConfig.overrideSeed);
+        projectConfig.seed = node["useFrameLimit"].as<unsigned int>(projectConfig.seed);
+        projectConfig.editor = node["editor"].as<bool>(projectConfig.editor);
+        projectConfig.syncMode = node["syncMode"].as<int>(projectConfig.syncMode);
+        if (!node["syncMode"] && node["vsync"])
+            projectConfig.syncMode = node["vsync"].as<bool>(false) ? PROJECT_SYNC_VSYNC : PROJECT_SYNC_OFF;
+        projectConfig.syncMode = NormalizeProjectSyncMode(projectConfig.syncMode);
+        projectConfig.iconUUID = node["iconUUID"].as<uint64_t>(projectConfig.iconUUID);
+        projectConfig.editorWindowWidth = node["editorWindowWidth"].as<int>(projectConfig.editorWindowWidth);
+        projectConfig.editorWindowHeight = node["editorWindowHeight"].as<int>(projectConfig.editorWindowHeight);
+        projectConfig.targetGameWidth = node["targetGameWidth"].as<int>(projectConfig.targetGameWidth);
+        projectConfig.targetGameHeight = node["targetGameHeight"].as<int>(projectConfig.targetGameHeight);
 
-        file.close();
+        // Backward compatibility with older project keys.
+        if (!node["editorWindowWidth"] && node["windowWidth"])
+            projectConfig.editorWindowWidth = node["windowWidth"].as<int>(projectConfig.editorWindowWidth);
+        if (!node["editorWindowHeight"] && node["windowHeight"])
+            projectConfig.editorWindowHeight = node["windowHeight"].as<int>(projectConfig.editorWindowHeight);
+        if (!node["targetGameWidth"] && node["windowWidth"])
+            projectConfig.targetGameWidth = node["windowWidth"].as<int>(projectConfig.targetGameWidth);
+        if (!node["targetGameHeight"] && node["windowHeight"])
+            projectConfig.targetGameHeight = node["windowHeight"].as<int>(projectConfig.targetGameHeight);
+
+        if (projectConfig.editorWindowWidth < 320)
+            projectConfig.editorWindowWidth = 320;
+        if (projectConfig.editorWindowHeight < 240)
+            projectConfig.editorWindowHeight = 240;
+        if (projectConfig.targetGameWidth < 1)
+            projectConfig.targetGameWidth = 1;
+        if (projectConfig.targetGameHeight < 1)
+            projectConfig.targetGameHeight = 1;
+        
         
         return 0;
     }

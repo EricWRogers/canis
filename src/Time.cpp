@@ -1,97 +1,182 @@
+#include <Canis/Debug.hpp>
 #include <Canis/Time.hpp>
-#include <SDL.h>
+#include <SDL3/SDL_timer.h>
 
-namespace Canis
+namespace Canis::Time
 {
-    Time::Time()
+    struct TimeData
     {
-    }
+        float deltaTime = 0.0f;
+        float fps = 0.0f;
+        float targetFPS = 120.0f;
+        Uint64 startFrameTicks = 0;
+        Uint64 nanoSecondsDeltaTime = 0;
+        Uint64 frameTime = 0;
+        Uint64 prevTicks = 0;
+        double carryOverFrameDelay = 0.0f;
+    };
 
-    Time::~Time()
+    TimeData *timeData = NULL;
+
+    void Init(float _targetFPS)
     {
-    }
-
-    void Time::Init(float _targetFPS)
-    {
-        SetTargetFPS(_targetFPS);
-        previousTime = high_resolution_clock::now();
-    }
-
-    void Time::SetTargetFPS(float _targetFPS)
-    {
-        maxFPS = _targetFPS;
-    }
-
-    float Time::StartFrame()
-    {
-        startTicks = SDL_GetTicks();
-
-        currentTime = high_resolution_clock::now();
-        nanoSecondsDeltaTime = std::chrono::duration_cast<std::chrono::nanoseconds>(currentTime - previousTime).count();
-        deltaTime = nanoSecondsDeltaTime / 1000000000.0;
-        previousTime = currentTime;
-
-        return deltaTime;
-    }
-
-    void Time::CalculateFPS()
-    {
-        static const int NUM_SAMPLES = 60;
-        static double frameTimes[NUM_SAMPLES];
-        static int currentFrame = 0;
-
-        double currentTicks;
-        currentTicks = SDL_GetTicks();
-
-        frameTime = currentTicks - prevTicks;
-        frameTimes[currentFrame % NUM_SAMPLES] = deltaTime * 1000;
-
-        prevTicks = currentTicks;
-
-        int count;
-        currentFrame++;
-        if (currentFrame < NUM_SAMPLES)
+        if (timeData == NULL)
         {
-            count = currentFrame;
+            timeData = new TimeData();
+            timeData->targetFPS = _targetFPS;
+            timeData->startFrameTicks = SDL_GetTicksNS();
         }
         else
         {
-            count = NUM_SAMPLES;
+            Debug::FatalError("You called Canis::Time::Init more the once!");
         }
+    }
 
-        double frameTimeAverage = 0;
-        for (int i = 0; i < count; i++)
+    void Quit()
+    {
+        if (timeData)
         {
-            frameTimeAverage += frameTimes[i];
-        }
-
-        frameTimeAverage /= count;
-
-        if (frameTimeAverage > 0)
-        {
-            fps = 1000.0f / frameTimeAverage;
+            delete timeData;
+            timeData = NULL;
         }
         else
         {
-            fps = 60.0f;
+            Debug::FatalError("Canis::Time::Quit called with Time not initialized");
         }
     }
 
-    float Time::EndFrame()
+    float StartFrame()
     {
-        CalculateFPS();
-        
-        double frameTicks = SDL_GetTicks() - startTicks;
-
-        if ( (1000.0f / maxFPS) > frameTicks)
+        if (timeData)
         {
-            SDL_Delay((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay);
+            Uint64 currectTicks = SDL_GetTicksNS();
+            timeData->nanoSecondsDeltaTime = currectTicks - timeData->startFrameTicks;
+            timeData->deltaTime = timeData->nanoSecondsDeltaTime / 1000000000.0;
+            timeData->startFrameTicks = SDL_GetTicksNS();
+            return timeData->deltaTime;
         }
-
-        carryOverFrameDelay = ((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay) - ((int)((1000.0f / maxFPS) - frameTicks + carryOverFrameDelay));
-
-        //Log("frame delay: " + std::to_string(carryOverFrameDelay));
-
-        return fps;
+        else
+        {
+            // error
+            return 0.0f;
+        }
     }
-} // end of Canis namespace
+
+    void CalculateFPS()
+    {
+        if (timeData)
+        {
+            static const int NUM_SAMPLES = 60;
+            static double frameTimes[NUM_SAMPLES];
+            static int currentFrame = 0;
+
+            Uint64 currentTicks;
+            currentTicks = SDL_GetTicksNS();
+
+            timeData->frameTime = currentTicks - timeData->startFrameTicks;
+            frameTimes[currentFrame % NUM_SAMPLES] = timeData->deltaTime * 1000;
+
+            timeData->prevTicks = currentTicks;
+
+            int count;
+            currentFrame++;
+            if (currentFrame < NUM_SAMPLES)
+            {
+                count = currentFrame;
+            }
+            else
+            {
+                count = NUM_SAMPLES;
+            }
+
+            double frameTimeAverage = 0;
+            for (int i = 0; i < count; i++)
+            {
+                frameTimeAverage += frameTimes[i];
+            }
+
+            frameTimeAverage /= count;
+
+            if (frameTimeAverage > 0)
+            {
+                timeData->fps = 1000.0f / frameTimeAverage;
+            }
+            else
+            {
+                timeData->fps = 60.0f;
+            }
+        }
+    }
+
+    float EndFrame()
+    {
+        if (timeData)
+        {
+            CalculateFPS();
+
+            double frameTicks = SDL_GetTicksNS() - timeData->startFrameTicks;
+
+            if ((1000000000.0f / timeData->targetFPS) > frameTicks)
+            {
+                SDL_DelayNS((1000000000.0 / timeData->targetFPS) - frameTicks +
+                            timeData->carryOverFrameDelay);
+            }
+
+            timeData->carryOverFrameDelay =
+                ((1000000000.0 / timeData->targetFPS) - frameTicks +
+                 timeData->carryOverFrameDelay) -
+                ((int)((1000000000.0 / timeData->targetFPS) - frameTicks +
+                       timeData->carryOverFrameDelay));
+
+            return timeData->fps;
+        }
+        else
+        {
+            // error
+            return 0.0f;
+        }
+    }
+
+    void SetTargetFPS(float _targetFPS)
+    {
+        if (timeData)
+        {
+            timeData->targetFPS = _targetFPS;
+        }
+        else
+        {
+            // error
+        }
+    }
+
+    float DeltaTime()
+    {
+        if (timeData)
+        {
+            return timeData->deltaTime;
+        }
+        else
+        {
+            // error
+            return 0.0f;
+        }
+    }
+
+    float FPS()
+    {
+        if (timeData)
+        {
+            return timeData->fps;
+        }
+        else
+        {
+            // error
+            return 0.0f;
+        }
+    }
+
+    unsigned long long TimeSinceLaunch()
+    {
+        return SDL_GetTicks();
+    }
+} // namespace Canis::Time

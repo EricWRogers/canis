@@ -1,12 +1,12 @@
 #pragma once
-#include <glm/glm.hpp>
+#include <Canis/Math.hpp>
 
 namespace Canis
 {
 struct SpriteVertex
 {
-    glm::vec3 position;
-    glm::vec4 color;
-    glm::vec2 uv;
+    Vector3 position;
+    Vector4 color;
+    Vector2 uv;
 };
 }

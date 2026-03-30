@@ -1,15 +1,18 @@
 #include <Canis/IOManager.hpp>
-
+#include <string>
 #include <fstream>
+#include <cstdlib>
+#include <filesystem>
+
 
 #include <Canis/Math.hpp>
 #include <Canis/Debug.hpp>
-#include <Canis/External/OpenGl.hpp>
-#include <Canis/External/picoPNG.h>
+#include <Canis/OpenGL.hpp>
+//#include <Canis/External/picoPNG.h>
 
 #include <stb_image.h>
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
 
 namespace Canis
 {
@@ -41,7 +44,7 @@ namespace Canis
 		return true;
 	}
 
-	GLTexture LoadImageToGLTexture(std::string filePath, GLint sourceFormat, GLint format)
+	GLTexture LoadImageToGLTexture(std::string filePath, int sourceFormat, int format)
 	{
 		GLTexture texture;
 		int nrChannels;
@@ -50,12 +53,12 @@ namespace Canis
 		glBindTexture(GL_TEXTURE_2D, texture.id);
 
 		stbi_set_flip_vertically_on_load(false);
-		SDL_RWops *file = SDL_RWFromFile(filePath.c_str(), "rb");
+		SDL_IOStream* io = SDL_IOFromFile(filePath.c_str(), "rb");
 
-		if (file != NULL)
+		if (io != NULL)
 		{
-			int imageDataLength{static_cast<int>(SDL_RWsize(file))};
-			void *imageData{SDL_LoadFile_RW(file, nullptr, 1)};
+			size_t imageDataLength = 0;
+			void* imageData = SDL_LoadFile_IO(io, &imageDataLength, true);
 
 			// convert to stbi thing
 			stbi_uc *data = stbi_load_from_memory(static_cast<stbi_uc *>(imageData), imageDataLength, &texture.width, &texture.height, &nrChannels, 4);
@@ -65,7 +68,7 @@ namespace Canis
 			}
 			else
 			{
-				std::cout << "Failed to load texture " << filePath << std::endl;
+				Debug::Error("Failed to load texture %s", filePath.c_str());
 			}
 			stbi_image_free(data);
 			// SDL_RWclose(file);
@@ -73,7 +76,7 @@ namespace Canis
 		}
 		else
 		{
-			Canis::Error("Failed to open file at path : " + filePath);
+			Debug::Error("Failed to open file at path : %s", filePath.c_str());
 		}
 
 		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
@@ -91,6 +94,103 @@ namespace Canis
 		return texture;
 	}
 
+	// TODO : Add ERROR Check
+    std::string GetFileName(std::string _path)
+    {
+        for (int i = _path.size(); i > -1; i--)
+        {
+            if (_path[i] == '.')
+            {
+                _path.erase(_path.begin() + i, _path.end());
+            }
+
+            if (_path[i] == '/')
+            {
+                _path.erase(_path.begin(), _path.begin() + i + 1);
+                break;
+            }
+
+            if (_path[i] == '\\') // check on windows
+            {
+                _path.erase(_path.begin(), _path.begin() + i + 1);
+                break;
+            }
+        }
+
+        return _path;
+    }
+
+    // TODO : Add ERROR Check
+    std::string GetFileExtension(std::string _path)
+    {
+        for (int i = _path.size(); i > -1; i--)
+        {
+            if (_path[i] == '.')
+            {
+                _path.erase(_path.begin(), _path.begin() + i + 1);
+                break;
+            }
+        }
+
+        return _path;
+    }
+
+	std::vector<std::string> FindFilesInFolder(const std::string &_folder, const std::string &_extension)
+    {
+        namespace fs = std::filesystem;
+
+        std::vector<std::string> files;
+
+        if (!fs::exists(_folder) || !fs::is_directory(_folder))
+        {
+            Debug::Log("FindFilesInFolder: folder not found: %s", _folder.c_str());
+            return files;
+        }
+
+        for (const auto &entry : fs::recursive_directory_iterator(_folder))
+        {
+            if (entry.is_regular_file() && entry.path().extension() != ".meta" && entry.path().filename().string()[0] != '.') // && entry.path().extension() == _extension)
+            {
+                files.push_back(entry.path().generic_string());
+            }
+        }
+
+        return files;
+    }
+
+	bool FileExists(const char *_path)
+    {
+        FILE *file = fopen(_path, "r");
+        if (file)
+        {
+            fclose(file);
+            return true;
+        }
+        return false;
+    }
+
+	void OpenInVSCode(const std::string& _filePath)
+	{
+	#if defined(__EMSCRIPTEN__)
+		Debug::Warning("OpenInVSCode is unavailable in web builds.");
+	#else
+	#if defined(_WIN32)
+		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+	#elif defined(__APPLE__)
+		// macOS: assume VS Code installed via Homebrew or standard path
+		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+	#else
+		// Linux: assumes "code" is in PATH
+		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+	#endif
+		int exitCode = std::system(cmd.c_str());
+		
+		if (exitCode != 0)
+			Debug::Warning("Warning OpenInVSCode exit code: %i command: %s", exitCode, cmd.c_str());
+	#endif
+	}
+
+    /*
 	// loads a cubemap texture from 6 individual texture faces
 	// order:
 	// +X (right)
@@ -351,6 +451,6 @@ namespace Canis
 		    return true;
         }
 
-	}
+	}*/
 
 } // end of Canis namespace

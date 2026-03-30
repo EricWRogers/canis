@@ -1,20 +1,17 @@
 #pragma once
-#include <Canis/ECS/Systems/System.hpp>
+#include <Canis/System.hpp>
 
 namespace Canis
 {
     class SpriteAnimationSystem : public System
     {
-    private:
     public:
         SpriteAnimationSystem() : System() { m_name = type_name<SpriteAnimationSystem>(); }
 
-        void Create() {}
+        void Create() override {}
 
-        void Ready() {}
+        void Ready() override;
 
-        void Update(entt::registry &_registry, float _deltaTime);
+        void Update(entt::registry &_registry, float _deltaTime) override;
     };
-
-    extern bool DecodeSpriteAnimationSystem(const std::string &_name, Canis::Scene *_scene);
 } // end of Canis namespace

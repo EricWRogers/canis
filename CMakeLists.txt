@@ -1,140 +1,148 @@
-cmake_minimum_required(VERSION 3.18)
-project(canis)
+set(CANIS_ENGINE_LIB CanisEngine)
 
-set(CMAKE_CXX_STANDARD 20)
+set(CANISENGINE_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include")
+message(STATUS "CANISENGINE_INCLUDE_DIRS ${CANISENGINE_INCLUDE_DIRS}")
 
-set(BUILD_TESTING                   FALSE)
-set(glew-cmake_BUILD_SHARED         FALSE)
-set(glew-cmake_BUILD_STATIC         TRUE)
 
-set(SDL_TEST_ENABLED_BY_DEFAULT     FALSE)
-set(SDL_SHARED_ENABLED_BY_DEFAULT   FALSE)
+file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
+file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
-set(BUILD_SHARED_LIBS               FALSE)
-
-set(YAML_CPP_BUILD_TOOLS OFF CACHE BOOL "Disable yaml-cpp tools" FORCE)
-set(YAML_CPP_BUILD_TESTS OFF CACHE BOOL "Disable yaml-cpp tests" FORCE)
-set(YAML_BUILD_SHARED_LIBS OFF CACHE BOOL "Disable shared libs" FORCE)
-
-option(FT_DISABLE_PNG "Disable PNG support"             OFF)
-option(FT_DISABLE_HARFBUZZ "Disable Harfbuzz support"   OFF)
-
-set(SDL2MIXER_VENDORED              TRUE)
-set(SDL2MIXER_WAVE                  FALSE)
-set(SDL2MIXER_WAVPACK               FALSE)
-set(SDL2MIXER_OGG                   TRUE)
-set(SDL2MIXER_MP3                   TRUE)
-set(SDL2MIXER_OPUS                  FALSE)
-set(SDL2MIXER_FLAC_LIBFLAC          FALSE)
-set(SDL2MIXER_MOD_XMP               FALSE)
-set(SDL2MIXER_MOD                   FALSE)
-set(SDL2MIXER_MIDI_FLUIDSYNTH       FALSE)
-
-set(ASSIMP_INSTALL                  FALSE)
-set(ASSIMP_BUILD_DOCS               FALSE)
-set(ASSIMP_NO_EXPORT                TRUE)
-set(ASSIMP_BUILD_SAMPLES            FALSE)
-set(ASSIMP_BUILD_TESTS              FALSE)
-
-if( NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-add_subdirectory(external/GL)
-endif()
-add_subdirectory(external/glm)
-add_subdirectory(external/yaml-cpp)
-add_subdirectory(external/SDL)
-add_subdirectory(external/stb)
-add_subdirectory(external/freetype)
-add_subdirectory(external/SDL_mixer)
-
-# imgui
-set(IMGUI_PATH  "external/imgui")
-file(GLOB IMGUI_SOURCES ${IMGUI_PATH}/*.cpp ${IMGUI_PATH}/backends/imgui_impl_opengl3.cpp ${IMGUI_PATH}/backends/imgui_impl_sdl2.cpp ${IMGUI_PATH}/misc/cpp/imgui_stdlib.cpp) 
-file(GLOB IMGUI_HEADERS ${IMGUI_PATH}/*.h ${IMGUI_PATH}/backends/imgui_impl_opengl3.h ${IMGUI_PATH}/backends/imgui_impl_sdl2.h ${IMGUI_PATH}/misc/cpp/imgui_stdlib.h) 
-add_library("imgui" STATIC ${IMGUI_SOURCES})
-target_include_directories("imgui" PUBLIC ${IMGUI_PATH} ${IMGUI_PATH}/backends/ ${IMGUI_PATH}/misc/cpp/)
-target_link_libraries("imgui" PRIVATE SDL2main SDL2-static)
-
-# imguizmo
-set(IMGUIZMO_PATH "external/imguizmo")
-file(GLOB IMGUIZMO_SOURCES ${IMGUIZMO_PATH}/*.cpp)
-file(GLOB IMGUIZMO_HEADERS ${IMGUIZMO_PATH}/*.h)
-add_library("imguizmo" STATIC ${IMGUIZMO_SOURCES})
-target_include_directories("imguizmo" PUBLIC ${IMGUIZMO_PATH})
-target_link_libraries("imguizmo" PRIVATE "imgui" SDL2main SDL2-static)
-
-include_directories("${PROJECT_SOURCE_DIR}/external/freetype/include")
-include_directories("${PROJECT_SOURCE_DIR}/include")
-
-file(GLOB_RECURSE SRC_SOURCES src/*.c*)
-file(GLOB_RECURSE SRC_HEADERS include/Canis/*.h*)
-
-add_library(${PROJECT_NAME} STATIC ${SRC_SOURCES} ${SRC_HEADERS})
-
-#set_target_properties(${PROJECT_NAME} PROPERTIES UNITY_BUILD ON)
-
-target_precompile_headers(${PROJECT_NAME}
-    PUBLIC
-    <vector>
-    <map>
-    <unordered_map>
-    <string>
-    <functional>
-    <fstream>
-    <cstdint>
-    <memory>
-    <string.h>
-    <chrono>
-    <stdio.h>
-    <cstring>
-    <iostream>
-    <algorithm>
-    <random>
-)
-
-if( NOT ${CMAKE_SYSTEM_NAME} MATCHES "Emscripten")
-target_link_libraries(${PROJECT_NAME}
-    PUBLIC
-    $<INSTALL_INTERFACE:include>
-    glm
-    stb
-    libglew_static
-    freetype
-    yaml-cpp
-    SDL2-static
-    SDL2main
-    SDL2_mixer
-    imgui
-    imguizmo
-)
+if(CANIS_ENABLE_EDITOR)
+    list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorStub.cpp")
 else()
-target_link_libraries(${PROJECT_NAME}
-    PUBLIC
-    $<INSTALL_INTERFACE:include>
-    glm
-    stb
-    freetype
-    yaml-cpp
-    SDL2-static
-    SDL2main
-    SDL2_mixer
-    imgui
-    imguizmo
-)
+    list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Editor.cpp")
 endif()
+
+set(CANIS_ENGINE_LIBRARY_TYPE SHARED)
+if(CANIS_PLATFORM_WEB)
+    set(CANIS_ENGINE_LIBRARY_TYPE STATIC)
+endif()
+
+add_library(${CANIS_ENGINE_LIB} ${CANIS_ENGINE_LIBRARY_TYPE} ${CANIS_HEADERS} ${CANIS_SOURCES})
+set_target_properties(${CANIS_ENGINE_LIB} PROPERTIES
+    LIBRARY_OUTPUT_DIRECTORY ${CMAKE_RUNTIME_OUTPUT_DIRECTORY}
+    ARCHIVE_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/lib
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+target_include_directories(${CANIS_ENGINE_LIB}
+    PUBLIC
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
+    $<TARGET_PROPERTY:yaml-cpp,INTERFACE_INCLUDE_DIRECTORIES>
+)
+target_link_libraries(${CANIS_ENGINE_LIB}
+    PUBLIC
+    glm
+    imgui
+    PRIVATE
+    yaml-cpp
+    SDL3::SDL3
+    stb
+    Jolt
+)
+
+target_compile_definitions(${CANIS_ENGINE_LIB}
+    PUBLIC
+    CANIS_EDITOR=${CANIS_EDITOR_DEFINE}
+)
+
+if(CANIS_ENABLE_EDITOR)
+    target_link_libraries(${CANIS_ENGINE_LIB}
+        PRIVATE
+        imguizmo
+    )
+endif()
+
+if(NOT CANIS_PLATFORM_WEB)
+    target_link_libraries(${CANIS_ENGINE_LIB}
+        PRIVATE
+        libglew_static
+    )
+endif()
+
+if(NOT TARGET Freetype::Freetype)
+    message(FATAL_ERROR
+        "CanisEngine requires the vendored FreeType submodule target. "
+        "Run: git submodule update --init --recursive external/freetype")
+endif()
+
+target_link_libraries(${CANIS_ENGINE_LIB} PRIVATE Freetype::Freetype)
+target_compile_definitions(${CANIS_ENGINE_LIB} PRIVATE CANIS_HAS_FREETYPE)
+message(STATUS "CanisEngine: using vendored FreeType submodule")
+
+add_executable(${PROJECT_NAME} main.cpp)
 
 target_include_directories(${PROJECT_NAME}
     PUBLIC
-        glm
-        stb
-        freetype
-        yaml-cpp
-        SDL2-static
-        SDL2main
-        SDL2_mixer
-        imgui
-        imguizmo
-        "${PROJECT_SOURCE_DIR}/include"
+    ${CMAKE_CURRENT_SOURCE_DIR}/include
 )
 
-# This command will copy your assets folder to your running directory, in order to have access to your shaders, textures, etc
+target_link_libraries(${PROJECT_NAME}
+    PUBLIC
+    glm
+    yaml-cpp
+    imgui
+    ${CANIS_ENGINE_LIB}
+    PRIVATE
+    SDL3::SDL3
+    stb
+)
 
+target_compile_definitions(${PROJECT_NAME}
+    PRIVATE
+    CANIS_EDITOR=${CANIS_EDITOR_DEFINE}
+)
+
+if(CANIS_ENABLE_EDITOR)
+    target_link_libraries(${PROJECT_NAME}
+        PRIVATE
+        imguizmo
+    )
+endif()
+
+if(NOT CANIS_PLATFORM_WEB)
+    target_link_libraries(${PROJECT_NAME}
+        PRIVATE
+        libglew_static
+    )
+endif()
+
+set_target_properties(${PROJECT_NAME} PROPERTIES
+    CXX_STANDARD 20
+    CXX_STANDARD_REQUIRED ON
+)
+
+if(CANIS_PLATFORM_WEB)
+    set(CANIS_WEB_STACK_SIZE "5242880" CACHE STRING "Stack size in bytes for web exports")
+    set_target_properties(${PROJECT_NAME} PROPERTIES
+        OUTPUT_NAME index
+        SUFFIX ".html"
+        RUNTIME_OUTPUT_DIRECTORY "${CANIS_WEB_EXPORT_DIRECTORY}"
+    )
+
+    target_link_options(${PROJECT_NAME}
+        PRIVATE
+        "SHELL:-sALLOW_MEMORY_GROWTH=1"
+        "SHELL:-sDECLARE_ASM_MODULE_EXPORTS=0"
+        "SHELL:-sFORCE_FILESYSTEM=1"
+        "SHELL:-sNO_EXIT_RUNTIME=1"
+        "SHELL:-sSTACK_SIZE=${CANIS_WEB_STACK_SIZE}"
+        "SHELL:-sMIN_WEBGL_VERSION=2"
+        "SHELL:-sMAX_WEBGL_VERSION=2"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/assets@/assets"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/project.canis@/project.canis"
+    )
+endif()
+
+target_precompile_headers(${PROJECT_NAME}
+    PUBLIC
+    <string>
+    <vector>
+)
+
+#add_custom_command(TARGET CanisEngine POST_BUILD
+#    COMMAND ${CMAKE_COMMAND} -E copy_if_different
+#        $<TARGET_FILE:${PROJECT_NAME}>
+#        $<TARGET_FILE_DIR:CanisEngine>
+#)

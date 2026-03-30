@@ -1,236 +1,210 @@
 #include <Canis/Window.hpp>
-#include <Canis/External/OpenGl.hpp>
+#include <Canis/OpenGL.hpp>
+#include <Canis/Debug.hpp>
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_log.h>
+#include <cstdlib>
 
-#include <SDL.h>
+#include <stb_image.h>
 
 namespace Canis
 {
-    Window::Window()
+    Window::Window(const char *title, int width, int height)
     {
-    }
+        // if linux
+#ifdef __linux__
+        SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
+#endif
+        if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) == false)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_Init Error: %s", SDL_GetError());
+            std::exit(1);
+        }
 
-    Window::~Window()
-    {
-    }
-
-    int Window::CreateFullScreen(std::string _windowName) {
-
-        SDL_DisplayMode DM;
-        SDL_GetCurrentDisplayMode(0, &DM);
-
-        unsigned int windowFlags = 0;
-	    windowFlags |= WindowFlags::FULLSCREEN;
-
-        m_fullscreen = true;
-
-        return Create(_windowName, DM.w, DM.h, windowFlags);
-    }
-
-    int Window::Create(std::string _windowName, int _screenWidth, int _screenHeight, unsigned int _currentFlags)
-    {
-        // if you wanted you application to support multiple rendering apis 
-        // you would not want to hard code it here
-        Uint32 flags = SDL_WINDOW_OPENGL;
-
-        screenWidth = _screenWidth;
-        screenHeight = _screenHeight;
-
-        #ifdef __EMSCRIPTEN__
+#ifdef __EMSCRIPTEN__
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
-        #else
+#else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 3);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-        #endif
-        
-        if (_currentFlags & WindowFlags::FULLSCREEN)
+        SDL_SetHint(SDL_HINT_RENDER_GPU_LOW_POWER, "0"); // prefer high-perf GPU
+#endif
+
+        m_screenWidth = width;
+        m_screenHeight = height;
+        m_renderWidth = width;
+        m_renderHeight = height;
+
+        m_window = SDL_CreateWindow(title,
+                                    width,
+                                    height,
+                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+        if (!m_window)
         {
-            flags |= SDL_WINDOW_FULLSCREEN_DESKTOP;
-            m_fullscreen = true;
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window: %s", SDL_GetError());
+            std::exit(1);
         }
 
-        if (_currentFlags & WindowFlags::BORDERLESS) {
-            flags |= SDL_WINDOW_BORDERLESS;
-        }
-
-        if (_currentFlags & WindowFlags::RESIZEABLE) {
-            flags |= SDL_WINDOW_RESIZABLE;
-        }
-
-            //flags |= SDL_WINDOW_RESIZABLE;
-
-        #ifdef __EMSCRIPTEN__
-        // Create Window
-        m_sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED, SDL_WINDOWPOS_CENTERED, _screenWidth, _screenHeight, flags);
-        #else
-        // Create Window
-        m_sdlWindow = SDL_CreateWindow(_windowName.c_str(), SDL_WINDOWPOS_CENTERED_DISPLAY(0), SDL_WINDOWPOS_CENTERED_DISPLAY(0), _screenWidth, _screenHeight, flags);
-        
-        SDL_Surface *surface;     // Declare an SDL_Surface to be filled in with pixel data from an image file
-        Uint16 pixels[16*16] = {  // ...or with raw pixel data:
-            0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xffff, 0xf435, 0xf435,
-            0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435,
-            0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xffff, 0xffff, 0xf435, 0xf435,
-            0xf435, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff,
-            0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xffff, 0xffff, 0xffff, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff,
-            0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0xf435, 0x0fff, 0x0fff, 0x0fff, 0x0fff, 0x0fff,
-        };
-        surface = SDL_CreateRGBSurfaceFrom(pixels,16,16,16,16*2,0x0f00,0x00f0,0x000f,0xf000);
-
-        // The icon is attached to the window pointer
-        SDL_SetWindowIcon((SDL_Window*)m_sdlWindow, surface);
-
-        // ...and the surface containing the icon pixel data is no longer required.
-        SDL_FreeSurface(surface);
-        #endif
-
-        if ((SDL_Window*)m_sdlWindow == nullptr) // Check for an error when creating a window
+        m_context = (void*)SDL_GL_CreateContext((SDL_Window*)m_window);
+        if (!m_context)
         {
-            FatalError("SDL Window could not be created");
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create GL context: %s", SDL_GetError());
+            std::exit(1);
         }
-
-        // Create OpenGL Context
-        //m_glContext = {SDL_GL_CreateContext((SDL_Window*)m_sdlWindow)};
-        m_glContext = (void*)SDL_GL_CreateContext((SDL_Window*)m_sdlWindow);
-
-        if (m_glContext == nullptr) // Check for an error when creating the OpenGL Context
-        {
-            FatalError("SDL_GL context could not be created!");
-        }
-
-        #ifdef __EMSCRIPTEN__
-            int major, minor;
-            SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
-            SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
-
-            Log("OpenGLES version loaded: " + std::to_string(major) + "." + std::to_string(minor));
-        #else
-        // Load OpenGL
-        GLenum error = glewInit();
-        if (error != GLEW_OK) {
-            FatalError("Could not init GLEW");
-            SDL_GL_DeleteContext((SDL_GLContext)m_glContext);
-            SDL_DestroyWindow((SDL_Window*)m_sdlWindow);
-            SDL_Quit();
-            exit(-1);
-        }
-
-        // Display OpenGL version
-        int major, minor;
-        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, &major);
-        SDL_GL_GetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, &minor);
-
-        Log("OpenGL version loaded: " + std::to_string(major) + "." + std::to_string(minor));
-        #endif
 
         
 
-        // before a new frame is drawn we need to clear the buffer
-        // the clear color will be the new value of all of the pixels
-        // in that buffer
-        SetClearColor(glm::vec4(0.05f, 0.05f, 0.05f, 1.0f));
+        InitGL();
 
-        // VSYNC 0 off 1 on
+#ifdef __EMSCRIPTEN__
+        SDL_GL_SetSwapInterval(static_cast<int>(VSYNC));
+#else
         SDL_GL_SetSwapInterval(0);
-
-        // Enable alpha blending
-        glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-
-        return 0;
+#endif
     }
 
-    void Window::SetWindowName(std::string _windowName)
+    Window::~Window()
     {
-        SDL_SetWindowTitle((SDL_Window*)m_sdlWindow,_windowName.c_str());
+        if (m_context)
+            SDL_GL_DestroyContext((SDL_GLContext)m_context);
+        if (m_window)
+            SDL_DestroyWindow((SDL_Window*)m_window);
+        SDL_Quit();
     }
 
-    void Window::SwapBuffer()
+    void Window::LockMouse(bool _lock)
     {
-        // After we draw our sprite and models to a window buffer
-        // We want to display the one we were drawing to and
-        // get the old buffer to start drawing our next frame to
-        SDL_GL_SwapWindow((SDL_Window*)m_sdlWindow);
+        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
+        {
+            Debug::Warning("SDL_GL_MakeCurrent failed while setting mouse lock: %s", SDL_GetError());
+            return;
+        }
+
+        m_mouseLock = _lock;
+        SDL_CaptureMouse(m_mouseLock);
+        SDL_SetWindowRelativeMouseMode((SDL_Window*)m_window, m_mouseLock);
     }
-    
+
     void Window::CenterMouse()
     {
-      SetMousePosition(screenWidth/2, screenHeight/2);
+        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
+        {
+            Debug::Warning("SDL_GL_MakeCurrent failed while setting center mouse: %s", SDL_GetError());
+            return;
+        }
+
+        SetMousePosition(m_renderWidth/2, m_renderHeight/2);
     }
 
     void Window::SetMousePosition(int _x, int _y)
     {
-      SDL_WarpMouseInWindow((SDL_Window*)m_sdlWindow, _x, screenHeight - _y);
+        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
+        {
+            Debug::Warning("SDL_GL_MakeCurrent failed while setting set mouse position: %s", SDL_GetError());
+            return;
+        }
+
+        SDL_WarpMouseInWindow((SDL_Window*)m_window, _x, m_renderHeight - _y);
     }
 
-    void Window::ClearColor()
+    void Window::Clear() const
     {
-        glClearColor(m_clearColor.r, m_clearColor.g, m_clearColor.b, m_clearColor.a);
+        float r = m_clearColor.r;
+        float g = m_clearColor.g;
+        float b = m_clearColor.b;
+        float a = m_clearColor.a;
+        glClearColor(r, g, b, a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
     }
 
-    void Window::SetClearColor(glm::vec4 _color)
+    void Window::SetClearColor(Color _color)
     {
         m_clearColor = _color;
     }
 
-    void Window::MouseLock(bool _isLocked)
+    void Window::SwapBuffer() const
     {
-        mouseLock = _isLocked;
-        if (_isLocked)
+        SDL_GL_SwapWindow((SDL_Window*)m_window);
+    }
+
+    void Window::SetWindowIcon(std::string _path)
+    {
+        stbi_set_flip_vertically_on_load(false);
+
+        int w, h, channels;
+        // force RGBA
+        unsigned char* pixels = stbi_load(_path.c_str(), &w, &h, &channels, 4);
+        if (!pixels)
         {
-            SDL_CaptureMouse(SDL_TRUE);
-            SDL_SetRelativeMouseMode(SDL_TRUE);
+            Debug::Log("Failed to load icon '%s': %s", _path.c_str(), stbi_failure_reason());
+            return;
         }
-        else
+
+        SDL_Surface* surface = SDL_CreateSurfaceFrom(
+            w,
+            h,
+            SDL_PIXELFORMAT_RGBA32,
+            pixels,
+            w * 4
+        );
+
+        if (!surface)
         {
-            SDL_CaptureMouse(SDL_FALSE);
-            SDL_SetRelativeMouseMode(SDL_FALSE);
+            SDL_Log("Failed to create icon surface: %s", SDL_GetError());
+            stbi_image_free(pixels);
+            return;
         }
+        
+        SDL_SetWindowIcon((SDL_Window*)m_window, surface);
+
+        SDL_DestroySurface(surface);
+        stbi_image_free(pixels);
     }
 
-    void Window::ToggleFullScreen()
+    void Window::InitGL()
     {
-        m_fullscreen = !m_fullscreen;
+#ifdef __EMSCRIPTEN__
 
-        SDL_SetWindowFullscreen((SDL_Window*)m_sdlWindow, m_fullscreen);
-    }
-
-    bool Window::GetVSync()
-    {
-        return (bool)SDL_GL_GetSwapInterval();
-    }
-
-    void Window::SetVSync(bool _vsync)
-    {
-        SDL_GL_SetSwapInterval((int)_vsync);
+#else
+        SDL_GL_MakeCurrent((SDL_Window*)m_window, (SDL_GLContext)m_context);
+        
+        glewExperimental = GL_TRUE; // required for core profile
+        GLenum err = glewInit();
+        if (err != GLEW_OK)
+        {
+            SDL_LogError(SDL_LOG_CATEGORY_APPLICATION,
+                        "GLEW initialization failed: %s",
+                        (const char*)glewGetErrorString(err));
+            std::exit(1);
+        }
+#endif
     }
 
     void Window::SetWindowSize(int _width, int _height)
     {
-        if ( _width == screenWidth && _height == screenHeight)
+        if (_width == m_screenWidth && _height == m_screenHeight)
             return;
-        
+
         m_resized = true;
 
-        screenWidth = _width;
-        screenHeight = _height;
+        m_screenWidth = _width;
+        m_screenHeight = _height;
+        m_renderWidth = _width;
+        m_renderHeight = _height;
+    }
 
-        //Log("width: " + std::to_string(screenWidth) + " height: " + std::to_string(screenHeight));
+    void Window::SetRenderSize(int _width, int _height)
+    {
+        if (_width <= 0 || _height <= 0)
+            return;
+
+        m_renderWidth = _width;
+        m_renderHeight = _height;
     }
 
     void Window::SetResized(bool _resized)
@@ -242,4 +216,37 @@ namespace Canis
     {
         return m_resized;
     }
-} // end of Canis namespace
+
+    Window::Sync Window::GetSync()
+    {
+        int sync = 0;
+        if (!SDL_GL_GetSwapInterval(&sync))
+        {
+            Debug::Warning("SDL_GL_GetSwapInterval failed: %s", SDL_GetError());
+            return IMMEDIATE;
+        }
+
+        return static_cast<Sync>(sync);
+    }
+
+    void Window::SetSync(Sync _type)
+    {
+        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
+        {
+            Debug::Warning("SDL_GL_MakeCurrent failed while setting sync: %s", SDL_GetError());
+            return;
+        }
+
+        if (!SDL_GL_SetSwapInterval(static_cast<int>(_type)))
+        {
+            Debug::Warning("SDL_GL_SetSwapInterval(%d) failed: %s", static_cast<int>(_type), SDL_GetError());
+
+            // Adaptive sync is optional; fall back to normal VSync when unsupported.
+            if (_type == ADAPTIVE)
+            {
+                if (!SDL_GL_SetSwapInterval(static_cast<int>(VSYNC)))
+                    Debug::Warning("SDL_GL_SetSwapInterval(VSYNC) fallback failed: %s", SDL_GetError());
+            }
+        }
+    }
+} // namespace Canis

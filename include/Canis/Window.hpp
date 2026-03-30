@@ -1,65 +1,72 @@
 #pragma once
-#include <string>
-#include <glm/glm.hpp>
-#include <vector>
-
-#include "Debug.hpp"
+#include <Canis/Math.hpp>
 
 namespace Canis
 {
-    enum WindowFlags
-    {
-        FULLSCREEN = 1,
-        BORDERLESS = 2,
-        RESIZEABLE = 4
-    };
 
     class Window
     {
     public:
-        Window();
+        typedef enum Sync
+        {
+            IMMEDIATE = 0,
+            VSYNC = 1,
+            ADAPTIVE = -1
+        } Sync;
+
+        Window(const char *title, int width, int height);
         ~Window();
 
-        int CreateFullScreen(std::string _windowName);
-        int Create(std::string _windowName, int _screenWidth, int _screenHeight, unsigned int _currentFlags);
-        void SetWindowName(std::string _windowName);
+        // Gameplay/render surface size (current game view target).
+        int GetScreenWidth() { return m_renderWidth; }
+        int GetScreenHeight() { return m_renderHeight; }
 
-        void SwapBuffer();
-        
+        // Native SDL window pixel size.
+        int GetWindowWidth() { return m_screenWidth; }
+        int GetWindowHeight() { return m_screenHeight; }
+
+        bool IsMouseLocked() { return m_mouseLock; }
+        void LockMouse(bool _lock);
         void CenterMouse();
         void SetMousePosition(int _x, int _y);
+        void RequestClose() { m_shouldClose = true; }
+        bool ShouldClose() const { return m_shouldClose; }
 
-        void ClearColor();
-        void SetClearColor(glm::vec4 _color);
-        glm::vec4 GetScreenColor() { return m_clearColor; }
+        void Clear() const;
+        void SetClearColor(Color _color);
+        Color GetClearColor() { return m_clearColor; }
+        void SwapBuffer() const;
 
-        void MouseLock(bool _isLocked);
-        bool GetMouseLock() { return mouseLock; }
+        void SetWindowIcon(std::string _path);
 
-        int GetScreenWidth() { return screenWidth; }
-        int GetScreenHeight() { return screenHeight; }
-
-        void ToggleFullScreen();
         void SetWindowSize(int _width, int _height);
+        void SetRenderSize(int _width, int _height);
         void SetResized(bool _resized);
         bool IsResized();
 
+        void* GetSDLWindow() { return m_window; }
+        void* GetGLContext() { return m_context; }
 
-        void* GetSDLWindow() { return m_sdlWindow; }
-        void* GetGLContext() { return m_glContext; }
-
-        bool GetVSync();
-        void SetVSync(bool _vsync);
-
-        float fps;
+        Sync GetSync();
+        void SetSync(Sync _type);
 
     private:
-        void *m_sdlWindow;
-        void *m_glContext;
+        void* m_window = nullptr;
+        void* m_context = nullptr;
+
+        Color m_clearColor;
+
+        bool m_shouldClose = false;
         bool m_resized = false;
-        int screenWidth, screenHeight;
-        bool m_fullscreen = false;
-        bool mouseLock = false;
-        glm::vec4 m_clearColor;
+
+        int m_screenWidth = 0;
+        int m_screenHeight = 0;
+        int m_renderWidth = 0;
+        int m_renderHeight = 0;
+
+        bool m_mouseLock = false;
+
+        void InitGL();
     };
-} // end of Canis namespace
+
+} // namespace Canis

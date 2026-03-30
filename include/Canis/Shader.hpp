@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
-#include <glm/glm.hpp>
+//#include <glm/glm.hpp>
+#include <Canis/Math.hpp>
 #include <unordered_map>
 
 namespace Canis
@@ -20,15 +21,15 @@ namespace Canis
         void SetBool(const std::string &_name, bool _value) const;
         void SetInt(const std::string &_name, int value) const;
         void SetFloat(const std::string &_name, float _value) const;
-        void SetVec2(const std::string &_name, const glm::vec2 &_value) const;
+        void SetVec2(const std::string &_name, const Vector2 &_value) const;
         void SetVec2(const std::string &_name, float _x, float _y) const;
-        void SetVec3(const std::string &_name, const glm::vec3 &_value) const;
+        void SetVec3(const std::string &_name, const Vector3 &_value) const;
         void SetVec3(const std::string &_name, float _x, float _y, float _z) const;
-        void SetVec4(const std::string &_name, const glm::vec4 &_value) const;
+        void SetVec4(const std::string &_name, const Vector4 &_value) const;
         void SetVec4(const std::string &_name, float _x, float _y, float _z, float _w);
-        void SetMat2(const std::string &_name, const glm::mat2 &_mat) const;
-        void SetMat3(const std::string &_name, const glm::mat3 &_mat) const;
-        void SetMat4(const std::string &_name, const glm::mat4 &_mat) const;
+        //void SetMat2(const std::string &_name, const glm::mat2 &_mat) const;
+        //void SetMat3(const std::string &_name, const glm::mat3 &_mat) const;
+        void SetMat4(const std::string &_name, const Matrix4 &_mat) const;
 
         bool IsLinked() { return m_isLinked; }
         int GetUniformLocation(const std::string &uniformName, const size_t _valueHash) const;

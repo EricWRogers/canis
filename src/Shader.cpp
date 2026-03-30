@@ -1,17 +1,43 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
-#include <Canis/External/OpenGl.hpp>
+#include <Canis/OpenGL.hpp>
 
-#define GLM_ENABLE_EXPERIMENTAL
-#include "glm/gtx/hash.hpp"
+//#define GLM_ENABLE_EXPERIMENTAL
+//#include "glm/gtx/hash.hpp"
 
-#include <SDL.h>
+#include <SDL3/SDL.h>
+#include <glm/gtc/type_ptr.hpp>
 
 #include <vector>
 #include <fstream>
+#include <sstream>
 
 namespace Canis
 {
+    namespace
+    {
+        bool HasActivePrecisionQualifier(const std::string &_source)
+        {
+            std::istringstream stream(_source);
+            std::string line;
+
+            while (std::getline(stream, line))
+            {
+                const size_t firstNonWhitespace = line.find_first_not_of(" \t\r");
+                if (firstNonWhitespace == std::string::npos)
+                    continue;
+
+                if (line.compare(firstNonWhitespace, 2, "//") == 0)
+                    continue;
+
+                if (line.compare(firstNonWhitespace, 10, "precision ") == 0)
+                    return true;
+            }
+
+            return false;
+        }
+    }
+
     Shader::Shader()
     {
     }
@@ -36,12 +62,12 @@ namespace Canis
         //Getting vertex shaderID
         m_vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
         if (m_vertexShaderId == 0)
-            FatalError("Vertex shader failed to be created!");
+            Debug::FatalError("Vertex shader failed to be created!");
 
         //Getting fragment shaderID
         m_fragmentShaderId = glCreateShader(GL_FRAGMENT_SHADER);
         if (m_fragmentShaderId == 0)
-            FatalError("Fragment shader failed to be created!");
+            Debug::FatalError("Fragment shader failed to be created!");
 
         m_programId = glCreateProgram();
 
@@ -71,7 +97,7 @@ namespace Canis
 
             glDeleteProgram(m_programId);
 
-            FatalError("Shader failed to link!\nOpengl Error: " + std::string(infoLog.begin(), infoLog.end()));
+            Debug::FatalError("Shader failed to link!\nOpengl Error: %s", std::string(infoLog.begin(), infoLog.end()).c_str());
         } else {
             m_isLinked = true;
         }
@@ -101,7 +127,7 @@ namespace Canis
 
         if (location == GL_INVALID_INDEX)
         {
-            //FatalError("Uniform " + _uniformName + " not found in shader " + m_path + " isValid: " + std::to_string(m_isLinked));
+            //Debug::FatalError("Uniform " + _uniformName + " not found in shader " + m_path + " isValid: " + std::to_string(m_isLinked));
         }
         
         if (m_lastValueCashe.find(_uniformName) != m_lastValueCashe.end())
@@ -156,53 +182,46 @@ namespace Canis
             glUniform1f( location, _value); 
     }
     
-    void Shader::SetVec2(const std::string &_name, const glm::vec2 &_value) const
+    void Shader::SetVec2(const std::string &_name, const Vector2 &_value) const
     {
-        size_t valueHash = std::hash<glm::vec2>{}(_value);
+        size_t valueHash = std::hash<Vector2>{}(_value);
         int location = GetUniformLocation(_name, valueHash);
         if (location > -1)
-            glUniform2fv( location, 1, &_value[0]); 
+            glUniform2fv( location, 1, &_value.x); 
     }
 
     void Shader::SetVec2(const std::string &_name, float _x, float _y) const
     {
-        size_t valueHash = std::hash<glm::vec2>{}(glm::vec2(_x,_y));
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform2f( location, _x, _y); 
+        SetVec2(_name, Vector2(_x, _y));
     }
-    
-    void Shader::SetVec3(const std::string &_name, const glm::vec3 &_value) const
+
+    void Shader::SetVec3(const std::string &_name, const Vector3 &_value) const
     {
-        size_t valueHash = std::hash<glm::vec3>{}(_value);
+        size_t valueHash = std::hash<Vector3>{}(_value);
         int location = GetUniformLocation(_name, valueHash);
         if (location > -1)
-            glUniform3fv( location, 1, &_value[0]); 
+            glUniform3f(location, _value.x, _value.y, _value.z);
     }
 
     void Shader::SetVec3(const std::string &_name, float _x, float _y, float _z) const
     {
-        size_t valueHash = std::hash<glm::vec3>{}(glm::vec3(_x,_y,_z));
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform3f( location, _x, _y, _z); 
-    }
-    
-    void Shader::SetVec4(const std::string &_name, const glm::vec4 &_value) const
-    {
-        size_t valueHash = std::hash<glm::vec4>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform4fv( location, 1, &_value[0]); 
+        SetVec3(_name, Vector3(_x, _y, _z));
     }
 
-    void Shader::SetVec4(const std::string &_name, float _x, float _y, float _z, float _w) 
+    void Shader::SetVec4(const std::string &_name, const Vector4 &_value) const
     {
-        size_t valueHash = std::hash<glm::vec4>{}(glm::vec4(_x,_y,_z,_w));
+        size_t valueHash = std::hash<Vector4>{}(_value);
         int location = GetUniformLocation(_name, valueHash);
         if (location > -1)
-            glUniform4f( location, _x, _y, _z, _w); 
+            glUniform4f(location, _value.x, _value.y, _value.z, _value.w);
     }
+
+    void Shader::SetVec4(const std::string &_name, float _x, float _y, float _z, float _w)
+    {
+        SetVec4(_name, Vector4(_x, _y, _z, _w));
+    }
+
+    /*
     
     void Shader::SetMat2(const std::string &_name, const glm::mat2 &_mat) const
     {
@@ -218,26 +237,26 @@ namespace Canis
         int location = GetUniformLocation(_name, valueHash);
         if (location > -1)
             glUniformMatrix3fv( location, 1, GL_FALSE, &_mat[0][0]);
-    }
+    }*/
     
-    void Shader::SetMat4(const std::string &_name, const glm::mat4 &_mat) const
+    void Shader::SetMat4(const std::string &_name, const Matrix4 &_mat) const
     {
-        size_t valueHash = std::hash<glm::mat4>{}(_mat);
+        size_t valueHash = HashMatrix(_mat);
         int location = GetUniformLocation(_name, valueHash);
         if (location > -1)
-            glUniformMatrix4fv(location, 1, GL_FALSE, &_mat[0][0]);
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(_mat));
     }
 
 
     void Shader::CompileShaderFile(const std::string &_filePath, unsigned int &_id)
     {
-        SDL_RWops* shaderFile = SDL_RWFromFile(_filePath.c_str(), "r");
+        SDL_IOStream* shaderFile = SDL_IOFromFile(_filePath.c_str(), "r");
 
         if (shaderFile == nullptr)
-            FatalError("Unable to open file \"" + _filePath + "\"");
+            Debug::FatalError("Unable to open file \"%s\"", _filePath.c_str());
         
         size_t shaderFileLength;// = static_cast<size_t>(SDL_RWsize(shaderFile));
-        void* shaderFileData = SDL_LoadFile_RW(shaderFile, &shaderFileLength, true);
+        void* shaderFileData = SDL_LoadFile_IO(shaderFile, &shaderFileLength, true);
         std::string shaderFileCode(static_cast<char*>(shaderFileData), shaderFileLength);
 
         // Replace placeholder text with actual version directive
@@ -248,9 +267,22 @@ namespace Canis
         if (pos != std::string::npos) {
             shaderFileCode.replace(pos, placeholder.length(), versionDirective);
         } else {
-            Error("Add [OPENGL VERSION] to the top of your shader file: " + _filePath);
+            Debug::Error("Add [OPENGL VERSION] to the top of your shader file: %s", _filePath.c_str());
             shaderFileCode = versionDirective + shaderFileCode;
         }
+
+#if defined(__EMSCRIPTEN__)
+        if (!HasActivePrecisionQualifier(shaderFileCode))
+        {
+            const size_t firstNewline = shaderFileCode.find('\n');
+            const std::string precisionBlock = "\nprecision mediump float;\nprecision mediump int;\n";
+
+            if (firstNewline == std::string::npos)
+                shaderFileCode += precisionBlock;
+            else
+                shaderFileCode.insert(firstNewline + 1, precisionBlock);
+        }
+#endif
 
         //Canis::Log(shaderFileCode);
 
@@ -275,7 +307,7 @@ namespace Canis
 
             glDeleteShader(_id);
 
-            FatalError("Shader " + _filePath + " failed to compile\nOpengl Error: " + std::string(errorLog.begin(), errorLog.end()));
+            Debug::FatalError("Shader %s failed to compile\nOpengl Error: %s", _filePath.c_str(), std::string(errorLog.begin(), errorLog.end()).c_str());
             return;
         }
     }

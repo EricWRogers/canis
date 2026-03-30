@@ -1,11 +1,10 @@
 #pragma once
-#include <glm/glm.hpp>
 #include <fstream>
 #include <yaml-cpp/yaml.h>
-#include <Canis/Data/Bit.hpp>
 #include <Canis/UUID.hpp>
+#include <Canis/Math.hpp>
 #include <Canis/AssetHandle.hpp>
-#include <Canis/External/entt.hpp>
+#include <Canis/External/GetNameOfType.hpp>
 
 #include <map>
 #include <variant>
@@ -14,291 +13,112 @@
 #include <functional>
 #include <string>
 
-#include <glm/glm.hpp>
-#include <glm/gtc/quaternion.hpp>
-
-namespace Canis {
-	class Entity;
-}
-
-struct EntityData { 
-	entt::entity entityHandle{ entt::null };
-	void *scene = nullptr;
-};
-
-// Define PropertySetter as a function that takes a YAML node and a void pointer to the component
-using PropertySetter = std::function<void(YAML::Node&, void*, void*)>;
-
-// Define PropertyGetter as a function that takes a void pointer to the component and returns a YAML node
-using PropertyGetter = std::function<YAML::Node(void*)>;
-
-using AddComponentFunc = std::function<void(Canis::Entity&)>;
-using RemoveComponentFunc = std::function<void(Canis::Entity&)>;
-using HasComponentFunc = std::function<bool(Canis::Entity&)>;
-
-using AddScriptableComponent = std::function<void(Canis::Entity&)>;
-using RemoveScriptableComponent = std::function<void(Canis::Entity&)>;
-using HasScriptableComponent = std::function<bool(Canis::Entity&)>;
-
-// PropertyRegistry struct to hold the setters and getters for each property
-struct PropertyRegistry {
-    std::map<std::string, PropertySetter> setters;
-    std::map<std::string, PropertyGetter> getters;
-	std::vector<std::string> propertyOrder;
-};
-
-struct SystemRegistry {
-	std::vector<std::string> updateSystems;
-	std::vector<std::string> renderSystems;
-};
-
-struct ComponentRegistry
-{
-	std::vector<std::string> names;
-	std::map<std::string, AddComponentFunc> addComponentFuncs;
-    std::map<std::string, RemoveComponentFunc> removeComponentFuncs;
-	std::map<std::string, HasComponentFunc> hasComponentFuncs;
-};
-
-struct ScriptableComponentRegistry
-{
-	std::vector<std::string> names;
-	std::map<std::string, AddScriptableComponent> addScriptableComponent;
-    std::map<std::string, RemoveScriptableComponent> removeScriptableComponent;
-	std::map<std::string, HasScriptableComponent> hasScriptableComponent;
-};
-
-// Template declaration for GetPropertyRegistry
-template <typename T>
-PropertyRegistry& GetPropertyRegistry()
-{
-    static PropertyRegistry registry;
-    return registry;
-}
-
-extern SystemRegistry& GetSystemRegistry();
-extern ComponentRegistry& GetComponent();
-extern ScriptableComponentRegistry& GetScriptableComponentRegistry();
 extern std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle);
 extern Canis::TextureHandle YAMLDecodeTexture(std::string &_path);
-
-
-namespace Canis
-{
-	void AddEntityAndUUIDToSceneManager(void *_entity, Canis::UUID _uuid, void *_sceneManager);
-}
-
-#define REGISTER_PROPERTY(component, property, type)                                                                 \
-{                                                                                                                    \
-    GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { \
-        if constexpr (std::is_same_v<type, Canis::Entity>) {                                                         \
-            Canis::AddEntityAndUUIDToSceneManager(                                                                   \
-                (void*)(&static_cast<component *>(componentPtr)->property),                               \
-                node.as<Canis::UUID>(),                                                                               \
-                _sceneManager);                                                                                      \
-        }  else {                                                                                                     \
-            static_cast<component *>(componentPtr)->property = node.as<type>();                                      \
-        }                                                                                                            \
-    };                                                                                                               \
-                                                                                                                     \
-    GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {                     \
-        if constexpr (std::is_same_v<type, Canis::Entity>) {                                                         \
-            return YAML::Node(*(EntityData*)(void*)&(static_cast<component *>(componentPtr)->property));            \
-        } else {                                                                                                     \
-            return YAML::Node(static_cast<component *>(componentPtr)->property);                                     \
-        }                                                                                                            \
-    };                                                                                                               \
-                                                                                                                     \
-    GetPropertyRegistry<component>().propertyOrder.push_back(#property);                                             \
-}
-
-#define REGISTER_PROPERTY_VECTOR(component, property, type)                                                                 \
-{                                                                                                    						\
-	GetPropertyRegistry<component>().setters[#property] = [](YAML::Node &node, void *componentPtr, void *_sceneManager) { 	\
-		if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {										\
-			auto &vec = static_cast<component *>(componentPtr)->property;													\
-			vec.clear();																									\
-			vec.reserve(node.size());																						\
-			for (const auto &uuidNode : node) {																				\
-				Canis::Entity entity;																						\
-				vec.push_back(entity);																						\
-				Canis::AddEntityAndUUIDToSceneManager(																		\
-					static_cast<void*>(&(vec.back())), uuidNode.as<Canis::UUID>(), _sceneManager);							\
-			}																												\
-		} else { 																											\
-			static_cast<component *>(componentPtr)->property = node.as<type>();                  							\
-		}  																													\
-	};                                                                                       								\
-    GetPropertyRegistry<component>().getters[#property] = [](void *componentPtr) -> YAML::Node {       						\
-        if constexpr (std::is_same_v<std::decay_t<type>, std::vector<Canis::Entity>>) {										\
-			const auto &vec = static_cast<component *>(componentPtr)->property;												\
-			YAML::Node node;																								\
-			node.SetStyle(YAML::EmitterStyle::Flow); 																		\
-			for (const auto &entity : vec) {																				\
-				node.push_back(*(EntityData*)(void*)&(entity));																\
-			}																												\
-    		return node; 																									\
-		} else {                                                                                       						\
-            return YAML::Node(static_cast<component *>(componentPtr)->property);                        					\
-        }                                                                                              						\
-    };                                                                                                						\
-	GetPropertyRegistry<component>().propertyOrder.push_back(#property);  													\
-}
-
-
+extern std::string YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAssetHandle);
+extern Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const std::string &_path);
 
 namespace YAML
 {
-	Emitter &operator<<(Emitter &out, const glm::vec2 &v);
+    Emitter &operator<<(Emitter &_out, const Canis::Vector2 &_vector);
 
-	Emitter &operator<<(Emitter &out, const glm::vec3 &v);
+	Emitter &operator<<(Emitter &_out, const Canis::Vector3 &_vector);
 
-	Emitter &operator<<(Emitter &out, const glm::vec4 &v);
+	Emitter &operator<<(Emitter &_out, const Canis::Vector4 &_vector);
 
-	Emitter &operator<<(Emitter &out, const glm::quat &q);
+    template <>
+    struct convert<Canis::Vector2>
+    {
+        static Node encode(const Canis::Vector2 &rhs)
+        {
+            Node node;
+            node.push_back(rhs.x);
+            node.push_back(rhs.y);
+            node.SetStyle(EmitterStyle::Flow);
+            return node;
+        }
 
-	Emitter &operator<<(Emitter &out, const EntityData &e);
+        static bool decode(const Node &node, Canis::Vector2 &rhs)
+        {
+            if (!node.IsSequence() || node.size() != 2)
+                return false;
 
-	template <>
-	struct convert<glm::vec2>
-	{
-		static Node encode(const glm::vec2 &rhs)
-		{
-			Node node;
-			node.push_back(rhs.x);
-			node.push_back(rhs.y);
-			node.SetStyle(EmitterStyle::Flow);
-			return node;
-		}
+            rhs.x = node[0].as<float>();
+            rhs.y = node[1].as<float>();
+            return true;
+        }
+    };
 
-		static bool decode(const Node &node, glm::vec2 &rhs)
-		{
-			if (!node.IsSequence() || node.size() != 2)
-				return false;
+    template <>
+    struct convert<Canis::Vector3>
+    {
+        static Node encode(const Canis::Vector3 &rhs)
+        {
+            Node node;
+            node.push_back(rhs.x);
+            node.push_back(rhs.y);
+            node.push_back(rhs.z);
+            node.SetStyle(EmitterStyle::Flow);
+            return node;
+        }
 
-			rhs.x = node[0].as<float>();
-			rhs.y = node[1].as<float>();
-			return true;
-		}
-	};
+        static bool decode(const Node &node, Canis::Vector3 &rhs)
+        {
+            if (!node.IsSequence() || node.size() != 3)
+                return false;
 
-	template <>
-	struct convert<glm::vec3>
-	{
-		static Node encode(const glm::vec3 &rhs)
-		{
-			Node node;
-			node.push_back(rhs.x);
-			node.push_back(rhs.y);
-			node.push_back(rhs.z);
-			node.SetStyle(EmitterStyle::Flow);
-			return node;
-		}
+            rhs.x = node[0].as<float>();
+            rhs.y = node[1].as<float>();
+            rhs.z = node[2].as<float>();
+            return true;
+        }
+    };
 
-		static bool decode(const Node &node, glm::vec3 &rhs)
-		{
-			if (!node.IsSequence() || node.size() != 3)
-				return false;
+    template <>
+    struct convert<Canis::Vector4>
+    {
+        static Node encode(const Canis::Vector4 &rhs)
+        {
+            Node node;
+            node.push_back(rhs.x);
+            node.push_back(rhs.y);
+            node.push_back(rhs.z);
+            node.push_back(rhs.w);
+            node.SetStyle(EmitterStyle::Flow);
+            return node;
+        }
 
-			rhs.x = node[0].as<float>();
-			rhs.y = node[1].as<float>();
-			rhs.z = node[2].as<float>();
-			return true;
-		}
-	};
+        static bool decode(const Node &node, Canis::Vector4 &rhs)
+        {
+            if (!node.IsSequence() || node.size() != 4)
+                return false;
 
-	template <>
-	struct convert<glm::vec4>
-	{
-		static Node encode(const glm::vec4 &rhs)
-		{
-			Node node;
-			node.push_back(rhs.x);
-			node.push_back(rhs.y);
-			node.push_back(rhs.z);
-			node.push_back(rhs.w);
-			node.SetStyle(EmitterStyle::Flow);
-			return node;
-		}
+            rhs.x = node[0].as<float>();
+            rhs.y = node[1].as<float>();
+            rhs.z = node[2].as<float>();
+            rhs.w = node[3].as<float>();
+            return true;
+        }
+    };
 
-		static bool decode(const Node &node, glm::vec4 &rhs)
-		{
-			if (!node.IsSequence() || node.size() != 4)
-				return false;
+    template <>
+    struct convert<Canis::SceneAssetHandle>
+    {
+        static Node encode(const Canis::SceneAssetHandle &_sceneAssetHandle)
+        {
+            Node node;
+            node = YAMLEncodeSceneAssetHandle(_sceneAssetHandle);
+            return node;
+        }
 
-			rhs.x = node[0].as<float>();
-			rhs.y = node[1].as<float>();
-			rhs.z = node[2].as<float>();
-			rhs.w = node[3].as<float>();
-			return true;
-		}
-	};
+        static bool decode(const Node &_node, Canis::SceneAssetHandle &_sceneAssetHandle)
+        {
+            _sceneAssetHandle = YAMLDecodeSceneAssetHandle(_node.as<std::string>(""));
+            return true;
+        }
+    };
 
-	template <>
-	struct convert<glm::quat>
-	{
-		static Node encode(const glm::quat &rhs)
-		{
-			Node node;
-			node.push_back(rhs.x);
-			node.push_back(rhs.y);
-			node.push_back(rhs.z);
-			node.push_back(rhs.w);
-			node.SetStyle(EmitterStyle::Flow);
-			return node;
-		}
-
-		static bool decode(const Node &node, glm::quat &rhs)
-		{
-			if (!node.IsSequence() || node.size() != 4)
-				return false;
-
-			rhs.x = node[0].as<float>();
-			rhs.y = node[1].as<float>();
-			rhs.z = node[2].as<float>();
-			rhs.w = node[3].as<float>();
-			return true;
-		}
-	};
-
-	template <>
-	struct convert<Canis::UUID>
-	{
-		static Node encode(const Canis::UUID &_uuid)
-		{
-			Node node;
-			node.push_back((uint64_t)_uuid);
-			return node;
-		}
-
-		static bool decode(const Node &_node, Canis::UUID &_uuid)
-		{
-			_uuid = _node.as<uint64_t>();
-			return true;
-		}
-	};
-
-	extern uint64_t GetUUIDFromEntityData(const EntityData &_entityData);
-
-	template <>
-	struct convert<EntityData>
-	{
-		static Node encode(const EntityData &e)
-		{
-			Node node;
-			node = std::to_string(GetUUIDFromEntityData(e));
-			return node;
-		}
-
-		static bool decode(const Node &_node, EntityData &e)
-		{
-			e.entityHandle = (entt::entity)_node.as<uint32_t>();
-			e.scene = (void*)_node.as<uint64_t>();
-			return true;
-		}
-	};
-
-	template <>
+    template <>
 	struct convert<Canis::TextureHandle>
 	{
 		static Node encode(const Canis::TextureHandle &_textureHandle)
@@ -315,4 +135,37 @@ namespace YAML
 			return true;
 		}
 	};
-} // end of YAML namespace
+
+    template <>
+    struct convert<Canis::UUID>
+    {
+        static Node encode(const Canis::UUID &_uuid)
+        {
+            Node node;
+            node = std::to_string(_uuid);
+            return node;
+        }
+        static bool decode(const Node &_node, Canis::UUID &_uuid)
+        {
+            _uuid = (Canis::UUID)_node.as<uint64_t>(0);
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::Mask>
+    {
+        static Node encode(const Canis::Mask &_mask)
+        {
+            Node node;
+            node = static_cast<u32>(_mask);
+            return node;
+        }
+
+        static bool decode(const Node &_node, Canis::Mask &_mask)
+        {
+            _mask = _node.as<u32>(0u);
+            return true;
+        }
+    };
+}

@@ -1,35 +1,44 @@
 #include <Canis/ECS/Systems/SpriteAnimationSystem.hpp>
 
-#include <glm/glm.hpp>
 #include <vector>
 
+#include <Canis/Time.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/ECS/Components/Sprite2DComponent.hpp>
-#include <Canis/ECS/Components/SpriteAnimationComponent.hpp>
+#include <Canis/Entity.hpp>
+#include <Canis/AssetManager.hpp>
 
 namespace Canis
 {
+    void SpriteAnimationSystem::Ready()
+    {
+        // No cached views required.
+    }
+
     void SpriteAnimationSystem::Update(entt::registry &_registry, float _deltaTime)
     {
-        auto view = _registry.view<SpriteAnimationComponent>();
+        f32 deltaTime = _deltaTime;
         SpriteAnimationAsset *spriteAnimationAsset = nullptr;
         int spriteAnimationId = 0;
-        for (auto [entity, animation] : view.each())
-        {
-            if (entity == entt::tombstone && !_registry.valid(entity))
-                continue;
 
-            animation.countDown -= _deltaTime * animation.speed;
+        auto animationView = _registry.view<SpriteAnimation>();
+        for (const entt::entity entityHandle : animationView)
+        {
+            SpriteAnimation& animation = animationView.get<SpriteAnimation>(entityHandle);
+
+            animation.countDown -= deltaTime * animation.speed;
 
             if (animation.countDown < 0.0f)
             {
-                Sprite2DComponent &sprite = _registry.get<Sprite2DComponent>(entity);
+                Sprite2D* sprite = _registry.try_get<Sprite2D>(entityHandle);
+                if (sprite == nullptr)
+                    continue;
+
                 animation.index++;
                 animation.redraw = false;
 
-                if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
+                if (animation.id != spriteAnimationId || spriteAnimationAsset == nullptr)
                 {
-                    spriteAnimationId = animation.animationId;
+                    spriteAnimationId = animation.id;
                     spriteAnimationAsset = AssetManager::Get<SpriteAnimationAsset>(spriteAnimationId);
                 }
 
@@ -37,56 +46,43 @@ namespace Canis
                     animation.index = 0;
 
                 animation.countDown = spriteAnimationAsset->frames[animation.index].timeOnFrame;
-                sprite.textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
-                sprite.textureHandle.texture = AssetManager::GetTexture(sprite.textureHandle.id)->GetGLTexture();
+                sprite->textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
+                sprite->textureHandle.texture = AssetManager::GetTexture(sprite->textureHandle.id)->GetGLTexture();
 
-                GetSpriteFromTextureAtlas(
-                    sprite,
+                sprite->GetSpriteFromTextureAtlas(
                     spriteAnimationAsset->frames[animation.index].offsetX,
                     spriteAnimationAsset->frames[animation.index].offsetY,
                     spriteAnimationAsset->frames[animation.index].row,
                     spriteAnimationAsset->frames[animation.index].col,
                     spriteAnimationAsset->frames[animation.index].width,
-                    spriteAnimationAsset->frames[animation.index].height,
-                    animation.flipX,
-                    animation.flipY);
+                    spriteAnimationAsset->frames[animation.index].height);
             }
 
             if (animation.redraw)
             {
-                Sprite2DComponent &sprite = _registry.get<Sprite2DComponent>(entity);
+                Sprite2D* sprite = _registry.try_get<Sprite2D>(entityHandle);
+                if (sprite == nullptr)
+                    continue;
+                
                 animation.redraw = false;
 
-                if (animation.animationId != spriteAnimationId || spriteAnimationAsset == nullptr)
+                if (animation.id != spriteAnimationId || spriteAnimationAsset == nullptr)
                 {
-                    spriteAnimationId = animation.animationId;
+                    spriteAnimationId = animation.id;
                     spriteAnimationAsset = AssetManager::Get<SpriteAnimationAsset>(spriteAnimationId);
                 }
                 
-                sprite.textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
-                sprite.textureHandle.texture = AssetManager::GetTexture(sprite.textureHandle.id)->GetGLTexture();
+                sprite->textureHandle.id = spriteAnimationAsset->frames[animation.index].textureId;
+                sprite->textureHandle.texture = AssetManager::GetTexture(sprite->textureHandle.id)->GetGLTexture();
 
-                GetSpriteFromTextureAtlas(
-                    sprite,
+                sprite->GetSpriteFromTextureAtlas(
                     spriteAnimationAsset->frames[animation.index].offsetX,
                     spriteAnimationAsset->frames[animation.index].offsetY,
                     spriteAnimationAsset->frames[animation.index].row,
                     spriteAnimationAsset->frames[animation.index].col,
                     spriteAnimationAsset->frames[animation.index].width,
-                    spriteAnimationAsset->frames[animation.index].height,
-                    animation.flipX,
-                    animation.flipY);
+                    spriteAnimationAsset->frames[animation.index].height);
             }
         }
-    }
-
-    bool DecodeSpriteAnimationSystem(const std::string &_name, Canis::Scene *_scene)
-    {
-        if (_name == "Canis::SpriteAnimationSystem")
-        {
-            _scene->CreateSystem<SpriteAnimationSystem>();
-            return true;
-        }
-        return false;
     }
 }

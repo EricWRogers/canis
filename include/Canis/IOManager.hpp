@@ -4,16 +4,26 @@
 #include <string>
 
 #include "Data/GLTexture.hpp"
-#include "Data/Vertex.hpp"
+//#include "Data/Vertex.hpp"
 
 
 namespace Canis
 {
 	extern bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer);
 
-	extern GLTexture LoadImageToGLTexture(std::string filePath, GLint sourceFormat, GLint format);
+	extern GLTexture LoadImageToGLTexture(std::string filePath, int sourceFormat, int format);
 
-	extern unsigned int LoadImageToCubemap(std::vector<std::string> faces, GLint sourceFormat);
+    extern std::string GetFileName(std::string _path);
+
+    extern std::string GetFileExtension(std::string _path);
+
+	extern std::vector<std::string> FindFilesInFolder(const std::string &_folder, const std::string &_extension);
+
+	extern bool FileExists(const char *_path);
+
+	extern void OpenInVSCode(const std::string& _filePath);
+
+	/*extern unsigned int LoadImageToCubemap(std::vector<std::string> faces, GLint sourceFormat);
 
 	extern bool LoadOBJ(std::string path,
 		std::vector < glm::vec3 > & out_vertices,
@@ -24,5 +34,5 @@ namespace Canis
 	extern bool LoadOBJ(std::string path,
 		std::vector < Vertex > & _vertices,
 		std::vector < unsigned int > & _indices
-	);
+	);*/
 } // end of Canis namespace
