@@ -19,8 +19,17 @@ namespace Canis::Time {
   // set target fps
   void SetTargetFPS(float _targetFPS);
 
+  // set time scale used by StartFrame() / DeltaTime()
+  void SetTimeScale(float _timeScale);
+
   // get deltaTime of last frame
   float DeltaTime();
+
+  // get unscaled deltaTime of last frame
+  float UnscaledDeltaTime();
+
+  // get current time scale
+  float GetTimeScale();
 
   // get average fps
   float FPS();

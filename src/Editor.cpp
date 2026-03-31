@@ -48,6 +48,18 @@ namespace Canis
     {
         YAML::Node g_lastPlaySceneNode;
 
+        enum class HierarchyCreateType
+        {
+            Empty,
+            Canvas,
+            Text,
+            Button,
+            Image,
+            Cube,
+            Sphere,
+            Capsule,
+        };
+
         struct RectTransformRenderBounds
         {
             Vector2 min = Vector2(0.0f);
@@ -66,6 +78,265 @@ namespace Canis
                 bounds.rotationPivot += _transform.rotationOriginOffset;
 
             return bounds;
+        }
+
+        bool SceneHasEntityWithName(Scene &_scene, const std::string &_name)
+        {
+            for (Entity *entity : _scene.GetEntities())
+            {
+                if (entity != nullptr && entity->name == _name)
+                    return true;
+            }
+
+            return false;
+        }
+
+        std::string MakeUniqueEntityName(Scene &_scene, const std::string &_baseName)
+        {
+            if (!SceneHasEntityWithName(_scene, _baseName))
+                return _baseName;
+
+            for (int suffix = 2;; ++suffix)
+            {
+                const std::string candidate = _baseName + " " + std::to_string(suffix);
+                if (!SceneHasEntityWithName(_scene, candidate))
+                    return candidate;
+            }
+        }
+
+        void ParentNewHierarchyEntity(Entity *_entity, Entity *_parent)
+        {
+            if (_entity == nullptr || _parent == nullptr)
+                return;
+
+            if (_entity->HasComponent<RectTransform>() && _parent->HasComponent<RectTransform>())
+            {
+                RectTransform &rect = _entity->GetComponent<RectTransform>();
+                rect.SetParent(_parent);
+                rect.position = Vector2(0.0f);
+                return;
+            }
+
+            if (_entity->HasComponent<Transform>() && _parent->HasComponent<Transform>())
+            {
+                Transform &transform = _entity->GetComponent<Transform>();
+                transform.SetParent(_parent);
+                transform.position = Vector3(0.0f);
+                transform.rotation = Vector3(0.0f);
+            }
+        }
+
+        Entity *CreateHierarchyEntity(Editor &_editor, App &_app, Scene &_scene, HierarchyCreateType _type, Entity *_parent)
+        {
+            auto addRequired = [&](Entity &_entity, const char *_scriptName) -> void
+            {
+                (void)_app.AddRequiredScript(_entity, _scriptName);
+            };
+
+            std::string baseName = "Entity";
+            switch (_type)
+            {
+            case HierarchyCreateType::Canvas:
+                baseName = "Canvas";
+                break;
+            case HierarchyCreateType::Text:
+                baseName = "Text";
+                break;
+            case HierarchyCreateType::Button:
+                baseName = "Button";
+                break;
+            case HierarchyCreateType::Image:
+                baseName = "Image";
+                break;
+            case HierarchyCreateType::Cube:
+                baseName = "Cube";
+                break;
+            case HierarchyCreateType::Sphere:
+                baseName = "Sphere";
+                break;
+            case HierarchyCreateType::Capsule:
+                baseName = "Capsule";
+                break;
+            case HierarchyCreateType::Empty:
+            default:
+                break;
+            }
+
+            Entity *entity = _scene.CreateEntity(MakeUniqueEntityName(_scene, baseName));
+            if (entity == nullptr)
+                return nullptr;
+
+            switch (_type)
+            {
+            case HierarchyCreateType::Empty:
+            {
+                if (_parent != nullptr)
+                {
+                    if (_parent->HasComponent<RectTransform>())
+                        addRequired(*entity, RectTransform::ScriptName);
+                    else if (_parent->HasComponent<Transform>())
+                        addRequired(*entity, Transform::ScriptName);
+                }
+                break;
+            }
+            case HierarchyCreateType::Canvas:
+            {
+                addRequired(*entity, Canvas::ScriptName);
+                RectTransform &rect = entity->GetComponent<RectTransform>();
+                rect.position = Vector2(0.0f);
+                rect.size = Vector2(0.0f);
+                rect.anchorMin = Vector2(0.0f);
+                rect.anchorMax = Vector2(1.0f);
+                rect.pivot = Vector2(0.5f);
+                break;
+            }
+            case HierarchyCreateType::Text:
+            {
+                addRequired(*entity, Text::ScriptName);
+                RectTransform &rect = entity->GetComponent<RectTransform>();
+                rect.position = Vector2(0.0f);
+                rect.size = Vector2(0.0f);
+                Text &text = entity->GetComponent<Text>();
+                text.SetText("Text");
+                text.alignment = TextAlignment::CENTER;
+                break;
+            }
+            case HierarchyCreateType::Button:
+            {
+                addRequired(*entity, UIButton::ScriptName);
+                addRequired(*entity, Sprite2D::ScriptName);
+
+                RectTransform &rect = entity->GetComponent<RectTransform>();
+                rect.position = Vector2(0.0f);
+                rect.size = Vector2(160.0f, 48.0f);
+
+                const Color baseColor = Color(0.14f, 0.18f, 0.24f, 0.98f);
+                const Color hoverColor = Color(0.19f, 0.25f, 0.34f, 1.0f);
+                const Color pressedColor = Color(0.10f, 0.14f, 0.18f, 1.0f);
+
+                Sprite2D &sprite = entity->GetComponent<Sprite2D>();
+                sprite.color = baseColor;
+
+                UIButton &button = entity->GetComponent<UIButton>();
+                button.baseColor = baseColor;
+                button.hoverColor = hoverColor;
+                button.pressedColor = pressedColor;
+
+                ParentNewHierarchyEntity(entity, _parent);
+
+                Entity *label = _scene.CreateEntity(MakeUniqueEntityName(_scene, entity->name + " Label"));
+                if (label != nullptr)
+                {
+                    addRequired(*label, Text::ScriptName);
+
+                    RectTransform &labelRect = label->GetComponent<RectTransform>();
+                    labelRect.position = Vector2(0.0f);
+                    labelRect.size = Vector2(0.0f);
+                    labelRect.anchorMin = Vector2(0.5f);
+                    labelRect.anchorMax = Vector2(0.5f);
+                    labelRect.pivot = Vector2(0.5f);
+                    labelRect.depth = rect.depth - 0.0001f;
+
+                    Text &labelText = label->GetComponent<Text>();
+                    labelText.SetText("Button");
+                    labelText.alignment = TextAlignment::CENTER;
+
+                    ParentNewHierarchyEntity(label, entity);
+                }
+
+                _editor.FocusEntity(entity);
+                return entity;
+            }
+            case HierarchyCreateType::Image:
+            {
+                addRequired(*entity, RectTransform::ScriptName);
+                addRequired(*entity, Sprite2D::ScriptName);
+
+                RectTransform &rect = entity->GetComponent<RectTransform>();
+                rect.position = Vector2(0.0f);
+                rect.size = Vector2(96.0f, 96.0f);
+                break;
+            }
+            case HierarchyCreateType::Cube:
+            case HierarchyCreateType::Sphere:
+            case HierarchyCreateType::Capsule:
+            {
+                addRequired(*entity, Model::ScriptName);
+
+                Transform &transform = entity->GetComponent<Transform>();
+                transform.position = Vector3(0.0f);
+
+                Model &model = entity->GetComponent<Model>();
+                switch (_type)
+                {
+                case HierarchyCreateType::Sphere:
+                    model.modelId = AssetManager::LoadModel("assets/defaults/models/sphere.glb");
+                    break;
+                case HierarchyCreateType::Capsule:
+                    model.modelId = AssetManager::LoadModel("assets/defaults/models/capsule.glb");
+                    break;
+                case HierarchyCreateType::Cube:
+                default:
+                    model.modelId = AssetManager::LoadModel("assets/defaults/models/cube.glb");
+                    break;
+                }
+                break;
+            }
+            }
+
+            ParentNewHierarchyEntity(entity, _parent);
+            _editor.FocusEntity(entity);
+            return entity;
+        }
+
+        bool DrawHierarchyCreateMenu(Editor &_editor, App &_app, Scene &_scene, Entity *_parent, bool &_refresh)
+        {
+            bool created = false;
+
+            if (ImGui::BeginMenu("Create"))
+            {
+                auto create = [&](HierarchyCreateType _type) -> void
+                {
+                    if (CreateHierarchyEntity(_editor, _app, _scene, _type, _parent) != nullptr)
+                    {
+                        _refresh = true;
+                        created = true;
+                    }
+                };
+
+                if (ImGui::MenuItem("Empty"))
+                    create(HierarchyCreateType::Empty);
+
+                ImGui::Separator();
+
+                if (ImGui::BeginMenu("UI"))
+                {
+                    if (ImGui::MenuItem("Canvas"))
+                        create(HierarchyCreateType::Canvas);
+                    if (ImGui::MenuItem("Text"))
+                        create(HierarchyCreateType::Text);
+                    if (ImGui::MenuItem("Button"))
+                        create(HierarchyCreateType::Button);
+                    if (ImGui::MenuItem("Image"))
+                        create(HierarchyCreateType::Image);
+                    ImGui::EndMenu();
+                }
+
+                if (ImGui::BeginMenu("3D"))
+                {
+                    if (ImGui::MenuItem("Cube"))
+                        create(HierarchyCreateType::Cube);
+                    if (ImGui::MenuItem("Sphere"))
+                        create(HierarchyCreateType::Sphere);
+                    if (ImGui::MenuItem("Capsule"))
+                        create(HierarchyCreateType::Capsule);
+                    ImGui::EndMenu();
+                }
+
+                ImGui::EndMenu();
+            }
+
+            return created;
         }
     }
 
@@ -516,6 +787,8 @@ namespace Canis
 
     void Editor::ApplyInternalSceneCamera(float _deltaTime)
     {
+        (void)_deltaTime;
+
         if (m_scene == nullptr || m_window == nullptr)
             return;
 
@@ -556,7 +829,7 @@ namespace Canis
 
             if (rightClickNavigation)
             {
-                float moveSpeed = m_editorCamera3DMoveSpeed * _deltaTime;
+                float moveSpeed = m_editorCamera3DMoveSpeed * Time::UnscaledDeltaTime();
                 if (input.GetKey(Canis::Key::LSHIFT) || input.GetKey(Canis::Key::RSHIFT))
                     moveSpeed *= 3.0f;
 
@@ -1545,8 +1818,7 @@ namespace Canis
                 }
             }
 
-            if (ImGui::MenuItem("Create"))
-                m_scene->CreateEntity();
+            (void)DrawHierarchyCreateMenu(*this, *m_app, *m_scene, _entity, _refresh);
 
             if (idx >= 0 && ImGui::MenuItem("Duplicate"))
             {
@@ -1847,6 +2119,12 @@ namespace Canis
                 }
             }
             ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("hierarchy_root_context"))
+        {
+            (void)DrawHierarchyCreateMenu(*this, *m_app, *m_scene, nullptr, refresh);
+            ImGui::EndPopup();
         }
         // -----------------------------------------------------
 
@@ -2927,7 +3205,7 @@ namespace Canis
             }
         }
 
-        hotKeyCoolDown -= Time::DeltaTime();
+        hotKeyCoolDown -= Time::UnscaledDeltaTime();
 
         ImGui::SameLine();
         ImGui::Text("FPS: %s", std::to_string(m_app->FPS()).c_str());

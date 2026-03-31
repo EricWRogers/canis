@@ -7,8 +7,10 @@ namespace Canis::Time
     struct TimeData
     {
         float deltaTime = 0.0f;
+        float unscaledDeltaTime = 0.0f;
         float fps = 0.0f;
         float targetFPS = 120.0f;
+        float timeScale = 1.0f;
         Uint64 startFrameTicks = 0;
         Uint64 nanoSecondsDeltaTime = 0;
         Uint64 frameTime = 0;
@@ -49,10 +51,11 @@ namespace Canis::Time
     {
         if (timeData)
         {
-            Uint64 currectTicks = SDL_GetTicksNS();
-            timeData->nanoSecondsDeltaTime = currectTicks - timeData->startFrameTicks;
-            timeData->deltaTime = timeData->nanoSecondsDeltaTime / 1000000000.0;
-            timeData->startFrameTicks = SDL_GetTicksNS();
+            const Uint64 currentTicks = SDL_GetTicksNS();
+            timeData->nanoSecondsDeltaTime = currentTicks - timeData->startFrameTicks;
+            timeData->unscaledDeltaTime = timeData->nanoSecondsDeltaTime / 1000000000.0f;
+            timeData->deltaTime = timeData->unscaledDeltaTime * timeData->timeScale;
+            timeData->startFrameTicks = currentTicks;
             return timeData->deltaTime;
         }
         else
@@ -74,7 +77,7 @@ namespace Canis::Time
             currentTicks = SDL_GetTicksNS();
 
             timeData->frameTime = currentTicks - timeData->startFrameTicks;
-            frameTimes[currentFrame % NUM_SAMPLES] = timeData->deltaTime * 1000;
+            frameTimes[currentFrame % NUM_SAMPLES] = timeData->unscaledDeltaTime * 1000.0f;
 
             timeData->prevTicks = currentTicks;
 
@@ -149,6 +152,21 @@ namespace Canis::Time
         }
     }
 
+    void SetTimeScale(float _timeScale)
+    {
+        if (timeData)
+        {
+            if (_timeScale < 0.0f)
+                _timeScale = 0.0f;
+
+            timeData->timeScale = _timeScale;
+        }
+        else
+        {
+            // error
+        }
+    }
+
     float DeltaTime()
     {
         if (timeData)
@@ -159,6 +177,32 @@ namespace Canis::Time
         {
             // error
             return 0.0f;
+        }
+    }
+
+    float UnscaledDeltaTime()
+    {
+        if (timeData)
+        {
+            return timeData->unscaledDeltaTime;
+        }
+        else
+        {
+            // error
+            return 0.0f;
+        }
+    }
+
+    float GetTimeScale()
+    {
+        if (timeData)
+        {
+            return timeData->timeScale;
+        }
+        else
+        {
+            // error
+            return 1.0f;
         }
     }
 
