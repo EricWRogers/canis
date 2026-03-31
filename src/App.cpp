@@ -360,9 +360,32 @@ namespace Canis
             scene.Update(deltaTime);
             m_sceneUpdateTimeMs = static_cast<float>(SDL_GetTicksNS() - sceneUpdateStart) / 1000000.0f;
 
-            Uint64 gameCodeUpdateStart = SDL_GetTicksNS();
-            GameCodeObjectUpdateFunction(&gameCodeObject, this, deltaTime);
-            m_gameCodeUpdateTimeMs = static_cast<float>(SDL_GetTicksNS() - gameCodeUpdateStart) / 1000000.0f;
+            bool stopPlayModeRequested = false;
+#if CANIS_EDITOR
+            if (runtime.editorRuntimeEnabled)
+                stopPlayModeRequested = editor.ConsumeStopPlayModeRequest();
+#endif
+
+            if (!stopPlayModeRequested)
+            {
+                Uint64 gameCodeUpdateStart = SDL_GetTicksNS();
+                GameCodeObjectUpdateFunction(&gameCodeObject, this, deltaTime);
+                m_gameCodeUpdateTimeMs = static_cast<float>(SDL_GetTicksNS() - gameCodeUpdateStart) / 1000000.0f;
+
+#if CANIS_EDITOR
+                if (runtime.editorRuntimeEnabled)
+                    stopPlayModeRequested = editor.ConsumeStopPlayModeRequest();
+#endif
+            }
+            else
+            {
+                m_gameCodeUpdateTimeMs = 0.0f;
+            }
+
+#if CANIS_EDITOR
+            if (runtime.editorRuntimeEnabled && stopPlayModeRequested)
+                editor.StopPlayMode();
+#endif
 
             m_updateTimeMs = m_sceneUpdateTimeMs + m_gameCodeUpdateTimeMs;
         }

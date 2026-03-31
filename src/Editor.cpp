@@ -918,7 +918,10 @@ namespace Canis
         if (!g_lastPlaySceneNode || m_scene == nullptr || m_app == nullptr)
             return;
 
+        m_stopPlayModeRequested = false;
         Time::SetTargetFPS(Canis::GetProjectConfig().frameLimitEditor + 0.0f);
+        Time::SetTimeScale(1.0f);
+        m_scene->SetPaused(false);
         m_mode = EditorMode::EDIT;
         m_scene->Unload();
         m_scene->LoadSceneNode(m_app->GetScriptRegistry(), g_lastPlaySceneNode);

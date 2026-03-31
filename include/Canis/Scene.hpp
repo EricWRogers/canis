@@ -83,6 +83,7 @@ namespace Canis
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         bool IsPaused() const { return m_paused; }
         void SetPaused(bool _paused) { m_paused = _paused; }
+        void QuitGame();
 
 
         Entity* CreateEntity(std::string _name = "", std::string _tag = "");

@@ -6,6 +6,7 @@
 #include <Canis/Entity.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/System.hpp>
+#include <Canis/Time.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/ECS/Systems/SpriteAnimationSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
@@ -210,6 +211,27 @@ namespace Canis
         m_updateSystems.clear();
         m_renderSystems.clear();
         m_systemTimings.clear();
+    }
+
+    void Scene::QuitGame()
+    {
+        SetPaused(false);
+        Time::SetTimeScale(1.0f);
+
+#if CANIS_EDITOR
+        if (app != nullptr)
+        {
+            Editor& editor = app->GetEditor();
+            const EditorMode mode = editor.GetMode();
+            if (mode == EditorMode::PLAY || mode == EditorMode::PAUSE)
+            {
+                editor.RequestStopPlayMode();
+                return;
+            }
+        }
+#endif
+
+        GetWindow().RequestClose();
     }
 
     void Scene::Load(std::vector<ScriptConf>& _scriptRegistry)

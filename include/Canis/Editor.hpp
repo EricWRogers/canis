@@ -58,6 +58,13 @@ namespace Canis
         unsigned int GetGameInputWindowID() const { return m_gameInputWindowID; }
 
         EditorMode GetMode() { return m_mode; }
+        void RequestStopPlayMode() { m_stopPlayModeRequested = true; }
+        bool ConsumeStopPlayModeRequest()
+        {
+            const bool requested = m_stopPlayModeRequested;
+            m_stopPlayModeRequested = false;
+            return requested;
+        }
         void StopPlayMode();
         void FocusEntity(Canis::Entity* _entity);
 
@@ -208,5 +215,6 @@ namespace Canis
         int m_addComponentSelection = 0;
         std::string m_addComponentSearch = {};
         bool m_focusAddComponentSearch = false;
+        bool m_stopPlayModeRequested = false;
     };
 }
