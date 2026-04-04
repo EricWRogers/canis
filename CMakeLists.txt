@@ -131,7 +131,7 @@ if(CANIS_PLATFORM_WEB)
         "SHELL:-sMIN_WEBGL_VERSION=2"
         "SHELL:-sMAX_WEBGL_VERSION=2"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/assets@/assets"
-        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/project.canis@/project.canis"
+        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/project_settings/project.canis@/project_settings/project.canis"
     )
 endif()
 

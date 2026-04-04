@@ -22,9 +22,9 @@ At runtime the executable starts the engine, loads assets and project settings, 
 ├── game/               # Game-specific scripts and gameplay code
 │   ├── include/
 │   └── src/
-├── project/            # Runtime output folder and game assets
-│   └── assets/
-├── project_settings/   # Project config copied/symlinked next to the executable
+├── project/            # Runtime output folder, assets, and project settings
+│   ├── assets/
+│   └── project_settings/
 ├── external/           # Third-party dependencies
 └── docs/               # Project documentation
 ```

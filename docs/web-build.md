@@ -35,7 +35,7 @@ You should see files similar to:
 - `index.wasm`
 - `index.data`
 
-`index.data` contains the packaged `project/assets` directory plus `project/project.canis`, so the browser build loads the same content as the native runtime.
+`index.data` contains the packaged `project/assets` directory plus `project/project_settings/project.canis`, so the browser build loads the same content as the native runtime.
 
 ## Itch.io upload
 

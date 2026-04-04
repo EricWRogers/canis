@@ -24,6 +24,7 @@
 #include <algorithm>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
 #include <memory>
 
 #if defined(__EMSCRIPTEN__)
@@ -75,7 +76,6 @@ namespace Canis
             if (const char *basePath = SDL_GetBasePath())
             {
                 candidatePaths.emplace_back(basePath);
-                SDL_free(const_cast<char *>(basePath));
             }
 
             candidatePaths.push_back(fs::current_path() / "project");
@@ -95,6 +95,239 @@ namespace Canis
             std::vector<std::string> paths = FindFilesInFolder("assets", "");
             for (const std::string &path : paths)
                 (void)AssetManager::GetMetaFile(path);
+        }
+
+        bool IsLoadableSceneFile(const fs::path &_path)
+        {
+            std::error_code ec;
+            if (_path.empty() || _path.extension() != ".scene")
+                return false;
+
+            if (!fs::exists(_path, ec) || !fs::is_regular_file(_path, ec))
+                return false;
+
+            try
+            {
+                YAML::Node root = YAML::LoadFile(_path.string());
+                return root && root.IsMap();
+            }
+            catch (const YAML::Exception&)
+            {
+                return false;
+            }
+        }
+
+        std::string FindFallbackScenePath()
+        {
+            std::vector<std::string> assetPaths = FindFilesInFolder("assets", "");
+            std::sort(assetPaths.begin(), assetPaths.end());
+
+            for (const std::string& assetPath : assetPaths)
+            {
+                const fs::path candidatePath(assetPath);
+                if (!IsLoadableSceneFile(candidatePath))
+                    continue;
+
+                return candidatePath.generic_string();
+            }
+
+            return "";
+        }
+
+        YAML::Node CreateDefaultTransformNode(const Vector3& _position, const Vector3& _rotation, const Vector3& _scale)
+        {
+            YAML::Node transformNode(YAML::NodeType::Map);
+            transformNode["active"] = true;
+            transformNode["position"] = _position;
+            transformNode["rotation"] = _rotation;
+            transformNode["scale"] = _scale;
+            transformNode["parent"] = 0;
+            transformNode["children"] = YAML::Node(YAML::NodeType::Sequence);
+            return transformNode;
+        }
+
+        YAML::Node CreateAssetReferenceNode(const std::string& _path)
+        {
+            YAML::Node assetNode(YAML::NodeType::Map);
+            if (_path.empty())
+                return assetNode;
+
+            assetNode["path"] = _path;
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+                assetNode["uuid"] = (uint64_t)meta->uuid;
+
+            return assetNode;
+        }
+
+        SceneAssetHandle MakeSceneAssetHandleFromPath(const std::string& _path)
+        {
+            SceneAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            handle.path = _path;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::SCENE)
+                    handle.uuid = meta->uuid;
+            }
+
+            return handle;
+        }
+
+        void SaveLastEditorScenePath(const std::string& _path)
+        {
+            if (_path.empty())
+                return;
+
+            GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(_path);
+            SaveEditorConfig();
+        }
+
+        std::string GetConfiguredStartupScenePath(const bool _editorRuntimeEnabled)
+        {
+            if (_editorRuntimeEnabled)
+            {
+                const std::string editorScenePath = AssetManager::ResolvePath(GetEditorConfig().lastEditorScene);
+                if (!editorScenePath.empty())
+                    return editorScenePath;
+            }
+
+            const std::string launchScenePath = AssetManager::ResolvePath(GetProjectConfig().launchScene);
+            if (!launchScenePath.empty())
+                return launchScenePath;
+
+            return "assets/scenes/sts/engine_splash.scene";
+        }
+
+        std::string GetDefaultSceneCreationPath(const std::string& _requestedPath)
+        {
+            const fs::path requestedPath(_requestedPath);
+            const fs::path normalizedPath = requestedPath.lexically_normal();
+
+            if (!normalizedPath.empty() && !normalizedPath.is_absolute() && normalizedPath.extension() == ".scene")
+            {
+                auto segment = normalizedPath.begin();
+                if (segment != normalizedPath.end() && (*segment).string() == "assets")
+                    return normalizedPath.generic_string();
+            }
+
+            return "assets/scenes/default.scene";
+        }
+
+        bool CreateDefaultSceneFile(const std::string& _scenePath, const Color& _clearColor)
+        {
+            if (_scenePath.empty())
+                return false;
+
+            const fs::path scenePath(_scenePath);
+            std::error_code ec;
+            if (scenePath.has_parent_path())
+                fs::create_directories(scenePath.parent_path(), ec);
+
+            if (ec)
+                return false;
+
+            const UUID cameraUUID = UUID();
+            const UUID lightUUID = UUID();
+            const UUID cubeUUID = UUID();
+
+            YAML::Node environmentNode(YAML::NodeType::Map);
+            environmentNode["ClearColor"] = _clearColor;
+
+            YAML::Node cameraNode(YAML::NodeType::Map);
+            cameraNode["Entity"] = (uint64_t)cameraUUID;
+            cameraNode["Name"] = "Camera";
+            cameraNode["Tag"] = "MainCamera";
+            cameraNode["Canis::Transform"] = CreateDefaultTransformNode(Vector3(0.0f, 6.0f, 14.0f), Vector3(-0.38f, 0.0f, 0.0f), Vector3(1.0f));
+            YAML::Node cameraComponent(YAML::NodeType::Map);
+            cameraComponent["primary"] = true;
+            cameraComponent["fovDegrees"] = 60.0f;
+            cameraComponent["nearClip"] = 0.1f;
+            cameraComponent["farClip"] = 300.0f;
+            cameraNode["Canis::Camera"] = cameraComponent;
+
+            YAML::Node lightNode(YAML::NodeType::Map);
+            lightNode["Entity"] = (uint64_t)lightUUID;
+            lightNode["Name"] = "Directional Light";
+            lightNode["Tag"] = "";
+            YAML::Node lightComponent(YAML::NodeType::Map);
+            lightComponent["enabled"] = true;
+            lightComponent["color"] = Color(1.0f);
+            lightComponent["intensity"] = 1.0f;
+            lightComponent["direction"] = Vector3(-0.4f, -1.0f, -0.25f);
+            lightNode["Canis::DirectionalLight"] = lightComponent;
+
+            const std::string defaultMaterialPath = "assets/defaults/materials/default.material";
+            const std::string defaultCubePath = "assets/defaults/models/cube.glb";
+
+            YAML::Node cubeNode(YAML::NodeType::Map);
+            cubeNode["Entity"] = (uint64_t)cubeUUID;
+            cubeNode["Name"] = "Cube";
+            cubeNode["Tag"] = "";
+            cubeNode["Canis::Transform"] = CreateDefaultTransformNode(Vector3(0.0f, 0.0f, 0.0f), Vector3(0.0f), Vector3(1.0f));
+
+            YAML::Node materialComponent(YAML::NodeType::Map);
+            materialComponent["color"] = Color(1.0f);
+            materialComponent["MaterialAsset"] = CreateAssetReferenceNode(defaultMaterialPath);
+            cubeNode["Canis::Material"] = materialComponent;
+
+            YAML::Node modelComponent(YAML::NodeType::Map);
+            modelComponent["color"] = Color(1.0f);
+            modelComponent["ModelAsset"] = CreateAssetReferenceNode(defaultCubePath);
+            cubeNode["Canis::Model"] = modelComponent;
+
+            YAML::Node entitiesNode(YAML::NodeType::Sequence);
+            entitiesNode.push_back(cameraNode);
+            entitiesNode.push_back(lightNode);
+            entitiesNode.push_back(cubeNode);
+
+            YAML::Node rootNode(YAML::NodeType::Map);
+            rootNode["Environment"] = environmentNode;
+            rootNode["Entities"] = entitiesNode;
+
+            YAML::Emitter out;
+            out << rootNode;
+
+            std::ofstream file(scenePath);
+            if (!file.is_open())
+                return false;
+
+            file << out.c_str();
+            file.close();
+
+            if (!file.good())
+                return false;
+
+            (void)AssetManager::GetMetaFile(scenePath.generic_string());
+            return true;
+        }
+
+        std::string ResolvePendingSceneLoadPath(const std::string& _requestedPath, const Color& _clearColor)
+        {
+            const fs::path requestedPath(_requestedPath);
+            if (IsLoadableSceneFile(requestedPath))
+                return requestedPath.generic_string();
+
+            Debug::Warning("Scene load requested for missing or invalid scene: %s", _requestedPath.c_str());
+
+            const std::string fallbackScenePath = FindFallbackScenePath();
+            if (!fallbackScenePath.empty())
+            {
+                Debug::Warning("Falling back to existing scene: %s", fallbackScenePath.c_str());
+                return fallbackScenePath;
+            }
+
+            const std::string defaultScenePath = GetDefaultSceneCreationPath(_requestedPath);
+            if (CreateDefaultSceneFile(defaultScenePath, _clearColor))
+            {
+                Debug::Warning("Created default scene: %s", defaultScenePath.c_str());
+                return defaultScenePath;
+            }
+
+            Debug::Error("Failed to resolve or create a scene for requested path: %s", _requestedPath.c_str());
+            return "";
         }
 
 #if CANIS_EDITOR
@@ -311,9 +544,15 @@ namespace Canis
 #endif
 
         const char* startupSceneOverride = std::getenv("CANIS_START_SCENE");
-        const std::string startupScenePath = (startupSceneOverride != nullptr && startupSceneOverride[0] != '\0')
+        const std::string requestedStartupScenePath = (startupSceneOverride != nullptr && startupSceneOverride[0] != '\0')
             ? std::string(startupSceneOverride)
-            : std::string("assets/scenes/sts/engine_splash.scene");
+            : GetConfiguredStartupScenePath(runtime.editorRuntimeEnabled);
+        const std::string startupScenePath = ResolvePendingSceneLoadPath(requestedStartupScenePath, runtime.window->GetClearColor());
+        if (startupScenePath.empty())
+            Debug::FatalError("Failed to resolve startup scene from '%s'.", requestedStartupScenePath.c_str());
+
+        if (runtime.editorRuntimeEnabled)
+            SaveLastEditorScenePath(startupScenePath);
 
         scene.Init(this, runtime.window.get(), runtime.inputManager.get(), startupScenePath);
 
@@ -434,8 +673,17 @@ namespace Canis
             return;
 
         RuntimeContext &runtime = *m_runtime;
-        const std::string nextScenePath = m_pendingScenePath;
+        const std::string requestedScenePath = m_pendingScenePath;
         m_pendingScenePath.clear();
+
+        const std::string nextScenePath = ResolvePendingSceneLoadPath(requestedScenePath, runtime.window->GetClearColor());
+        if (nextScenePath.empty())
+            return;
+
+#if CANIS_EDITOR
+        if (runtime.editorRuntimeEnabled && runtime.editor != nullptr && runtime.editor->m_mode == EditorMode::EDIT)
+            SaveLastEditorScenePath(nextScenePath);
+#endif
 
         scene.Unload();
         scene.Init(this, runtime.window.get(), runtime.inputManager.get(), nextScenePath);

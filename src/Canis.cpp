@@ -5,12 +5,19 @@
 
 #include <algorithm>
 #include <cmath>
+#include <filesystem>
 #include <fstream>
 
 namespace Canis
 {
     namespace
     {
+        namespace fs = std::filesystem;
+
+        constexpr const char* kProjectConfigPath = "project_settings/project.canis";
+        constexpr const char* kLegacyProjectConfigPath = "project.canis";
+        constexpr const char* kEditorConfigPath = "user_settings/editor.conf";
+
         int NormalizeProjectSyncMode(int _value)
         {
             if (_value == PROJECT_SYNC_ADAPTIVE ||
@@ -30,12 +37,37 @@ namespace Canis
 
             return std::clamp(_value, 0.0f, 1.0f);
         }
+
+        std::string GetReadableProjectConfigPath()
+        {
+            if (FileExists(kProjectConfigPath))
+                return kProjectConfigPath;
+
+            if (FileExists(kLegacyProjectConfigPath))
+                return kLegacyProjectConfigPath;
+
+            return kProjectConfigPath;
+        }
+
+        std::string GetReadableEditorConfigPath()
+        {
+            if (FileExists(kEditorConfigPath))
+                return kEditorConfigPath;
+
+            return kEditorConfigPath;
+        }
     } // namespace
 
     ProjectConfig& GetProjectConfig()
     {
         static ProjectConfig projectConfig = {};
         return projectConfig;
+    }
+
+    EditorConfig& GetEditorConfig()
+    {
+        static EditorConfig editorConfig = {};
+        return editorConfig;
     }
 
     bool SaveProjectConfig()
@@ -56,15 +88,56 @@ namespace Canis
         node["editor"] = projectConfig.editor;
         node["syncMode"] = NormalizeProjectSyncMode(projectConfig.syncMode);
         node["iconUUID"] = std::to_string(projectConfig.iconUUID);
+        node["launchScene"] = projectConfig.launchScene;
         node["editorWindowWidth"] = projectConfig.editorWindowWidth;
         node["editorWindowHeight"] = projectConfig.editorWindowHeight;
         node["targetGameWidth"] = projectConfig.targetGameWidth;
         node["targetGameHeight"] = projectConfig.targetGameHeight;
 
-        std::ofstream fout("project.canis");
+        std::error_code ec;
+        fs::create_directories(fs::path(kProjectConfigPath).parent_path(), ec);
+        if (ec)
+        {
+            Debug::Error("Failed to create project settings directory for %s", kProjectConfigPath);
+            return false;
+        }
+
+        std::ofstream fout(kProjectConfigPath);
+        if (!fout.is_open())
+        {
+            Debug::Error("Failed to save project config to %s", kProjectConfigPath);
+            return false;
+        }
+
         fout << node;
 
-        return true;
+        return fout.good();
+    }
+
+    bool SaveEditorConfig()
+    {
+        const EditorConfig editorConfig = GetEditorConfig();
+
+        YAML::Node node;
+        node["lastEditorScene"] = editorConfig.lastEditorScene;
+
+        std::error_code ec;
+        fs::create_directories(fs::path(kEditorConfigPath).parent_path(), ec);
+        if (ec)
+        {
+            Debug::Error("Failed to create editor settings directory for %s", kEditorConfigPath);
+            return false;
+        }
+
+        std::ofstream fout(kEditorConfigPath);
+        if (!fout.is_open())
+        {
+            Debug::Error("Failed to save editor config to %s", kEditorConfigPath);
+            return false;
+        }
+
+        fout << node;
+        return fout.good();
     }
 
     int Init()
@@ -75,10 +148,17 @@ namespace Canis
 
         // load project.canis
         ProjectConfig& projectConfig = GetProjectConfig();
+        EditorConfig& editorConfig = GetEditorConfig();
 
         YAML::Node node;
-        if (FileExists("project.canis"))
-            node = YAML::LoadFile("project.canis");
+        const std::string projectConfigPath = GetReadableProjectConfigPath();
+        if (FileExists(projectConfigPath.c_str()))
+            node = YAML::LoadFile(projectConfigPath);
+
+        YAML::Node editorNode;
+        const std::string editorConfigPath = GetReadableEditorConfigPath();
+        if (FileExists(editorConfigPath.c_str()))
+            editorNode = YAML::LoadFile(editorConfigPath);
 
         projectConfig.useFrameLimit = node["useFrameLimit"].as<bool>(projectConfig.useFrameLimit);
         projectConfig.frameLimit = node["frameLimit"].as<float>(projectConfig.frameLimit);
@@ -95,10 +175,17 @@ namespace Canis
             projectConfig.syncMode = node["vsync"].as<bool>(false) ? PROJECT_SYNC_VSYNC : PROJECT_SYNC_OFF;
         projectConfig.syncMode = NormalizeProjectSyncMode(projectConfig.syncMode);
         projectConfig.iconUUID = node["iconUUID"].as<uint64_t>(projectConfig.iconUUID);
+        projectConfig.launchScene = node["launchScene"].as<SceneAssetHandle>(projectConfig.launchScene);
+        if (!node["launchScene"] && node["LaunchScene"])
+            projectConfig.launchScene = node["LaunchScene"].as<SceneAssetHandle>(projectConfig.launchScene);
         projectConfig.editorWindowWidth = node["editorWindowWidth"].as<int>(projectConfig.editorWindowWidth);
         projectConfig.editorWindowHeight = node["editorWindowHeight"].as<int>(projectConfig.editorWindowHeight);
         projectConfig.targetGameWidth = node["targetGameWidth"].as<int>(projectConfig.targetGameWidth);
         projectConfig.targetGameHeight = node["targetGameHeight"].as<int>(projectConfig.targetGameHeight);
+
+        editorConfig.lastEditorScene = editorNode["lastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
+        if (!editorNode["lastEditorScene"] && editorNode["LastEditorScene"])
+            editorConfig.lastEditorScene = editorNode["LastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
 
         // Backward compatibility with older project keys.
         if (!node["editorWindowWidth"] && node["windowWidth"])

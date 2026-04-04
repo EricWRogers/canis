@@ -1,5 +1,6 @@
 #pragma once
 #include <Canis/UUID.hpp>
+#include <Canis/AssetHandle.hpp>
 
 namespace Canis
 {
@@ -31,14 +32,22 @@ namespace Canis
         bool editor = true;
         int syncMode = PROJECT_SYNC_OFF;
         UUID iconUUID = UUID(0);
+        SceneAssetHandle launchScene = {};
         int editorWindowWidth = 512;
         int editorWindowHeight = 512;
         int targetGameWidth = 512;
         int targetGameHeight = 512;
     };
 
+    struct EditorConfig
+    {
+        SceneAssetHandle lastEditorScene = {};
+    };
+
     ProjectConfig& GetProjectConfig();
+    EditorConfig& GetEditorConfig();
     extern bool SaveProjectConfig();
+    extern bool SaveEditorConfig();
 
     extern int Init();
 

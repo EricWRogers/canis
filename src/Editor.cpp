@@ -48,6 +48,210 @@ namespace Canis
     namespace
     {
         YAML::Node g_lastPlaySceneNode;
+        constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
+Size=1920,1057
+Collapsed=0
+
+[Window][Debug##Default]
+Pos=60,60
+Size=400,400
+Collapsed=0
+
+[Window][Dear ImGui Demo]
+Pos=650,20
+Size=550,680
+Collapsed=0
+
+[Window][Hello, world!]
+Pos=30,465
+Size=339,180
+Collapsed=0
+
+[Window][Another Window]
+Pos=70,430
+Size=198,71
+Collapsed=0
+
+[Window][Dear ImGui Style Editor]
+Pos=60,60
+Size=353,794
+Collapsed=0
+
+[Window][Example: Log]
+Pos=60,60
+Size=500,400
+Collapsed=0
+
+[Window][Example: Simple layout]
+Pos=60,60
+Size=500,440
+Collapsed=0
+
+[Window][MainMenuBar]
+ViewportPos=0,0
+ViewportId=0xDFA0D2E0
+Size=1920,24
+Collapsed=0
+
+[Window][Game]
+Pos=0,573
+Size=1327,569
+Collapsed=0
+DockId=0x00000007,0
+
+[Window][Hierarchy]
+Pos=1329,0
+Size=275,617
+Collapsed=0
+DockId=0x00000004,0
+
+[Window][Inspector]
+Pos=1606,0
+Size=314,617
+Collapsed=0
+DockId=0x00000005,0
+
+[Window][Assets]
+Pos=1329,619
+Size=591,523
+Collapsed=0
+DockId=0x00000008,0
+
+[Window][Systems]
+Pos=1329,619
+Size=591,523
+Collapsed=0
+DockId=0x00000008,1
+
+[Window][Environment]
+Pos=1606,0
+Size=314,617
+Collapsed=0
+DockId=0x00000005,1
+
+[Window][ProjectSettings]
+Pos=1606,0
+Size=314,617
+Collapsed=0
+DockId=0x00000005,2
+
+[Window][Canis Component Registry]
+Pos=320,74
+Size=1280,800
+Collapsed=0
+
+[Window][Canis Console]
+Pos=0,948
+Size=1597,109
+Collapsed=0
+DockId=0x11111111,1
+
+[Window][Text Texture Preview]
+Pos=534,157
+Size=851,743
+Collapsed=0
+
+[Window][texture]
+Pos=34,209
+Size=1819,619
+Collapsed=0
+
+[Window][MainDockspace]
+Pos=0,0
+Size=1920,1142
+Collapsed=0
+
+[Window][Scene]
+Pos=0,54
+Size=1327,517
+Collapsed=0
+DockId=0x0000000A,0
+
+[Window][Canis Editor]
+Pos=0,0
+Size=1327,52
+Collapsed=0
+DockId=0x00000009,0
+
+[Table][0xA0A1C938,2]
+RefScale=18
+Column 0  Width=132
+Column 1  Weight=1.0000
+
+[Table][0x80D23677,2]
+RefScale=18
+Column 0  Width=178
+Column 1  Weight=1.0000
+
+[Table][0x80EEBDF8,4]
+Column 0  Weight=1.0000
+Column 1  Weight=1.0000
+Column 2  Weight=1.0000
+Column 3  Weight=1.0000
+
+[Docking][Data]
+DockSpace       ID=0x11111111 Pos=0,25 Size=1920,1032 CentralNode=1 Selected=0x79A00B04
+DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X Selected=0xE601B12F
+  DockNode      ID=0x00000001 Parent=0x49B9F6FE SizeRef=1327,1142 Split=Y Selected=0xE601B12F
+    DockNode    ID=0x00000006 Parent=0x00000001 SizeRef=1327,571 Split=Y Selected=0xE601B12F
+      DockNode  ID=0x00000009 Parent=0x00000006 SizeRef=1327,52 Selected=0xAD07D0E7
+      DockNode  ID=0x0000000A Parent=0x00000006 SizeRef=1327,517 CentralNode=1 Selected=0xE601B12F
+    DockNode    ID=0x00000007 Parent=0x00000001 SizeRef=1327,569 Selected=0xD1EB2482
+  DockNode      ID=0x00000002 Parent=0x49B9F6FE SizeRef=591,1142 Split=Y Selected=0x73E3D51F
+    DockNode    ID=0x00000003 Parent=0x00000002 SizeRef=319,617 Split=X Selected=0x73E3D51F
+      DockNode  ID=0x00000004 Parent=0x00000003 SizeRef=275,617 Selected=0xBABDAE5E
+      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=314,617 Selected=0x13B2DC32
+    DockNode    ID=0x00000008 Parent=0x00000002 SizeRef=319,523 Selected=0x42C24103
+)";
+
+        void EnsureDefaultImguiIniFile(const std::filesystem::path& _path)
+        {
+            namespace fs = std::filesystem;
+
+            std::error_code ec;
+            if (fs::exists(_path, ec))
+                return;
+
+            if (_path.has_parent_path())
+                fs::create_directories(_path.parent_path(), ec);
+
+            if (ec)
+            {
+                Debug::Warning("Failed to create ImGui user settings directory: %s", _path.parent_path().string().c_str());
+                return;
+            }
+
+            std::ofstream file(_path);
+            if (!file.is_open())
+            {
+                Debug::Warning("Failed to create default ImGui settings file: %s", _path.string().c_str());
+                return;
+            }
+
+            file << kDefaultImguiIniContents;
+        }
+
+        SceneAssetHandle MakeSceneAssetHandleFromPath(const std::string& _path)
+        {
+            SceneAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            handle.path = _path;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::SCENE)
+                    handle.uuid = meta->uuid;
+            }
+
+            return handle;
+        }
+
+        bool SceneAssetHandleChanged(const SceneAssetHandle& _left, const SceneAssetHandle& _right)
+        {
+            return _left.uuid != _right.uuid || _left.path != _right.path;
+        }
 
         enum class HierarchyCreateType
         {
@@ -547,7 +751,20 @@ namespace Canis
         ImGuiIO &io = ImGui::GetIO();
         (void)io;
         //ImGui::LoadIniSettingsFromMemory("");
-        static std::string imguiIniPath = std::string(SDL_GetBasePath()) + "project_settings/imgui.ini";
+        static std::string imguiIniPath = []() -> std::string
+        {
+            namespace fs = std::filesystem;
+
+            const char* basePath = SDL_GetBasePath();
+            const fs::path runtimeBasePath = basePath != nullptr ? fs::path(basePath) : fs::current_path();
+
+            const fs::path userSettingsDir = runtimeBasePath / "user_settings";
+            std::error_code ec;
+            fs::create_directories(userSettingsDir, ec);
+            const fs::path imguiPath = userSettingsDir / "imgui.ini";
+            EnsureDefaultImguiIniFile(imguiPath);
+            return imguiPath.string();
+        }();
         io.IniFilename = imguiIniPath.c_str();
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard; // Enable Keyboard Controls
         io.ConfigFlags |= ImGuiConfigFlags_NavEnableGamepad;  // Enable Gamepad Controls
@@ -3033,6 +3250,8 @@ namespace Canis
 
                         if (meta->type == MetaFileAsset::FileType::SCENE && m_mode == EditorMode::EDIT)
                         {
+                            Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(meta->path);
+                            Canis::SaveEditorConfig();
                             m_scene->Unload();
                             m_scene->Init(m_app, m_window, &m_scene->GetInputManager(), meta->path);
                             m_scene->Load(m_app->GetScriptRegistry());
@@ -3125,6 +3344,7 @@ namespace Canis
         if (ImGui::Button("Save Project", ImVec2(-1.0f, 0.0f)))
         {
             Canis::SaveProjectConfig();
+            Canis::SaveEditorConfig();
         }
 
         bool editorEnabled = Canis::GetProjectConfig().editor;
@@ -3137,6 +3357,22 @@ namespace Canis
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(restart required)");
+
+        SceneAssetHandle launchScene = Canis::GetProjectConfig().launchScene;
+        InputSceneAsset("launch scene", "##launchScene", launchScene);
+        if (SceneAssetHandleChanged(launchScene, Canis::GetProjectConfig().launchScene))
+        {
+            Canis::GetProjectConfig().launchScene = launchScene;
+            Canis::SaveProjectConfig();
+        }
+
+        SceneAssetHandle lastEditorScene = Canis::GetEditorConfig().lastEditorScene;
+        InputSceneAsset("last editor scene", "##lastEditorScene", lastEditorScene);
+        if (SceneAssetHandleChanged(lastEditorScene, Canis::GetEditorConfig().lastEditorScene))
+        {
+            Canis::GetEditorConfig().lastEditorScene = lastEditorScene;
+            Canis::SaveEditorConfig();
+        }
 
         int targetGameWidth = Canis::GetProjectConfig().targetGameWidth;
         int targetGameHeight = Canis::GetProjectConfig().targetGameHeight;

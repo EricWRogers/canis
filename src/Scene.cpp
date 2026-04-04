@@ -187,6 +187,11 @@ namespace Canis
 
         m_entities.clear();
         m_registry.clear();
+        // Fully release EnTT storage pools now, while any game-code component
+        // types are still loaded. Otherwise pool destruction can be deferred
+        // until Scene itself dies after the game shared library unloads.
+        entt::registry emptyRegistry = {};
+        m_registry.swap(emptyRegistry);
         m_paused = false;
         m_entitiesToReady.clear();
         m_entitiesToDestroy.clear();
@@ -236,7 +241,21 @@ namespace Canis
 
     void Scene::Load(std::vector<ScriptConf>& _scriptRegistry)
     {
-        YAML::Node root = YAML::LoadFile(m_path);
+        YAML::Node root;
+        try
+        {
+            root = YAML::LoadFile(m_path);
+        }
+        catch (const YAML::BadFile&)
+        {
+            Debug::FatalError("Scene not found: %s", m_path.c_str());
+            return;
+        }
+        catch (const YAML::Exception &_exception)
+        {
+            Debug::FatalError("Failed to load scene '%s': %s", m_path.c_str(), _exception.what());
+            return;
+        }
 
         if (!root)
         {
