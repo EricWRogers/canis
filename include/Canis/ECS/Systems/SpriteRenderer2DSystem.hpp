@@ -26,7 +26,7 @@ namespace Canis
     class SpriteRenderer2DSystem : public System
     {
     public:
-        GlyphSortType glyphSortType = GlyphSortType::FRONT_TO_BACK;
+        GlyphSortType glyphSortType = GlyphSortType::BACK_TO_FRONT;
         std::vector<Glyph *> glyphs;
         std::vector<SpriteVertex> vertices = {};
         std::vector<unsigned int> indices = {};
