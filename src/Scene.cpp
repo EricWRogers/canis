@@ -254,6 +254,21 @@ namespace Canis
         CreateSystem<Canis::ModelAnimation3DSystem>();
         CreateSystem<Canis::SpriteAnimationSystem>();
         CreateSystem<Canis::JoltPhysics3DSystem>();
+
+        if (app != nullptr)
+        {
+            for (const SystemConf& conf : app->GetSystemRegistry())
+            {
+                if (!conf.autoCreate || conf.Construct == nullptr)
+                    continue;
+
+                if (conf.pipeline == SystemPipeline::Render)
+                    CreateRenderSystem(conf.Construct());
+                else
+                    CreateSystem(conf.Construct());
+            }
+        }
+
         m_environmentSkyboxUUID = UUID(0);
         m_paused = false;
         
@@ -362,17 +377,17 @@ namespace Canis
                         }
                     }
 
-                    for (Canis::Entity*& child : transform.children)
-                    {
-                        if (child == nullptr)
-                            continue;
-
-                        if (child->HasComponent<RectTransform>())
+                    auto& rectChildren = transform.children;
+                    rectChildren.erase(std::remove_if(rectChildren.begin(), rectChildren.end(),
+                        [entity](Canis::Entity* child) -> bool
                         {
+                            if (child == nullptr || !child->HasComponent<RectTransform>())
+                                return true;
+
                             RectTransform& childTransform = child->GetComponent<RectTransform>();
                             childTransform.parent = entity;
-                        }
-                    }
+                            return false;
+                        }), rectChildren.end());
                 }
 
                 if (entity->HasComponent<Transform>())
@@ -393,17 +408,17 @@ namespace Canis
                         }
                     }
 
-                    for (Canis::Entity*& child : transform.children)
-                    {
-                        if (child == nullptr)
-                            continue;
-
-                        if (child->HasComponent<Transform>())
+                    auto& transformChildren = transform.children;
+                    transformChildren.erase(std::remove_if(transformChildren.begin(), transformChildren.end(),
+                        [entity](Canis::Entity* child) -> bool
                         {
+                            if (child == nullptr || !child->HasComponent<Transform>())
+                                return true;
+
                             Transform& childTransform = child->GetComponent<Transform>();
                             childTransform.parent = entity;
-                        }
-                    }
+                            return false;
+                        }), transformChildren.end());
                 }
             }
 
@@ -632,6 +647,20 @@ namespace Canis
         return nullptr; 
     }
 
+    UUID Scene::GetLiveEntityUUID(const Entity* _entity) const
+    {
+        if (_entity == nullptr)
+            return UUID(0);
+
+        for (const Entity* liveEntity : m_entities)
+        {
+            if (liveEntity == _entity)
+                return liveEntity->uuid;
+        }
+
+        return UUID(0);
+    }
+
     Entity* Scene::FindEntityWithName(std::string _name)
     {
         for (Entity* entity : m_entities)
@@ -789,6 +818,26 @@ namespace Canis
             return;
 
         m_entitiesToReady.push_back(_id);
+    }
+
+    System* Scene::CreateSystem(System* _system)
+    {
+        if (_system == nullptr)
+            return nullptr;
+
+        m_updateSystems.push_back(_system);
+        ReadySystem(_system);
+        return _system;
+    }
+
+    System* Scene::CreateRenderSystem(System* _system)
+    {
+        if (_system == nullptr)
+            return nullptr;
+
+        m_renderSystems.push_back(_system);
+        ReadySystem(_system);
+        return _system;
     }
 
     void Scene::ReadySystem(System *_system)

@@ -18,16 +18,32 @@ using namespace Canis;
 #define DEFAULT_NAME(type) \
     name = type::ScriptName \
 
+#define DEFAULT_COMPONENT_NAME(type) \
+    name = type::ScriptName \
+
 #define DEFAULT_ADD(type) \
     Add = [](Entity &_entity) -> void { (void)_entity.AddScript<type>(); } \
+
+#define DEFAULT_COMPONENT_ADD(type)                                                \
+    Add = [](Entity &_entity) -> void                                             \
+    {                                                                             \
+        if (type* component = _entity.AddComponent<type>())                       \
+            InvokeRegisteredCreate(*component);                                   \
+    }                                                                             \
 
 #define DEFAULT_CONSTRUCT(type) \
     Construct = [](Entity &_entity, bool _callCreate) -> ScriptableEntity* { return _entity.AttachScript(type::ScriptName, new type(_entity), _callCreate); } \
 
 template<typename... Ts>
+inline void AddRequiredComponents(Entity& _entity)
+{
+    (_entity.scene.app->AddRequiredComponent(_entity, Ts::ScriptName), ...);
+}
+
+template<typename... Ts>
 inline void AddRequiredScripts(Entity& _entity)
 {
-    (_entity.scene.app->AddRequiredScript(_entity, Ts::ScriptName), ...);
+    AddRequiredComponents<Ts...>(_entity);
 }
 
 template <typename ScriptType>
@@ -69,9 +85,22 @@ inline YAML::Node GetRegisteredProperty(const PropertyType& _value)
     return YAML::Node(_value);
 }
 
+template <typename Component, typename PropertyType>
+inline YAML::Node GetRegisteredProperty(Component& _component, const PropertyType& _value)
+{
+    (void)_component;
+    return GetRegisteredProperty(_value);
+}
+
 inline YAML::Node GetRegisteredProperty(Canis::Entity* const& _value)
 {
     return YAML::Node((_value == nullptr) ? Canis::UUID(0) : _value->uuid);
+}
+
+template <typename Component>
+inline YAML::Node GetRegisteredProperty(Component& _component, Canis::Entity* const& _value)
+{
+    return YAML::Node(GetRegisteredPropertyOwnerEntity(_component).scene.GetLiveEntityUUID(_value));
 }
 
 inline std::string BuildInspectorFieldLabel(const char *_label, const char *_idSuffix)
@@ -80,6 +109,20 @@ inline std::string BuildInspectorFieldLabel(const char *_label, const char *_idS
         return std::string(_label);
 
     return std::string(_label) + "##" + _idSuffix;
+}
+
+template <typename Component>
+inline void InvokeRegisteredCreate(Component& _component)
+{
+    if constexpr (requires(Component& component) { component.Create(); })
+        _component.Create();
+}
+
+template <typename Component>
+inline void InvokeRegisteredDestroy(Component& _component)
+{
+    if constexpr (requires(Component& component) { component.Destroy(); })
+        _component.Destroy();
 }
 
 template <typename T>
@@ -261,24 +304,60 @@ inline void DrawRegisteredProperties(Editor &_editor, const PropertyRegistry &_r
 #define DEFAULT_ADD_AND_REQUIRED(type, ...)                               \
     Add = [](Entity &_entity)   -> void                                   \
     {                                                                     \
-        AddRequiredScripts<__VA_ARGS__>(_entity);                         \
+        AddRequiredComponents<__VA_ARGS__>(_entity);                      \
         (void)_entity.AddScript<type>();                                  \
+    }                                                                     \
+
+#define DEFAULT_COMPONENT_ADD_AND_REQUIRED(type, ...)                     \
+    Add = [](Entity &_entity) -> void                                     \
+    {                                                                     \
+        AddRequiredComponents<__VA_ARGS__>(_entity);                      \
+        if (type* component = _entity.AddComponent<type>())               \
+            InvokeRegisteredCreate(*component);                           \
     }                                                                     \
 
 #define DEFAULT_HAS(type) \
     Has = [](Entity &_entity) -> bool { return _entity.HasScript<type>(); } \
 
+#define DEFAULT_COMPONENT_HAS(type) \
+    Has = [](Entity &_entity) -> bool { return _entity.HasComponent<type>(); } \
+
 #define DEFAULT_REMOVE(type) \
     Remove = [](Entity &_entity) -> void { _entity.RemoveScript<type>(); } \
 
+#define DEFAULT_COMPONENT_REMOVE(type)                                     \
+    Remove = [](Entity &_entity) -> void                                   \
+    {                                                                      \
+        if (!_entity.HasComponent<type>())                                 \
+            return;                                                        \
+                                                                           \
+        type& component = _entity.GetComponent<type>();                    \
+        InvokeRegisteredDestroy(component);                                \
+        _entity.RemoveComponent<type>();                                   \
+    }                                                                      \
+
 #define DEFAULT_GET(type) \
     Get = [](Entity& _entity) -> void* { return (void*)_entity.GetScript<type>(); } \
+
+#define DEFAULT_COMPONENT_GET(type) \
+    Get = [](Entity& _entity) -> void* { return _entity.HasComponent<type>() ? static_cast<void*>(&_entity.GetComponent<type>()) : nullptr; } \
 
 #define DEFAULT_DRAW_INSPECTOR(type, ...)                                             \
     DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void \
     {                                                                                 \
         (void)_editor;                                                                \
         if (type *component = _entity.GetScript<type>())                              \
+        {                                                                             \
+            DrawRegisteredProperties(_editor, _conf.registry, component, _conf.name); \
+            __VA_ARGS__                                                               \
+        }                                                                             \
+    }                                                                                 \
+
+#define DEFAULT_DRAW_COMPONENT_INSPECTOR(type, ...)                                   \
+    DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void \
+    {                                                                                 \
+        (void)_editor;                                                                \
+        if (type *component = (_entity.HasComponent<type>() ? &_entity.GetComponent<type>() : nullptr)) \
         {                                                                             \
             DrawRegisteredProperties(_editor, _conf.registry, component, _conf.name); \
             __VA_ARGS__                                                               \
@@ -300,6 +379,18 @@ void UnRegister##type##Script(Canis::App& _app)  \
     _app.UnregisterScript(_conf);                \
 }
 
+#define DEFAULT_UNREGISTER_COMPONENT(_conf, type)     \
+void UnRegister##type##Component(Canis::App& _app)    \
+{                                                     \
+    _app.UnregisterComponent(_conf);                  \
+}
+
+#define DEFAULT_UNREGISTER_SYSTEM(_conf, type)        \
+void UnRegister##type##System(Canis::App& _app)       \
+{                                                     \
+    _app.UnregisterSystem(_conf);                     \
+}
+
 #define REGISTER_PROPERTY(config, component, property)                                            \
 {                                                                                                   \
     using PropertyType = std::remove_cvref_t<decltype(std::declval<component>().property)>;       \
@@ -312,7 +403,7 @@ void UnRegister##type##Script(Canis::App& _app)  \
                                                                                                     \
     config.registry.getters[#property] = [](void *componentPtr) -> YAML::Node {                     		\
         auto *typedComponent = static_cast<component *>(componentPtr);                              \
-        return GetRegisteredProperty(typedComponent->property);                                     \
+        return GetRegisteredProperty(*typedComponent, typedComponent->property);                     \
     };                                                                                         		\
                                                                                                     \
     config.registry.drawers[#property] = [](Editor &_editor, const std::string &propertyName, void *componentPtr, const std::string &idSuffix) { \
@@ -353,6 +444,24 @@ inline void EncodeComponent(PropertyRegistry& _registry, YAML::Node &_node, Enti
 #define DEFAULT_ENCODE(config, type) \
     Encode = [](YAML::Node &_node, Entity &_entity) -> void { EncodeComponent<type>(config.registry, _node, _entity, type::ScriptName); } \
 
+template <typename T>
+inline void EncodeNativeComponent(PropertyRegistry& _registry, YAML::Node &_node, Entity &_entity, const std::string& _componentName)
+{
+    if (_entity.HasComponent<T>())
+    {
+        T& component = _entity.GetComponent<T>();
+        YAML::Node comp;
+
+        for (const auto &propertyName : _registry.propertyOrder)
+            comp[propertyName] = _registry.getters[propertyName](&component);
+
+        _node[_componentName] = comp;
+    }
+}
+
+#define DEFAULT_COMPONENT_ENCODE(config, type) \
+    Encode = [](YAML::Node &_node, Entity &_entity) -> void { EncodeNativeComponent<type>(config.registry, _node, _entity, type::ScriptName); } \
+
 template <typename T>    
 inline void DecodeComponent(PropertyRegistry& _registry, YAML::Node &_node, Canis::Entity &_entity, const std::string& _scriptName, bool _callCreate)
 {
@@ -378,8 +487,35 @@ inline void DecodeComponent(PropertyRegistry& _registry, YAML::Node &_node, Cani
 #define DEFAULT_DECODE(config, type) \
     Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void { DecodeComponent<type>(config.registry, _node, _entity, type::ScriptName, _callCreate); } \
 
+template <typename T>
+inline void DecodeNativeComponent(PropertyRegistry& _registry, YAML::Node &_node, Canis::Entity &_entity, const std::string& _componentName, bool _callCreate)
+{
+    if (auto componentNode = _node[_componentName])
+    {
+        T* component = _entity.AddComponent<T>();
+        if (component == nullptr)
+            return;
+
+        for (const auto &[propertyName, setter] : _registry.setters)
+        {
+            if (componentNode[propertyName])
+            {
+                YAML::Node propertyNode = componentNode[propertyName];
+                setter(propertyNode, component);
+            }
+        }
+
+        if (_callCreate)
+            InvokeRegisteredCreate(*component);
+    }
+}
+
+#define DEFAULT_COMPONENT_DECODE(config, type) \
+    Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void { DecodeNativeComponent<type>(config.registry, _node, _entity, type::ScriptName, _callCreate); } \
+
 #define DEFAULT_CONFIG(config, type)                \
 {                                                   \
+    config.kind = Canis::RegistryEntryKind::Script; \
     config.DEFAULT_NAME(type);                      \
     config.DEFAULT_CONSTRUCT(type);                 \
     config.DEFAULT_ADD(type);                       \
@@ -390,8 +526,22 @@ inline void DecodeComponent(PropertyRegistry& _registry, YAML::Node &_node, Cani
     config.DEFAULT_DECODE(config, type);            \
 }
 
+#define DEFAULT_COMPONENT_CONFIG(config, type)          \
+{                                                      \
+    config.kind = Canis::RegistryEntryKind::Component; \
+    config.DEFAULT_COMPONENT_NAME(type);               \
+    config.Construct = nullptr;                        \
+    config.DEFAULT_COMPONENT_ADD(type);                \
+    config.DEFAULT_COMPONENT_HAS(type);                \
+    config.DEFAULT_COMPONENT_GET(type);                \
+    config.DEFAULT_COMPONENT_REMOVE(type);             \
+    config.DEFAULT_COMPONENT_ENCODE(config, type);     \
+    config.DEFAULT_COMPONENT_DECODE(config, type);     \
+}
+
 #define DEFAULT_CONFIG_AND_REQUIRED(config, type, ...)  \
 {                                                       \
+    config.kind = Canis::RegistryEntryKind::Script;     \
     config.DEFAULT_NAME(type);                          \
     config.DEFAULT_CONSTRUCT(type);                     \
     config.Add = [](Entity &_entity) -> void            \
@@ -404,6 +554,27 @@ inline void DecodeComponent(PropertyRegistry& _registry, YAML::Node &_node, Cani
     config.DEFAULT_REMOVE(type);                        \
     config.DEFAULT_ENCODE(config, type);                \
     config.DEFAULT_DECODE(config, type);                \
+}
+
+#define DEFAULT_COMPONENT_CONFIG_AND_REQUIRED(config, type, ...) \
+{                                                                \
+    config.kind = Canis::RegistryEntryKind::Component;           \
+    config.DEFAULT_COMPONENT_NAME(type);                         \
+    config.Construct = nullptr;                                  \
+    config.DEFAULT_COMPONENT_ADD_AND_REQUIRED(type, __VA_ARGS__);\
+    config.DEFAULT_COMPONENT_HAS(type);                          \
+    config.DEFAULT_COMPONENT_GET(type);                          \
+    config.DEFAULT_COMPONENT_REMOVE(type);                       \
+    config.DEFAULT_COMPONENT_ENCODE(config, type);               \
+    config.DEFAULT_COMPONENT_DECODE(config, type);               \
+}
+
+#define DEFAULT_SYSTEM_CONFIG(config, type, pipelineType)                  \
+{                                                                          \
+    config.name = type_name<type>();                                       \
+    config.pipeline = pipelineType;                                        \
+    config.Construct = []() -> Canis::System* { return new type(); };      \
+    config.autoCreate = true;                                              \
 }
 
 /*#define CHECK_SCRIPTABLE_ENTITY(type) \

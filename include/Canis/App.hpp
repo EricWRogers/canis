@@ -22,15 +22,25 @@ public:
     float GameCodeUpdateTimeMs() const { return m_gameCodeUpdateTimeMs; }
     float RenderTimeMs() const { return m_renderTimeMs; }
 
+    void RegisterComponent(ComponentConf& _conf);
+    void UnregisterComponent(ComponentConf& _conf);
+    std::vector<ComponentConf>& GetComponentRegistry() { return m_scriptRegistry; }
+    ComponentConf* GetComponentConf(const std::string& _name);
+
     void RegisterScript(ScriptConf& _conf);
     void UnregisterScript(ScriptConf& _conf);
     std::vector<ScriptConf>& GetScriptRegistry() { return m_scriptRegistry; }
-
     ScriptConf* GetScriptConf(const std::string& _name);
+    void RegisterSystem(SystemConf& _conf);
+    void UnregisterSystem(SystemConf& _conf);
+    std::vector<SystemConf>& GetSystemRegistry() { return m_systemRegistry; }
+    SystemConf* GetSystemConf(const std::string& _name);
+
     void LoadScene(const std::string& _path);
     void LoadScene(const SceneAssetHandle& _sceneAssetHandle);
     const std::string& GetPendingScenePath() const { return m_pendingScenePath; }
 
+    bool AddRequiredComponent(Entity& _entity, const std::string& _name);
     bool AddRequiredScript(Entity& _entity, const std::string& _name);
     bool DispatchUIAction(Entity& _targetEntity, const std::string& _scriptName, const std::string& _actionName, const UIActionContext& _context);
 
@@ -43,6 +53,7 @@ private:
     struct RuntimeContext;
 
     std::vector<ScriptConf> m_scriptRegistry = {};
+    std::vector<SystemConf> m_systemRegistry = {};
     std::vector<InspectorItemRightClick> m_inspectorItemRegistry = {};
 
     void InitializeRuntime();

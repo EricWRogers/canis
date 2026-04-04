@@ -22,6 +22,7 @@ namespace Canis
     class Entity;
     class System;
     struct ScriptConf;
+    struct SystemConf;
 
     struct RaycastHit
     {
@@ -89,6 +90,7 @@ namespace Canis
         Entity* CreateEntity(std::string _name = "", std::string _tag = "");
         Entity* GetEntity(int _id);
         Entity* GetEntityWithUUID(Canis::UUID _uuid);
+        UUID GetLiveEntityUUID(const Entity* _entity) const;
         Entity* FindEntityWithName(std::string _name);
 
         Entity* GetEntityWithTag(std::string _tag);
@@ -112,20 +114,17 @@ namespace Canis
         template <typename T>
         void CreateSystem()
         {
-            System *s = new T();
-
-            m_updateSystems.push_back(s);
-            ReadySystem(s);
+            (void)CreateSystem(new T());
         }
 
         template <typename T>
         void CreateRenderSystem()
         {
-            System *s = new T();
-
-            m_renderSystems.push_back(s);
-            ReadySystem(s);
+            (void)CreateRenderSystem(new T());
         }
+
+        System* CreateSystem(System* _system);
+        System* CreateRenderSystem(System* _system);
 
         std::vector<Entity*>& GetEntities() { return m_entities; }
         const std::vector<SystemTiming>& GetSystemTimings() const { return m_systemTimings; }

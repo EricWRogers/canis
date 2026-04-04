@@ -237,6 +237,77 @@ namespace Canis
             return nullptr;
         }
 
+        int LoadAudioClip(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+
+            std::map<std::string, int>::iterator it;
+            it = assetLibrary.assetPath.find(_path);
+
+            if (it != assetLibrary.assetPath.end())
+            {
+                return it->second;
+            }
+
+            Asset *audioClip = new AudioClipAsset();
+            if (!audioClip->Load(_path))
+            {
+                delete audioClip;
+                return -1;
+            }
+
+            const int id = assetLibrary.nextId;
+            assetLibrary.assets[id] = audioClip;
+            assetLibrary.assetPath[_path] = id;
+            assetLibrary.nextId++;
+
+            return id;
+        }
+
+        AudioClipAsset *GetAudioClip(const std::string &_path)
+        {
+            const int id = LoadAudioClip(_path);
+            return id >= 0 ? GetAudioClip(id) : nullptr;
+        }
+
+        AudioClipAsset *GetAudioClip(i32 _audioID)
+        {
+            if (GetAssetLibrary().assets.contains(_audioID))
+                return (AudioClipAsset *)GetAssetLibrary().assets[_audioID];
+
+            return nullptr;
+        }
+
+        int LoadSound(const std::string &_path)
+        {
+            return LoadAudioClip(_path);
+        }
+
+        SoundAsset *GetSound(const std::string &_path)
+        {
+            return static_cast<SoundAsset *>(GetAudioClip(_path));
+        }
+
+        SoundAsset *GetSound(i32 _soundID)
+        {
+            return static_cast<SoundAsset *>(GetAudioClip(_soundID));
+        }
+
+        int LoadMusic(const std::string &_path)
+        {
+            return LoadAudioClip(_path);
+        }
+
+        MusicAsset *GetMusic(const std::string &_path)
+        {
+            return static_cast<MusicAsset *>(GetAudioClip(_path));
+        }
+
+        MusicAsset *GetMusic(i32 _musicID)
+        {
+            return static_cast<MusicAsset *>(GetAudioClip(_musicID));
+        }
+
         int LoadShader(const std::string &_pathWithOutExtension)
         {
             auto &assetLibrary = GetAssetLibrary();

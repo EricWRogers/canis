@@ -13,6 +13,7 @@
 #include <Canis/InputManager.hpp>
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/AssetManager.hpp>
+#include <Canis/AudioManager.hpp>
 #include <Canis/Yaml.hpp>
 
 #include <SDL3/SDL.h>
@@ -915,6 +916,9 @@ namespace Canis
         if (m_mode != EditorMode::PLAY && m_mode != EditorMode::PAUSE)
             return;
 
+        AudioManager::StopMusic();
+        AudioManager::StopAllSounds();
+
         if (!g_lastPlaySceneNode || m_scene == nullptr || m_app == nullptr)
             return;
 
@@ -1494,6 +1498,79 @@ namespace Canis
     void Editor::InputAnimationClip(const std::string& _name, Canis::AnimationClip2DID &_variable)
     {
         InputAnimationClip(_name, nullptr, _variable);
+    }
+
+    void Editor::InputAudioAsset(const std::string &_name, Canis::AudioAssetHandle &_variable)
+    {
+        InputAudioAsset(_name, nullptr, _variable);
+    }
+
+    void Editor::InputAudioAsset(const std::string &_name, const char *_idSuffix, Canis::AudioAssetHandle &_variable)
+    {
+        ImGui::PushID(GetInspectorFieldID(_name.c_str(), _idSuffix));
+        ImGui::Text("%s", _name.c_str());
+        ImGui::SameLine();
+
+        std::string resolvedPath = _variable.path;
+        if (_variable.uuid != UUID(0))
+        {
+            const std::string pathFromUUID = AssetManager::GetPath(_variable.uuid);
+            if (pathFromUUID != "Path was not found in AssetLibrary")
+                resolvedPath = pathFromUUID;
+        }
+
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(170, 0));
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::AUDIO)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("audio_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_audio_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
+        }
+
+        ImGui::PopID();
     }
 
     void Editor::InputAnimationClip(const std::string& _name, const char *_idSuffix, Canis::AnimationClip2DID &_variable)
@@ -3097,6 +3174,49 @@ namespace Canis
             static const int indexToSyncMode[] = { PROJECT_SYNC_VSYNC, PROJECT_SYNC_OFF, PROJECT_SYNC_ADAPTIVE };
             Canis::GetProjectConfig().syncMode = indexToSyncMode[syncIndex];
             m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
+            Canis::SaveProjectConfig();
+        }
+
+        bool mute = Canis::GetProjectConfig().mute;
+        ImGui::Text("mute audio");
+        ImGui::SameLine();
+        if (ImGui::Checkbox("##muteAudio", &mute))
+        {
+            Canis::GetProjectConfig().mute = mute;
+            if (mute)
+                AudioManager::Mute();
+            else
+                AudioManager::UnMute();
+            Canis::SaveProjectConfig();
+        }
+
+        float masterVolume = Canis::GetProjectConfig().volume;
+        ImGui::Text("master volume");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##masterVolume", &masterVolume, 0.0f, 1.0f, "%.2f"))
+        {
+            Canis::GetProjectConfig().volume = std::clamp(masterVolume, 0.0f, 1.0f);
+            AudioManager::RefreshMixLevels();
+            Canis::SaveProjectConfig();
+        }
+
+        float musicVolume = Canis::GetProjectConfig().musicVolume;
+        ImGui::Text("music volume");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##musicVolume", &musicVolume, 0.0f, 1.0f, "%.2f"))
+        {
+            Canis::GetProjectConfig().musicVolume = std::clamp(musicVolume, 0.0f, 1.0f);
+            AudioManager::RefreshMixLevels();
+            Canis::SaveProjectConfig();
+        }
+
+        float sfxVolume = Canis::GetProjectConfig().sfxVolume;
+        ImGui::Text("sfx volume");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##sfxVolume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
+        {
+            Canis::GetProjectConfig().sfxVolume = std::clamp(sfxVolume, 0.0f, 1.0f);
+            AudioManager::RefreshMixLevels();
             Canis::SaveProjectConfig();
         }
 

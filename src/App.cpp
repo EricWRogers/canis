@@ -14,6 +14,7 @@
 #include <Canis/Editor.hpp>
 #include <Canis/IOManager.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/AudioManager.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/ConfigHelper.hpp>
 
@@ -21,6 +22,7 @@
 #include <imgui_stdlib.h>
 
 #include <algorithm>
+#include <cstdlib>
 #include <filesystem>
 #include <memory>
 
@@ -271,6 +273,7 @@ namespace Canis
         runtime.window = std::make_unique<Window>("Canis Beta", startupWidth, startupHeight);
         runtime.window->SetClearColor(Color(1.0f));
         runtime.window->SetSync(static_cast<Window::Sync>(GetProjectConfig().syncMode));
+        AudioManager::Initialize();
 
         if (GetProjectConfig().iconUUID == UUID(0))
         {
@@ -307,7 +310,12 @@ namespace Canis
             Time::SetTargetFPS(Canis::GetProjectConfig().frameLimitEditor + 0.0f);
 #endif
 
-        scene.Init(this, runtime.window.get(), runtime.inputManager.get(), "assets/scenes/game_loop.scene");
+        const char* startupSceneOverride = std::getenv("CANIS_START_SCENE");
+        const std::string startupScenePath = (startupSceneOverride != nullptr && startupSceneOverride[0] != '\0')
+            ? std::string(startupSceneOverride)
+            : std::string("assets/scenes/sts/engine_splash.scene");
+
+        scene.Init(this, runtime.window.get(), runtime.inputManager.get(), startupScenePath);
 
         runtime.gameCodeObject = GameCodeObjectInit(GetGameCodeSharedObjectPath());
         GameCodeObjectInitFunction(&runtime.gameCodeObject, this);
@@ -461,6 +469,13 @@ namespace Canis
         scene.Unload();
         Time::Quit();
         GameCodeObjectShutdownFunction(&runtime->gameCodeObject, this);
+
+        // Destroy any remaining std::function state while the game shared object is still loaded.
+        m_inspectorItemRegistry.clear();
+        m_systemRegistry.clear();
+        m_scriptRegistry.clear();
+
+        AudioManager::Shutdown();
         GameCodeObjectDestroy(&runtime->gameCodeObject);
         m_editor = nullptr;
         delete runtime;
@@ -502,6 +517,11 @@ namespace Canis
             _editor.InputEntity(_label, _idSuffix, _value);
         });
 
+        _editor.RegisterInspectorFieldDrawer<Canis::AudioAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::AudioAssetHandle& _value)
+        {
+            _editor.InputAudioAsset(_label, _idSuffix, _value);
+        });
+
         _editor.RegisterInspectorFieldDrawer<Canis::SceneAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::SceneAssetHandle& _value)
         {
             _editor.InputSceneAsset(_label, _idSuffix, _value);
@@ -513,7 +533,9 @@ namespace Canis
             .Add = [this](Entity& _entity) -> void {
                 if (!_entity.HasComponent<RectTransform>())
                     _entity.AddComponent<RectTransform>();
-                _entity.AddComponent<Canvas>();
+                Canvas& canvas = *_entity.AddComponent<Canvas>();
+                canvas.scaleMode = CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
+                canvas.screenSize = Vector2(1280.0f, 800.0f);
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<Canvas>(); },
             .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<Canvas>(); },
@@ -526,6 +548,8 @@ namespace Canis
                     YAML::Node comp;
                     comp["active"] = canvas.active;
                     comp["renderMode"] = canvas.renderMode;
+                    comp["scaleMode"] = canvas.scaleMode;
+                    comp["screenSize"] = canvas.screenSize;
                     _node["Canis::Canvas"] = comp;
                 }
             },
@@ -533,8 +557,13 @@ namespace Canis
                 if (auto canvasNode = _node["Canis::Canvas"])
                 {
                     auto &canvas = *_entity.AddComponent<Canvas>();
+                    const Vector2 defaultScreenSize = Vector2(1280.0f, 800.0f);
                     canvas.active = canvasNode["active"].as<bool>(true);
                     canvas.renderMode = canvasNode["renderMode"].as<unsigned int>(CanvasRenderMode::SCREEN_SPACE_OVERLAY);
+                    canvas.scaleMode = canvasNode["scaleMode"].as<unsigned int>(CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH);
+                    canvas.screenSize = canvasNode["screenSize"].as<Vector2>(defaultScreenSize);
+                    canvas.screenSize.x = std::max(1.0f, canvas.screenSize.x);
+                    canvas.screenSize.y = std::max(1.0f, canvas.screenSize.y);
 
                     if (_callCreate)
                         canvas.Create();
@@ -549,6 +578,17 @@ namespace Canis
                     int renderMode = static_cast<int>(canvas->renderMode);
                     if (ImGui::Combo("renderMode", &renderMode, CanvasRenderModeLabels, IM_ARRAYSIZE(CanvasRenderModeLabels)))
                         canvas->renderMode = static_cast<unsigned int>(renderMode);
+
+                    if (canvas->renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+                    {
+                        int scaleMode = static_cast<int>(canvas->scaleMode);
+                        if (ImGui::Combo("scaleMode", &scaleMode, CanvasScaleModeLabels, IM_ARRAYSIZE(CanvasScaleModeLabels)))
+                            canvas->scaleMode = static_cast<unsigned int>(scaleMode);
+
+                        ImGui::InputFloat2("screenSize", &canvas->screenSize.x, "%.3f");
+                        canvas->screenSize.x = std::max(1.0f, canvas->screenSize.x);
+                        canvas->screenSize.y = std::max(1.0f, canvas->screenSize.y);
+                    }
                 }
             },
         };
@@ -581,13 +621,15 @@ namespace Canis
                     comp["depth"] = transform.depth;
                     comp["rotation"] = transform.rotation;
                     comp["rotationOriginOffset"] = transform.rotationOriginOffset;
-                    comp["parent"] = (transform.parent == nullptr) ? Canis::UUID(0) : transform.parent->uuid;
+                    comp["parent"] = _entity.scene.GetLiveEntityUUID(transform.parent);
                     // children
                     YAML::Node children = YAML::Node(YAML::NodeType::Sequence);
 
                     for (Canis::Entity* c : transform.children)
                     {
-                        children.push_back(c->uuid);
+                        const Canis::UUID childUUID = _entity.scene.GetLiveEntityUUID(c);
+                        if (childUUID != Canis::UUID(0))
+                            children.push_back(childUUID);
                     }
 
                     comp["children"] = children;
@@ -876,10 +918,25 @@ namespace Canis
 
                     if (auto fontAsset = comp["FontAsset"])
                     {
-                        UUID uuid = fontAsset["uuid"].as<uint64_t>();
-                        std::string path = AssetManager::GetPath(uuid);
+                        std::string path = "";
+
+                        if (YAML::Node uuidNode = fontAsset["uuid"])
+                        {
+                            const UUID uuid = uuidNode.as<uint64_t>(0);
+                            if ((uint64_t)uuid != 0)
+                            {
+                                path = AssetManager::GetPath(uuid);
+                                if (path == "Path was not found in AssetLibrary")
+                                    path.clear();
+                            }
+                        }
+
+                        if (path.empty())
+                            path = fontAsset["path"].as<std::string>("");
+
                         const unsigned int fontSize = fontAsset["fontSize"].as<unsigned int>(32u);
-                        text.assetId = AssetManager::LoadText(path, fontSize);
+                        if (!path.empty())
+                            text.assetId = AssetManager::LoadText(path, fontSize);
                     }
 
                     if (_callCreate)
@@ -967,7 +1024,7 @@ namespace Canis
                 {
                     YAML::Node comp;
                     comp["active"] = button->active;
-                    comp["targetEntity"] = (button->targetEntity == nullptr) ? Canis::UUID(0) : button->targetEntity->uuid;
+                    comp["targetEntity"] = _entity.scene.GetLiveEntityUUID(button->targetEntity);
                     comp["targetScript"] = button->targetScript;
                     comp["actionName"] = button->actionName;
                     comp["baseColor"] = button->baseColor;
@@ -1086,7 +1143,7 @@ namespace Canis
                 {
                     YAML::Node comp;
                     comp["active"] = dropTarget->active;
-                    comp["targetEntity"] = (dropTarget->targetEntity == nullptr) ? Canis::UUID(0) : dropTarget->targetEntity->uuid;
+                    comp["targetEntity"] = _entity.scene.GetLiveEntityUUID(dropTarget->targetEntity);
                     comp["targetScript"] = dropTarget->targetScript;
                     comp["actionName"] = dropTarget->actionName;
                     comp["acceptedPayloadType"] = dropTarget->acceptedPayloadType;
@@ -1203,12 +1260,14 @@ namespace Canis
                     comp["position"] = transform.position;
                     comp["rotation"] = transform.rotation;
                     comp["scale"] = transform.scale;
-                    comp["parent"] = (transform.parent == nullptr) ? Canis::UUID(0) : transform.parent->uuid;
+                    comp["parent"] = _entity.scene.GetLiveEntityUUID(transform.parent);
 
                     YAML::Node children = YAML::Node(YAML::NodeType::Sequence);
                     for (Canis::Entity* child : transform.children)
                     {
-                        children.push_back(child ? child->uuid : Canis::UUID(0));
+                        const Canis::UUID childUUID = _entity.scene.GetLiveEntityUUID(child);
+                        if (childUUID != Canis::UUID(0))
+                            children.push_back(childUUID);
                     }
                     comp["children"] = children;
 
@@ -2112,7 +2171,7 @@ namespace Canis
                             std::string path = AssetManager::GetPath(dropped.uuid);
                             std::string extension = GetFileExtension(path);
 
-                            if (extension == "gltf" || extension == "glb")
+                            if (extension == "gltf" || extension == "glb" || extension == "obj")
                             {
                                 model->modelId = AssetManager::LoadModel(path);
                                 if (ModelAnimation* animation = _entity.HasComponent<ModelAnimation>() ? &_entity.GetComponent<ModelAnimation>() : nullptr)
@@ -2362,14 +2421,28 @@ namespace Canis
         Time::SetTargetFPS(_targetFPS);
     }
 
-    ScriptConf* App::GetScriptConf(const std::string& _name)
+    ComponentConf* App::GetComponentConf(const std::string& _name)
     {
-        for(ScriptConf& sc : m_scriptRegistry)
+        for (ComponentConf& sc : m_scriptRegistry)
         {
             if (sc.name == _name)
-            {
                 return &sc;
-            }
+        }
+
+        return nullptr;
+    }
+
+    ScriptConf* App::GetScriptConf(const std::string& _name)
+    {
+        return GetComponentConf(_name);
+    }
+
+    SystemConf* App::GetSystemConf(const std::string& _name)
+    {
+        for (SystemConf& conf : m_systemRegistry)
+        {
+            if (conf.name == _name)
+                return &conf;
         }
 
         return nullptr;
@@ -2395,6 +2468,9 @@ namespace Canis
 
         auto invokeAction = [&](ScriptConf& _conf) -> bool
         {
+            if (_conf.kind != RegistryEntryKind::Script)
+                return false;
+
             auto actionIt = _conf.uiActions.find(_actionName);
             if (actionIt == _conf.uiActions.end() || _conf.Get == nullptr)
                 return false;
@@ -2423,9 +2499,9 @@ namespace Canis
         return handled;
     }
 
-    bool App::AddRequiredScript(Entity& _entity, const std::string& _name)
+    bool App::AddRequiredComponent(Entity& _entity, const std::string& _name)
     {
-        if (ScriptConf* sc = GetScriptConf(_name))
+        if (ComponentConf* sc = GetComponentConf(_name))
         {
             if (sc->Has && sc->Has(_entity) == false)
             {
@@ -2441,16 +2517,26 @@ namespace Canis
         }
     }
 
-    void App::RegisterScript(ScriptConf &_conf)
+    bool App::AddRequiredScript(Entity& _entity, const std::string& _name)
     {
-        for (ScriptConf &sc : m_scriptRegistry)
+        return AddRequiredComponent(_entity, _name);
+    }
+
+    void App::RegisterComponent(ComponentConf &_conf)
+    {
+        for (ComponentConf &sc : m_scriptRegistry)
             if (_conf.name == sc.name)
                 return;
 
         m_scriptRegistry.push_back(_conf);
     }
 
-    void App::UnregisterScript(ScriptConf &_conf)
+    void App::RegisterScript(ScriptConf &_conf)
+    {
+        RegisterComponent(_conf);
+    }
+
+    void App::UnregisterComponent(ComponentConf &_conf)
     {
         for (int i = 0; i < m_scriptRegistry.size(); i++)
         {
@@ -2463,12 +2549,47 @@ namespace Canis
                     if (entity == nullptr)
                         continue;
 
-                    entity->RemoveScript(conf.name);
+                    if (conf.Has != nullptr && !conf.Has(*entity))
+                        continue;
+
+                    if (conf.Remove != nullptr)
+                        conf.Remove(*entity);
                 }
 
                 m_scriptRegistry.erase(m_scriptRegistry.begin() + i);
                 i--;
             }
+        }
+    }
+
+    void App::UnregisterScript(ScriptConf &_conf)
+    {
+        UnregisterComponent(_conf);
+    }
+
+    void App::RegisterSystem(SystemConf &_conf)
+    {
+        if (_conf.Construct == nullptr)
+            return;
+
+        for (SystemConf &conf : m_systemRegistry)
+        {
+            if (conf.name == _conf.name)
+                return;
+        }
+
+        m_systemRegistry.push_back(_conf);
+    }
+
+    void App::UnregisterSystem(SystemConf &_conf)
+    {
+        for (int i = 0; i < m_systemRegistry.size(); ++i)
+        {
+            if (m_systemRegistry[i].name != _conf.name)
+                continue;
+
+            m_systemRegistry.erase(m_systemRegistry.begin() + i);
+            --i;
         }
     }
 

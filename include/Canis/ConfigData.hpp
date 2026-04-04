@@ -13,6 +13,19 @@ class App;
 class Entity;
 class Editor;
 class ScriptableEntity;
+class System;
+
+enum class RegistryEntryKind
+{
+    Component,
+    Script
+};
+
+enum class SystemPipeline
+{
+    Update,
+    Render
+};
 
 struct UIActionContext
 {
@@ -38,6 +51,7 @@ struct PropertyRegistry {
 
 struct ScriptConf {
     std::string name;
+    RegistryEntryKind kind = RegistryEntryKind::Component;
     PropertyRegistry registry;
     std::function<ScriptableEntity*(Entity&, bool)> Construct = nullptr;
     std::function<void(Entity&)> Add = nullptr;
@@ -48,6 +62,15 @@ struct ScriptConf {
     std::function<void(YAML::Node &_node, Entity &_entity, bool _callCreate)> Decode = nullptr;
     std::function<void(Editor&, Entity&, const ScriptConf&)> DrawInspector = nullptr;
     std::unordered_map<std::string, UIActionInvoker> uiActions = {};
+};
+
+using ComponentConf = ScriptConf;
+
+struct SystemConf {
+    std::string name;
+    SystemPipeline pipeline = SystemPipeline::Update;
+    std::function<System*()> Construct = nullptr;
+    bool autoCreate = true;
 };
 
 struct InspectorItemRightClick {

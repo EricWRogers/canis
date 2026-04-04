@@ -1,4 +1,5 @@
 #include <Canis/Asset.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/OpenGL.hpp>
@@ -10,16 +11,22 @@
 #include <memory>
 #include <algorithm>
 #include <filesystem>
+#include <fstream>
 #include <limits>
 #include <cmath>
 #include <cstddef>
 #include <functional>
+#include <sstream>
 #include <string.h>
 #include <cctype>
+#include <cstring>
+#include <cstdlib>
 #include <unordered_map>
 
 #include <glm/gtc/quaternion.hpp>
 #include <stb_image.h>
+#define STB_VORBIS_HEADER_ONLY
+#include <stb_vorbis.c>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_filesystem.h>
@@ -77,6 +84,447 @@ namespace Canis
             }
 
             return "";
+        }
+
+        std::string ToLower(std::string _value)
+        {
+            std::transform(_value.begin(), _value.end(), _value.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            return _value;
+        }
+
+        bool ConvertAudioBufferToMixSamples(const SDL_AudioSpec &_sourceSpec, const Uint8 *_sourceData, int _sourceLength, std::vector<float> &_outSamples)
+        {
+            Uint8 *convertedData = nullptr;
+            int convertedLength = 0;
+            const SDL_AudioSpec &mixSpec = Audio::GetMixSpec();
+
+            if (!SDL_ConvertAudioSamples(&_sourceSpec, _sourceData, _sourceLength, &mixSpec, &convertedData, &convertedLength))
+            {
+                Debug::Warning("Failed to convert audio samples: %s", SDL_GetError());
+                return false;
+            }
+
+            if (convertedData == nullptr || convertedLength <= 0)
+            {
+                if (convertedData != nullptr)
+                    SDL_free(convertedData);
+
+                Debug::Warning("Audio conversion produced no data.");
+                return false;
+            }
+
+            _outSamples.resize(static_cast<size_t>(convertedLength) / sizeof(float));
+            std::memcpy(_outSamples.data(), convertedData, static_cast<size_t>(convertedLength));
+            SDL_free(convertedData);
+            return true;
+        }
+
+        bool LoadWaveAudioSamples(const std::string &_path, std::vector<float> &_outSamples)
+        {
+            SDL_AudioSpec sourceSpec = {};
+            Uint8 *sourceBuffer = nullptr;
+            Uint32 sourceLength = 0;
+
+            if (!SDL_LoadWAV(_path.c_str(), &sourceSpec, &sourceBuffer, &sourceLength))
+            {
+                Debug::Warning("Failed to load WAV audio clip '%s': %s", _path.c_str(), SDL_GetError());
+                return false;
+            }
+
+            const bool converted = ConvertAudioBufferToMixSamples(
+                sourceSpec,
+                sourceBuffer,
+                static_cast<int>(sourceLength),
+                _outSamples);
+
+            SDL_free(sourceBuffer);
+            return converted;
+        }
+
+        bool LoadOggAudioSamples(const std::string &_path, std::vector<float> &_outSamples)
+        {
+            int channels = 0;
+            int sampleRate = 0;
+            short *decodedSamples = nullptr;
+
+            const int sampleFrames = stb_vorbis_decode_filename(_path.c_str(), &channels, &sampleRate, &decodedSamples);
+            if (sampleFrames <= 0 || decodedSamples == nullptr)
+            {
+                if (decodedSamples != nullptr)
+                    std::free(decodedSamples);
+
+                Debug::Warning("Failed to load OGG audio clip '%s'.", _path.c_str());
+                return false;
+            }
+
+            SDL_AudioSpec sourceSpec = { SDL_AUDIO_S16, channels, sampleRate };
+            const int sourceLength = sampleFrames * channels * static_cast<int>(sizeof(short));
+            const bool converted = ConvertAudioBufferToMixSamples(
+                sourceSpec,
+                reinterpret_cast<const Uint8 *>(decodedSamples),
+                sourceLength,
+                _outSamples);
+
+            std::free(decodedSamples);
+            return converted;
+        }
+
+        struct OBJVertexKey
+        {
+            int position = -1;
+            int texcoord = -1;
+            int normal = -1;
+
+            bool operator==(const OBJVertexKey &_other) const
+            {
+                return position == _other.position &&
+                    texcoord == _other.texcoord &&
+                    normal == _other.normal;
+            }
+        };
+
+        struct OBJVertexKeyHash
+        {
+            std::size_t operator()(const OBJVertexKey &_key) const
+            {
+                std::size_t hash = std::hash<int>{}(_key.position);
+                hash ^= std::hash<int>{}(_key.texcoord) + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
+                hash ^= std::hash<int>{}(_key.normal) + 0x9e3779b9u + (hash << 6u) + (hash >> 2u);
+                return hash;
+            }
+        };
+
+        struct OBJPrimitiveAccumulator
+        {
+            ModelAsset::PrimitiveBuild3D primitive = {};
+            std::unordered_map<OBJVertexKey, unsigned int, OBJVertexKeyHash> vertexMap = {};
+            std::vector<bool> hasExplicitNormal = {};
+            std::vector<Vector3> generatedNormalSums = {};
+        };
+
+        int ResolveOBJIndex(const int _rawIndex, const std::size_t _count)
+        {
+            if (_rawIndex > 0)
+            {
+                const int resolved = _rawIndex - 1;
+                return (resolved >= 0 && static_cast<std::size_t>(resolved) < _count) ? resolved : -1;
+            }
+
+            if (_rawIndex < 0)
+            {
+                const int resolved = static_cast<int>(_count) + _rawIndex;
+                return (resolved >= 0 && static_cast<std::size_t>(resolved) < _count) ? resolved : -1;
+            }
+
+            return -1;
+        }
+
+        bool ParseOBJInteger(const std::string &_text, int &_value)
+        {
+            if (_text.empty())
+                return false;
+
+            try
+            {
+                std::size_t parsed = 0;
+                const long long raw = std::stoll(_text, &parsed);
+                if (parsed != _text.size())
+                    return false;
+
+                _value = static_cast<int>(raw);
+                return true;
+            }
+            catch (const std::exception &)
+            {
+                return false;
+            }
+        }
+
+        bool ParseOBJVertexToken(
+            const std::string &_token,
+            const std::size_t _positionCount,
+            const std::size_t _texcoordCount,
+            const std::size_t _normalCount,
+            OBJVertexKey &_outKey)
+        {
+            _outKey = {};
+
+            const std::size_t firstSlash = _token.find('/');
+            const std::size_t secondSlash = (firstSlash == std::string::npos)
+                ? std::string::npos
+                : _token.find('/', firstSlash + 1u);
+
+            const std::string positionToken = (firstSlash == std::string::npos)
+                ? _token
+                : _token.substr(0u, firstSlash);
+            const std::string texcoordToken = (firstSlash == std::string::npos || secondSlash == std::string::npos)
+                ? std::string()
+                : _token.substr(firstSlash + 1u, secondSlash - firstSlash - 1u);
+            const std::string normalToken = (secondSlash == std::string::npos)
+                ? ((firstSlash == std::string::npos) ? std::string() : _token.substr(firstSlash + 1u))
+                : _token.substr(secondSlash + 1u);
+
+            int rawIndex = 0;
+            if (!ParseOBJInteger(positionToken, rawIndex))
+                return false;
+
+            _outKey.position = ResolveOBJIndex(rawIndex, _positionCount);
+            if (_outKey.position < 0)
+                return false;
+
+            if (firstSlash != std::string::npos && secondSlash == std::string::npos)
+            {
+                if (!normalToken.empty())
+                {
+                    if (!ParseOBJInteger(normalToken, rawIndex))
+                        return false;
+
+                    _outKey.texcoord = ResolveOBJIndex(rawIndex, _texcoordCount);
+                    if (_outKey.texcoord < 0)
+                        return false;
+                }
+
+                return true;
+            }
+
+            if (!texcoordToken.empty())
+            {
+                if (!ParseOBJInteger(texcoordToken, rawIndex))
+                    return false;
+
+                _outKey.texcoord = ResolveOBJIndex(rawIndex, _texcoordCount);
+                if (_outKey.texcoord < 0)
+                    return false;
+            }
+
+            if (!normalToken.empty())
+            {
+                if (!ParseOBJInteger(normalToken, rawIndex))
+                    return false;
+
+                _outKey.normal = ResolveOBJIndex(rawIndex, _normalCount);
+                if (_outKey.normal < 0)
+                    return false;
+            }
+
+            return true;
+        }
+
+        void FinalizeOBJPrimitive(OBJPrimitiveAccumulator &_accumulator)
+        {
+            if (_accumulator.primitive.vertices.empty() || _accumulator.primitive.indices.empty())
+                return;
+
+            bool needsGeneratedNormals = false;
+            for (bool hasExplicitNormal : _accumulator.hasExplicitNormal)
+            {
+                if (!hasExplicitNormal)
+                {
+                    needsGeneratedNormals = true;
+                    break;
+                }
+            }
+
+            if (!needsGeneratedNormals)
+                return;
+
+            for (std::size_t index = 0; index + 2u < _accumulator.primitive.indices.size(); index += 3u)
+            {
+                const unsigned int index0 = _accumulator.primitive.indices[index + 0u];
+                const unsigned int index1 = _accumulator.primitive.indices[index + 1u];
+                const unsigned int index2 = _accumulator.primitive.indices[index + 2u];
+
+                if (index0 >= _accumulator.primitive.vertices.size() ||
+                    index1 >= _accumulator.primitive.vertices.size() ||
+                    index2 >= _accumulator.primitive.vertices.size())
+                    continue;
+
+                const Vector3 &position0 = _accumulator.primitive.vertices[index0].position;
+                const Vector3 &position1 = _accumulator.primitive.vertices[index1].position;
+                const Vector3 &position2 = _accumulator.primitive.vertices[index2].position;
+
+                Vector3 faceNormal = glm::cross(position1 - position0, position2 - position0);
+                const float faceNormalLength = glm::length(faceNormal);
+                if (faceNormalLength <= 1e-6f)
+                    continue;
+
+                faceNormal /= faceNormalLength;
+
+                if (!_accumulator.hasExplicitNormal[index0])
+                    _accumulator.generatedNormalSums[index0] += faceNormal;
+                if (!_accumulator.hasExplicitNormal[index1])
+                    _accumulator.generatedNormalSums[index1] += faceNormal;
+                if (!_accumulator.hasExplicitNormal[index2])
+                    _accumulator.generatedNormalSums[index2] += faceNormal;
+            }
+
+            for (std::size_t vertexIndex = 0; vertexIndex < _accumulator.primitive.vertices.size(); ++vertexIndex)
+            {
+                if (_accumulator.hasExplicitNormal[vertexIndex])
+                    continue;
+
+                Vector3 normal = _accumulator.generatedNormalSums[vertexIndex];
+                const float normalLength = glm::length(normal);
+                if (normalLength > 1e-6f)
+                    normal /= normalLength;
+                else
+                    normal = Vector3(0.0f, 1.0f, 0.0f);
+
+                _accumulator.primitive.vertices[vertexIndex].normal = normal;
+            }
+        }
+
+        bool LoadOBJPrimitives(
+            const std::string &_path,
+            std::vector<ModelAsset::PrimitiveBuild3D> &_outPrimitives,
+            std::vector<std::string> &_outMaterialSlotNames)
+        {
+            std::ifstream file(_path);
+            if (!file.is_open())
+            {
+                Debug::Warning("Failed to open OBJ mesh '%s'.", _path.c_str());
+                return false;
+            }
+
+            std::vector<Vector3> positions = {};
+            std::vector<Vector2> texcoords = {};
+            std::vector<Vector3> normals = {};
+            std::vector<OBJPrimitiveAccumulator> accumulators = { OBJPrimitiveAccumulator{} };
+            std::unordered_map<std::string, int> materialToAccumulator = {};
+            int currentAccumulatorIndex = 0;
+
+            auto getAccumulatorIndex = [&](const std::string &_materialName) -> int
+            {
+                if (_materialName.empty())
+                    return 0;
+
+                if (const auto existing = materialToAccumulator.find(_materialName); existing != materialToAccumulator.end())
+                    return existing->second;
+
+                const int slotIndex = static_cast<int>(_outMaterialSlotNames.size());
+                _outMaterialSlotNames.push_back(_materialName);
+
+                OBJPrimitiveAccumulator accumulator = {};
+                accumulator.primitive.materialSlot = slotIndex;
+                accumulators.push_back(std::move(accumulator));
+
+                const int accumulatorIndex = static_cast<int>(accumulators.size()) - 1;
+                materialToAccumulator[_materialName] = accumulatorIndex;
+                return accumulatorIndex;
+            };
+
+            auto getOrCreateVertexIndex = [&](OBJPrimitiveAccumulator &_accumulator, const OBJVertexKey &_key) -> unsigned int
+            {
+                if (const auto existing = _accumulator.vertexMap.find(_key); existing != _accumulator.vertexMap.end())
+                    return existing->second;
+
+                ModelAsset::RenderVertex3D vertex = {};
+                vertex.position = positions[_key.position];
+                if (_key.texcoord >= 0)
+                    vertex.uv = texcoords[_key.texcoord];
+                if (_key.normal >= 0)
+                    vertex.normal = normals[_key.normal];
+
+                const unsigned int index = static_cast<unsigned int>(_accumulator.primitive.vertices.size());
+                _accumulator.primitive.vertices.push_back(vertex);
+                _accumulator.vertexMap.emplace(_key, index);
+                _accumulator.hasExplicitNormal.push_back(_key.normal >= 0);
+                _accumulator.generatedNormalSums.push_back(Vector3(0.0f));
+                return index;
+            };
+
+            std::string line;
+            while (std::getline(file, line))
+            {
+                if (!line.empty() && line.back() == '\r')
+                    line.pop_back();
+
+                std::istringstream lineStream(line);
+                std::string prefix;
+                lineStream >> prefix;
+                if (prefix.empty() || prefix[0] == '#')
+                    continue;
+
+                if (prefix == "v")
+                {
+                    float x = 0.0f;
+                    float y = 0.0f;
+                    float z = 0.0f;
+                    if (lineStream >> x >> y >> z)
+                        positions.emplace_back(x, y, z);
+                }
+                else if (prefix == "vt")
+                {
+                    float u = 0.0f;
+                    float v = 0.0f;
+                    if (lineStream >> u >> v)
+                        texcoords.emplace_back(u, v);
+                }
+                else if (prefix == "vn")
+                {
+                    float x = 0.0f;
+                    float y = 0.0f;
+                    float z = 0.0f;
+                    if (lineStream >> x >> y >> z)
+                        normals.emplace_back(x, y, z);
+                }
+                else if (prefix == "usemtl")
+                {
+                    std::string materialName;
+                    lineStream >> materialName;
+                    currentAccumulatorIndex = getAccumulatorIndex(materialName);
+                }
+                else if (prefix == "f")
+                {
+                    std::vector<OBJVertexKey> faceVertices = {};
+                    std::string token;
+                    while (lineStream >> token)
+                    {
+                        OBJVertexKey key;
+                        if (!ParseOBJVertexToken(token, positions.size(), texcoords.size(), normals.size(), key))
+                        {
+                            Debug::Warning("Failed to parse OBJ face token '%s' in '%s'.", token.c_str(), _path.c_str());
+                            faceVertices.clear();
+                            break;
+                        }
+
+                        faceVertices.push_back(key);
+                    }
+
+                    if (faceVertices.size() < 3u)
+                        continue;
+
+                    OBJPrimitiveAccumulator &accumulator = accumulators[currentAccumulatorIndex];
+                    const unsigned int rootIndex = getOrCreateVertexIndex(accumulator, faceVertices[0]);
+                    for (std::size_t vertexIndex = 1u; vertexIndex + 1u < faceVertices.size(); ++vertexIndex)
+                    {
+                        accumulator.primitive.indices.push_back(rootIndex);
+                        accumulator.primitive.indices.push_back(getOrCreateVertexIndex(accumulator, faceVertices[vertexIndex]));
+                        accumulator.primitive.indices.push_back(getOrCreateVertexIndex(accumulator, faceVertices[vertexIndex + 1u]));
+                    }
+                }
+            }
+
+            for (OBJPrimitiveAccumulator &accumulator : accumulators)
+            {
+                if (accumulator.primitive.vertices.empty() || accumulator.primitive.indices.empty())
+                    continue;
+
+                FinalizeOBJPrimitive(accumulator);
+                _outPrimitives.push_back(std::move(accumulator.primitive));
+            }
+
+            if (_outPrimitives.empty())
+            {
+                Debug::Warning("OBJ mesh '%s' did not contain any triangle geometry.", _path.c_str());
+                return false;
+            }
+
+            return true;
         }
     } // namespace
 
@@ -341,6 +789,48 @@ namespace Canis
         return true;
     }
 
+    bool AudioClipAsset::Load(std::string _path)
+    {
+        Free();
+
+        const std::string extension = ToLower(GetFileExtension(_path));
+        bool loaded = false;
+
+        if (extension == "wav")
+        {
+            loaded = LoadWaveAudioSamples(_path, m_samples);
+        }
+        else if (extension == "ogg")
+        {
+            loaded = LoadOggAudioSamples(_path, m_samples);
+        }
+        else
+        {
+            Debug::Warning("Unsupported audio format '%s' for clip '%s'. Supported formats: .wav, .ogg", extension.c_str(), _path.c_str());
+        }
+
+        if (!loaded)
+        {
+            Free();
+            return false;
+        }
+
+        m_path = _path;
+        m_sampleRate = Audio::GetMixSpec().freq;
+        m_channels = Audio::GetMixSpec().channels;
+        return true;
+    }
+
+    bool AudioClipAsset::Free()
+    {
+        m_path.clear();
+        m_samples.clear();
+        m_samples.shrink_to_fit();
+        m_sampleRate = 0;
+        m_channels = 0;
+        return true;
+    }
+
     std::string FileTypeToString(MetaFileAsset::FileType _type)
     {
         switch (_type)
@@ -351,6 +841,8 @@ namespace Canis
                 return "VERTEX";
             case MetaFileAsset::FileType::TEXTURE:
                 return "TEXTURE";
+            case MetaFileAsset::FileType::AUDIO:
+                return "AUDIO";
             case MetaFileAsset::FileType::SCENE:
                 return "SCENE";
             case MetaFileAsset::FileType::ANIMATIONCLIP2D:
@@ -374,6 +866,8 @@ namespace Canis
             return MetaFileAsset::FileType::VERTEX;
         else if (_type == "TEXTURE")
             return MetaFileAsset::FileType::TEXTURE;
+        else if (_type == "AUDIO")
+            return MetaFileAsset::FileType::AUDIO;
         else if (_type == "SCENE")
             return MetaFileAsset::FileType::SCENE;
         else if (_type == "ANIMATIONCLIP2D")
@@ -396,10 +890,12 @@ namespace Canis
         {
             path = _path;
             name = GetFileName(_path);
-            extension = GetFileExtension(_path);
+            extension = ToLower(GetFileExtension(_path));
 
             if (extension == "png" || extension == "jpg" || extension == "jpeg" || extension == "bmp" || extension == "tga")
                 type = FileType::TEXTURE;
+            else if (extension == "wav" || extension == "ogg")
+                type = FileType::AUDIO;
             else if (extension == "scene")
                 type = FileType::SCENE;
             else if (extension == "fs")
@@ -408,7 +904,7 @@ namespace Canis
                 type = FileType::VERTEX;
             else if (extension == "ac2d")
                 type = FileType::ANIMATIONCLIP2D;
-            else if (extension == "gltf" || extension == "glb")
+            else if (extension == "gltf" || extension == "glb" || extension == "obj")
                 type = FileType::MODEL;
             else if (extension == "material")
                 type = FileType::MATERIAL;
@@ -447,9 +943,12 @@ namespace Canis
             uuid = root["UUID"].as<uint64_t>(0);
             path = _path;
             name = root["name"].as<std::string>();
-            extension = root["extension"].as<std::string>();
+            extension = ToLower(root["extension"].as<std::string>(GetFileExtension(_path)));
             size = root["size"].as<u64>();
             modified = root["modified"].as<i64>();
+
+            if (type == FileType::FILE_UNKNOWN && (extension == "gltf" || extension == "glb" || extension == "obj"))
+                type = FileType::MODEL;
         }
         else
         {
@@ -813,6 +1312,27 @@ namespace Canis
         m_bindScales.clear();
         m_bindLocalMatrices.clear();
 
+        const std::string extension = ToLower(GetFileExtension(_path));
+        if (extension == "obj")
+        {
+            std::vector<PrimitiveBuild3D> primitives = {};
+            std::vector<std::string> materialSlotNames = {};
+            if (!LoadOBJPrimitives(_path, primitives, materialSlotNames))
+                return false;
+
+            if (!SetRuntimePrimitives(primitives, materialSlotNames))
+                return false;
+
+            m_path = _path;
+            return true;
+        }
+
+        if (extension != "gltf" && extension != "glb")
+        {
+            Debug::Warning("Unsupported model format '%s' for '%s'.", extension.c_str(), _path.c_str());
+            return false;
+        }
+
         tinygltf::TinyGLTF loader;
         loader.SetImageLoader(LoadTinyGLTFImageData, nullptr);
         tinygltf::Model gltfModel;
@@ -820,7 +1340,7 @@ namespace Canis
         std::string warning;
 
         bool loaded = false;
-        if (GetFileExtension(_path) == "glb")
+        if (extension == "glb")
             loaded = loader.LoadBinaryFromFile(&gltfModel, &error, &warning, _path);
         else
             loaded = loader.LoadASCIIFromFile(&gltfModel, &error, &warning, _path);

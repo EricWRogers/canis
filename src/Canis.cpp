@@ -3,6 +3,8 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/IOManager.hpp>
 
+#include <algorithm>
+#include <cmath>
 #include <fstream>
 
 namespace Canis
@@ -19,6 +21,14 @@ namespace Canis
             }
 
             return PROJECT_SYNC_OFF;
+        }
+
+        float NormalizeVolume(float _value)
+        {
+            if (!std::isfinite(_value))
+                return 1.0f;
+
+            return std::clamp(_value, 0.0f, 1.0f);
         }
     } // namespace
 
@@ -39,6 +49,10 @@ namespace Canis
         node["frameLimitEditor"] = projectConfig.frameLimitEditor;
         node["overrideSeed"] = projectConfig.overrideSeed;
         node["seed"] = projectConfig.seed;
+        node["volume"] = NormalizeVolume(projectConfig.volume);
+        node["musicVolume"] = NormalizeVolume(projectConfig.musicVolume);
+        node["sfxVolume"] = NormalizeVolume(projectConfig.sfxVolume);
+        node["mute"] = projectConfig.mute;
         node["editor"] = projectConfig.editor;
         node["syncMode"] = NormalizeProjectSyncMode(projectConfig.syncMode);
         node["iconUUID"] = std::to_string(projectConfig.iconUUID);
@@ -71,6 +85,10 @@ namespace Canis
         projectConfig.frameLimitEditor = node["frameLimitEditor"].as<float>(projectConfig.frameLimitEditor);
         projectConfig.overrideSeed = node["overrideSeed"].as<bool>(projectConfig.overrideSeed);
         projectConfig.seed = node["useFrameLimit"].as<unsigned int>(projectConfig.seed);
+        projectConfig.volume = NormalizeVolume(node["volume"].as<float>(node["masterVolume"].as<float>(projectConfig.volume)));
+        projectConfig.musicVolume = NormalizeVolume(node["musicVolume"].as<float>(projectConfig.musicVolume));
+        projectConfig.sfxVolume = NormalizeVolume(node["sfxVolume"].as<float>(projectConfig.sfxVolume));
+        projectConfig.mute = node["mute"].as<bool>(projectConfig.mute);
         projectConfig.editor = node["editor"].as<bool>(projectConfig.editor);
         projectConfig.syncMode = node["syncMode"].as<int>(projectConfig.syncMode);
         if (!node["syncMode"] && node["vsync"])

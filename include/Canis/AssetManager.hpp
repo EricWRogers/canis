@@ -135,6 +135,18 @@ namespace Canis
         TextAsset *GetText(const std::string &_path, unsigned int _fontSize);
         TextAsset *GetText(i32 _textID);
 
+        int LoadAudioClip(const std::string &_path);
+        AudioClipAsset *GetAudioClip(const std::string &_path);
+        AudioClipAsset *GetAudioClip(i32 _audioID);
+
+        int LoadSound(const std::string &_path);
+        SoundAsset *GetSound(const std::string &_path);
+        SoundAsset *GetSound(i32 _soundID);
+
+        int LoadMusic(const std::string &_path);
+        MusicAsset *GetMusic(const std::string &_path);
+        MusicAsset *GetMusic(i32 _musicID);
+
         int LoadShader(const std::string &_pathWithOutExtension);
 
         int LoadMetaFile(const std::string &_path);

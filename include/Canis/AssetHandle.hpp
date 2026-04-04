@@ -6,6 +6,17 @@
 
 namespace Canis
 {
+    struct AudioAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path = "";
+
+        bool Empty() const
+        {
+            return uuid == UUID(0) && path.empty();
+        }
+    };
+
     struct SceneAssetHandle
     {
         UUID uuid = UUID(0);

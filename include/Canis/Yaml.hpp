@@ -15,8 +15,8 @@
 
 extern std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle);
 extern Canis::TextureHandle YAMLDecodeTexture(std::string &_path);
-extern std::string YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAssetHandle);
-extern Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const std::string &_path);
+extern YAML::Node YAMLEncodeAudioAssetHandle(const Canis::AudioAssetHandle &_audioAssetHandle);
+extern Canis::AudioAssetHandle YAMLDecodeAudioAssetHandle(const YAML::Node &_node);
 extern YAML::Node YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAssetHandle);
 extern Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const YAML::Node &_node);
 
@@ -99,6 +99,21 @@ namespace YAML
             rhs.y = node[1].as<float>();
             rhs.z = node[2].as<float>();
             rhs.w = node[3].as<float>();
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::AudioAssetHandle>
+    {
+        static Node encode(const Canis::AudioAssetHandle &_audioAssetHandle)
+        {
+            return YAMLEncodeAudioAssetHandle(_audioAssetHandle);
+        }
+
+        static bool decode(const Node &_node, Canis::AudioAssetHandle &_audioAssetHandle)
+        {
+            _audioAssetHandle = YAMLDecodeAudioAssetHandle(_node);
             return true;
         }
     };

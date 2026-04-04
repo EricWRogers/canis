@@ -22,10 +22,10 @@ namespace Canis
         int frameLimitEditor = 120.0f;
         bool overrideSeed = false;
         unsigned int seed = 0;
-        //float volume = 1.0f;
-        //float musicVolume = 1.0f;
-        //float sfxVolume = 1.0f;
-        //bool mute = false;
+        float volume = 1.0f;
+        float musicVolume = 1.0f;
+        float sfxVolume = 1.0f;
+        bool mute = false;
         //bool log = true;
         //bool logToFile = false;
         bool editor = true;

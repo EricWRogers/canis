@@ -71,6 +71,8 @@ namespace Canis
         // inspector variables
         void InputEntity(const std::string& _name, Canis::Entity* &_variable);
         void InputEntity(const std::string& _name, const char* _idSuffix, Canis::Entity* &_variable);
+        void InputAudioAsset(const std::string& _name, Canis::AudioAssetHandle &_variable);
+        void InputAudioAsset(const std::string& _name, const char* _idSuffix, Canis::AudioAssetHandle &_variable);
         void InputAnimationClip(const std::string& _name, Canis::AnimationClip2DID &_variable);
         void InputAnimationClip(const std::string& _name, const char* _idSuffix, Canis::AnimationClip2DID &_variable);
         void InputSceneAsset(const std::string& _name, Canis::SceneAssetHandle &_variable);

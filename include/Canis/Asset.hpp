@@ -93,6 +93,29 @@ namespace Canis
         std::string GetPath() { return m_path; }
     };
 
+    class AudioClipAsset : public Asset
+    {
+    private:
+        std::string m_path = "";
+        std::vector<float> m_samples = {};
+        int m_sampleRate = 0;
+        int m_channels = 0;
+
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        const std::string& GetPath() const { return m_path; }
+        const float* GetSamples() const { return m_samples.empty() ? nullptr : m_samples.data(); }
+        int GetSampleRate() const { return m_sampleRate; }
+        int GetChannels() const { return m_channels; }
+        int GetFrameCount() const { return m_channels > 0 ? static_cast<int>(m_samples.size()) / m_channels : 0; }
+        bool IsLoaded() const { return m_sampleRate > 0 && m_channels > 0 && !m_samples.empty(); }
+    };
+
+    using SoundAsset = AudioClipAsset;
+    using MusicAsset = AudioClipAsset;
+
     class MetaFileAsset : public Asset
     {
     private:
@@ -102,6 +125,7 @@ namespace Canis
             FRAGMENT,
             VERTEX,
             TEXTURE,
+            AUDIO,
             SCENE,
             ANIMATIONCLIP2D,
             MODEL,

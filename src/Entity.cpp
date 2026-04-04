@@ -5,6 +5,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Debug.hpp>
 
+#include <algorithm>
 #include <cmath>
 
 
@@ -145,7 +146,8 @@ RectTransform::LayoutData RectTransform::GetLayout() const
     const unsigned int renderMode = GetCanvasRenderMode();
 
     Vector2 parentMin = Vector2(0.0f);
-    Vector2 parentSize = Vector2(0.0f);
+    Vector2 parentActualSize = Vector2(0.0f);
+    Vector2 parentLogicalSize = Vector2(0.0f);
     Vector2 parentPivot = Vector2(0.0f);
     Vector2 parentScale = Vector2(1.0f);
     float parentRotation = 0.0f;
@@ -154,32 +156,42 @@ RectTransform::LayoutData RectTransform::GetLayout() const
     {
         const RectTransform& parentRect = parent->GetComponent<RectTransform>();
         parentMin = parentRect.GetRectMin();
-        parentSize = parentRect.GetResolvedSize();
+        parentActualSize = parentRect.GetResolvedSize();
         parentPivot = parentRect.GetPosition();
         parentScale = AbsVector2(parentRect.GetScale());
         parentRotation = parentRect.GetRotation();
+
+        parentLogicalSize = parentActualSize;
+        if (parentScale.x != 0.0f)
+            parentLogicalSize.x /= parentScale.x;
+        if (parentScale.y != 0.0f)
+            parentLogicalSize.y /= parentScale.y;
     }
     else if (renderMode != CanvasRenderMode::WORLD_SPACE)
     {
         const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
         const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
 
-        parentSize = Vector2(screenWidth, screenHeight);
+        parentActualSize = Vector2(screenWidth, screenHeight);
+        parentLogicalSize = parentActualSize;
         if (renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
         {
+            const float canvasScale = GetCanvasOverlayScaleFactor();
+            parentScale = Vector2(canvasScale);
+            parentLogicalSize = GetCanvasOverlayLogicalSize();
             parentMin = Vector2(-screenWidth * 0.5f, -screenHeight * 0.5f);
             parentPivot = Vector2(0.0f);
         }
         else
         {
-            parentMin = GetActiveCamera2DPosition(entity->scene) - (parentSize * 0.5f);
-            parentPivot = parentMin + (parentSize * 0.5f);
+            parentMin = GetActiveCamera2DPosition(entity->scene) - (parentActualSize * 0.5f);
+            parentPivot = parentMin + (parentActualSize * 0.5f);
         }
     }
 
     Vector2 resolvedSize = size;
     if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
-        resolvedSize += parentSize * (anchorMax - anchorMin);
+        resolvedSize += parentLogicalSize * (anchorMax - anchorMin);
 
     resolvedSize.x *= parentScale.x * std::abs(scale.x);
     resolvedSize.y *= parentScale.y * std::abs(scale.y);
@@ -188,8 +200,8 @@ RectTransform::LayoutData RectTransform::GetLayout() const
 
     if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
     {
-        const Vector2 anchorRectMin = parentMin + parentSize * anchorMin;
-        const Vector2 anchorRectMax = parentMin + parentSize * anchorMax;
+        const Vector2 anchorRectMin = parentMin + parentActualSize * anchorMin;
+        const Vector2 anchorRectMax = parentMin + parentActualSize * anchorMax;
         const Vector2 scaledPosition = Vector2(position.x * parentScale.x, position.y * parentScale.y);
 
         pivotPosition = anchorRectMin + ((anchorRectMax - anchorRectMin) * pivot) + scaledPosition;
@@ -220,6 +232,46 @@ const Canvas* RectTransform::FindCanvas() const
     }
 
     return nullptr;
+}
+
+float RectTransform::GetCanvasOverlayScaleFactor() const
+{
+    if (entity == nullptr)
+        return 1.0f;
+
+    const Canvas* canvas = FindCanvas();
+    if (canvas == nullptr || canvas->renderMode != CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+        return 1.0f;
+
+    const float referenceWidth = std::max(1.0f, canvas->screenSize.x);
+    const float referenceHeight = std::max(1.0f, canvas->screenSize.y);
+    const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
+    const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
+
+    switch (canvas->scaleMode)
+    {
+    case CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH:
+        return screenWidth / referenceWidth;
+    case CanvasScaleMode::SCALE_WITH_SCREEN_HEIGHT:
+        return screenHeight / referenceHeight;
+    default:
+        return 1.0f;
+    }
+}
+
+Vector2 RectTransform::GetCanvasOverlayLogicalSize() const
+{
+    if (entity == nullptr)
+        return Vector2(0.0f);
+
+    const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
+    const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
+    const float canvasScale = GetCanvasOverlayScaleFactor();
+
+    if (canvasScale == 0.0f)
+        return Vector2(screenWidth, screenHeight);
+
+    return Vector2(screenWidth / canvasScale, screenHeight / canvasScale);
 }
 
 Vector2 RectTransform::GetNormalizedAnchor(const RectAnchor &_anchor)
@@ -271,6 +323,15 @@ void RectTransform::SetPosition(Vector2 _globalPos)
             delta.x /= parentScale.x;
         if (parentScale.y != 0.0f)
             delta.y /= parentScale.y;
+    }
+    else if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+    {
+        const float canvasScale = GetCanvasOverlayScaleFactor();
+        if (canvasScale != 0.0f)
+        {
+            delta.x /= canvasScale;
+            delta.y /= canvasScale;
+        }
     }
 
     position += delta;

@@ -250,6 +250,18 @@ namespace Canis
         "Screen Space Camera",
         "World Space"};
 
+    namespace CanvasScaleMode
+    {
+        constexpr unsigned int CONSTANT_PIXEL_SIZE = 0u;
+        constexpr unsigned int SCALE_WITH_SCREEN_WIDTH = 1u;
+        constexpr unsigned int SCALE_WITH_SCREEN_HEIGHT = 2u;
+    }
+
+    static const char *CanvasScaleModeLabels[] = {
+        "Constant Pixel Size",
+        "Scale With Screen Width",
+        "Scale With Screen Height"};
+
     struct Canvas
     {
     public:
@@ -263,6 +275,8 @@ namespace Canis
 
         bool active = true;
         unsigned int renderMode = CanvasRenderMode::SCREEN_SPACE_OVERLAY;
+        unsigned int scaleMode = CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
+        Vector2 screenSize = Vector2(1280.0f, 800.0f);
     };
 
     struct RectTransform
@@ -361,7 +375,15 @@ namespace Canis
         Vector2 GetScale() const
         {
             if (!parent)
+            {
+                if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+                {
+                    const float canvasScale = GetCanvasOverlayScaleFactor();
+                    return Vector2(scale.x * canvasScale, scale.y * canvasScale);
+                }
+
                 return scale;
+            }
 
             if (parent->HasComponent<RectTransform>())
             {
@@ -387,6 +409,14 @@ namespace Canis
                     scale.y = (parentScale.y != 0.0f) ? (_globalScale.y / parentScale.y) : _globalScale.y;
                     return;
                 }
+            }
+
+            if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+            {
+                const float canvasScale = GetCanvasOverlayScaleFactor();
+                scale.x = (canvasScale != 0.0f) ? (_globalScale.x / canvasScale) : _globalScale.x;
+                scale.y = (canvasScale != 0.0f) ? (_globalScale.y / canvasScale) : _globalScale.y;
+                return;
             }
 
             scale = _globalScale;
@@ -605,6 +635,8 @@ namespace Canis
 
         LayoutData GetLayout() const;
         const Canvas* FindCanvas() const;
+        float GetCanvasOverlayScaleFactor() const;
+        Vector2 GetCanvasOverlayLogicalSize() const;
         static Vector2 GetNormalizedAnchor(const RectAnchor &_anchor);
     };
 
