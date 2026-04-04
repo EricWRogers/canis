@@ -396,6 +396,8 @@ namespace Canis
             m_gameCodeUpdateTimeMs = 0.0f;
         }
 
+        ProcessPendingSceneLoad();
+
         Uint64 renderStart = SDL_GetTicksNS();
         window.Clear();
 #if CANIS_EDITOR
@@ -416,6 +418,20 @@ namespace Canis
         Time::EndFrame();
 
         return true;
+    }
+
+    void App::ProcessPendingSceneLoad()
+    {
+        if (m_pendingScenePath.empty() || m_runtime == nullptr)
+            return;
+
+        RuntimeContext &runtime = *m_runtime;
+        const std::string nextScenePath = m_pendingScenePath;
+        m_pendingScenePath.clear();
+
+        scene.Unload();
+        scene.Init(this, runtime.window.get(), runtime.inputManager.get(), nextScenePath);
+        scene.Load(m_scriptRegistry);
     }
 
     void App::ShutdownRuntime()
@@ -2357,6 +2373,19 @@ namespace Canis
         }
 
         return nullptr;
+    }
+
+    void App::LoadScene(const std::string& _path)
+    {
+        if (_path.empty())
+            return;
+
+        m_pendingScenePath = _path;
+    }
+
+    void App::LoadScene(const SceneAssetHandle& _sceneAssetHandle)
+    {
+        LoadScene(AssetManager::ResolvePath(_sceneAssetHandle));
     }
 
     bool App::DispatchUIAction(Entity& _targetEntity, const std::string& _scriptName, const std::string& _actionName, const UIActionContext& _context)

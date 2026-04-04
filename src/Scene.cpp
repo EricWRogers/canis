@@ -484,22 +484,23 @@ namespace Canis
     std::vector<Entity*> Scene::Instantiate(const SceneAssetHandle &_sceneAssetHandle)
     {
         std::vector<Entity*> rootEntities = {};
+        const std::string scenePath = AssetManager::ResolvePath(_sceneAssetHandle);
 
-        if (_sceneAssetHandle.path.empty())
+        if (scenePath.empty())
             return rootEntities;
 
         if (app == nullptr)
             return rootEntities;
 
-        if (!std::filesystem::exists(_sceneAssetHandle.path))
+        if (!std::filesystem::exists(scenePath))
         {
-            Debug::Warning("Scene::Instantiate could not find scene '%s'.", _sceneAssetHandle.path.c_str());
+            Debug::Warning("Scene::Instantiate could not find scene '%s'.", scenePath.c_str());
             return rootEntities;
         }
 
         try
         {
-            YAML::Node root = YAML::LoadFile(_sceneAssetHandle.path);
+            YAML::Node root = YAML::LoadFile(scenePath);
             YAML::Node entities = root["Entities"];
             std::vector<Entity*> newEntities = LoadEntityNodes(app->GetScriptRegistry(), entities, false);
 
@@ -513,7 +514,7 @@ namespace Canis
         {
             Debug::Warning(
                 "Scene::Instantiate failed to load '%s': %s",
-                _sceneAssetHandle.path.c_str(),
+                scenePath.c_str(),
                 _exception.what());
         }
 

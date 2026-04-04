@@ -54,6 +54,18 @@ namespace Canis
             return std::string("Path was not found in AssetLibrary");
         }
 
+        inline std::string ResolvePath(const SceneAssetHandle &_sceneAssetHandle)
+        {
+            if (_sceneAssetHandle.uuid != UUID(0))
+            {
+                const std::string resolvedPath = GetPath(_sceneAssetHandle.uuid);
+                if (resolvedPath != "Path was not found in AssetLibrary")
+                    return resolvedPath;
+            }
+
+            return _sceneAssetHandle.path;
+        }
+
         inline int GetID(UUID _uuid)
         {
             auto &assetLibrary = GetAssetLibrary();

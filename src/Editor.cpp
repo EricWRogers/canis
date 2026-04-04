@@ -1540,13 +1540,24 @@ namespace Canis
         ImGui::Text("%s", _name.c_str());
         ImGui::SameLine();
 
-        std::string label = "[ none ]";
-        if (!_variable.path.empty())
+        std::string resolvedPath = _variable.path;
+        if (_variable.uuid != UUID(0))
         {
-            if (MetaFileAsset *meta = AssetManager::GetMetaFile(_variable.path))
+            const std::string pathFromUUID = AssetManager::GetPath(_variable.uuid);
+            if (pathFromUUID != "Path was not found in AssetLibrary")
+                resolvedPath = pathFromUUID;
+        }
+
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
                 label = meta->name;
             else
-                label = _variable.path;
+                label = resolvedPath;
         }
 
         ImGui::Button(label.c_str(), ImVec2(170, 0));
@@ -1561,7 +1572,10 @@ namespace Canis
                 if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
                 {
                     if (meta->type == MetaFileAsset::FileType::SCENE)
+                    {
+                        _variable.uuid = meta->uuid;
                         _variable.path = path;
+                    }
                 }
             }
             ImGui::EndDragDropTarget();
@@ -1570,14 +1584,20 @@ namespace Canis
         if (ImGui::BeginPopupContextItem("scene_asset_ctx"))
         {
             if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
                 _variable.path.clear();
+            }
 
             ImGui::EndPopup();
         }
 
         ImGui::SameLine();
         if (ImGui::SmallButton("X##clear_scene_asset"))
+        {
+            _variable.uuid = UUID(0);
             _variable.path.clear();
+        }
 
         ImGui::PopID();
     }

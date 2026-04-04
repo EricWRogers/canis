@@ -27,6 +27,10 @@ public:
     std::vector<ScriptConf>& GetScriptRegistry() { return m_scriptRegistry; }
 
     ScriptConf* GetScriptConf(const std::string& _name);
+    void LoadScene(const std::string& _path);
+    void LoadScene(const SceneAssetHandle& _sceneAssetHandle);
+    const std::string& GetPendingScenePath() const { return m_pendingScenePath; }
+
     bool AddRequiredScript(Entity& _entity, const std::string& _name);
     bool DispatchUIAction(Entity& _targetEntity, const std::string& _scriptName, const std::string& _actionName, const UIActionContext& _context);
 
@@ -48,11 +52,13 @@ private:
     static void WebMainLoop(void *_appPtr);
 #endif
     void RegisterDefaults(Editor& _editor);
+    void ProcessPendingSceneLoad();
     Editor* m_editor;
     RuntimeContext* m_runtime = nullptr;
     float m_updateTimeMs = 0.0f;
     float m_sceneUpdateTimeMs = 0.0f;
     float m_gameCodeUpdateTimeMs = 0.0f;
     float m_renderTimeMs = 0.0f;
+    std::string m_pendingScenePath = "";
 };
 }
