@@ -3366,14 +3366,6 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             Canis::SaveProjectConfig();
         }
 
-        SceneAssetHandle lastEditorScene = Canis::GetEditorConfig().lastEditorScene;
-        InputSceneAsset("last editor scene", "##lastEditorScene", lastEditorScene);
-        if (SceneAssetHandleChanged(lastEditorScene, Canis::GetEditorConfig().lastEditorScene))
-        {
-            Canis::GetEditorConfig().lastEditorScene = lastEditorScene;
-            Canis::SaveEditorConfig();
-        }
-
         int targetGameWidth = Canis::GetProjectConfig().targetGameWidth;
         int targetGameHeight = Canis::GetProjectConfig().targetGameHeight;
         ImGui::Text("target game width");
