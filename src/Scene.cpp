@@ -38,12 +38,11 @@ namespace Canis
         }
     }
 
-    void Scene::Init(App *_app, Window *_window, InputManager *_inputManger, std::string _path)
+    void Scene::Init(App *_app, Window *_window, InputManager *_inputManger)
     {
         app = _app;
         m_window = _window;
         m_inputManager = _inputManger;
-        m_path = _path;
         m_paused = false;
         ClearEditorCameraOverrides();
 
@@ -239,11 +238,12 @@ namespace Canis
         GetWindow().RequestClose();
     }
 
-    void Scene::Load(std::vector<ScriptConf>& _scriptRegistry)
+    void Scene::Load(std::string _path)
     {
         YAML::Node root;
         try
         {
+            m_path = _path;
             root = YAML::LoadFile(m_path);
         }
         catch (const YAML::BadFile&)
@@ -262,10 +262,10 @@ namespace Canis
             Debug::FatalError("Scene not found: %s", m_path.c_str());
         }
         
-        LoadSceneNode(_scriptRegistry, root);
+        LoadSceneNode(root);
     }
 
-    void Scene::LoadSceneNode(std::vector<ScriptConf>& _scriptRegistry, YAML::Node &_root)
+    void Scene::LoadSceneNode(YAML::Node &_root)
     {
         CreateRenderSystem<Canis::MeshRenderer3DSystem>();
         CreateRenderSystem<Canis::SpriteRenderer2DSystem>();
@@ -345,10 +345,10 @@ namespace Canis
 
         auto entities = _root["Entities"];
 
-        LoadEntityNodes(_scriptRegistry, entities);
+        LoadEntityNodes(entities);
     }
 
-    std::vector<Entity*> Scene::LoadEntityNodes(std::vector<ScriptConf>& _scriptRegistry, YAML::Node &_entities, bool _copyUUID)
+    std::vector<Entity*> Scene::LoadEntityNodes(YAML::Node &_entities, bool _copyUUID)
     {
         m_targetUUIDNewUUID.clear();
         m_entityConnectInfo.clear();
@@ -359,7 +359,7 @@ namespace Canis
         {
             for (auto e : _entities)
             {
-                newEntitys.push_back(&DecodeEntity(_scriptRegistry, e, _copyUUID));
+                newEntitys.push_back(&DecodeEntity(e, _copyUUID));
             }
 
             for (auto eci : m_entityConnectInfo)
@@ -470,7 +470,7 @@ namespace Canis
         return newEntitys;
     }
 
-    Canis::Entity& Scene::DecodeEntity(std::vector<ScriptConf>& _scriptRegistry, YAML::Node _node, bool _copyUUID)
+    Canis::Entity& Scene::DecodeEntity(YAML::Node _node, bool _copyUUID)
     {
         Entity& entity = *CreateEntity();
         
@@ -483,11 +483,13 @@ namespace Canis
         entity.name = _node["Name"].as<std::string>("");
         entity.tag = _node["Tag"].as<std::string>("");
 
-        for (int i = 0; i < _scriptRegistry.size(); i++)
+        std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
+
+        for (int i = 0; i < scriptRegistry.size(); i++)
         {
-            if (_scriptRegistry[i].Decode)
+            if (scriptRegistry[i].Decode)
             {
-                _scriptRegistry[i].Decode(_node, entity, false);
+                scriptRegistry[i].Decode(_node, entity, false);
             }
         }
 
@@ -536,7 +538,7 @@ namespace Canis
         {
             YAML::Node root = YAML::LoadFile(scenePath);
             YAML::Node entities = root["Entities"];
-            std::vector<Entity*> newEntities = LoadEntityNodes(app->GetScriptRegistry(), entities, false);
+            std::vector<Entity*> newEntities = LoadEntityNodes(entities, false);
 
             for (Entity *entity : newEntities)
             {
@@ -555,13 +557,13 @@ namespace Canis
         return rootEntities;
     }
 
-    void Scene::Save(std::vector<ScriptConf>& _scriptRegistry)
+    void Scene::Save()
     {
         Debug::Log("Save Scene");
         
         YAML::Emitter out;
 
-        out << EncodeScene(_scriptRegistry);
+        out << EncodeScene();
 
         if (m_path.size() > 0)
         {
@@ -575,7 +577,7 @@ namespace Canis
         }
     }
 
-    YAML::Node Scene::EncodeScene(std::vector<ScriptConf>& _scriptRegistry)
+    YAML::Node Scene::EncodeScene()
     {
         YAML::Node node;
 
@@ -596,7 +598,7 @@ namespace Canis
             if (!entity)
                 continue;
 
-            entities.push_back(EncodeEntity(_scriptRegistry, *entity));
+            entities.push_back(EncodeEntity(*entity));
         }
 
         node["Entities"] = entities;
@@ -604,16 +606,18 @@ namespace Canis
         return node;
     }
 
-    YAML::Node Scene::EncodeEntity(std::vector<ScriptConf>& _scriptRegistry, Entity &_entity)
+    YAML::Node Scene::EncodeEntity(Entity &_entity)
     {
         YAML::Node node;
         node["Entity"] = _entity.uuid;
         node["Name"] = _entity.name;
         node["Tag"] = _entity.tag;
 
-        for (int i = 0; i < _scriptRegistry.size(); i++)
-            if (_scriptRegistry[i].Encode)
-                _scriptRegistry[i].Encode(node, _entity);
+        std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
+
+        for (int i = 0; i < scriptRegistry.size(); i++)
+            if (scriptRegistry[i].Encode)
+                scriptRegistry[i].Encode(node, _entity);
         
         return node;
     }

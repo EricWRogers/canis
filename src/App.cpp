@@ -554,12 +554,12 @@ namespace Canis
         if (runtime.editorRuntimeEnabled)
             SaveLastEditorScenePath(startupScenePath);
 
-        scene.Init(this, runtime.window.get(), runtime.inputManager.get(), startupScenePath);
+        scene.Init(this, runtime.window.get(), runtime.inputManager.get());
 
         runtime.gameCodeObject = GameCodeObjectInit(GetGameCodeSharedObjectPath());
         GameCodeObjectInitFunction(&runtime.gameCodeObject, this);
 
-        scene.Load(m_scriptRegistry);
+        scene.Load(startupScenePath);
     }
 
     bool App::RunFrame()
@@ -686,8 +686,8 @@ namespace Canis
 #endif
 
         scene.Unload();
-        scene.Init(this, runtime.window.get(), runtime.inputManager.get(), nextScenePath);
-        scene.Load(m_scriptRegistry);
+        scene.Init(this, runtime.window.get(), runtime.inputManager.get());
+        scene.Load(nextScenePath);
     }
 
     void App::ShutdownRuntime()

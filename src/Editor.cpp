@@ -48,6 +48,7 @@ namespace Canis
     namespace
     {
         YAML::Node g_lastPlaySceneNode;
+        std::string g_lastPlayScenePath;
         constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
 Size=1920,1057
 Collapsed=0
@@ -1145,7 +1146,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_scene->SetPaused(false);
         m_mode = EditorMode::EDIT;
         m_scene->Unload();
-        m_scene->LoadSceneNode(m_app->GetScriptRegistry(), g_lastPlaySceneNode);
+        m_scene->m_path = g_lastPlayScenePath;
+        m_scene->LoadSceneNode(g_lastPlaySceneNode);
     }
 
     void Editor::DrawSceneView()
@@ -2152,11 +2154,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 YAML::Node nodes;
                 for (Canis::Entity* e : entities)
                 {
-                    nodes.push_back(m_scene->EncodeEntity(m_app->GetScriptRegistry(), *e));
+                    nodes.push_back(m_scene->EncodeEntity(*e));
                 }
 
                 // option to tell it to generate new UUIDS
-                m_scene->LoadEntityNodes(m_app->GetScriptRegistry(), nodes, false);
+                m_scene->LoadEntityNodes(nodes, false);
             }
 
             if (idx >= 0 && ImGui::MenuItem("Remove"))
@@ -3253,8 +3255,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(meta->path);
                             Canis::SaveEditorConfig();
                             m_scene->Unload();
-                            m_scene->Init(m_app, m_window, &m_scene->GetInputManager(), meta->path);
-                            m_scene->Load(m_app->GetScriptRegistry());
+                            m_scene->Load(meta->path);
                         }
                         else if ((meta->type == MetaFileAsset::FileType::FRAGMENT ||
                                   meta->type == MetaFileAsset::FileType::VERTEX) &&
@@ -3514,8 +3515,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             if (ImGui::Button("Save##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
-                m_scene->Save(m_app->GetScriptRegistry());
-            }
+                m_scene->Save();
+            }            
             ImGui::SameLine();
             if (ImGui::Button("Play##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
@@ -3526,7 +3527,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 else
                     Time::SetTargetFPS(100000.0f);
                 // save copy of scene
-                g_lastPlaySceneNode = m_scene->EncodeScene(m_app->GetScriptRegistry());
+                g_lastPlaySceneNode = m_scene->EncodeScene();
+                g_lastPlayScenePath = m_scene->m_path;
 
                 m_mode = EditorMode::PLAY;
             }
@@ -3538,14 +3540,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 m_assetPaths = FindFilesInFolder("assets", "");
 
                 // save copy of scene
-                g_lastPlaySceneNode = m_scene->EncodeScene(m_app->GetScriptRegistry());
+                g_lastPlaySceneNode = m_scene->EncodeScene();
 
                 // unload data
                 m_scene->Unload();
 
                 GameCodeObjectWatchFile(m_gameSharedLib, m_app);
 
-                m_scene->LoadSceneNode(m_app->GetScriptRegistry(), g_lastPlaySceneNode);
+                m_scene->LoadSceneNode(g_lastPlaySceneNode);
             }
         }
         else

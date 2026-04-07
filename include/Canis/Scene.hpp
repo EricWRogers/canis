@@ -35,6 +35,9 @@ namespace Canis
 
     class Scene
     {
+        #if CANIS_EDITOR
+            friend class Editor;
+        #endif
     public:
         struct SystemTiming
         {
@@ -46,19 +49,19 @@ namespace Canis
 
         App* app = nullptr;
         
-        void Init(App *_app, Window *_window, InputManager *_inputManger, std::string _path);
+        void Init(App *_app, Window *_window, InputManager *_inputManger);
         void Update(float _deltaTime);
         void Render(float _deltaTime);
         void Unload();
         
-        void Save(std::vector<ScriptConf>& _scriptRegistry);
-        YAML::Node EncodeScene(std::vector<ScriptConf>& _scriptRegistry);
-        YAML::Node EncodeEntity(std::vector<ScriptConf>& _scriptRegistry, Entity &_entity);
+        void Save();
+        YAML::Node EncodeScene();
+        YAML::Node EncodeEntity(Entity &_entity);
 
-        void Load(std::vector<ScriptConf>& _scriptRegistry);
-        void LoadSceneNode(std::vector<ScriptConf>& _scriptRegistry, YAML::Node &_root);
-        std::vector<Entity*> LoadEntityNodes(std::vector<ScriptConf>& _scriptRegistry, YAML::Node &_entities, bool _copyUUID = true);
-        Canis::Entity& DecodeEntity(std::vector<ScriptConf>& _scriptRegistry, YAML::Node _node, bool _copyUUID = true);
+        void Load(std::string _path);
+        void LoadSceneNode(YAML::Node &_root);
+        std::vector<Entity*> LoadEntityNodes(YAML::Node &_entities, bool _copyUUID = true);
+        Canis::Entity& DecodeEntity(YAML::Node _node, bool _copyUUID = true);
         void GetEntityAfterLoad(Canis::UUID _uuid, Canis::Entity* &_variable);
         std::vector<Entity*> Instantiate(const SceneAssetHandle &_sceneAssetHandle);
 
