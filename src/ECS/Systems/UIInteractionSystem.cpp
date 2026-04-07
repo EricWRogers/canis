@@ -155,6 +155,14 @@ namespace Canis
             Entity* entity = button.entity;
             if (entity == nullptr || !button.active)
                 continue;
+            
+             if (button.baseValuesSaved == false) {
+                button.baseValuesSaved = true;
+                button.baseScale = rect.scale.x;
+
+                if (entity->HasComponent<Sprite2D>())
+                    button.baseColor = entity->GetComponent<Sprite2D>().color;
+            }
 
             const bool visible = rect.IsActiveInHierarchy();
             button.hovered = false;
@@ -242,7 +250,7 @@ namespace Canis
             }
         }
 
-        if (hoveredButton != nullptr && hoveredButton->HasComponent<UIButton>())
+        if (hoveredButton != nullptr && hoveredButton->HasComponents<RectTransform, UIButton>())
         {
             UIButton& button = hoveredButton->GetComponent<UIButton>();
             RectTransform& rect = hoveredButton->GetComponent<RectTransform>();

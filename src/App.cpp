@@ -67,6 +67,12 @@ namespace Canis
             return fs::exists(assetsPath) && fs::is_directory(assetsPath);
         }
 
+        void DrawInspectorColorField(const char *_label, const char *_idSuffix, Color &_value)
+        {
+            const std::string imguiLabel = BuildInspectorFieldLabel(_label, _idSuffix);
+            ImGui::ColorEdit4(imguiLabel.c_str(), &_value.r);
+        }
+
         void ResolveProjectWorkingDirectory()
         {
             if (HasAssetsFolder(fs::current_path()))
@@ -1275,10 +1281,8 @@ namespace Canis
                     comp["targetEntity"] = _entity.scene.GetLiveEntityUUID(button->targetEntity);
                     comp["targetScript"] = button->targetScript;
                     comp["actionName"] = button->actionName;
-                    comp["baseColor"] = button->baseColor;
                     comp["hoverColor"] = button->hoverColor;
                     comp["pressedColor"] = button->pressedColor;
-                    comp["baseScale"] = button->baseScale;
                     comp["hoverScale"] = button->hoverScale;
                     comp["pressedScale"] = button->pressedScale;
                     _node["Canis::UIButton"] = comp;
@@ -1291,10 +1295,8 @@ namespace Canis
                     button.active = comp["active"].as<bool>(true);
                     button.targetScript = comp["targetScript"].as<std::string>("");
                     button.actionName = comp["actionName"].as<std::string>("");
-                    button.baseColor = comp["baseColor"].as<Vector4>(Color(1.0f));
                     button.hoverColor = comp["hoverColor"].as<Vector4>(Color(1.0f));
                     button.pressedColor = comp["pressedColor"].as<Vector4>(Color(0.85f, 0.85f, 0.85f, 1.0f));
-                    button.baseScale = comp["baseScale"].as<float>(1.0f);
                     button.hoverScale = comp["hoverScale"].as<float>(1.03f);
                     button.pressedScale = comp["pressedScale"].as<float>(0.98f);
 
@@ -1318,10 +1320,9 @@ namespace Canis
                 DrawInspectorField(_editor, "targetScript", _conf.name.c_str(), button->targetScript);
                 DrawInspectorField(_editor, "actionName", _conf.name.c_str(), button->actionName);
 #endif
-                DrawInspectorField(_editor, "baseColor", _conf.name.c_str(), button->baseColor);
-                DrawInspectorField(_editor, "hoverColor", _conf.name.c_str(), button->hoverColor);
-                DrawInspectorField(_editor, "pressedColor", _conf.name.c_str(), button->pressedColor);
-                DrawInspectorField(_editor, "baseScale", _conf.name.c_str(), button->baseScale);
+                DrawInspectorColorField("hoverColor", _conf.name.c_str(), button->hoverColor);
+                DrawInspectorColorField("pressedColor", _conf.name.c_str(), button->pressedColor);
+                
                 DrawInspectorField(_editor, "hoverScale", _conf.name.c_str(), button->hoverScale);
                 DrawInspectorField(_editor, "pressedScale", _conf.name.c_str(), button->pressedScale);
             },
@@ -1432,8 +1433,8 @@ namespace Canis
                 DrawInspectorField(_editor, "actionName", _conf.name.c_str(), dropTarget->actionName);
 #endif
                 DrawInspectorField(_editor, "acceptedPayloadType", _conf.name.c_str(), dropTarget->acceptedPayloadType);
-                DrawInspectorField(_editor, "baseColor", _conf.name.c_str(), dropTarget->baseColor);
-                DrawInspectorField(_editor, "hoverColor", _conf.name.c_str(), dropTarget->hoverColor);
+                DrawInspectorColorField("baseColor", _conf.name.c_str(), dropTarget->baseColor);
+                DrawInspectorColorField("hoverColor", _conf.name.c_str(), dropTarget->hoverColor);
             },
         };
 

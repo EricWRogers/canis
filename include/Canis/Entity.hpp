@@ -1264,14 +1264,17 @@ namespace Canis
         Entity* targetEntity = nullptr;
         std::string targetScript = "";
         std::string actionName = "";
-        Color baseColor = Color(1.0f);
+        
+        Color baseColor = Color(1.0f); // set the first update in UIInteractionSystem
         Color hoverColor = Color(1.0f);
         Color pressedColor = Color(0.85f, 0.85f, 0.85f, 1.0f);
-        float baseScale = 1.0f;
+        
+        float baseScale = 1.0f; // set the first update in UIInteractionSystem
         float hoverScale = 1.03f;
         float pressedScale = 0.98f;
         bool hovered = false;
         bool pressed = false;
+        bool baseValuesSaved = false;
     };
 
     struct UIDragSource

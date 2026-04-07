@@ -4,6 +4,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Editor.hpp>
 #include <Canis/Yaml.hpp>
+#include <Canis/Math.hpp>
 
 #include <algorithm>
 #include <cstdio>
@@ -162,6 +163,10 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
     else if constexpr (std::is_same_v<T, Vector4>)
     {
         ImGui::InputFloat4(fullLabel, &_value.x);
+    }
+    else if constexpr (std::is_same_v<T, Canis::Color>)
+    {
+        ImGui::ColorEdit4(fullLabel, &_value.r);
     }
     else if constexpr (std::is_same_v<T, std::string>)
     {
