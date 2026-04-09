@@ -37,12 +37,20 @@
 
 namespace Canis
 {
-    static const char *GetInspectorFieldID(const char *_label, const char *_idSuffix)
+    static void PushInspectorFieldID(const char *_label, const char *_idSuffix)
+    {
+        ImGui::PushID((_label != nullptr) ? _label : "");
+
+        if (_idSuffix != nullptr && _idSuffix[0] != '\0')
+            ImGui::PushID(_idSuffix);
+    }
+
+    static void PopInspectorFieldID(const char *_idSuffix)
     {
         if (_idSuffix != nullptr && _idSuffix[0] != '\0')
-            return _idSuffix;
+            ImGui::PopID();
 
-        return _label;
+        ImGui::PopID();
     }
 
     namespace
@@ -1667,7 +1675,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::InputEntity(const std::string &_name, const char *_idSuffix, Canis::Entity *&_variable)
     {
-        ImGui::PushID(GetInspectorFieldID(_name.c_str(), _idSuffix));
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
         ImGui::Text("%s", _name.c_str());
         
         ImGui::SameLine();
@@ -1711,7 +1719,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             ImGui::EndPopup();
         }
 
-        ImGui::PopID();
+        PopInspectorFieldID(_idSuffix);
     }
 
     void Editor::InputAnimationClip(const std::string& _name, Canis::AnimationClip2DID &_variable)
@@ -1726,7 +1734,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::InputAudioAsset(const std::string &_name, const char *_idSuffix, Canis::AudioAssetHandle &_variable)
     {
-        ImGui::PushID(GetInspectorFieldID(_name.c_str(), _idSuffix));
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
         ImGui::Text("%s", _name.c_str());
         ImGui::SameLine();
 
@@ -1789,12 +1797,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             _variable.path.clear();
         }
 
-        ImGui::PopID();
+        PopInspectorFieldID(_idSuffix);
     }
 
     void Editor::InputAnimationClip(const std::string& _name, const char *_idSuffix, Canis::AnimationClip2DID &_variable)
     {
-        ImGui::PushID(GetInspectorFieldID(_name.c_str(), _idSuffix));
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
         ImGui::Text("%s", _name.c_str());
 
         ImGui::SameLine();
@@ -1822,7 +1830,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             ImGui::EndDragDropTarget();
         }
 
-        ImGui::PopID();
+        PopInspectorFieldID(_idSuffix);
     }
 
     void Editor::InputSceneAsset(const std::string &_name, Canis::SceneAssetHandle &_variable)
@@ -1832,7 +1840,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::InputSceneAsset(const std::string &_name, const char *_idSuffix, Canis::SceneAssetHandle &_variable)
     {
-        ImGui::PushID(GetInspectorFieldID(_name.c_str(), _idSuffix));
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
         ImGui::Text("%s", _name.c_str());
         ImGui::SameLine();
 
@@ -1895,7 +1903,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             _variable.path.clear();
         }
 
-        ImGui::PopID();
+        PopInspectorFieldID(_idSuffix);
     }
 
     bool Editor::IsDescendantOf(Canis::Entity *_parent, Canis::Entity *_potentialChild)
