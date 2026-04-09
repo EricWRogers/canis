@@ -51,4 +51,15 @@ namespace Canis
     {
         return _min + _fraction * (_max - _min);
     }
+
+    float Clamp01(float _value)
+    {
+        if (_value < 0.0f)
+            return 0.0f;
+        
+        if (_value > 1.0f)
+            return 1.0f;
+
+        return _value;
+    }
 }

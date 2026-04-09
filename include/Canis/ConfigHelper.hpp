@@ -419,6 +419,52 @@ void UnRegister##type##System(Canis::App& _app)       \
     config.registry.propertyOrder.push_back(#property);                                             		\
 }
 
+template <typename Component, typename Accessor>
+inline void RegisterAccessorPropertyImpl(ScriptConf& _config, const char* _propertyName, Accessor&& _accessor)
+{
+    using AccessorType = std::decay_t<Accessor>;
+    using PropertyType = std::remove_cvref_t<decltype(_accessor(std::declval<Component&>()))>;
+    AccessorType accessor = std::forward<Accessor>(_accessor);
+
+    static_assert(!std::is_same_v<PropertyType, Canis::Entity>,
+        "REGISTER_PROPERTY does not support Canis::Entity by value. Use Canis::Entity* for entity references.");
+
+    _config.registry.setters[_propertyName] =
+        [accessor](YAML::Node& _node, void* _componentPtr)
+        {
+            auto* typedComponent = static_cast<Component*>(_componentPtr);
+            auto& value = accessor(*typedComponent);
+            SetRegisteredProperty(_node, *typedComponent, value);
+        };
+
+    _config.registry.getters[_propertyName] =
+        [accessor](void* _componentPtr) -> YAML::Node
+        {
+            auto* typedComponent = static_cast<Component*>(_componentPtr);
+            auto& value = accessor(*typedComponent);
+            return GetRegisteredProperty(*typedComponent, value);
+        };
+
+    _config.registry.drawers[_propertyName] =
+        [accessor](Editor& _editor, const std::string& _propertyNameValue, void* _componentPtr, const std::string& _idSuffix)
+        {
+            auto* typedComponent = static_cast<Component*>(_componentPtr);
+            auto& value = accessor(*typedComponent);
+            DrawInspectorField<PropertyType>(_editor, _propertyNameValue.c_str(), _idSuffix.c_str(), value);
+        };
+
+    _config.registry.propertyOrder.push_back(_propertyName);
+}
+
+#define RegisterAccessorProperty(config, component, member, property)                              \
+    RegisterAccessorPropertyImpl<component>(                                                       \
+        (config),                                                                                  \
+        #property,                                                                                 \
+        [](component& _component) -> decltype(auto)                                                \
+        {                                                                                          \
+            return (_component.member.property);                                                   \
+        })
+
 #define UNREGISTER_PROPERTY(registry, component, property)                          \
 {                                                                                   \
     registry.setters.erase(#property);                                              \

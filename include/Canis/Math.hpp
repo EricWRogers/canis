@@ -102,6 +102,8 @@ namespace Canis
     void Lerp(glm::vec4 &_value, const glm::vec4 &_min, const glm::vec4 &_max, const float &_fraction);
 
     float Lerp(float _min, float _max, float _fraction);
+
+    float Clamp01(float _value);
 }
 
 namespace std
