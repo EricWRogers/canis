@@ -557,6 +557,19 @@ namespace Canis
         return rootEntities;
     }
 
+    void Scene::ForceReady(Entity& _entity)
+    {
+        auto& scripts = _entity.m_scriptComponents;
+        for (ScriptableEntity* script : scripts)
+        {
+            if (script == nullptr || script->m_onReadyCalled)
+                continue;
+
+            script->Ready();
+            script->m_onReadyCalled = true;
+        }
+    }
+
     void Scene::Save()
     {
         Debug::Log("Save Scene");

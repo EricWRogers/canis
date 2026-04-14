@@ -64,6 +64,7 @@ namespace Canis
         Canis::Entity& DecodeEntity(YAML::Node _node, bool _copyUUID = true);
         void GetEntityAfterLoad(Canis::UUID _uuid, Canis::Entity* &_variable);
         std::vector<Entity*> Instantiate(const SceneAssetHandle &_sceneAssetHandle);
+        void ForceReady(Entity& _entity);
 
         Window& GetWindow() { return *m_window; }
         InputManager& GetInputManager() { return *m_inputManager; }
