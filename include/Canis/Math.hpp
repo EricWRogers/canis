@@ -12,6 +12,7 @@
 namespace Canis
 {
     inline constexpr float PI = 3.14159265f;
+    inline constexpr float TAU = 6.28318530718f;
     inline constexpr float RAD2DEG = 180.0f / PI;
     inline constexpr float DEG2RAD = PI / 180.0f;
 
