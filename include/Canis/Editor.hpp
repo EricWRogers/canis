@@ -116,8 +116,10 @@ namespace Canis
         void DrawGameView();
         void DrawSceneViewGizmo();
         void EnsureGameRenderTarget(int _width, int _height);
+        void EnsureGamePickingRenderTarget(int _width, int _height);
         void EnsurePlayRenderTarget(int _width, int _height);
         void DestroyGameRenderTarget();
+        void DestroyGamePickingRenderTarget();
         void DestroyPlayRenderTarget();
         void DrawInspectorPanel(bool _refresh);
         void DrawAddComponentDropDown(bool _refresh);
@@ -137,6 +139,7 @@ namespace Canis
         void DrawEditorPanel();
 
         void SelectSprite2D();
+        void SelectModel3D();
         void DrawBoundingBox(Camera2D *_camera2D);
         void DrawSelectionMouseDebug(Camera2D *_camera2D);
 
@@ -189,6 +192,9 @@ namespace Canis
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;
         unsigned int m_gameDepthRbo = 0;
+        unsigned int m_gamePickingFramebuffer = 0;
+        unsigned int m_gamePickingColorTexture = 0;
+        unsigned int m_gamePickingDepthRbo = 0;
         int m_gameViewportWidth = 0;
         int m_gameViewportHeight = 0;
         float m_gameViewportPosX = 0.0f;
@@ -199,6 +205,8 @@ namespace Canis
         bool m_gameViewHovered = false;
         int m_gameTextureWidth = 0;
         int m_gameTextureHeight = 0;
+        int m_gamePickingTextureWidth = 0;
+        int m_gamePickingTextureHeight = 0;
 
         unsigned int m_playFramebuffer = 0;
         unsigned int m_playColorTexture = 0;

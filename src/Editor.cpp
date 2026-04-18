@@ -64,6 +64,29 @@ namespace Canis
             return debugLineShader;
         }
 
+        Shader &GetModelPickingShader()
+        {
+            static Shader modelPickingShader("assets/shaders/editor_model_pick.vs", "assets/shaders/editor_model_pick.fs");
+            return modelPickingShader;
+        }
+
+        Color EncodeEntityIdColor(const uint32_t _entityId)
+        {
+            return Color(
+                static_cast<float>(_entityId & 0xFFu) / 255.0f,
+                static_cast<float>((_entityId >> 8u) & 0xFFu) / 255.0f,
+                static_cast<float>((_entityId >> 16u) & 0xFFu) / 255.0f,
+                static_cast<float>((_entityId >> 24u) & 0xFFu) / 255.0f);
+        }
+
+        uint32_t DecodeEntityIdColor(const unsigned char _pixel[4])
+        {
+            return static_cast<uint32_t>(_pixel[0]) |
+                (static_cast<uint32_t>(_pixel[1]) << 8u) |
+                (static_cast<uint32_t>(_pixel[2]) << 16u) |
+                (static_cast<uint32_t>(_pixel[3]) << 24u);
+        }
+
         void ReloadEditorShaders()
         {
             AssetManager::ReloadLoadedShaders();
@@ -71,6 +94,10 @@ namespace Canis
             Shader &debugLineShader = GetDebugLineShader();
             debugLineShader.Compile("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
             debugLineShader.Link();
+
+            Shader &modelPickingShader = GetModelPickingShader();
+            modelPickingShader.Compile("assets/shaders/editor_model_pick.vs", "assets/shaders/editor_model_pick.fs");
+            modelPickingShader.Link();
         }
 
         constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
@@ -843,6 +870,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     Editor::~Editor()
     {
         DestroyGameRenderTarget();
+        DestroyGamePickingRenderTarget();
         DestroyPlayRenderTarget();
     }
 
@@ -947,7 +975,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DrawGameView();
         DrawEditorPanel(); // draw last
 
-        SelectSprite2D();
+        if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
+            SelectModel3D();
+        else
+            SelectSprite2D();
 
         // find camera and verfy target entity
         m_debugDraw = DebugDraw::NONE;
@@ -1581,6 +1612,46 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_gameTextureHeight = _height;
     }
 
+    void Editor::EnsureGamePickingRenderTarget(int _width, int _height)
+    {
+        if (_width <= 0 || _height <= 0)
+            return;
+
+        if (m_gamePickingFramebuffer != 0 &&
+            _width == m_gamePickingTextureWidth &&
+            _height == m_gamePickingTextureHeight)
+        {
+            return;
+        }
+
+        DestroyGamePickingRenderTarget();
+
+        glGenFramebuffers(1, &m_gamePickingFramebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gamePickingFramebuffer);
+
+        glGenTextures(1, &m_gamePickingColorTexture);
+        glBindTexture(GL_TEXTURE_2D, m_gamePickingColorTexture);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_gamePickingColorTexture, 0);
+
+        glGenRenderbuffers(1, &m_gamePickingDepthRbo);
+        glBindRenderbuffer(GL_RENDERBUFFER, m_gamePickingDepthRbo);
+        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, _width, _height);
+        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_gamePickingDepthRbo);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            Debug::Log("Game picking framebuffer incomplete.");
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+        m_gamePickingTextureWidth = _width;
+        m_gamePickingTextureHeight = _height;
+    }
+
     void Editor::EnsurePlayRenderTarget(int _width, int _height)
     {
         if (_width <= 0 || _height <= 0)
@@ -1645,6 +1716,30 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
         m_gameTextureWidth = 0;
         m_gameTextureHeight = 0;
+    }
+
+    void Editor::DestroyGamePickingRenderTarget()
+    {
+        if (m_gamePickingDepthRbo != 0)
+        {
+            glDeleteRenderbuffers(1, &m_gamePickingDepthRbo);
+            m_gamePickingDepthRbo = 0;
+        }
+
+        if (m_gamePickingColorTexture != 0)
+        {
+            glDeleteTextures(1, &m_gamePickingColorTexture);
+            m_gamePickingColorTexture = 0;
+        }
+
+        if (m_gamePickingFramebuffer != 0)
+        {
+            glDeleteFramebuffers(1, &m_gamePickingFramebuffer);
+            m_gamePickingFramebuffer = 0;
+        }
+
+        m_gamePickingTextureWidth = 0;
+        m_gamePickingTextureHeight = 0;
     }
 
     void Editor::DestroyPlayRenderTarget()
@@ -3740,6 +3835,116 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 m_index = i;
             }
         }
+    }
+
+    void Editor::SelectModel3D()
+    {
+        if (ImGuizmo::IsOver() || ImGuizmo::IsUsing())
+            return;
+
+        if (m_scene == nullptr || m_window == nullptr)
+            return;
+
+        if (!m_gameViewHovered || m_gameViewportWidth <= 0 || m_gameViewportHeight <= 0 ||
+            m_gameViewportDrawWidth <= 0.0f || m_gameViewportDrawHeight <= 0.0f)
+        {
+            return;
+        }
+
+        if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+            return;
+
+        const int targetWidth = (m_gameTextureWidth > 0) ? m_gameTextureWidth : m_window->GetWindowWidth();
+        const int targetHeight = (m_gameTextureHeight > 0) ? m_gameTextureHeight : m_window->GetWindowHeight();
+        if (targetWidth <= 0 || targetHeight <= 0)
+            return;
+
+        ImVec2 mousePos = ImGui::GetMousePos();
+        const float localX = mousePos.x - m_gameViewportPosX;
+        const float localY = mousePos.y - m_gameViewportPosY;
+        if (localX < 0.0f || localY < 0.0f || localX >= m_gameViewportDrawWidth || localY >= m_gameViewportDrawHeight)
+            return;
+
+        const float scaleX = static_cast<float>(targetWidth) / m_gameViewportDrawWidth;
+        const float scaleY = static_cast<float>(targetHeight) / m_gameViewportDrawHeight;
+        const int pixelX = std::clamp(static_cast<int>(localX * scaleX), 0, targetWidth - 1);
+        const int pixelY = std::clamp(targetHeight - 1 - static_cast<int>(localY * scaleY), 0, targetHeight - 1);
+
+        EnsureGamePickingRenderTarget(targetWidth, targetHeight);
+        if (m_gamePickingFramebuffer == 0)
+            return;
+
+        Shader &pickingShader = GetModelPickingShader();
+        entt::registry &registry = m_scene->GetRegistry();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gamePickingFramebuffer);
+        glViewport(0, 0, targetWidth, targetHeight);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_DITHER);
+        glDepthMask(GL_TRUE);
+        glEnable(GL_DEPTH_TEST);
+        glDepthFunc(GL_LESS);
+        glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        pickingShader.Use();
+        pickingShader.SetMat4("P", m_scene->GetEditorCamera3DProjection());
+        pickingShader.SetMat4("V", m_scene->GetEditorCamera3DView());
+
+        auto modelView = registry.view<Transform, Model>();
+        for (const entt::entity entityHandle : modelView)
+        {
+            Transform &transform = modelView.get<Transform>(entityHandle);
+            Model &modelRenderer = modelView.get<Model>(entityHandle);
+            Entity *entity = modelRenderer.entity;
+            if (entity == nullptr)
+                entity = transform.entity;
+
+            if (entity == nullptr || !entity->active || entity->id < 0 || modelRenderer.modelId < 0)
+                continue;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                continue;
+
+            const ModelAsset::Pose3D *pose = nullptr;
+            if (ModelAnimation *animation = registry.try_get<ModelAnimation>(entityHandle))
+            {
+                if (animation->poseModelId == modelRenderer.modelId)
+                    pose = &animation->pose;
+            }
+
+            const uint32_t entityId = static_cast<uint32_t>(entity->id + 1);
+            model->Draw(
+                pickingShader,
+                transform.GetModelMatrix(),
+                pose,
+                -1,
+                EncodeEntityIdColor(entityId),
+                nullptr);
+        }
+
+        pickingShader.UnUse();
+
+        unsigned char pixel[4] = {0, 0, 0, 0};
+        glReadPixels(pixelX, pixelY, 1, 1, GL_RGBA, GL_UNSIGNED_BYTE, pixel);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+        glViewport(0, 0, m_window->GetWindowWidth(), m_window->GetWindowHeight());
+        glEnable(GL_DITHER);
+        glDisable(GL_DEPTH_TEST);
+
+        const uint32_t entityId = DecodeEntityIdColor(pixel);
+        if (entityId == 0)
+            return;
+
+        const int entityIndex = static_cast<int>(entityId) - 1;
+        std::vector<Entity *> &entities = m_scene->GetEntities();
+        if (entityIndex < 0 || entityIndex >= static_cast<int>(entities.size()) || entities[entityIndex] == nullptr)
+            return;
+
+        m_index = entityIndex;
     }
 
     void Editor::DrawSelectionMouseDebug(Camera2D *_camera2D)

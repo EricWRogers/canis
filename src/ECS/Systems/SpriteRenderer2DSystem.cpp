@@ -539,6 +539,9 @@ namespace Canis
 
         bool cameraFound = false;
         bool editorCameraOverride = scene->HasEditorCamera2DOverride();
+        const bool editor3DOverride = scene->HasEditorCamera3DOverride();
+        const bool renderScreenSpaceUi = !editor3DOverride;
+        const bool renderWorldSpaceUi = !editorCameraOverride;
         Matrix4 overrideProjection = Matrix4(1.0f);
         camera2D = nullptr;
 
@@ -690,7 +693,8 @@ namespace Canis
 
         Matrix4 centeredCameraProjection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, -100.0f, 100.0f);
 
-        renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_OVERLAY, &centeredCameraProjection, false);
+        if (renderScreenSpaceUi)
+            renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_OVERLAY, &centeredCameraProjection, false);
 
         const Matrix4* cameraProjectionOverride = nullptr;
         bool useCameraProjection = true;
@@ -706,8 +710,11 @@ namespace Canis
             useCameraProjection = false;
         }
 
-        renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
-        renderPass(Canis::CanvasRenderMode::WORLD_SPACE, cameraProjectionOverride, useCameraProjection);
+        if (renderScreenSpaceUi)
+            renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
+
+        if (renderWorldSpaceUi)
+            renderPass(Canis::CanvasRenderMode::WORLD_SPACE, cameraProjectionOverride, useCameraProjection);
 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);
