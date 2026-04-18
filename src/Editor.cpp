@@ -57,6 +57,22 @@ namespace Canis
     {
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
+
+        Shader &GetDebugLineShader()
+        {
+            static Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
+            return debugLineShader;
+        }
+
+        void ReloadEditorShaders()
+        {
+            AssetManager::ReloadLoadedShaders();
+
+            Shader &debugLineShader = GetDebugLineShader();
+            debugLineShader.Compile("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
+            debugLineShader.Link();
+        }
+
         constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
 Size=1920,1057
 Collapsed=0
@@ -3546,6 +3562,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 hotKeyCoolDown = HOTKEYRESET;
 
                 m_assetPaths = FindFilesInFolder("assets", "");
+                ReloadEditorShaders();
 
                 // save copy of scene
                 g_lastPlaySceneNode = m_scene->EncodeScene();
@@ -3741,7 +3758,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             projection = _camera2D->GetCameraMatrix();
         }
 
-        static Canis::Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
+        Canis::Shader &debugLineShader = GetDebugLineShader();
 
         const float halfSize = 7.0f;
         Vector2 vertices[4] = {
@@ -3791,7 +3808,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             projection = _camera2D->GetCameraMatrix();
         }
 
-        static Canis::Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
+        Canis::Shader &debugLineShader = GetDebugLineShader();
         Entity &debugRectTransformEntity = *m_scene->GetEntities()[m_index];
         RectTransform &rtc = debugRectTransformEntity.GetComponent<RectTransform>();
         const RectTransformRenderBounds bounds = GetRenderBounds(debugRectTransformEntity, rtc);

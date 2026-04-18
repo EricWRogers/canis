@@ -8,6 +8,7 @@
 #include <SDL3/SDL.h>
 #include <glm/gtc/type_ptr.hpp>
 
+#include <algorithm>
 #include <vector>
 #include <fstream>
 #include <sstream>
@@ -50,6 +51,8 @@ namespace Canis
 
     Shader::~Shader()
     {
+        if (m_programId != 0)
+            glDeleteProgram(m_programId);
         if (m_fragmentShaderId != 0)
             glDeleteShader(m_fragmentShaderId);
         if (m_vertexShaderId != 0)
@@ -59,6 +62,30 @@ namespace Canis
     void Shader::Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
     {
         m_path = _vertexShaderFilePath;
+
+        if (m_programId != 0)
+        {
+            glDeleteProgram(m_programId);
+            m_programId = 0;
+        }
+
+        if (m_fragmentShaderId != 0)
+        {
+            glDeleteShader(m_fragmentShaderId);
+            m_fragmentShaderId = 0;
+        }
+
+        if (m_vertexShaderId != 0)
+        {
+            glDeleteShader(m_vertexShaderId);
+            m_vertexShaderId = 0;
+        }
+
+        m_isLinked = false;
+        m_locationsCashe.clear();
+        m_lastValueCashe.clear();
+        m_numberOfAttributes = static_cast<int>(m_attributes.size());
+
         //Getting vertex shaderID
         m_vertexShaderId = glCreateShader(GL_VERTEX_SHADER);
         if (m_vertexShaderId == 0)
@@ -70,6 +97,11 @@ namespace Canis
             Debug::FatalError("Fragment shader failed to be created!");
 
         m_programId = glCreateProgram();
+        if (m_programId == 0)
+            Debug::FatalError("Shader program failed to be created!");
+
+        for (size_t i = 0; i < m_attributes.size(); ++i)
+            glBindAttribLocation(m_programId, static_cast<GLuint>(i), m_attributes[i].c_str());
 
         CompileShaderFile(_vertexShaderFilePath, m_vertexShaderId);
         CompileShaderFile(_fragmentShaderFilePath, m_fragmentShaderId);
@@ -96,6 +128,7 @@ namespace Canis
             glGetProgramInfoLog(m_programId, maxLength, &maxLength, infoLog.data());
 
             glDeleteProgram(m_programId);
+            m_programId = 0;
 
             Debug::FatalError("Shader failed to link!\nOpengl Error: %s", std::string(infoLog.begin(), infoLog.end()).c_str());
         } else {
@@ -106,11 +139,21 @@ namespace Canis
         glDetachShader(m_programId, m_fragmentShaderId);
         glDeleteShader(m_vertexShaderId);
         glDeleteShader(m_fragmentShaderId);
+        m_vertexShaderId = 0;
+        m_fragmentShaderId = 0;
     }
 
     void Shader::AddAttribute(const std::string &_attributeName)
     {
-        glBindAttribLocation(m_programId, m_numberOfAttributes++, _attributeName.c_str());
+        if (std::find(m_attributes.begin(), m_attributes.end(), _attributeName) != m_attributes.end())
+            return;
+
+        const GLuint attributeIndex = static_cast<GLuint>(m_attributes.size());
+        m_attributes.push_back(_attributeName);
+        m_numberOfAttributes = static_cast<int>(m_attributes.size());
+
+        if (m_programId != 0)
+            glBindAttribLocation(m_programId, attributeIndex, _attributeName.c_str());
     }
 
     GLint Shader::GetUniformLocation(const std::string &_uniformName, const size_t _valueHash) const

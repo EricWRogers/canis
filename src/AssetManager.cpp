@@ -337,6 +337,34 @@ namespace Canis
             return id;
         }
 
+        void ReloadLoadedShaders()
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            std::vector<std::pair<int, std::string>> shaderAssets = {};
+
+            for (const auto &[path, id] : assetLibrary.assetPath)
+            {
+                if (!assetLibrary.assets.contains(id))
+                    continue;
+
+                if (!FileExists((path + ".vs").c_str()) || !FileExists((path + ".fs").c_str()))
+                    continue;
+
+                shaderAssets.emplace_back(id, path);
+            }
+
+            for (const auto &[id, path] : shaderAssets)
+            {
+                ShaderAsset *shaderAsset = static_cast<ShaderAsset *>(assetLibrary.assets[id]);
+                if (shaderAsset == nullptr)
+                    continue;
+
+                shaderAsset->Load(path);
+                if (!shaderAsset->GetShader()->IsLinked())
+                    shaderAsset->GetShader()->Link();
+            }
+        }
+
         int LoadMetaFile(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();

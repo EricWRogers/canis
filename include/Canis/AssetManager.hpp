@@ -148,6 +148,7 @@ namespace Canis
         MusicAsset *GetMusic(i32 _musicID);
 
         int LoadShader(const std::string &_pathWithOutExtension);
+        void ReloadLoadedShaders();
 
         int LoadMetaFile(const std::string &_path);
         MetaFileAsset* GetMetaFile(const std::string &_path);

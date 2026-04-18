@@ -1,5 +1,6 @@
 #pragma once
 #include <string>
+#include <vector>
 //#include <glm/glm.hpp>
 #include <Canis/Math.hpp>
 #include <unordered_map>
@@ -43,6 +44,7 @@ namespace Canis
         unsigned int m_fragmentShaderId = 0;
 
         int m_numberOfAttributes = 0;
+        std::vector<std::string> m_attributes = {};
 
         mutable std::unordered_map<std::string, int> m_locationsCashe = {};
         mutable std::unordered_map<std::string, size_t> m_lastValueCashe = {};
