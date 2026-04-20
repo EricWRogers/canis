@@ -201,13 +201,14 @@ namespace Canis
 		Debug::Warning("OpenInVSCode is unavailable in web builds.");
 	#else
 	#if defined(_WIN32)
-		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+		std::string cmd = "code --reuse-window --goto \"" + _filePath + "\"";
 	#elif defined(__APPLE__)
-		// macOS: assume VS Code installed via Homebrew or standard path
-		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+		// macOS: open the app directly to bring VS Code to the foreground.
+		std::string cmd = "open -a \"Visual Studio Code\" \"" + _filePath + "\"";
 	#else
-		// Linux: assumes "code" is in PATH
-		std::string cmd = "code --reuse-window \"" + _filePath + "\"";
+		// Linux: open target file and attempt to focus VS Code if wmctrl is available.
+		std::string cmd = "code --reuse-window --goto \"" + _filePath + "\"";
+		cmd += " && (command -v wmctrl >/dev/null 2>&1 && wmctrl -xa code.Code >/dev/null 2>&1 || true)";
 	#endif
 		int exitCode = std::system(cmd.c_str());
 		
