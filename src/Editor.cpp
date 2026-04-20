@@ -33,8 +33,11 @@
 #include <cstdint>
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
+#include <cstdio>
 #include <fstream>
 #include <cctype>
+#include <sstream>
 
 namespace Canis
 {
@@ -59,6 +62,634 @@ namespace Canis
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
 
+        std::filesystem::path BuildDuplicateAssetPath(const std::filesystem::path &_sourcePath)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path parentPath = _sourcePath.parent_path();
+            const std::string stem = _sourcePath.stem().string();
+            const std::string extension = _sourcePath.extension().string();
+
+            fs::path candidatePath = parentPath / (stem + "_copy" + extension);
+            int index = 1;
+            while (fs::exists(candidatePath) || fs::exists(candidatePath.string() + ".meta"))
+            {
+                candidatePath = parentPath / (stem + "_copy_" + std::to_string(index) + extension);
+                ++index;
+            }
+
+            return candidatePath;
+        }
+
+        bool RefreshDuplicatedMetaFile(const std::string &_assetPath)
+        {
+            const std::string metaPath = _assetPath + ".meta";
+            if (!FileExists(metaPath.c_str()))
+                return false;
+
+            MetaFileAsset meta;
+            meta.Load(_assetPath);
+            meta.uuid = UUID();
+            meta.path = _assetPath;
+            meta.name = GetFileName(_assetPath);
+
+            SDL_PathInfo info;
+            if (SDL_GetPathInfo(_assetPath.c_str(), &info))
+            {
+                meta.size = info.size;
+                meta.modified = info.modify_time;
+            }
+
+            meta.Save();
+            return true;
+        }
+
+        bool IsValidCppIdentifier(const std::string &_value)
+        {
+            if (_value.empty())
+                return false;
+
+            const unsigned char first = static_cast<unsigned char>(_value.front());
+            if (!(std::isalpha(first) || _value.front() == '_'))
+                return false;
+
+            for (char c : _value)
+            {
+                const unsigned char value = static_cast<unsigned char>(c);
+                if (!(std::isalnum(value) || c == '_'))
+                    return false;
+            }
+
+            return true;
+        }
+
+        std::string NormalizeScriptTarget(const std::string &_rawTarget)
+        {
+            std::string normalized = _rawTarget;
+
+            size_t position = 0;
+            while ((position = normalized.find("::", position)) != std::string::npos)
+                normalized.replace(position, 2, "/");
+
+            std::replace(normalized.begin(), normalized.end(), '\\', '/');
+
+            while (!normalized.empty() && normalized.front() == '/')
+                normalized.erase(normalized.begin());
+
+            while (!normalized.empty() && normalized.back() == '/')
+                normalized.pop_back();
+
+            return normalized;
+        }
+
+        std::vector<std::string> SplitScriptTarget(const std::string &_normalizedTarget)
+        {
+            std::vector<std::string> parts = {};
+            std::stringstream stream(_normalizedTarget);
+            std::string part = "";
+
+            while (std::getline(stream, part, '/'))
+            {
+                if (!part.empty())
+                    parts.push_back(part);
+            }
+
+            return parts;
+        }
+
+        std::string JoinStringParts(const std::vector<std::string> &_parts, const std::string &_separator)
+        {
+            std::string value = "";
+            for (size_t i = 0; i < _parts.size(); ++i)
+            {
+                if (i > 0)
+                    value += _separator;
+
+                value += _parts[i];
+            }
+
+            return value;
+        }
+
+        std::string MakeIndent(int _amount)
+        {
+            return std::string(static_cast<size_t>(std::max(_amount, 0)), ' ');
+        }
+
+        void AppendNamespaceOpens(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
+        {
+            int indentLevel = 0;
+            for (const std::string &namespaceName : _namespaceParts)
+            {
+                const std::string indent = MakeIndent(indentLevel);
+                _stream << indent << "namespace " << namespaceName << "\n";
+                _stream << indent << "{\n";
+                indentLevel += 4;
+            }
+        }
+
+        void AppendNamespaceCloses(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
+        {
+            int indentLevel = static_cast<int>(_namespaceParts.size()) * 4;
+            for (size_t index = _namespaceParts.size(); index > 0; --index)
+            {
+                indentLevel -= 4;
+                _stream << MakeIndent(indentLevel) << "}\n";
+            }
+        }
+
+        enum class GameScriptType
+        {
+            ScriptableEntity = 0,
+            Component = 1,
+            System = 2
+        };
+
+        constexpr const char* kGameScriptTypeLabels[] =
+        {
+            "ScriptableEntity",
+            "Component",
+            "System"
+        };
+
+        GameScriptType GetGameScriptTypeFromSelection(int _selection)
+        {
+            if (_selection < 0 || _selection >= static_cast<int>(IM_ARRAYSIZE(kGameScriptTypeLabels)))
+                return GameScriptType::ScriptableEntity;
+
+            return static_cast<GameScriptType>(_selection);
+        }
+
+        bool CreateGameScriptFiles(
+            const std::filesystem::path &_repoRoot,
+            const std::string &_rawTarget,
+            GameScriptType _scriptType,
+            const std::vector<std::string> &_requiredComponents,
+            bool _forceOverwrite,
+            std::string &_outHeaderPath,
+            std::string &_outSourcePath,
+            std::string &_outError)
+        {
+            namespace fs = std::filesystem;
+
+            const std::string normalizedTarget = NormalizeScriptTarget(_rawTarget);
+            if (normalizedTarget.empty())
+            {
+                _outError = "Script name cannot be empty.";
+                return false;
+            }
+
+            std::vector<std::string> pathParts = SplitScriptTarget(normalizedTarget);
+            if (pathParts.empty())
+            {
+                _outError = "Invalid script target.";
+                return false;
+            }
+
+            const std::string className = pathParts.back();
+            pathParts.pop_back();
+
+            if (!IsValidCppIdentifier(className))
+            {
+                _outError = "Script class name must be a valid C++ identifier.";
+                return false;
+            }
+
+            for (const std::string &namespacePart : pathParts)
+            {
+                if (!IsValidCppIdentifier(namespacePart))
+                {
+                    _outError = "Namespace segments must be valid C++ identifiers.";
+                    return false;
+                }
+            }
+
+            const std::string relativeDir = JoinStringParts(pathParts, "/");
+            const std::string scriptSymbolName = pathParts.empty() ? className : JoinStringParts(pathParts, "::") + "::" + className;
+            const std::string relativeHeader = relativeDir.empty() ? className + ".hpp" : relativeDir + "/" + className + ".hpp";
+            const std::string relativeSource = relativeDir.empty() ? className + ".cpp" : relativeDir + "/" + className + ".cpp";
+
+            const fs::path headerPath = _repoRoot / "game" / "include" / relativeHeader;
+            const fs::path sourcePath = _repoRoot / "game" / "src" / relativeSource;
+
+            if ((fs::exists(headerPath) || fs::exists(sourcePath)) && !_forceOverwrite)
+            {
+                _outError = "Target script files already exist.";
+                return false;
+            }
+
+            std::error_code ec;
+            fs::create_directories(headerPath.parent_path(), ec);
+            if (ec)
+            {
+                _outError = "Failed to create header directory: " + ec.message();
+                return false;
+            }
+
+            fs::create_directories(sourcePath.parent_path(), ec);
+            if (ec)
+            {
+                _outError = "Failed to create source directory: " + ec.message();
+                return false;
+            }
+
+            std::ostringstream header;
+            header << "#pragma once\n\n";
+            if (_scriptType == GameScriptType::System)
+                header << "#include <Canis/System.hpp>\n\n";
+            else
+                header << "#include <Canis/Entity.hpp>\n\n";
+            header << "namespace Canis\n{\n    class App;\n}\n";
+
+            if (!pathParts.empty())
+                header << "\n";
+
+            AppendNamespaceOpens(header, pathParts);
+
+            const int classIndentLevel = static_cast<int>(pathParts.size()) * 4;
+            const std::string classIndent = MakeIndent(classIndentLevel);
+            const std::string bodyIndent = MakeIndent(classIndentLevel + 4);
+
+            if (_scriptType == GameScriptType::ScriptableEntity)
+            {
+                header << classIndent << "class " << className << " : public Canis::ScriptableEntity\n";
+                header << classIndent << "{\n";
+                header << classIndent << "public:\n";
+                header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
+                header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : Canis::ScriptableEntity(_entity) {}\n\n";
+                header << bodyIndent << "void Create() override;\n";
+                header << bodyIndent << "void Ready() override;\n";
+                header << bodyIndent << "void Destroy() override;\n";
+                header << bodyIndent << "void Update(float _dt) override;\n";
+                header << classIndent << "};\n\n";
+                header << classIndent << "void Register" << className << "Script(Canis::App& _app);\n";
+                header << classIndent << "void UnRegister" << className << "Script(Canis::App& _app);\n";
+            }
+            else if (_scriptType == GameScriptType::Component)
+            {
+                header << classIndent << "struct " << className << "\n";
+                header << classIndent << "{\n";
+                header << classIndent << "public:\n";
+                header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
+                header << bodyIndent << className << "() = default;\n";
+                header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : entity(&_entity) {}\n\n";
+                header << bodyIndent << "void Create() {}\n";
+                header << bodyIndent << "Canis::Entity* entity = nullptr;\n";
+                header << bodyIndent << "bool active = true;\n";
+                header << classIndent << "};\n\n";
+                header << classIndent << "void Register" << className << "Component(Canis::App& _app);\n";
+                header << classIndent << "void UnRegister" << className << "Component(Canis::App& _app);\n";
+            }
+            else
+            {
+                header << classIndent << "class " << className << " : public Canis::System\n";
+                header << classIndent << "{\n";
+                header << classIndent << "public:\n";
+                header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
+                header << bodyIndent << className << "() : Canis::System() { m_name = type_name<" << className << ">(); }\n\n";
+                header << bodyIndent << "void Create() override;\n";
+                header << bodyIndent << "void Ready() override;\n";
+                header << bodyIndent << "void Update(entt::registry &_registry, float _deltaTime) override;\n";
+                header << bodyIndent << "void OnDestroy() override;\n";
+                header << classIndent << "};\n\n";
+                header << classIndent << "void Register" << className << "System(Canis::App& _app);\n";
+                header << classIndent << "void UnRegister" << className << "System(Canis::App& _app);\n";
+            }
+
+            if (!pathParts.empty())
+                AppendNamespaceCloses(header, pathParts);
+
+            std::ostringstream source;
+            source << "#include <" << relativeHeader << ">\n\n";
+            source << "#include <Canis/App.hpp>\n";
+            source << "#include <Canis/ConfigHelper.hpp>\n\n";
+
+            AppendNamespaceOpens(source, pathParts);
+
+            const std::string sourceIndent = MakeIndent(classIndentLevel);
+            const std::string blockIndent = MakeIndent(classIndentLevel + 4);
+
+            source << sourceIndent << "namespace\n";
+            source << sourceIndent << "{\n";
+            if (_scriptType == GameScriptType::ScriptableEntity)
+                source << blockIndent << "Canis::ScriptConf scriptConf = {};\n";
+            else if (_scriptType == GameScriptType::Component)
+                source << blockIndent << "Canis::ComponentConf componentConf = {};\n";
+            else
+                source << blockIndent << "Canis::SystemConf systemConf = {};\n";
+            source << sourceIndent << "}\n\n";
+            if (_scriptType == GameScriptType::ScriptableEntity)
+            {
+                std::string configMacro = "DEFAULT_CONFIG(scriptConf, " + scriptSymbolName + ");";
+                if (!_requiredComponents.empty())
+                    configMacro = "DEFAULT_CONFIG_AND_REQUIRED(scriptConf, " + scriptSymbolName + ", " + JoinStringParts(_requiredComponents, ", ") + ");";
+
+                source << sourceIndent << "void Register" << className << "Script(Canis::App& _app)\n";
+                source << sourceIndent << "{\n";
+                source << blockIndent << "// REGISTER_PROPERTY(scriptConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << configMacro << "\n\n";
+                source << blockIndent << "scriptConf.DEFAULT_DRAW_INSPECTOR(" << scriptSymbolName << ");\n\n";
+                source << blockIndent << "_app.RegisterScript(scriptConf);\n";
+                source << sourceIndent << "}\n\n";
+                source << sourceIndent << "DEFAULT_UNREGISTER_SCRIPT(scriptConf, " << className << ")\n\n";
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(float) {}\n";
+            }
+            else if (_scriptType == GameScriptType::Component)
+            {
+                std::string configMacro = "DEFAULT_COMPONENT_CONFIG(componentConf, " + scriptSymbolName + ");";
+                if (!_requiredComponents.empty())
+                    configMacro = "DEFAULT_COMPONENT_CONFIG_AND_REQUIRED(componentConf, " + scriptSymbolName + ", " + JoinStringParts(_requiredComponents, ", ") + ");";
+
+                source << sourceIndent << "void Register" << className << "Component(Canis::App& _app)\n";
+                source << sourceIndent << "{\n";
+                source << blockIndent << "// REGISTER_PROPERTY(componentConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << configMacro << "\n\n";
+                source << blockIndent << "componentConf.DEFAULT_DRAW_COMPONENT_INSPECTOR(" << scriptSymbolName << ");\n\n";
+                source << blockIndent << "_app.RegisterComponent(componentConf);\n";
+                source << sourceIndent << "}\n\n";
+                source << sourceIndent << "DEFAULT_UNREGISTER_COMPONENT(componentConf, " << className << ")\n";
+            }
+            else
+            {
+                source << sourceIndent << "void Register" << className << "System(Canis::App& _app)\n";
+                source << sourceIndent << "{\n";
+                source << blockIndent << "DEFAULT_SYSTEM_CONFIG(systemConf, " << scriptSymbolName << ", Canis::SystemPipeline::Update);\n";
+                source << blockIndent << "_app.RegisterSystem(systemConf);\n";
+                source << sourceIndent << "}\n\n";
+                source << sourceIndent << "DEFAULT_UNREGISTER_SYSTEM(systemConf, " << className << ")\n\n";
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(entt::registry &, float) {}\n\n";
+                source << sourceIndent << "void " << className << "::OnDestroy() {}\n";
+            }
+
+            if (!pathParts.empty())
+                AppendNamespaceCloses(source, pathParts);
+
+            {
+                std::ofstream headerFile(headerPath);
+                if (!headerFile.is_open())
+                {
+                    _outError = "Failed to write header file.";
+                    return false;
+                }
+                headerFile << header.str();
+            }
+
+            {
+                std::ofstream sourceFile(sourcePath);
+                if (!sourceFile.is_open())
+                {
+                    _outError = "Failed to write source file.";
+                    return false;
+                }
+                sourceFile << source.str();
+            }
+
+            _outHeaderPath = headerPath.string();
+            _outSourcePath = sourcePath.string();
+            return true;
+        }
+
+        std::filesystem::path FindGameCodeRoot()
+        {
+            namespace fs = std::filesystem;
+
+            auto isGameCodeRoot = [](const fs::path &_path) -> bool
+            {
+                std::error_code ec;
+                return fs::is_directory(_path / "game" / "include", ec) &&
+                    fs::is_directory(_path / "game" / "src", ec);
+            };
+
+            std::vector<fs::path> startPaths = { fs::current_path() };
+            if (const char *basePath = SDL_GetBasePath())
+                startPaths.emplace_back(basePath);
+
+            for (fs::path currentPath : startPaths)
+            {
+                while (!currentPath.empty())
+                {
+                    if (isGameCodeRoot(currentPath))
+                        return currentPath;
+
+                    if (currentPath == currentPath.root_path())
+                        break;
+
+                    currentPath = currentPath.parent_path();
+                }
+            }
+
+            return {};
+        }
+
+        struct GameCodeBuildConfigInfo
+        {
+            std::string singleConfigType = "";
+            std::string multiConfigTypes = "";
+        };
+
+        GameCodeBuildConfigInfo ReadGameCodeBuildConfigInfo(const std::filesystem::path &_buildDir)
+        {
+            namespace fs = std::filesystem;
+
+            GameCodeBuildConfigInfo info = {};
+            const fs::path cachePath = _buildDir / "CMakeCache.txt";
+            std::ifstream cache(cachePath);
+            if (!cache.is_open())
+                return info;
+
+            std::string line = "";
+            while (std::getline(cache, line))
+            {
+                if (line.rfind("CMAKE_BUILD_TYPE:STRING=", 0) == 0)
+                {
+                    info.singleConfigType = line.substr(std::string("CMAKE_BUILD_TYPE:STRING=").size());
+                }
+                else if (line.rfind("CMAKE_CONFIGURATION_TYPES:STRING=", 0) == 0)
+                {
+                    info.multiConfigTypes = line.substr(std::string("CMAKE_CONFIGURATION_TYPES:STRING=").size());
+                }
+            }
+
+            return info;
+        }
+
+        bool BuildGameCodeForReload(
+            const std::filesystem::path &_buildDir,
+            std::string &_outCommand,
+            std::string &_outError,
+            int &_outExitCode,
+            const std::function<void(const std::string&)> &_onOutput = nullptr)
+        {
+#if defined(__EMSCRIPTEN__)
+            (void)_buildDir;
+            (void)_outCommand;
+            (void)_outError;
+            (void)_outExitCode;
+            (void)_onOutput;
+            return true;
+#else
+            (void)_buildDir;
+            _outCommand = "cmake --build ../build --config Debug --target GameCode --";
+            _outExitCode = -1;
+
+            if (_onOutput != nullptr)
+            {
+                const std::string pipedCommand = _outCommand + " 2>&1";
+    #if defined(_WIN32)
+                FILE *pipe = _popen(pipedCommand.c_str(), "r");
+    #else
+                FILE *pipe = popen(pipedCommand.c_str(), "r");
+    #endif
+                if (pipe == nullptr)
+                {
+                    _outError = "Failed to start build command.";
+                    return false;
+                }
+
+                char buffer[1024] = {};
+                while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+                    _onOutput(std::string(buffer));
+
+    #if defined(_WIN32)
+                _outExitCode = _pclose(pipe);
+    #else
+                _outExitCode = pclose(pipe);
+    #endif
+            }
+            else
+            {
+                _outExitCode = std::system(_outCommand.c_str());
+            }
+
+            if (_outExitCode != 0)
+            {
+                _outError = "Build command failed with exit code " + std::to_string(_outExitCode) + ".";
+                return false;
+            }
+
+            return true;
+#endif
+        }
+
+        bool UnloadGameCodeForReload(GameCodeObject *_gameCodeObject, App *_app, std::string &_outError)
+        {
+#if defined(__EMSCRIPTEN__)
+            (void)_gameCodeObject;
+            (void)_app;
+            (void)_outError;
+            return true;
+#else
+            if (_gameCodeObject == nullptr)
+            {
+                _outError = "GameCodeObject was null.";
+                return false;
+            }
+
+            GameCodeObjectShutdownFunction(_gameCodeObject, _app);
+
+            if (_gameCodeObject->sharedObjectHandle != nullptr)
+            {
+                SDL_UnloadObject(_gameCodeObject->sharedObjectHandle);
+                _gameCodeObject->sharedObjectHandle = nullptr;
+            }
+
+            _gameCodeObject->gameData = nullptr;
+            _gameCodeObject->GameInitFunction = nullptr;
+            _gameCodeObject->GameUpdateFunction = nullptr;
+            _gameCodeObject->GameShutdownFunction = nullptr;
+            return true;
+#endif
+        }
+
+        bool LoadGameCodeAfterReload(GameCodeObject *_gameCodeObject, App *_app, std::string &_outError)
+        {
+#if defined(__EMSCRIPTEN__)
+            (void)_gameCodeObject;
+            (void)_app;
+            (void)_outError;
+            return true;
+#else
+            if (_gameCodeObject == nullptr)
+            {
+                _outError = "GameCodeObject was null.";
+                return false;
+            }
+
+            const char *path = _gameCodeObject->path;
+            if (path == nullptr || path[0] == '\0')
+            {
+                _outError = "Game code shared library path is empty.";
+                return false;
+            }
+
+            *_gameCodeObject = GameCodeObjectInit(path);
+            if (_gameCodeObject->sharedObjectHandle == nullptr)
+            {
+                _outError = SDL_GetError();
+                if (_outError.empty())
+                    _outError = "Failed to reload game shared library.";
+                return false;
+            }
+
+            GameCodeObjectInitFunction(_gameCodeObject, _app);
+            return true;
+#endif
+        }
+
+        std::filesystem::path MakeUniqueDirectoryPath(const std::filesystem::path &_parentPath, const std::string &_baseName)
+        {
+            namespace fs = std::filesystem;
+
+            fs::path candidatePath = _parentPath / _baseName;
+            int index = 1;
+            while (fs::exists(candidatePath))
+            {
+                candidatePath = _parentPath / (_baseName + "_" + std::to_string(index));
+                ++index;
+            }
+
+            return candidatePath;
+        }
+
+        std::string MakeUniqueScriptTarget(
+            const std::filesystem::path &_includeRoot,
+            const std::filesystem::path &_currentDir,
+            const std::filesystem::path &_sourceRoot,
+            const std::string &_baseClassName)
+        {
+            namespace fs = std::filesystem;
+
+            std::error_code ec;
+            fs::path relativeDir = fs::relative(_currentDir, _includeRoot, ec);
+            if (ec)
+                relativeDir.clear();
+
+            std::string className = _baseClassName;
+            int index = 1;
+
+            while (true)
+            {
+                const fs::path headerPath = _currentDir / (className + ".hpp");
+                const fs::path sourcePath = _sourceRoot / relativeDir / (className + ".cpp");
+
+                if (!fs::exists(headerPath) && !fs::exists(sourcePath))
+                    break;
+
+                className = _baseClassName + "_" + std::to_string(index);
+                ++index;
+            }
+
+            if (relativeDir.empty() || relativeDir == ".")
+                return className;
+
+            return relativeDir.generic_string() + "/" + className;
+        }
+
         int PlaceRenameCursorAtEnd(ImGuiInputTextCallbackData *_data)
         {
             bool *shouldPlaceCursor = static_cast<bool *>(_data->UserData);
@@ -71,6 +702,68 @@ namespace Canis
             }
 
             return 0;
+        }
+
+        bool ShouldHideScriptBrowserEntry(const std::filesystem::path &_path)
+        {
+            const std::string filename = _path.filename().string();
+            return filename == ".DS_Store" ||
+                filename == "GamePCH.hpp" ||
+                filename == "RegisterScripts.generated.hpp";
+        }
+
+        bool DeleteScriptPair(
+            const std::filesystem::path &_includeRoot,
+            const std::filesystem::path &_sourceRoot,
+            const std::filesystem::path &_filePath,
+            std::string &_error)
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<fs::path> pathsToDelete = { _filePath };
+            fs::path pairedPath = {};
+            std::string extension = _filePath.extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (extension == ".hpp")
+            {
+                std::error_code relativeEc;
+                const fs::path relativeHeaderPath = fs::relative(_filePath, _includeRoot, relativeEc);
+                if (!relativeEc && !relativeHeaderPath.empty())
+                {
+                    pairedPath = _sourceRoot / relativeHeaderPath.parent_path() /
+                        (relativeHeaderPath.stem().string() + ".cpp");
+                }
+            }
+            else if (extension == ".cpp")
+            {
+                std::error_code relativeEc;
+                const fs::path relativeSourcePath = fs::relative(_filePath, _sourceRoot, relativeEc);
+                if (!relativeEc && !relativeSourcePath.empty())
+                {
+                    pairedPath = _includeRoot / relativeSourcePath.parent_path() /
+                        (relativeSourcePath.stem().string() + ".hpp");
+                }
+            }
+
+            if (!pairedPath.empty() && pairedPath != _filePath && fs::exists(pairedPath))
+                pathsToDelete.push_back(pairedPath);
+
+            for (const fs::path &pathToDelete : pathsToDelete)
+            {
+                std::error_code removeEc;
+                const bool removed = fs::remove(pathToDelete, removeEc);
+                if (removeEc || !removed)
+                {
+                    _error = removeEc ? removeEc.message() : "File could not be removed.";
+                    return false;
+                }
+            }
+
+            return true;
         }
 
         Shader &GetDebugLineShader()
@@ -989,6 +1682,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     Editor::~Editor()
     {
+        if (m_reloadBuildThread.joinable())
+            m_reloadBuildThread.join();
+
         DestroyGameRenderTarget();
         DestroyGamePickingRenderTarget();
         DestroyPlayRenderTarget();
@@ -1094,6 +1790,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DrawEnvironment();
         DrawSystemPanel();
         DrawAssetsPanel();
+        DrawScriptsPanel();
         DrawProjectSettings();
         DrawSceneView();
         DrawGameView();
@@ -3832,6 +4529,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 else
                 {
                     bool deleteThisAsset = false;
+                    bool duplicateThisAsset = false;
                     const bool selected = (m_selectedAssetPath == fullPath);
                     const bool clicked = ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns);
                     if (clicked)
@@ -3861,6 +4559,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     // right click
                     if (ImGui::BeginPopupContextItem())
                     {
+                        if (ImGui::MenuItem("Duplicate"))
+                            duplicateThisAsset = true;
+
                         if (ImGui::MenuItem("Rename"))
                         {
                             m_isRenamingAsset = true;
@@ -3876,6 +4577,44 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             deleteThisAsset = true;
 
                         ImGui::EndPopup();
+                    }
+
+                    if (duplicateThisAsset)
+                    {
+                        const fs::path duplicatePath = BuildDuplicateAssetPath(entry.path());
+                        std::error_code copyError;
+                        fs::copy_file(entry.path(), duplicatePath, copyError);
+
+                        if (copyError)
+                        {
+                            Debug::Warning("Failed to duplicate asset '%s' to '%s': %s", fullPath.c_str(), duplicatePath.string().c_str(), copyError.message().c_str());
+                        }
+                        else
+                        {
+                            const std::string sourceMetaPath = fullPath + ".meta";
+                            const std::string duplicateMetaPath = duplicatePath.string() + ".meta";
+                            if (fs::exists(sourceMetaPath))
+                            {
+                                std::error_code metaCopyError;
+                                fs::copy_file(sourceMetaPath, duplicateMetaPath, metaCopyError);
+                                if (metaCopyError)
+                                    Debug::Warning("Failed to duplicate meta file '%s' to '%s': %s", sourceMetaPath.c_str(), duplicateMetaPath.c_str(), metaCopyError.message().c_str());
+                                else
+                                    RefreshDuplicatedMetaFile(duplicatePath.string());
+                            }
+
+                            if (MetaFileAsset *duplicatedMeta = AssetManager::GetMetaFile(duplicatePath.string()))
+                            {
+                                if (duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::SKYBOX ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS)
+                                {
+                                    m_selectedAssetPath = duplicatePath.string();
+                                }
+                            }
+                        }
+
+                        continue;
                     }
 
                     if (deleteThisAsset)
@@ -3940,14 +4679,254 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
-    void Editor::DrawAssetsPanel()
+    void Editor::DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot)
     {
         namespace fs = std::filesystem;
 
+        std::vector<fs::directory_entry> entries = {};
+        for (const auto &entry : fs::directory_iterator(_currentDir))
+            entries.push_back(entry);
+
+        for (const auto &entry : entries)
+        {
+            if (ShouldHideScriptBrowserEntry(entry.path()))
+                continue;
+
+            const std::string name = entry.path().filename().string();
+
+            if (entry.is_directory())
+            {
+                const ImGuiTreeNodeFlags nodeFlags =
+                    ImGuiTreeNodeFlags_OpenOnArrow |
+                    ImGuiTreeNodeFlags_SpanAvailWidth;
+                const bool open = ImGui::TreeNodeEx(entry.path().string().c_str(), nodeFlags, "%s", name.c_str());
+
+                if (ImGui::BeginPopupContextItem())
+                {
+                    if (ImGui::MenuItem("Create Folder"))
+                    {
+                        const fs::path includeFolderPath = MakeUniqueDirectoryPath(entry.path(), "NewFolder");
+                        const fs::path sourceFolderPath = _sourceRoot / fs::relative(includeFolderPath, _includeRoot);
+
+                        std::error_code includeEc;
+                        fs::create_directories(includeFolderPath, includeEc);
+                        if (includeEc)
+                        {
+                            Debug::Warning("Failed to create script folder '%s': %s", includeFolderPath.string().c_str(), includeEc.message().c_str());
+                        }
+                        else
+                        {
+                            std::error_code sourceEc;
+                            fs::create_directories(sourceFolderPath, sourceEc);
+                            if (sourceEc)
+                                Debug::Warning("Failed to create matching source folder '%s': %s", sourceFolderPath.string().c_str(), sourceEc.message().c_str());
+                        }
+                    }
+
+                    if (ImGui::MenuItem("Create Script"))
+                    {
+                        m_scriptCreateTargetDir = entry.path().string();
+                        std::snprintf(m_scriptCreateNameBuffer, sizeof(m_scriptCreateNameBuffer), "%s", "NewScript");
+                        m_scriptCreateError.clear();
+                        m_focusScriptCreateNameInput = true;
+                        m_openScriptCreatePopup = true;
+                    }
+
+                    ImGui::EndPopup();
+                }
+
+                if (open)
+                {
+                    DrawScriptDirectoryRecursive(_includeRoot, entry.path(), _sourceRoot);
+                    ImGui::TreePop();
+                }
+            }
+            else if (entry.is_regular_file())
+            {
+                const std::string fullPath = entry.path().string();
+                const bool selected = (m_selectedScriptPath == fullPath);
+                if (ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns))
+                    m_selectedScriptPath = fullPath;
+
+                bool deleteScript = false;
+                if (ImGui::BeginPopupContextItem())
+                {
+                    if (ImGui::MenuItem("Delete"))
+                        deleteScript = true;
+
+                    ImGui::EndPopup();
+                }
+
+                if (deleteScript)
+                {
+                    std::string deleteError = "";
+                    if (DeleteScriptPair(_includeRoot, _sourceRoot, entry.path(), deleteError))
+                    {
+                        if (m_selectedScriptPath == fullPath)
+                            m_selectedScriptPath.clear();
+                    }
+                    else
+                    {
+                        Debug::Warning("Failed to delete script '%s': %s", fullPath.c_str(), deleteError.c_str());
+                    }
+
+                    continue;
+                }
+
+                if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                {
+                    m_selectedScriptPath = fullPath;
+                    OpenInVSCode(fullPath);
+                }
+            }
+        }
+    }
+
+    void Editor::DrawScriptsPanel()
+    {
+        namespace fs = std::filesystem;
+
+        ImGui::Begin("Scripts");
+
+        const fs::path gameCodeRoot = FindGameCodeRoot();
+        if (gameCodeRoot.empty())
+        {
+            ImGui::TextDisabled("Unable to locate game/include and game/src.");
+            ImGui::End();
+            return;
+        }
+
+        const fs::path includeRoot = gameCodeRoot / "game" / "include";
+        const fs::path sourceRoot = gameCodeRoot / "game" / "src";
+
+        ImGui::Text("Path: %s", includeRoot.string().c_str());
+        ImGui::Separator();
+
+        if (ImGui::BeginPopupContextWindow("scripts_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::MenuItem("Create Folder"))
+            {
+                const fs::path includeFolderPath = MakeUniqueDirectoryPath(includeRoot, "NewFolder");
+                const fs::path sourceFolderPath = sourceRoot / fs::relative(includeFolderPath, includeRoot);
+
+                std::error_code includeEc;
+                fs::create_directories(includeFolderPath, includeEc);
+                if (includeEc)
+                {
+                    Debug::Warning("Failed to create script folder '%s': %s", includeFolderPath.string().c_str(), includeEc.message().c_str());
+                }
+                else
+                {
+                    std::error_code sourceEc;
+                    fs::create_directories(sourceFolderPath, sourceEc);
+                    if (sourceEc)
+                        Debug::Warning("Failed to create matching source folder '%s': %s", sourceFolderPath.string().c_str(), sourceEc.message().c_str());
+                }
+            }
+
+            if (ImGui::MenuItem("Create Script"))
+            {
+                m_scriptCreateTargetDir = includeRoot.string();
+                std::snprintf(m_scriptCreateNameBuffer, sizeof(m_scriptCreateNameBuffer), "%s", "NewScript");
+                m_scriptCreateError.clear();
+                m_focusScriptCreateNameInput = true;
+                m_openScriptCreatePopup = true;
+            }
+
+            ImGui::EndPopup();
+        }
+
+        DrawScriptDirectoryRecursive(includeRoot, includeRoot, sourceRoot);
+
+        if (m_openScriptCreatePopup)
+        {
+            ImGui::OpenPopup("Create Script");
+            m_openScriptCreatePopup = false;
+        }
+
+        if (ImGui::BeginPopupModal("Create Script", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("Choose content type and enter a class name.");
+            ImGui::Separator();
+
+            ImGui::Combo("Script Type", &m_scriptCreateTypeSelection, kGameScriptTypeLabels, IM_ARRAYSIZE(kGameScriptTypeLabels));
+            if (m_focusScriptCreateNameInput)
+            {
+                ImGui::SetKeyboardFocusHere();
+                m_focusScriptCreateNameInput = false;
+            }
+
+            const bool submitByEnter = ImGui::InputTextWithHint(
+                "Script Name",
+                "Example: PlayerController",
+                m_scriptCreateNameBuffer,
+                sizeof(m_scriptCreateNameBuffer),
+                ImGuiInputTextFlags_EnterReturnsTrue);
+
+            if (!m_scriptCreateError.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", m_scriptCreateError.c_str());
+
+            const bool clickedCreate = ImGui::Button("Create");
+            const bool shouldCreate = clickedCreate || submitByEnter;
+            if (shouldCreate)
+            {
+                const std::string scriptName = std::string(m_scriptCreateNameBuffer);
+                if (!IsValidCppIdentifier(scriptName))
+                {
+                    m_scriptCreateError = "Script name must be a valid C++ identifier.";
+                }
+                else
+                {
+                    fs::path targetDir = includeRoot;
+                    if (!m_scriptCreateTargetDir.empty())
+                        targetDir = fs::path(m_scriptCreateTargetDir);
+
+                    std::error_code dirEc;
+                    if (!fs::is_directory(targetDir, dirEc))
+                        targetDir = includeRoot;
+
+                    std::error_code relativeEc;
+                    const fs::path relativeDir = fs::relative(targetDir, includeRoot, relativeEc);
+                    std::string scriptTarget = scriptName;
+                    if (!relativeEc && !relativeDir.empty() && relativeDir != ".")
+                        scriptTarget = (relativeDir / scriptName).generic_string();
+
+                    std::string createdHeaderPath = "";
+                    std::string createdSourcePath = "";
+                    std::string error = "";
+                    const GameScriptType selectedType = GetGameScriptTypeFromSelection(m_scriptCreateTypeSelection);
+                    if (CreateGameScriptFiles(gameCodeRoot, scriptTarget, selectedType, {}, false, createdHeaderPath, createdSourcePath, error))
+                    {
+                        m_selectedScriptPath = createdHeaderPath;
+                        m_scriptCreateError.clear();
+                        m_scriptCreateTargetDir.clear();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        m_scriptCreateError = error.empty() ? "Failed to create script files." : error;
+                    }
+                }
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+            {
+                m_scriptCreateError.clear();
+                m_scriptCreateTargetDir.clear();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::End();
+    }
+
+    void Editor::DrawAssetsPanel()
+    {
         ImGui::Begin("Assets");
-
         DrawDirectoryRecursive("assets");
-
         ImGui::End();
     }
 
@@ -4174,8 +5153,118 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::End();
     }
 
+    void Editor::FinalizeReloadBuildIfReady()
+    {
+        bool shouldFinalizeReload = false;
+        bool buildSucceeded = false;
+        int buildExitCode = -1;
+        {
+            std::scoped_lock lock(m_reloadBuildMutex);
+            if (m_reloadBuildAwaitingFinalize && m_reloadBuildFinished)
+            {
+                shouldFinalizeReload = true;
+                buildSucceeded = m_reloadBuildSucceeded;
+                buildExitCode = m_reloadBuildExitCode;
+                m_reloadBuildAwaitingFinalize = false;
+            }
+        }
+
+        if (!shouldFinalizeReload)
+            return;
+
+        if (m_reloadBuildThread.joinable())
+            m_reloadBuildThread.join();
+
+        if (!buildSucceeded)
+            Debug::Warning("GameCode build failed (exit code: %d). Attempting to reload existing game library.", buildExitCode);
+
+        std::string loadError = "";
+        if (!LoadGameCodeAfterReload(m_gameSharedLib, m_app, loadError))
+            Debug::Warning("Failed to reload game code library after build: %s", loadError.c_str());
+
+        m_scene->LoadSceneNode(g_lastPlaySceneNode);
+    }
+
+    void Editor::DrawReloadBuildPopup()
+    {
+        bool shouldOpenPopup = false;
+        bool shouldDrawPopup = false;
+        {
+            std::scoped_lock lock(m_reloadBuildMutex);
+            if (m_openReloadBuildPopup)
+            {
+                shouldOpenPopup = true;
+                m_openReloadBuildPopup = false;
+            }
+            shouldDrawPopup = m_showReloadBuildPopup;
+        }
+
+        if (shouldOpenPopup)
+            ImGui::OpenPopup("Reload Build Output");
+
+        if (!shouldDrawPopup)
+            return;
+
+        std::string command = "";
+        std::string output = "";
+        bool inProgress = false;
+        bool finished = false;
+        bool succeeded = false;
+        int exitCode = -1;
+        {
+            std::scoped_lock lock(m_reloadBuildMutex);
+            command = m_reloadBuildCommand;
+            output = m_reloadBuildOutput;
+            inProgress = m_reloadBuildInProgress;
+            finished = m_reloadBuildFinished;
+            succeeded = m_reloadBuildSucceeded;
+            exitCode = m_reloadBuildExitCode;
+        }
+
+        const bool allowClose = finished && !inProgress;
+        bool popupOpen = true;
+        ImGui::SetNextWindowSize(ImVec2(900.0f, 520.0f), ImGuiCond_FirstUseEver);
+        if (ImGui::BeginPopupModal("Reload Build Output", allowClose ? &popupOpen : nullptr))
+        {
+            if (!command.empty())
+                ImGui::TextWrapped("Command: %s", command.c_str());
+
+            if (inProgress)
+                ImGui::TextUnformatted("Status: Building...");
+            else if (finished && succeeded)
+                ImGui::TextUnformatted("Status: Build succeeded.");
+            else if (finished)
+                ImGui::Text("Status: Build failed (exit code: %d).", exitCode);
+            else
+                ImGui::TextUnformatted("Status: Waiting...");
+
+            ImGui::Separator();
+            ImGui::BeginChild("##ReloadBuildLog", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 4.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
+            ImGui::TextUnformatted(output.c_str());
+            if (inProgress)
+                ImGui::SetScrollHereY(1.0f);
+            ImGui::EndChild();
+
+            if (allowClose && ImGui::Button("Close"))
+            {
+                popupOpen = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        if (allowClose && !popupOpen)
+        {
+            std::scoped_lock lock(m_reloadBuildMutex);
+            m_showReloadBuildPopup = false;
+        }
+    }
+
     void Editor::DrawEditorPanel()
     {
+        FinalizeReloadBuildIfReady();
+
         static float hotKeyCoolDown = 0.0f;
         const float HOTKEYRESET = 0.1f;
 
@@ -4208,18 +5297,103 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             {
                 hotKeyCoolDown = HOTKEYRESET;
 
+                bool buildAlreadyRunning = false;
+                {
+                    std::scoped_lock lock(m_reloadBuildMutex);
+                    buildAlreadyRunning = m_reloadBuildInProgress;
+                }
+
+                if (buildAlreadyRunning)
+                {
+                    std::scoped_lock lock(m_reloadBuildMutex);
+                    m_showReloadBuildPopup = true;
+                    m_openReloadBuildPopup = true;
+                }
+                else
+                {
+                const std::filesystem::path buildDir = std::filesystem::path("..") / "build";
+                const GameCodeBuildConfigInfo buildConfigInfo = ReadGameCodeBuildConfigInfo(buildDir);
+                if (!buildConfigInfo.singleConfigType.empty())
+                {
+                    Debug::Log(
+                        "Reload build tree is single-config: '%s'. '--config Debug' may be ignored for this generator.",
+                        buildConfigInfo.singleConfigType.c_str());
+                }
+                else if (!buildConfigInfo.multiConfigTypes.empty())
+                {
+                    Debug::Log(
+                        "Reload build tree is multi-config: %s. Building Debug.",
+                        buildConfigInfo.multiConfigTypes.c_str());
+                }
+                else
+                {
+                    Debug::Warning("Unable to determine build configuration from ../build/CMakeCache.txt.");
+                }
+
                 m_assetPaths = FindFilesInFolder("assets", "");
                 ReloadEditorShaders();
 
-                // save copy of scene
+                // Save scene state before unregistering scripts from game code.
                 g_lastPlaySceneNode = m_scene->EncodeScene();
 
-                // unload data
+                // Unload scene data while old game code is still loaded.
                 m_scene->Unload();
 
-                GameCodeObjectWatchFile(m_gameSharedLib, m_app);
+                std::string unloadError = "";
+                if (!UnloadGameCodeForReload(m_gameSharedLib, m_app, unloadError))
+                {
+                    Debug::Warning("Reload canceled. Failed to unload current game code: %s", unloadError.c_str());
+                    m_scene->LoadSceneNode(g_lastPlaySceneNode);
+                }
+                else
+                {
+                    if (m_reloadBuildThread.joinable())
+                        m_reloadBuildThread.join();
 
-                m_scene->LoadSceneNode(g_lastPlaySceneNode);
+                    {
+                        std::scoped_lock lock(m_reloadBuildMutex);
+                        m_reloadBuildCommand = "cmake --build ../build --config Debug --target GameCode --";
+                        m_reloadBuildOutput = "[build] " + m_reloadBuildCommand + "\n";
+                        m_reloadBuildInProgress = true;
+                        m_reloadBuildFinished = false;
+                        m_reloadBuildSucceeded = false;
+                        m_reloadBuildAwaitingFinalize = true;
+                        m_reloadBuildExitCode = -1;
+                        m_showReloadBuildPopup = true;
+                        m_openReloadBuildPopup = true;
+                    }
+
+                    m_reloadBuildThread = std::thread([this, buildDir]()
+                    {
+                        std::string buildCommand = "";
+                        std::string buildError = "";
+                        int buildExitCode = -1;
+
+                        const bool buildSucceeded = BuildGameCodeForReload(
+                            buildDir,
+                            buildCommand,
+                            buildError,
+                            buildExitCode,
+                            [this](const std::string &_line)
+                            {
+                                std::scoped_lock lock(m_reloadBuildMutex);
+                                m_reloadBuildOutput += _line;
+                            });
+
+                        std::scoped_lock lock(m_reloadBuildMutex);
+                        if (!buildCommand.empty())
+                            m_reloadBuildCommand = buildCommand;
+
+                        if (!buildError.empty())
+                            m_reloadBuildOutput += "[build] " + buildError + "\n";
+
+                        m_reloadBuildExitCode = buildExitCode;
+                        m_reloadBuildSucceeded = buildSucceeded;
+                        m_reloadBuildInProgress = false;
+                        m_reloadBuildFinished = true;
+                    });
+                }
+                }
             }
         }
         else
@@ -4292,6 +5466,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::Text("Draw Time: %.3f ms", m_app->RenderTimeMs());
 
         ImGui::End();
+        DrawReloadBuildPopup();
     }
 
     void Editor::SelectSprite2D()

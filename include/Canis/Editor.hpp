@@ -1,7 +1,10 @@
 #pragma once
 
 #include <functional>
+#include <filesystem>
 #include <string>
+#include <thread>
+#include <mutex>
 #include <type_traits>
 #include <typeindex>
 #include <unordered_map>
@@ -132,6 +135,8 @@ namespace Canis
         void DrawEnvironment();
         void DrawAssetsPanel();
         void DrawDirectoryRecursive(const std::string &_dirPath);
+        void DrawScriptsPanel();
+        void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
@@ -139,6 +144,8 @@ namespace Canis
         void DrawProjectSettings();
         void DrawSystemPanel();
         void DrawEditorPanel();
+        void DrawReloadBuildPopup();
+        void FinalizeReloadBuildIfReady();
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -190,6 +197,24 @@ namespace Canis
         std::string m_renamingPath;
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
+        std::string m_selectedScriptPath = {};
+        bool m_openScriptCreatePopup = false;
+        bool m_focusScriptCreateNameInput = false;
+        char m_scriptCreateNameBuffer[128] = {};
+        std::string m_scriptCreateTargetDir = {};
+        std::string m_scriptCreateError = {};
+        int m_scriptCreateTypeSelection = 0;
+        std::thread m_reloadBuildThread = {};
+        std::mutex m_reloadBuildMutex = {};
+        std::string m_reloadBuildCommand = {};
+        std::string m_reloadBuildOutput = {};
+        bool m_reloadBuildInProgress = false;
+        bool m_reloadBuildFinished = false;
+        bool m_reloadBuildSucceeded = false;
+        bool m_reloadBuildAwaitingFinalize = false;
+        bool m_showReloadBuildPopup = false;
+        bool m_openReloadBuildPopup = false;
+        int m_reloadBuildExitCode = -1;
         std::vector<UUID> m_hierarchyRootOrder = {};
 
         unsigned int m_gameFramebuffer = 0;
