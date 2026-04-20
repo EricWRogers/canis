@@ -15,6 +15,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
 #include <Canis/Yaml.hpp>
+#include <Canis/PostProcessPipeline.hpp>
 
 #include <SDL3/SDL.h>
 
@@ -98,6 +99,39 @@ namespace Canis
             Shader &modelPickingShader = GetModelPickingShader();
             modelPickingShader.Compile("assets/shaders/editor_model_pick.vs", "assets/shaders/editor_model_pick.fs");
             modelPickingShader.Link();
+        }
+
+        PostProcessResult ApplyScenePostProcess(
+            Scene *_scene,
+            unsigned int _sourceFramebuffer,
+            unsigned int _sourceColorTexture,
+            unsigned int _sourceDepthTexture,
+            int _width,
+            int _height,
+            const Matrix4 &_projection,
+            RenderTarget *_outputTarget)
+        {
+            const PostProcessAsset *postProcess = nullptr;
+            if (_scene != nullptr)
+            {
+                const UUID postProcessUUID = _scene->GetEnvironmentPostProcessUUID();
+                if ((uint64_t)postProcessUUID != 0)
+                {
+                    const std::string postProcessPath = AssetManager::GetPath(postProcessUUID);
+                    if (postProcessPath != "Path was not found in AssetLibrary")
+                        postProcess = AssetManager::GetPostProcess(postProcessPath);
+                }
+            }
+
+            return ApplyPostProcessChain(
+                postProcess,
+                _sourceFramebuffer,
+                _sourceColorTexture,
+                _sourceDepthTexture,
+                _width,
+                _height,
+                _projection,
+                _outputTarget);
         }
 
         constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
@@ -315,7 +349,26 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             Cube,
             Sphere,
             Capsule,
+            DirectionalLight,
+            PointLight,
         };
+
+        struct AddComponentEntry
+        {
+            std::string componentName = "";
+            std::string displayName = "";
+        };
+
+        std::string GetAddComponentDisplayName(const std::string &_componentName)
+        {
+            if (_componentName == DirectionalLight::ScriptName)
+                return "3D/Directional Light";
+
+            if (_componentName == PointLight::ScriptName)
+                return "3D/Point Light";
+
+            return _componentName;
+        }
 
         struct RectTransformRenderBounds
         {
@@ -413,6 +466,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 break;
             case HierarchyCreateType::Capsule:
                 baseName = "Capsule";
+                break;
+            case HierarchyCreateType::DirectionalLight:
+                baseName = "Directional Light";
+                break;
+            case HierarchyCreateType::PointLight:
+                baseName = "Point Light";
                 break;
             case HierarchyCreateType::Empty:
             default:
@@ -539,6 +598,22 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 }
                 break;
             }
+            case HierarchyCreateType::DirectionalLight:
+            {
+                addRequired(*entity, DirectionalLight::ScriptName);
+                break;
+            }
+            case HierarchyCreateType::PointLight:
+            {
+                addRequired(*entity, PointLight::ScriptName);
+
+                if (entity->HasComponent<Transform>())
+                {
+                    Transform &transform = entity->GetComponent<Transform>();
+                    transform.position = Vector3(2.0f, 2.5f, 2.0f);
+                }
+                break;
+            }
             }
 
             ParentNewHierarchyEntity(entity, _parent);
@@ -587,6 +662,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         create(HierarchyCreateType::Sphere);
                     if (ImGui::MenuItem("Capsule"))
                         create(HierarchyCreateType::Capsule);
+                    if (ImGui::MenuItem("Directional Light"))
+                        create(HierarchyCreateType::DirectionalLight);
+                    if (ImGui::MenuItem("Point Light"))
+                        create(HierarchyCreateType::PointLight);
                     ImGui::EndMenu();
                 }
 
@@ -642,11 +721,35 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         return "";
     }
 
+    static std::string NormalizeShaderAssetPath(std::string _path)
+    {
+        if (_path.size() > 3 && _path.ends_with(".vs"))
+            return _path.substr(0, _path.size() - 3);
+
+        if (_path.size() > 3 && _path.ends_with(".fs"))
+            return _path.substr(0, _path.size() - 3);
+
+        return _path;
+    }
+
+    static std::string ToLowerCopy(std::string _value)
+    {
+        std::transform(_value.begin(), _value.end(), _value.begin(), [](unsigned char c)
+        {
+            return static_cast<char>(std::tolower(c));
+        });
+
+        return _value;
+    }
+
     static void SetAssetRefUUID(YAML::Node &_root, const std::string &_key, const std::string &_path)
     {
         YAML::Node node(YAML::NodeType::Map);
         if (MetaFileAsset *meta = AssetManager::GetMetaFile(_path))
+        {
             node["uuid"] = (uint64_t)meta->uuid;
+            node["path"] = _path;
+        }
         _root[_key] = node;
     }
 
@@ -778,17 +881,20 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
-    std::vector<const char *> ConvertComponentToCStringVector(App &_app, Entity &_entity)
+    std::vector<AddComponentEntry> BuildAddComponentEntries(App &_app, Entity &_entity)
     {
-        std::vector<const char *> cStringVector;
+        std::vector<AddComponentEntry> entries = {};
         for (ScriptConf &conf : _app.GetScriptRegistry())
         {
             if (conf.Has(_entity))
                 continue;
 
-            cStringVector.push_back(conf.name.c_str());
+            entries.push_back({
+                .componentName = conf.name,
+                .displayName = GetAddComponentDisplayName(conf.name),
+            });
         }
-        return cStringVector;
+        return entries;
     }
 
     void Editor::Init(Window *_window)
@@ -872,6 +978,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DestroyGameRenderTarget();
         DestroyGamePickingRenderTarget();
         DestroyPlayRenderTarget();
+        DestroyRenderTarget(m_gameViewPostProcessTarget);
+        DestroyRenderTarget(m_playViewPostProcessTarget);
     }
 
     void Editor::BeginGameRender(Window* _window)
@@ -944,12 +1052,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_scene->ClearEditorCameraOverrides();
         BeginPlayRender(m_window);
         m_scene->Render(_deltaTime);
+        m_playRenderProjection = m_scene->GetLastRenderProjection();
         EndGameRender(m_window);
 
         // Pass 2: editor scene camera (used by Scene panel + gizmos).
         ApplyInternalSceneCamera(_deltaTime);
         BeginGameRender(m_window);
         m_scene->Render(_deltaTime);
+        m_gameRenderProjection = m_scene->GetLastRenderProjection();
         RenderGameDebug();
         EndGameRender(m_window);
         m_scene->ClearEditorCameraOverrides();
@@ -1230,6 +1340,16 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
             if (m_gameColorTexture != 0)
             {
+                PostProcessResult renderResult = ApplyScenePostProcess(
+                    m_scene,
+                    m_gameFramebuffer,
+                    m_gameColorTexture,
+                    m_gameDepthRbo,
+                    m_gameTextureWidth,
+                    m_gameTextureHeight,
+                    m_gameRenderProjection,
+                    &m_gameViewPostProcessTarget);
+
                 float targetW = static_cast<float>((m_gameTextureWidth > 0) ? m_gameTextureWidth : 1);
                 float targetH = static_cast<float>((m_gameTextureHeight > 0) ? m_gameTextureHeight : 1);
                 float targetAspect = targetW / targetH;
@@ -1251,7 +1371,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::SetCursorPos(ImVec2(cursor.x + offset.x, cursor.y + offset.y));
 
                 ImGui::Image(
-                    (ImTextureID)(intptr_t)m_gameColorTexture,
+                    (ImTextureID)(intptr_t)renderResult.colorTexture,
                     drawSize,
                     ImVec2(0.0f, 1.0f),
                     ImVec2(1.0f, 0.0f));
@@ -1314,6 +1434,16 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         {
             if (m_playColorTexture != 0)
             {
+                PostProcessResult renderResult = ApplyScenePostProcess(
+                    m_scene,
+                    m_playFramebuffer,
+                    m_playColorTexture,
+                    m_playDepthRbo,
+                    m_playTextureWidth,
+                    m_playTextureHeight,
+                    m_playRenderProjection,
+                    &m_playViewPostProcessTarget);
+
                 ImVec2 cursorScreen = ImGui::GetCursorScreenPos();
                 float targetW = static_cast<float>((m_playTextureWidth > 0) ? m_playTextureWidth : 1);
                 float targetH = static_cast<float>((m_playTextureHeight > 0) ? m_playTextureHeight : 1);
@@ -1336,7 +1466,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::SetCursorPos(ImVec2(cursor.x + offset.x, cursor.y + offset.y));
 
                 ImGui::Image(
-                    (ImTextureID)(intptr_t)m_playColorTexture,
+                    (ImTextureID)(intptr_t)renderResult.colorTexture,
                     drawSize,
                     ImVec2(0.0f, 1.0f),
                     ImVec2(1.0f, 0.0f));
@@ -1596,10 +1726,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_gameColorTexture, 0);
 
-        glGenRenderbuffers(1, &m_gameDepthRbo);
-        glBindRenderbuffer(GL_RENDERBUFFER, m_gameDepthRbo);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, _width, _height);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_gameDepthRbo);
+        glGenTextures(1, &m_gameDepthRbo);
+        glBindTexture(GL_TEXTURE_2D, m_gameDepthRbo);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, _width, _height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_gameDepthRbo, 0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
@@ -1678,10 +1812,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, m_playColorTexture, 0);
 
-        glGenRenderbuffers(1, &m_playDepthRbo);
-        glBindRenderbuffer(GL_RENDERBUFFER, m_playDepthRbo);
-        glRenderbufferStorage(GL_RENDERBUFFER, GL_DEPTH24_STENCIL8, _width, _height);
-        glFramebufferRenderbuffer(GL_FRAMEBUFFER, GL_DEPTH_STENCIL_ATTACHMENT, GL_RENDERBUFFER, m_playDepthRbo);
+        glGenTextures(1, &m_playDepthRbo);
+        glBindTexture(GL_TEXTURE_2D, m_playDepthRbo);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_DEPTH_COMPONENT24, _width, _height, 0, GL_DEPTH_COMPONENT, GL_UNSIGNED_INT, nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_playDepthRbo, 0);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
         {
@@ -1698,7 +1836,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     {
         if (m_gameDepthRbo != 0)
         {
-            glDeleteRenderbuffers(1, &m_gameDepthRbo);
+            glDeleteTextures(1, &m_gameDepthRbo);
             m_gameDepthRbo = 0;
         }
 
@@ -1746,7 +1884,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     {
         if (m_playDepthRbo != 0)
         {
-            glDeleteRenderbuffers(1, &m_playDepthRbo);
+            glDeleteTextures(1, &m_playDepthRbo);
             m_playDepthRbo = 0;
         }
 
@@ -2587,6 +2725,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::End();
                 return;
             }
+
+            if (DrawPostProcessAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
         }
 
         std::vector<Entity *> &entities = m_scene->GetEntities();
@@ -2917,6 +3061,242 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         return true;
     }
 
+    bool Editor::DrawPostProcessAssetInspector(const std::string &_postProcessPath)
+    {
+        MetaFileAsset *meta = AssetManager::GetMetaFile(_postProcessPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::POSTPROCESS)
+            return false;
+
+        ImGui::Text("Asset: %s", meta->name.c_str());
+        ImGui::Text("Path: %s", meta->path.c_str());
+        ImGui::Separator();
+
+        YAML::Node root;
+        if (FileExists(_postProcessPath.c_str()))
+            root = YAML::LoadFile(_postProcessPath);
+        if (!root || !root.IsMap())
+            root = YAML::Node(YAML::NodeType::Map);
+
+        YAML::Node passes = root["passes"];
+        if (!passes || !passes.IsSequence())
+            passes = YAML::Node(YAML::NodeType::Sequence);
+
+        bool dirty = false;
+
+        auto getShaderLabel = [&](const YAML::Node &_shaderNode) -> std::string
+        {
+            std::string shaderPath = ResolveAssetRefPath(_shaderNode);
+            if (shaderPath.empty())
+                return "[ none ]";
+
+            if (MetaFileAsset *shaderMeta = AssetManager::GetMetaFile(shaderPath))
+                return shaderMeta->name;
+
+            return shaderPath;
+        };
+
+        auto assignShaderDrop = [&](YAML::Node &_passNode) -> void
+        {
+            if (!ImGui::BeginDragDropTarget())
+                return;
+
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                std::string path = std::string(dropped.path);
+                if (path.empty() || !FileExists(path.c_str()))
+                    path = AssetManager::GetPath(dropped.uuid);
+
+                bool valid = false;
+                if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(path))
+                {
+                    valid = droppedMeta->type == MetaFileAsset::FileType::VERTEX ||
+                            droppedMeta->type == MetaFileAsset::FileType::FRAGMENT;
+                }
+
+                if (valid)
+                {
+                    SetAssetRefUUID(_passNode, "shader", path);
+                    dirty = true;
+                }
+            }
+
+            ImGui::EndDragDropTarget();
+        };
+
+        for (int i = 0; i < static_cast<int>(passes.size()); ++i)
+        {
+            YAML::Node passNode = passes[i];
+            if (!passNode || !passNode.IsMap())
+            {
+                YAML::Node newPass(YAML::NodeType::Map);
+                passes[i].reset(newPass);
+                passNode = passes[i];
+            }
+
+            if (!passNode["name"])
+                passNode["name"] = "Pass " + std::to_string(i + 1);
+            if (!passNode["enabled"])
+                passNode["enabled"] = true;
+
+            ImGui::PushID(i);
+            ImGui::Separator();
+
+            std::string passName = passNode["name"].as<std::string>("Pass " + std::to_string(i + 1));
+            if (ImGui::InputText("name", &passName))
+            {
+                passNode["name"] = passName;
+                dirty = true;
+            }
+
+            bool enabled = passNode["enabled"].as<bool>(true);
+            if (ImGui::Checkbox("enabled", &enabled))
+            {
+                passNode["enabled"] = enabled;
+                dirty = true;
+            }
+
+            std::string shaderLabel = getShaderLabel(passNode["shader"]);
+            ImGui::Text("shader");
+            ImGui::SameLine();
+            const std::string shaderPopupName = "postprocess_shader_picker##" + std::to_string(i);
+            if (ImGui::Button(shaderLabel.c_str(), ImVec2(220, 0)))
+            {
+                ImGui::OpenPopup(shaderPopupName.c_str());
+            }
+
+            if (ImGui::BeginPopup(shaderPopupName.c_str()))
+            {
+                ImGui::TextUnformatted("Assign shader");
+                ImGui::Separator();
+
+                std::vector<std::string> shaderPaths = FindFilesInFolder("assets", "");
+                bool hasShaderAssets = false;
+                for (const std::string &path : shaderPaths)
+                {
+                    MetaFileAsset *shaderMeta = AssetManager::GetMetaFile(path);
+                    if (shaderMeta == nullptr)
+                        continue;
+
+                    if (shaderMeta->type != MetaFileAsset::FileType::VERTEX &&
+                        shaderMeta->type != MetaFileAsset::FileType::FRAGMENT)
+                    {
+                        continue;
+                    }
+
+                    hasShaderAssets = true;
+                    const std::string label = shaderMeta->name + "##" + path;
+                    if (ImGui::Selectable(label.c_str()))
+                    {
+                        SetAssetRefUUID(passNode, "shader", path);
+                        dirty = true;
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+
+                if (!hasShaderAssets)
+                    ImGui::TextUnformatted("No shader assets found.");
+
+                if (ImGui::MenuItem("Clear Shader"))
+                {
+                    passNode.remove("shader");
+                    dirty = true;
+                    ImGui::CloseCurrentPopup();
+                }
+
+                ImGui::EndPopup();
+            }
+            assignShaderDrop(passNode);
+
+            const std::string shaderPath = ToLowerCopy(NormalizeShaderAssetPath(ResolveAssetRefPath(passNode["shader"])));
+            const bool showBloomControls = shaderPath.find("bloom") != std::string::npos;
+            const bool showColorControls = shaderPath.find("color_correction") != std::string::npos;
+            const bool showSsaoControls = shaderPath.find("ssao") != std::string::npos;
+
+            auto drawPassFloat = [&](const char *_label, const char *_key, float _defaultValue, float _speed, float _min, float _max, const char *_format) -> void
+            {
+                YAML::Node settingsNode = passNode["settings"];
+                const float currentValue = (settingsNode && settingsNode.IsMap())
+                    ? settingsNode[_key].as<float>(_defaultValue)
+                    : _defaultValue;
+
+                float value = currentValue;
+                if (ImGui::DragFloat(_label, &value, _speed, _min, _max, _format))
+                {
+                    if (!passNode["settings"] || !passNode["settings"].IsMap())
+                        passNode["settings"] = YAML::Node(YAML::NodeType::Map);
+
+                    passNode["settings"][_key] = value;
+                    dirty = true;
+                }
+            };
+
+            if (showBloomControls)
+            {
+                drawPassFloat("threshold", "bloomThreshold", 0.5f, 0.01f, 0.0f, 8.0f, "%.2f");
+                drawPassFloat("intensity", "bloomIntensity", 0.85f, 0.01f, 0.0f, 8.0f, "%.2f");
+            }
+
+            if (showColorControls)
+            {
+                drawPassFloat("exposure", "exposure", 1.0f, 0.01f, 0.0f, 8.0f, "%.2f");
+                drawPassFloat("contrast", "contrast", 1.05f, 0.01f, 0.0f, 4.0f, "%.2f");
+                drawPassFloat("saturation", "saturation", 1.0f, 0.01f, 0.0f, 4.0f, "%.2f");
+            }
+
+            if (showSsaoControls)
+            {
+                drawPassFloat("radius", "ssaoRadius", 0.85f, 0.01f, 0.0f, 8.0f, "%.2f");
+                drawPassFloat("bias", "ssaoBias", 0.025f, 0.001f, 0.0f, 1.0f, "%.4f");
+                drawPassFloat("strength", "ssaoStrength", 1.25f, 0.01f, 0.0f, 8.0f, "%.2f");
+            }
+
+            if (ImGui::BeginPopupContextItem("postprocess_pass_ctx"))
+            {
+                if (ImGui::MenuItem("Clear Shader"))
+                {
+                    passNode.remove("shader");
+                    dirty = true;
+                }
+                if (ImGui::MenuItem("Remove Pass"))
+                {
+                    passes.remove(i);
+                    dirty = true;
+                    ImGui::EndPopup();
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::EndPopup();
+            }
+
+            ImGui::PopID();
+        }
+
+        ImGui::Separator();
+        if (ImGui::Button("Add Pass", ImVec2(-1.0f, 0.0f)))
+        {
+            YAML::Node pass(YAML::NodeType::Map);
+            pass["name"] = "New Pass";
+            pass["enabled"] = true;
+            passes.push_back(pass);
+            dirty = true;
+        }
+
+        if (dirty)
+        {
+            root["passes"] = passes;
+
+            std::ofstream fout(_postProcessPath);
+            fout << root;
+            fout.close();
+
+            AssetManager::Free<PostProcessAsset>(_postProcessPath);
+            AssetManager::LoadPostProcess(_postProcessPath);
+        }
+
+        return true;
+    }
+
     void Editor::DrawAddComponentDropDown(bool _refresh)
     {
         if (m_index < 0 || m_index >= (int)m_scene->GetEntities().size())
@@ -2935,8 +3315,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             m_focusAddComponentSearch = false;
         }
 
-        std::vector<const char *> cStringItems = ConvertComponentToCStringVector(*m_app, entity);
-        const bool hasAvailableComponents = !cStringItems.empty();
+        std::vector<AddComponentEntry> componentEntries = BuildAddComponentEntries(*m_app, entity);
+        const bool hasAvailableComponents = !componentEntries.empty();
 
         if (!hasAvailableComponents)
         {
@@ -2971,7 +3351,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 if (_filteredIndices.empty())
                     return false;
 
-                const std::string componentName = cStringItems[_filteredIndices[m_addComponentSelection]];
+                const std::string componentName = componentEntries[_filteredIndices[m_addComponentSelection]].componentName;
                 for (ScriptConf &conf : m_app->GetScriptRegistry())
                 {
                     if (conf.name == componentName)
@@ -2994,17 +3374,19 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::CloseCurrentPopup();
             };
 
-            auto matchesSearch = [&](const char *_value) -> bool
+            auto matchesSearch = [&](const AddComponentEntry &_entry) -> bool
             {
                 if (m_addComponentSearch.empty())
                     return true;
 
-                std::string value = _value;
+                std::string displayName = _entry.displayName;
+                std::string componentName = _entry.componentName;
                 std::string search = m_addComponentSearch;
 
-                std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                std::transform(displayName.begin(), displayName.end(), displayName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                std::transform(componentName.begin(), componentName.end(), componentName.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
                 std::transform(search.begin(), search.end(), search.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
-                return value.find(search) != std::string::npos;
+                return displayName.find(search) != std::string::npos || componentName.find(search) != std::string::npos;
             };
 
             if (m_focusAddComponentSearch)
@@ -3017,10 +3399,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             ImGui::Separator();
 
             std::vector<int> filteredIndices = {};
-            filteredIndices.reserve(cStringItems.size());
-            for (int i = 0; i < static_cast<int>(cStringItems.size()); ++i)
+            filteredIndices.reserve(componentEntries.size());
+            for (int i = 0; i < static_cast<int>(componentEntries.size()); ++i)
             {
-                if (matchesSearch(cStringItems[i]))
+                if (matchesSearch(componentEntries[i]))
                     filteredIndices.push_back(i);
             }
 
@@ -3038,8 +3420,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 {
                     const int componentIndex = filteredIndices[filteredIndex];
                     const bool selected = (filteredIndex == m_addComponentSelection);
+                    const AddComponentEntry &entry = componentEntries[componentIndex];
 
-                    if (ImGui::Selectable(cStringItems[componentIndex], selected))
+                    if (ImGui::Selectable(entry.displayName.c_str(), selected))
                         m_addComponentSelection = filteredIndex;
 
                     if (selected)
@@ -3127,6 +3510,49 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         {
             if (ImGui::MenuItem("Clear"))
                 m_scene->SetEnvironmentSkyboxUUID(UUID(0));
+            ImGui::EndPopup();
+        }
+
+        ImGui::Text("Post Process");
+        ImGui::SameLine();
+
+        UUID postProcessUUID = m_scene->GetEnvironmentPostProcessUUID();
+        std::string postProcessLabel = "[ none ]";
+        if ((uint64_t)postProcessUUID != 0)
+        {
+            const std::string postProcessPath = AssetManager::GetPath(postProcessUUID);
+            if (postProcessPath != "Path was not found in AssetLibrary")
+            {
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(postProcessPath))
+                    postProcessLabel = meta->name;
+                else
+                    postProcessLabel = postProcessPath;
+            }
+        }
+
+        ImGui::Button(postProcessLabel.c_str(), ImVec2(180, 0));
+        if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+            m_scene->SetEnvironmentPostProcessUUID(UUID(0));
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                std::string path = AssetManager::GetPath(dropped.uuid);
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::POSTPROCESS)
+                        m_scene->SetEnvironmentPostProcessUUID(meta->uuid);
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("postprocess_env_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+                m_scene->SetEnvironmentPostProcessUUID(UUID(0));
             ImGui::EndPopup();
         }
 
@@ -3273,6 +3699,34 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
                     }
 
+                    if (ImGui::MenuItem("Create PostProcess"))
+                    {
+                        const fs::path folderPath = entry.path();
+                        const fs::path templatePath = "assets/defaults/postprocess/default.postprocess";
+
+                        fs::path targetPath = folderPath / "new_postprocess.postprocess";
+                        int index = 1;
+                        while (fs::exists(targetPath))
+                        {
+                            targetPath = folderPath / ("new_postprocess_" + std::to_string(index) + ".postprocess");
+                            ++index;
+                        }
+
+                        std::error_code ec;
+                        fs::copy_file(templatePath, targetPath, ec);
+                        if (ec)
+                        {
+                            YAML::Node root(YAML::NodeType::Map);
+                            YAML::Node passes(YAML::NodeType::Sequence);
+                            root["passes"] = passes;
+                            std::ofstream out(targetPath.string());
+                            out << root;
+                            out.close();
+                        }
+
+                        MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
+                    }
+
                     ImGui::EndPopup();
                 }
 
@@ -3315,14 +3769,27 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 else
                 {
                     const bool selected = (m_selectedAssetPath == fullPath);
-                    ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns);
+                    const bool clicked = ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns);
+                    if (clicked)
+                    {
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
+                        {
+                            if (meta->type == MetaFileAsset::FileType::MATERIAL ||
+                                meta->type == MetaFileAsset::FileType::SKYBOX ||
+                                meta->type == MetaFileAsset::FileType::POSTPROCESS)
+                            {
+                                m_selectedAssetPath = fullPath;
+                            }
+                        }
+                    }
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     {
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
                             if (meta->type == MetaFileAsset::FileType::MATERIAL ||
-                                meta->type == MetaFileAsset::FileType::SKYBOX)
+                                meta->type == MetaFileAsset::FileType::SKYBOX ||
+                                meta->type == MetaFileAsset::FileType::POSTPROCESS)
                                 m_selectedAssetPath = fullPath;
                         }
                     }

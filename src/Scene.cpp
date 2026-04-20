@@ -23,6 +23,51 @@ namespace Canis
 {
     namespace
     {
+        UUID ResolveEnvironmentAssetUUID(const YAML::Node &node)
+        {
+            if (!node)
+                return UUID(0);
+
+            if (node.IsMap())
+            {
+                if (YAML::Node uuidNode = node["uuid"])
+                {
+                    const UUID uuid = uuidNode.as<uint64_t>(0);
+                    if ((uint64_t)uuid != 0)
+                        return uuid;
+                }
+
+                if (YAML::Node pathNode = node["path"])
+                {
+                    const std::string path = pathNode.as<std::string>("");
+                    if (!path.empty())
+                    {
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                            return meta->uuid;
+                    }
+                }
+
+                return UUID(0);
+            }
+
+            if (node.IsScalar())
+            {
+                const std::string rawValue = node.as<std::string>("");
+                if (rawValue.empty())
+                    return UUID(0);
+
+                const bool isNumeric = std::all_of(rawValue.begin(), rawValue.end(), [](unsigned char c)
+                    { return std::isdigit(c) != 0; });
+                if (isNumeric)
+                    return (UUID)std::stoull(rawValue);
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(rawValue))
+                    return meta->uuid;
+            }
+
+            return UUID(0);
+        }
+
         bool HasHierarchyParent(Entity *_entity)
         {
             if (_entity == nullptr)
@@ -44,6 +89,7 @@ namespace Canis
         m_window = _window;
         m_inputManager = _inputManger;
         m_paused = false;
+        ClearLastRenderCamera();
         ClearEditorCameraOverrides();
 
         // TODO resizing breaks components
@@ -69,6 +115,26 @@ namespace Canis
     {
         m_editorCamera3DOverrideEnabled = false;
         m_editorCamera2DOverrideEnabled = false;
+    }
+
+    void Scene::SetLastRenderCamera(const Matrix4 &_view, const Matrix4 &_projection, const Vector3 &_cameraPosition, float _nearClip, float _farClip)
+    {
+        m_lastRenderCameraValid = true;
+        m_lastRenderView = _view;
+        m_lastRenderProjection = _projection;
+        m_lastRenderCameraPosition = _cameraPosition;
+        m_lastRenderCameraNearClip = _nearClip;
+        m_lastRenderCameraFarClip = _farClip;
+    }
+
+    void Scene::ClearLastRenderCamera()
+    {
+        m_lastRenderCameraValid = false;
+        m_lastRenderView = Matrix4(1.0f);
+        m_lastRenderProjection = Matrix4(1.0f);
+        m_lastRenderCameraPosition = Vector3(0.0f);
+        m_lastRenderCameraNearClip = 0.1f;
+        m_lastRenderCameraFarClip = 100.0f;
     }
 
     bool Scene::Raycast(const Vector3 &_origin, const Vector3 &_direction, RaycastHit &_hit, float _maxDistance, u32 _mask)
@@ -199,6 +265,8 @@ namespace Canis
         m_isUpdating = false;
         m_isLoadingEntityNodes = false;
         m_environmentSkyboxUUID = UUID(0);
+        m_environmentPostProcessUUID = UUID(0);
+        ClearLastRenderCamera();
         ClearEditorCameraOverrides();
 
         for (System* system : m_systems)
@@ -289,6 +357,7 @@ namespace Canis
         }
 
         m_environmentSkyboxUUID = UUID(0);
+        m_environmentPostProcessUUID = UUID(0);
         m_paused = false;
         
         for (System* system : m_systems)
@@ -311,35 +380,12 @@ namespace Canis
 
             if (YAML::Node skyboxNode = environment["SkyboxAsset"])
             {
-                if (skyboxNode.IsMap())
-                {
-                    m_environmentSkyboxUUID = skyboxNode["uuid"].as<uint64_t>(0);
-                    if ((uint64_t)m_environmentSkyboxUUID == 0)
-                    {
-                        const std::string path = skyboxNode["path"].as<std::string>("");
-                        if (!path.empty())
-                        {
-                            if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
-                                m_environmentSkyboxUUID = meta->uuid;
-                        }
-                    }
-                }
-                else if (skyboxNode.IsScalar())
-                {
-                    const std::string rawValue = skyboxNode.as<std::string>("");
-                    const bool isNumeric = std::all_of(rawValue.begin(), rawValue.end(), [](unsigned char c)
-                        { return std::isdigit(c) != 0; });
+                m_environmentSkyboxUUID = ResolveEnvironmentAssetUUID(skyboxNode);
+            }
 
-                    if (isNumeric && !rawValue.empty())
-                    {
-                        m_environmentSkyboxUUID = (UUID)std::stoull(rawValue);
-                    }
-                    else if (!rawValue.empty())
-                    {
-                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(rawValue))
-                            m_environmentSkyboxUUID = meta->uuid;
-                    }
-                }
+            if (YAML::Node postProcessNode = environment["PostProcessAsset"])
+            {
+                m_environmentPostProcessUUID = ResolveEnvironmentAssetUUID(postProcessNode);
             }
         }
 
@@ -601,6 +647,12 @@ namespace Canis
             YAML::Node skyboxAsset(YAML::NodeType::Map);
             skyboxAsset["uuid"] = (uint64_t)m_environmentSkyboxUUID;
             environment["SkyboxAsset"] = skyboxAsset;
+        }
+        if ((uint64_t)m_environmentPostProcessUUID != 0)
+        {
+            YAML::Node postProcessAsset(YAML::NodeType::Map);
+            postProcessAsset["uuid"] = (uint64_t)m_environmentPostProcessUUID;
+            environment["PostProcessAsset"] = postProcessAsset;
         }
         node["Environment"] = environment;
 

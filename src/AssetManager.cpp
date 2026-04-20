@@ -757,6 +757,51 @@ namespace Canis
 
             return nullptr;
         }
+
+        int LoadPostProcess(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            auto it = assetLibrary.assetPath.find(_path);
+            if (it != assetLibrary.assetPath.end())
+                return it->second;
+
+            if (!FileExists(_path.c_str()))
+            {
+                Debug::Warning("PostProcess file not found: %s", _path.c_str());
+                return -1;
+            }
+
+            PostProcessAsset *postProcess = new PostProcessAsset();
+            if (!postProcess->Load(_path))
+            {
+                delete postProcess;
+                return -1;
+            }
+
+            const int id = assetLibrary.nextId;
+            assetLibrary.assets[id] = postProcess;
+            assetLibrary.assetPath[_path] = id;
+            assetLibrary.nextId++;
+
+            return id;
+        }
+
+        PostProcessAsset* GetPostProcess(const std::string &_path)
+        {
+            const int id = LoadPostProcess(_path);
+            if (id < 0)
+                return nullptr;
+
+            return GetPostProcess(id);
+        }
+
+        PostProcessAsset* GetPostProcess(i32 _postProcessID)
+        {
+            if (GetAssetLibrary().assets.contains(_postProcessID))
+                return (PostProcessAsset *)GetAssetLibrary().assets[_postProcessID];
+
+            return nullptr;
+        }
     } // end of AssetManager namespace
 
 } // end of Canis namespace

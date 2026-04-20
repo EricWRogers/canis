@@ -171,5 +171,9 @@ namespace Canis
         int LoadSkybox(const std::string &_path);
         SkyboxAsset* GetSkybox(const std::string &_path);
         SkyboxAsset* GetSkybox(i32 _skyboxID);
+
+        int LoadPostProcess(const std::string &_path);
+        PostProcessAsset* GetPostProcess(const std::string &_path);
+        PostProcessAsset* GetPostProcess(i32 _postProcessID);
     } // end of AssetManager namespace
 } // end of Canis namespace

@@ -10,12 +10,14 @@
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Debug.hpp>
+#include <Canis/OpenGL.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/Editor.hpp>
 #include <Canis/IOManager.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/AudioManager.hpp>
 #include <Canis/AssetManager.hpp>
+#include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ConfigHelper.hpp>
 
 #include <imgui.h>
@@ -40,6 +42,8 @@ namespace Canis
         std::unique_ptr<InputManager> inputManager;
         GameCodeObject gameCodeObject = {};
         bool editorRuntimeEnabled = false;
+        RenderTarget runtimeRenderTarget = {};
+        RenderTarget runtimePostProcessTarget = {};
     };
 
     namespace
@@ -241,6 +245,7 @@ namespace Canis
 
             YAML::Node environmentNode(YAML::NodeType::Map);
             environmentNode["ClearColor"] = _clearColor;
+            environmentNode["PostProcessAsset"] = CreateAssetReferenceNode("assets/defaults/postprocess/default.postprocess");
 
             YAML::Node cameraNode(YAML::NodeType::Map);
             cameraNode["Entity"] = (uint64_t)cameraUUID;
@@ -308,6 +313,35 @@ namespace Canis
 
             (void)AssetManager::GetMetaFile(scenePath.generic_string());
             return true;
+        }
+
+        PostProcessResult ApplyScenePostProcess(
+            Scene& _scene,
+            unsigned int _sourceFramebuffer,
+            unsigned int _sourceColorTexture,
+            unsigned int _sourceDepthTexture,
+            int _width,
+            int _height,
+            RenderTarget *_outputTarget)
+        {
+            const PostProcessAsset *postProcess = nullptr;
+            const UUID postProcessUUID = _scene.GetEnvironmentPostProcessUUID();
+            if ((uint64_t)postProcessUUID != 0)
+            {
+                const std::string postProcessPath = AssetManager::GetPath(postProcessUUID);
+                if (postProcessPath != "Path was not found in AssetLibrary")
+                    postProcess = AssetManager::GetPostProcess(postProcessPath);
+            }
+
+            return ApplyPostProcessChain(
+                postProcess,
+                _sourceFramebuffer,
+                _sourceColorTexture,
+                _sourceDepthTexture,
+                _width,
+                _height,
+                _scene.GetLastRenderProjection(),
+                _outputTarget);
         }
 
         std::string ResolvePendingSceneLoadPath(const std::string& _requestedPath, const Color& _clearColor)
@@ -662,7 +696,35 @@ namespace Canis
         else
 #endif
         {
+            EnsureRenderTarget(runtime.runtimeRenderTarget, window.GetScreenWidth(), window.GetScreenHeight());
+
+            glBindFramebuffer(GL_FRAMEBUFFER, runtime.runtimeRenderTarget.framebuffer);
+            glViewport(0, 0, runtime.runtimeRenderTarget.width, runtime.runtimeRenderTarget.height);
+
+            Color clear = window.GetClearColor();
+            glClearColor(clear.r, clear.g, clear.b, clear.a);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
             scene.Render(deltaTime);
+            glBindFramebuffer(GL_FRAMEBUFFER, 0);
+
+            PostProcessResult postProcessResult = ApplyScenePostProcess(
+                scene,
+                runtime.runtimeRenderTarget.framebuffer,
+                runtime.runtimeRenderTarget.colorTexture,
+                runtime.runtimeRenderTarget.depthTexture,
+                runtime.runtimeRenderTarget.width,
+                runtime.runtimeRenderTarget.height,
+                &runtime.runtimePostProcessTarget);
+
+            BlitFramebuffer(
+                postProcessResult.framebuffer,
+                runtime.runtimeRenderTarget.width,
+                runtime.runtimeRenderTarget.height,
+                0,
+                window.GetWindowWidth(),
+                window.GetWindowHeight());
+
             inputManager.SetGameInputWindowID(SDL_GetWindowID((SDL_Window*)window.GetSDLWindow()));
         }
         window.SwapBuffer();
@@ -731,6 +793,8 @@ namespace Canis
 
         AudioManager::Shutdown();
         GameCodeObjectDestroy(&runtime->gameCodeObject);
+        DestroyRenderTarget(runtime->runtimeRenderTarget);
+        DestroyRenderTarget(runtime->runtimePostProcessTarget);
         m_editor = nullptr;
         delete runtime;
     }

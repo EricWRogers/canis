@@ -17,12 +17,22 @@ namespace Canis
         void OnDestroy() override;
 
     private:
+        static constexpr int kMaxPointLights = 8;
+        static constexpr int kDirectionalShadowMapSize = 2048;
+
         Shader *m_shader = nullptr;
         Shader *m_skyboxShader = nullptr;
+        Shader *m_shadowShader = nullptr;
         unsigned int m_skyboxVao = 0;
         unsigned int m_skyboxVbo = 0;
+        unsigned int m_shadowFramebuffer = 0;
+        unsigned int m_shadowDepthTexture = 0;
+        Matrix4 m_shadowLightSpaceMatrix = Matrix4(1.0f);
 
         void CreateSkyboxGeometry();
         void DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view);
+        void CreateShadowMap();
+        void DestroyShadowMap();
+        void RenderDirectionalShadowMap(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view, const Vector3 &_cameraPosition, float _cameraFarClip, const Vector3 &_directionalLightDirection, bool _useDirectionalLight);
     };
 } // end of Canis namespace

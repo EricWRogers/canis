@@ -54,6 +54,22 @@ namespace Canis
         bool IsLoaded() const { return m_loaded; }
     };
 
+    struct PostProcessPass
+    {
+        std::string name = "";
+        std::string shaderPath = "";
+        i32 shaderId = -1;
+        bool enabled = true;
+        float exposure = 1.0f;
+        float contrast = 1.05f;
+        float saturation = 1.0f;
+        float bloomThreshold = 0.5f;
+        float bloomIntensity = 0.85f;
+        float ssaoRadius = 0.85f;
+        float ssaoBias = 0.025f;
+        float ssaoStrength = 1.25f;
+    };
+
     class ShaderAsset : public Asset
     {
     private:
@@ -66,6 +82,21 @@ namespace Canis
         bool Free() override;
 
         Canis::Shader *GetShader() { return m_shader; }
+    };
+
+    class PostProcessAsset : public Asset
+    {
+    private:
+        std::string m_path = "";
+        std::vector<PostProcessPass> m_passes = {};
+
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+
+        const std::string& GetPath() const { return m_path; }
+        const std::vector<PostProcessPass>& GetPasses() const { return m_passes; }
+        std::vector<PostProcessPass>& GetPasses() { return m_passes; }
     };
 
     class TextAsset : public Asset
@@ -131,6 +162,7 @@ namespace Canis
             MODEL,
             MATERIAL,
             SKYBOX,
+            POSTPROCESS,
         };
 
         MetaFileAsset() {}

@@ -646,6 +646,95 @@ namespace Canis
         return true;
     }
 
+    bool PostProcessAsset::Load(std::string _path)
+    {
+        Free();
+
+        if (!FileExists(_path.c_str()))
+        {
+            Debug::Warning("PostProcess file not found: %s", _path.c_str());
+            return false;
+        }
+
+        m_path = _path;
+        YAML::Node root = YAML::LoadFile(_path);
+        YAML::Node passesNode = root["passes"];
+        if (!passesNode || !passesNode.IsSequence())
+            passesNode = root;
+
+        if (!passesNode || !passesNode.IsSequence())
+            return true;
+
+        m_passes.reserve(passesNode.size());
+        for (const auto &passEntry : passesNode)
+        {
+            YAML::Node passNode = passEntry;
+            if (!passNode || !passNode.IsMap())
+                continue;
+
+            PostProcessPass pass = {};
+            pass.name = passNode["name"].as<std::string>("");
+            pass.enabled = passNode["enabled"].as<bool>(true);
+
+            YAML::Node settingsNode = passNode["settings"];
+            if (!settingsNode || !settingsNode.IsMap())
+                settingsNode = passNode;
+
+            pass.exposure = settingsNode["exposure"].as<float>(pass.exposure);
+            pass.contrast = settingsNode["contrast"].as<float>(pass.contrast);
+            pass.saturation = settingsNode["saturation"].as<float>(pass.saturation);
+            pass.bloomThreshold = settingsNode["bloomThreshold"].as<float>(pass.bloomThreshold);
+            pass.bloomIntensity = settingsNode["bloomIntensity"].as<float>(pass.bloomIntensity);
+            pass.ssaoRadius = settingsNode["ssaoRadius"].as<float>(pass.ssaoRadius);
+            pass.ssaoBias = settingsNode["ssaoBias"].as<float>(pass.ssaoBias);
+            pass.ssaoStrength = settingsNode["ssaoStrength"].as<float>(pass.ssaoStrength);
+
+            const std::string rawShaderPath = ResolveAssetRefPath(passNode["shader"]);
+            if (rawShaderPath.empty())
+            {
+                m_passes.push_back(pass);
+                continue;
+            }
+
+            std::string shaderPath = rawShaderPath;
+            if (shaderPath.size() > 3 && shaderPath.ends_with(".vs"))
+                shaderPath = shaderPath.substr(0, shaderPath.size() - 3);
+            else if (shaderPath.size() > 3 && shaderPath.ends_with(".fs"))
+                shaderPath = shaderPath.substr(0, shaderPath.size() - 3);
+
+            if (pass.name.empty())
+                pass.name = GetFileName(shaderPath);
+            pass.shaderPath = shaderPath;
+            pass.shaderId = AssetManager::LoadShader(shaderPath);
+
+            if (pass.shaderId >= 0)
+            {
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(pass.shaderId))
+                {
+                    Shader *shader = shaderAsset->GetShader();
+                    if (!shader->IsLinked())
+                    {
+                        shader->AddAttribute("vertexPosition");
+                        shader->AddAttribute("vertexUV");
+                        shader->Link();
+                    }
+                }
+            }
+
+            m_passes.push_back(pass);
+        }
+
+        return true;
+    }
+
+    bool PostProcessAsset::Free()
+    {
+        m_path.clear();
+        m_passes.clear();
+        m_passes.shrink_to_fit();
+        return true;
+    }
+
     bool TextAsset::Load(std::string _path)
     {
         m_path = _path;
@@ -853,6 +942,8 @@ namespace Canis
                 return "MATERIAL";
             case MetaFileAsset::FileType::SKYBOX:
                 return "SKYBOX";
+            case MetaFileAsset::FileType::POSTPROCESS:
+                return "POSTPROCESS";
             default:
                 return "FILE_UNKNOWN";
         }
@@ -878,6 +969,8 @@ namespace Canis
             return MetaFileAsset::FileType::MATERIAL;
         else if (_type == "SKYBOX")
             return MetaFileAsset::FileType::SKYBOX;
+        else if (_type == "POSTPROCESS")
+            return MetaFileAsset::FileType::POSTPROCESS;
         else
             return MetaFileAsset::FileType::FILE_UNKNOWN;
     }
@@ -910,6 +1003,8 @@ namespace Canis
                 type = FileType::MATERIAL;
             else if (extension == "skybox")
                 type = FileType::SKYBOX;
+            else if (extension == "postprocess")
+                type = FileType::POSTPROCESS;
             else
                 type = FileType::FILE_UNKNOWN;
 

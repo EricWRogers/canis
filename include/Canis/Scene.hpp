@@ -86,6 +86,16 @@ namespace Canis
         const Vector2& GetEditorCamera2DPosition() const { return m_editorCamera2DPosition; }
         UUID GetEnvironmentSkyboxUUID() const { return m_environmentSkyboxUUID; }
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
+        UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
+        void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
+        void SetLastRenderCamera(const Matrix4& _view, const Matrix4& _projection, const Vector3& _cameraPosition, float _nearClip, float _farClip);
+        void ClearLastRenderCamera();
+        const Matrix4& GetLastRenderProjection() const { return m_lastRenderProjection; }
+        const Matrix4& GetLastRenderView() const { return m_lastRenderView; }
+        const Vector3& GetLastRenderCameraPosition() const { return m_lastRenderCameraPosition; }
+        float GetLastRenderCameraNearClip() const { return m_lastRenderCameraNearClip; }
+        float GetLastRenderCameraFarClip() const { return m_lastRenderCameraFarClip; }
+        bool HasLastRenderCamera() const { return m_lastRenderCameraValid; }
         bool IsPaused() const { return m_paused; }
         void SetPaused(bool _paused) { m_paused = _paused; }
         void QuitGame();
@@ -155,6 +165,13 @@ namespace Canis
         Matrix4 m_editorCamera2DMatrix = Matrix4(1.0f);
         Vector2 m_editorCamera2DPosition = Vector2(0.0f);
         UUID m_environmentSkyboxUUID = UUID(0);
+        UUID m_environmentPostProcessUUID = UUID(0);
+        Matrix4 m_lastRenderView = Matrix4(1.0f);
+        Matrix4 m_lastRenderProjection = Matrix4(1.0f);
+        Vector3 m_lastRenderCameraPosition = Vector3(0.0f);
+        float m_lastRenderCameraNearClip = 0.1f;
+        float m_lastRenderCameraFarClip = 100.0f;
+        bool m_lastRenderCameraValid = false;
         bool m_paused = false;
 
         // this is used when duplicating entity

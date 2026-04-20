@@ -7,11 +7,16 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Window.hpp>
 #include <algorithm>
+#include <array>
+#include <cmath>
 
 namespace Canis
 {
     namespace
     {
+        constexpr int kMaxPointLights = 8;
+        constexpr int kDirectionalShadowMapSize = 2048;
+
         static const float kSkyboxVertices[] = {
             -1.0f,  1.0f, -1.0f,
             -1.0f, -1.0f, -1.0f,
@@ -55,6 +60,80 @@ namespace Canis
             -1.0f, -1.0f,  1.0f,
              1.0f, -1.0f,  1.0f
         };
+
+        struct DirectionalLightState
+        {
+            bool enabled = false;
+            Vector3 direction = Vector3(-0.4f, -1.0f, -0.25f);
+            Vector3 color = Vector3(1.0f, 0.98f, 0.95f);
+            float intensity = 1.0f;
+        };
+
+        struct PointLightState
+        {
+            Vector3 position = Vector3(0.0f);
+            Vector3 color = Vector3(1.0f);
+            float intensity = 1.0f;
+            float range = 12.0f;
+        };
+
+        DirectionalLightState GatherDirectionalLight(entt::registry &_registry)
+        {
+            DirectionalLightState state = {};
+
+            auto directionalLightView = _registry.view<DirectionalLight>();
+            for (const entt::entity entityHandle : directionalLightView)
+            {
+                DirectionalLight &light = directionalLightView.get<DirectionalLight>(entityHandle);
+                Entity *entity = light.entity;
+                if (entity == nullptr || !entity->active)
+                    continue;
+
+                state.enabled = light.enabled;
+                state.direction = light.direction;
+                const float directionLength = glm::length(state.direction);
+                if (directionLength > 0.0001f)
+                    state.direction /= directionLength;
+                else
+                    state.direction = Vector3(0.0f, -1.0f, 0.0f);
+                state.color = Vector3(light.color.r, light.color.g, light.color.b);
+                state.intensity = light.intensity;
+                break;
+            }
+
+            return state;
+        }
+
+        std::vector<PointLightState> GatherPointLights(entt::registry &_registry)
+        {
+            std::vector<PointLightState> lights = {};
+            lights.reserve(kMaxPointLights);
+
+            auto pointLightView = _registry.view<PointLight, Transform>();
+            for (const entt::entity entityHandle : pointLightView)
+            {
+                if (lights.size() >= kMaxPointLights)
+                    break;
+
+                PointLight &light = pointLightView.get<PointLight>(entityHandle);
+                Transform &lightTransform = pointLightView.get<Transform>(entityHandle);
+                Entity *entity = light.entity;
+                if (entity == nullptr)
+                    entity = lightTransform.entity;
+
+                if (entity == nullptr || !entity->active || !light.enabled)
+                    continue;
+
+                PointLightState state = {};
+                state.position = lightTransform.GetGlobalPosition();
+                state.color = Vector3(light.color.r, light.color.g, light.color.b);
+                state.intensity = light.intensity;
+                state.range = light.range;
+                lights.push_back(state);
+            }
+
+            return lights;
+        }
     } // namespace
 
     void MeshRenderer3DSystem::Create()
@@ -81,6 +160,19 @@ namespace Canis
         }
 
         m_skyboxShader = skyboxShader;
+
+        int shadowShaderId = AssetManager::LoadShader("assets/shaders/model3d_shadow");
+        Shader *shadowShader = AssetManager::Get<ShaderAsset>(shadowShaderId)->GetShader();
+        if (!shadowShader->IsLinked())
+        {
+            shadowShader->AddAttribute("vertexPosition");
+            shadowShader->AddAttribute("vertexNormal");
+            shadowShader->AddAttribute("vertexUV");
+            shadowShader->Link();
+        }
+
+        m_shadowShader = shadowShader;
+        CreateShadowMap();
         CreateSkyboxGeometry();
     }
 
@@ -93,9 +185,11 @@ namespace Canis
         if (m_skyboxVao != 0)
             glDeleteVertexArrays(1, &m_skyboxVao);
 
+        DestroyShadowMap();
         m_skyboxVbo = 0;
         m_skyboxVao = 0;
         m_skyboxShader = nullptr;
+        m_shadowShader = nullptr;
         m_shader = nullptr;
     }
 
@@ -116,10 +210,207 @@ namespace Canis
         glBindBuffer(GL_ARRAY_BUFFER, 0);
     }
 
+    void MeshRenderer3DSystem::CreateShadowMap()
+    {
+        if (m_shadowFramebuffer != 0 && m_shadowDepthTexture != 0)
+            return;
+
+        if (m_shadowDepthTexture != 0)
+        {
+            glDeleteTextures(1, &m_shadowDepthTexture);
+            m_shadowDepthTexture = 0;
+        }
+
+        if (m_shadowFramebuffer != 0)
+        {
+            glDeleteFramebuffers(1, &m_shadowFramebuffer);
+            m_shadowFramebuffer = 0;
+        }
+
+        glGenFramebuffers(1, &m_shadowFramebuffer);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFramebuffer);
+
+        glGenTextures(1, &m_shadowDepthTexture);
+        glBindTexture(GL_TEXTURE_2D, m_shadowDepthTexture);
+        glTexImage2D(
+            GL_TEXTURE_2D,
+            0,
+            GL_DEPTH_COMPONENT24,
+            kDirectionalShadowMapSize,
+            kDirectionalShadowMapSize,
+            0,
+            GL_DEPTH_COMPONENT,
+            GL_UNSIGNED_INT,
+            nullptr);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
+        const float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
+        glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+        glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_shadowDepthTexture, 0);
+        glDrawBuffer(GL_NONE);
+        glReadBuffer(GL_NONE);
+
+        if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
+            Debug::Warning("Directional shadow framebuffer incomplete.");
+
+        glBindTexture(GL_TEXTURE_2D, 0);
+        glBindFramebuffer(GL_FRAMEBUFFER, 0);
+    }
+
+    void MeshRenderer3DSystem::DestroyShadowMap()
+    {
+        if (m_shadowDepthTexture != 0)
+        {
+            glDeleteTextures(1, &m_shadowDepthTexture);
+            m_shadowDepthTexture = 0;
+        }
+
+        if (m_shadowFramebuffer != 0)
+        {
+            glDeleteFramebuffers(1, &m_shadowFramebuffer);
+            m_shadowFramebuffer = 0;
+        }
+    }
+
+    void MeshRenderer3DSystem::RenderDirectionalShadowMap(
+        entt::registry &_registry,
+        const Matrix4 &_projection,
+        const Matrix4 &_view,
+        const Vector3 &_cameraPosition,
+        float _cameraFarClip,
+        const Vector3 &_directionalLightDirection,
+        bool _useDirectionalLight)
+    {
+        (void)_projection;
+        (void)_view;
+
+        if (m_shadowShader == nullptr || m_shadowFramebuffer == 0 || m_shadowDepthTexture == 0 || !_useDirectionalLight)
+        {
+            m_shadowLightSpaceMatrix = Matrix4(1.0f);
+            return;
+        }
+
+        if (!m_shadowShader->IsLinked())
+        {
+            m_shadowShader->AddAttribute("vertexPosition");
+            m_shadowShader->AddAttribute("vertexNormal");
+            m_shadowShader->AddAttribute("vertexUV");
+            m_shadowShader->Link();
+        }
+
+        const Vector3 worldUp = Vector3(0.0f, 1.0f, 0.0f);
+        const Vector3 lightUp = (std::abs(glm::dot(_directionalLightDirection, worldUp)) > 0.95f)
+            ? Vector3(0.0f, 0.0f, 1.0f)
+            : worldUp;
+        const float shadowExtent = std::clamp(_cameraFarClip * 0.1f, 20.0f, 120.0f);
+        const float shadowDistance = std::max(50.0f, shadowExtent * 2.0f);
+        const Vector3 lightPosition = _cameraPosition - (_directionalLightDirection * shadowDistance);
+
+        const Matrix4 lightView = glm::lookAt(lightPosition, _cameraPosition, lightUp);
+        const Matrix4 lightProjection = glm::ortho(
+            -shadowExtent,
+            shadowExtent,
+            -shadowExtent,
+            shadowExtent,
+            0.1f,
+            shadowDistance * 2.0f);
+        m_shadowLightSpaceMatrix = lightProjection * lightView;
+
+        GLint previousViewport[4] = { 0, 0, 0, 0 };
+        GLint previousFramebuffer = 0;
+        glGetIntegerv(GL_VIEWPORT, previousViewport);
+        glGetIntegerv(GL_FRAMEBUFFER_BINDING, &previousFramebuffer);
+
+        const bool depthTestEnabled = glIsEnabled(GL_DEPTH_TEST);
+        const bool blendEnabled = glIsEnabled(GL_BLEND);
+        const bool cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
+        const bool polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFramebuffer);
+        glViewport(0, 0, kDirectionalShadowMapSize, kDirectionalShadowMapSize);
+        glClear(GL_DEPTH_BUFFER_BIT);
+
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_BLEND);
+        glEnable(GL_CULL_FACE);
+        glCullFace(GL_FRONT);
+        glEnable(GL_POLYGON_OFFSET_FILL);
+        glPolygonOffset(2.0f, 4.0f);
+
+        m_shadowShader->Use();
+        m_shadowShader->SetMat4("lightSpaceMatrix", m_shadowLightSpaceMatrix);
+
+        auto modelView = _registry.view<Transform, Model>();
+        for (const entt::entity entityHandle : modelView)
+        {
+            Transform &transform = modelView.get<Transform>(entityHandle);
+            Model &modelRenderer = modelView.get<Model>(entityHandle);
+            Entity *entity = modelRenderer.entity;
+            if (entity == nullptr)
+                entity = transform.entity;
+
+            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+                continue;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                continue;
+
+            const ModelAsset::Pose3D *pose = nullptr;
+            if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
+            {
+                if (animation->poseModelId == modelRenderer.modelId)
+                    pose = &animation->pose;
+            }
+
+            model->Draw(
+                *m_shadowShader,
+                transform.GetModelMatrix(),
+                pose,
+                -1,
+                Color(1.0f),
+                nullptr);
+        }
+
+        m_shadowShader->UnUse();
+
+        if (polygonOffsetEnabled)
+            glEnable(GL_POLYGON_OFFSET_FILL);
+        else
+            glDisable(GL_POLYGON_OFFSET_FILL);
+
+        if (cullFaceEnabled)
+            glEnable(GL_CULL_FACE);
+        else
+            glDisable(GL_CULL_FACE);
+
+        if (blendEnabled)
+            glEnable(GL_BLEND);
+        else
+            glDisable(GL_BLEND);
+
+        if (depthTestEnabled)
+            glEnable(GL_DEPTH_TEST);
+        else
+            glDisable(GL_DEPTH_TEST);
+
+        glCullFace(GL_BACK);
+        glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+    }
+
     void MeshRenderer3DSystem::DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view)
     {
         if (m_skyboxShader == nullptr || m_skyboxVao == 0)
             return;
+
+        if (!m_skyboxShader->IsLinked())
+        {
+            m_skyboxShader->AddAttribute("aPos");
+            m_skyboxShader->Link();
+        }
 
         const UUID skyboxUUID = scene->GetEnvironmentSkyboxUUID();
         if ((uint64_t)skyboxUUID == 0)
@@ -160,9 +451,19 @@ namespace Canis
         if (m_shader == nullptr)
             return;
 
+        if (!m_shader->IsLinked())
+        {
+            m_shader->AddAttribute("vertexPosition");
+            m_shader->AddAttribute("vertexNormal");
+            m_shader->AddAttribute("vertexUV");
+            m_shader->Link();
+        }
+
         Matrix4 projection = Matrix4(1.0f);
         Matrix4 view = Matrix4(1.0f);
         Vector3 cameraPosition = Vector3(0.0f, 0.0f, 0.0f);
+        float cameraNearClip = 0.1f;
+        float cameraFarClip = 100.0f;
 
         if (scene->HasEditorCamera3DOverride())
         {
@@ -170,6 +471,8 @@ namespace Canis
             view = scene->GetEditorCamera3DView();
             const Matrix4 invView = glm::inverse(view);
             cameraPosition = Vector3(invView[3][0], invView[3][1], invView[3][2]);
+            cameraNearClip = 0.05f;
+            cameraFarClip = 2000.0f;
         }
         else
         {
@@ -204,12 +507,17 @@ namespace Canis
             }
 
             if (camera == nullptr || cameraTransform == nullptr)
+            {
+                scene->ClearLastRenderCamera();
                 return;
+            }
 
             const float aspect = (window->GetScreenHeight() > 0)
                 ? (static_cast<float>(window->GetScreenWidth()) / static_cast<float>(window->GetScreenHeight()))
                 : 1.0f;
             projection = glm::perspective(DEG2RAD * camera->fovDegrees, aspect, camera->nearClip, camera->farClip);
+            cameraNearClip = camera->nearClip;
+            cameraFarClip = camera->farClip;
 
             const Vector3 eye = cameraTransform->GetGlobalPosition();
             const Vector3 target = eye + cameraTransform->GetForward();
@@ -218,64 +526,26 @@ namespace Canis
             cameraPosition = eye;
         }
 
+        scene->SetLastRenderCamera(view, projection, cameraPosition, cameraNearClip, cameraFarClip);
+
+        DirectionalLightState directionalLight = GatherDirectionalLight(_registry);
+        std::vector<PointLightState> pointLights = GatherPointLights(_registry);
+
+        RenderDirectionalShadowMap(
+            _registry,
+            projection,
+            view,
+            cameraPosition,
+            cameraFarClip,
+            directionalLight.direction,
+            directionalLight.enabled);
+
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
         DrawSkybox(projection, view);
-
-        bool useDirectionalLight = true;
-        Vector3 directionalLightDirection = Vector3(-0.4f, -1.0f, -0.25f);
-        Vector3 directionalLightColor = Vector3(1.0f, 0.98f, 0.95f);
-        float directionalLightIntensity = 1.0f;
-
-        auto directionalLightView = _registry.view<DirectionalLight>();
-        for (const entt::entity entityHandle : directionalLightView)
-        {
-            DirectionalLight &light = directionalLightView.get<DirectionalLight>(entityHandle);
-            Entity *entity = light.entity;
-            if (entity == nullptr || !entity->active)
-                continue;
-
-            useDirectionalLight = light.enabled;
-            directionalLightDirection = light.direction;
-            const float directionLength = glm::length(directionalLightDirection);
-            if (directionLength > 0.0001f)
-                directionalLightDirection /= directionLength;
-            else
-                directionalLightDirection = Vector3(0.0f, -1.0f, 0.0f);
-
-            directionalLightColor = Vector3(light.color.r, light.color.g, light.color.b);
-            directionalLightIntensity = light.intensity;
-            break;
-        }
-
-        bool usePointLight = false;
-        Vector3 pointLightPosition = Vector3(2.0f, 2.5f, 2.0f);
-        Vector3 pointLightColor = Vector3(1.0f, 0.95f, 0.85f);
-        float pointLightIntensity = 1.2f;
-        float pointLightRange = 12.0f;
-
-        auto pointLightView = _registry.view<PointLight, Transform>();
-        for (const entt::entity entityHandle : pointLightView)
-        {
-            PointLight &light = pointLightView.get<PointLight>(entityHandle);
-            Transform &lightTransform = pointLightView.get<Transform>(entityHandle);
-            Entity *entity = light.entity;
-            if (entity == nullptr)
-                entity = lightTransform.entity;
-
-            if (entity == nullptr || !entity->active)
-                continue;
-
-            usePointLight = light.enabled;
-            pointLightPosition = lightTransform.GetGlobalPosition();
-            pointLightColor = Vector3(light.color.r, light.color.g, light.color.b);
-            pointLightIntensity = light.intensity;
-            pointLightRange = light.range;
-            break;
-        }
 
         Shader *currentShader = nullptr;
 
@@ -322,16 +592,26 @@ namespace Canis
                 currentShader->SetMat4("V", view);
                 currentShader->SetVec3("cameraPosition", cameraPosition);
 
-                currentShader->SetBool("useDirectionalLight", useDirectionalLight);
-                currentShader->SetVec3("directionalLightDirection", directionalLightDirection);
-                currentShader->SetVec3("directionalLightColor", directionalLightColor);
-                currentShader->SetFloat("directionalLightIntensity", directionalLightIntensity);
+                currentShader->SetBool("useDirectionalLight", directionalLight.enabled);
+                currentShader->SetVec3("directionalLightDirection", directionalLight.direction);
+                currentShader->SetVec3("directionalLightColor", directionalLight.color);
+                currentShader->SetFloat("directionalLightIntensity", directionalLight.intensity);
+                currentShader->SetBool("useDirectionalShadow", directionalLight.enabled && m_shadowDepthTexture != 0);
+                currentShader->SetMat4("directionalLightSpaceMatrix", m_shadowLightSpaceMatrix);
+                currentShader->SetInt("directionalShadowMap", 4);
+                glActiveTexture(GL_TEXTURE4);
+                glBindTexture(GL_TEXTURE_2D, m_shadowDepthTexture);
 
-                currentShader->SetBool("usePointLight", usePointLight);
-                currentShader->SetVec3("pointLightPosition", pointLightPosition);
-                currentShader->SetVec3("pointLightColor", pointLightColor);
-                currentShader->SetFloat("pointLightIntensity", pointLightIntensity);
-                currentShader->SetFloat("pointLightRange", pointLightRange);
+                currentShader->SetInt("pointLightCount", static_cast<int>(pointLights.size()));
+                for (size_t lightIndex = 0; lightIndex < pointLights.size(); ++lightIndex)
+                {
+                    const PointLightState &light = pointLights[lightIndex];
+                    const std::string indexString = std::to_string(lightIndex);
+                    currentShader->SetVec3("pointLightPositions[" + indexString + "]", light.position);
+                    currentShader->SetVec3("pointLightColors[" + indexString + "]", light.color);
+                    currentShader->SetFloat("pointLightIntensities[" + indexString + "]", light.intensity);
+                    currentShader->SetFloat("pointLightRanges[" + indexString + "]", light.range);
+                }
             }
 
             const ModelAsset::Pose3D *pose = nullptr;
@@ -465,7 +745,12 @@ namespace Canis
         }
 
         if (currentShader != nullptr)
+        {
+            glActiveTexture(GL_TEXTURE4);
+            glBindTexture(GL_TEXTURE_2D, 0);
+            glActiveTexture(GL_TEXTURE0);
             currentShader->UnUse();
+        }
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);

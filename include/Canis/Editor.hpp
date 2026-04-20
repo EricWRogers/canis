@@ -11,6 +11,7 @@
 #include <Canis/UUID.hpp>
 #include <Canis/Asset.hpp>
 #include <Canis/AssetHandle.hpp>
+#include <Canis/PostProcessPipeline.hpp>
 
 namespace Canis
 {
@@ -134,6 +135,7 @@ namespace Canis
         void CommitAssetRename();
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
+        bool DrawPostProcessAssetInspector(const std::string &_postProcessPath);
         void DrawProjectSettings();
         void DrawSystemPanel();
         void DrawEditorPanel();
@@ -192,9 +194,11 @@ namespace Canis
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;
         unsigned int m_gameDepthRbo = 0;
+        RenderTarget m_gameViewPostProcessTarget = {};
         unsigned int m_gamePickingFramebuffer = 0;
         unsigned int m_gamePickingColorTexture = 0;
         unsigned int m_gamePickingDepthRbo = 0;
+        Matrix4 m_gameRenderProjection = Matrix4(1.0f);
         int m_gameViewportWidth = 0;
         int m_gameViewportHeight = 0;
         float m_gameViewportPosX = 0.0f;
@@ -211,6 +215,8 @@ namespace Canis
         unsigned int m_playFramebuffer = 0;
         unsigned int m_playColorTexture = 0;
         unsigned int m_playDepthRbo = 0;
+        RenderTarget m_playViewPostProcessTarget = {};
+        Matrix4 m_playRenderProjection = Matrix4(1.0f);
         int m_playViewportWidth = 0;
         int m_playViewportHeight = 0;
         float m_playViewportPosX = 0.0f;
