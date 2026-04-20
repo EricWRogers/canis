@@ -1,5 +1,6 @@
 #include <Canis/IOManager.hpp>
 #include <string>
+#include <cstring>
 #include <fstream>
 #include <cstdlib>
 #include <filesystem>
@@ -46,8 +47,9 @@ namespace Canis
 
 	GLTexture LoadImageToGLTexture(std::string filePath, int sourceFormat, int format)
 	{
-		GLTexture texture;
-		int nrChannels;
+		GLTexture texture = {};
+		int nrChannels = 0;
+		bool textureLoaded = false;
 
 		glGenTextures(1, &texture.id);
 		glBindTexture(GL_TEXTURE_2D, texture.id);
@@ -60,32 +62,56 @@ namespace Canis
 			size_t imageDataLength = 0;
 			void* imageData = SDL_LoadFile_IO(io, &imageDataLength, true);
 
-			// convert to stbi thing
-			stbi_uc *data = stbi_load_from_memory(static_cast<stbi_uc *>(imageData), imageDataLength, &texture.width, &texture.height, &nrChannels, 4);
-			if (data)
+			if (imageData != nullptr && imageDataLength > 0)
 			{
-				glTexImage2D(GL_TEXTURE_2D, 0, sourceFormat, texture.width, texture.height, 0, format, GL_UNSIGNED_BYTE, data);
+				// convert to stbi thing
+				stbi_uc *data = stbi_load_from_memory(static_cast<stbi_uc *>(imageData), imageDataLength, &texture.width, &texture.height, &nrChannels, 4);
+				if (data != nullptr)
+				{
+					glTexImage2D(GL_TEXTURE_2D, 0, sourceFormat, texture.width, texture.height, 0, format, GL_UNSIGNED_BYTE, data);
+					textureLoaded = true;
+				}
+				else
+				{
+					const bool isWebP = imageDataLength >= 12 &&
+						std::memcmp(imageData, "RIFF", 4) == 0 &&
+						std::memcmp(static_cast<const unsigned char *>(imageData) + 8, "WEBP", 4) == 0;
+					const char* failureReason = stbi_failure_reason();
+					Debug::Error(
+						"Failed to load texture %s%s%s%s",
+						filePath.c_str(),
+						failureReason != nullptr ? ": " : "",
+						failureReason != nullptr ? failureReason : "",
+						isWebP ? " (file contains WebP data; convert it to PNG or add WebP support)" : "");
+				}
+				stbi_image_free(data);
+				SDL_free(imageData);
 			}
 			else
 			{
-				Debug::Error("Failed to load texture %s", filePath.c_str());
+				Debug::Error("Failed to read texture %s: %s", filePath.c_str(), SDL_GetError());
 			}
-			stbi_image_free(data);
-			// SDL_RWclose(file);
-			// SDL_free(imageData);
 		}
 		else
 		{
 			Debug::Error("Failed to open file at path : %s", filePath.c_str());
 		}
 
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-		// Problem for future ERIC
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);//GL_LINEAR_MIPMAP_LINEAR);
-		glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);//GL_LINEAR);
+		if (textureLoaded)
+		{
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+			// Problem for future ERIC
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);//GL_LINEAR_MIPMAP_LINEAR);
+			glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);//GL_LINEAR);
 
-		glGenerateMipmap(GL_TEXTURE_2D);
+			glGenerateMipmap(GL_TEXTURE_2D);
+		}
+		else if (texture.id != 0)
+		{
+			glDeleteTextures(1, &texture.id);
+			texture.id = 0;
+		}
 
 		glBindTexture(GL_TEXTURE_2D, 0);
 
