@@ -102,46 +102,172 @@ namespace Canis
             return assetLibrary.assetPath.contains(_name);
         }
 
-        void MoveAsset(std::string _source, std::string _target)
+        bool MoveAsset(std::string _source, std::string _target)
         {
             namespace fs = std::filesystem;
             fs::path src = _source;
             fs::path dst = _target;
 
+            if (_source.empty() || _target.empty())
+            {
+                Debug::Warning("MoveAsset called with an empty source or target path.");
+                return false;
+            }
+
+            if (src == dst)
+                return true;
+
+            if (!fs::exists(src))
+            {
+                Debug::Warning("MoveAsset source does not exist: %s", _source.c_str());
+                return false;
+            }
+
+            if (fs::exists(dst))
+            {
+                Debug::Warning("MoveAsset target already exists: %s", _target.c_str());
+                return false;
+            }
+
             auto &assetLibrary = GetAssetLibrary();
+            const std::string sourceMetaPath = _source + ".meta";
+            const std::string targetMetaPath = _target + ".meta";
 
-            // update meta
-            MetaFileAsset* meta = GetMetaFile(_source);
+            MetaFileAsset* meta = nullptr;
+            int metaId = -1;
+            if (auto metaIt = assetLibrary.assetPath.find(sourceMetaPath); metaIt != assetLibrary.assetPath.end())
+            {
+                metaId = metaIt->second;
+                if (assetLibrary.assets.contains(metaId))
+                    meta = static_cast<MetaFileAsset*>(assetLibrary.assets[metaId]);
+            }
 
-            // name 
-            meta->name = dst.filename().string();
-            
-            // path
-            meta->path = _target;
+            if (meta == nullptr)
+            {
+                meta = GetMetaFile(_source);
+                if (auto metaIt = assetLibrary.assetPath.find(sourceMetaPath); metaIt != assetLibrary.assetPath.end())
+                    metaId = metaIt->second;
+            }
 
-            // assetPath
-            int id = assetLibrary.assetPath[_source];
-            assetLibrary.assetPath.erase(_source);
-            assetLibrary.assetPath[_target] = id;
-
-            // uuidAssetPath
-            assetLibrary.uuidAssetPath[meta->uuid] = _target;
+            if (meta == nullptr)
+            {
+                Debug::Warning("MoveAsset failed to load meta file for: %s", _source.c_str());
+                return false;
+            }
 
             // move asset
             std::error_code ec;
             fs::rename(src, dst, ec);
-            // TODO: check error
+            if (ec)
+            {
+                Debug::Warning("Failed to move asset '%s' to '%s': %s", _source.c_str(), _target.c_str(), ec.message().c_str());
+                return false;
+            }
 
             // move asset meta
-            fs::path srcMeta = _source + ".meta";
-            fs::path dstMeta = _target + ".meta";
-
             std::error_code ec2;
-            fs::rename(srcMeta, dstMeta, ec2);
-            // TODO: check error
+            if (fs::exists(sourceMetaPath))
+            {
+                fs::rename(sourceMetaPath, targetMetaPath, ec2);
+                if (ec2)
+                    Debug::Warning("Failed to move meta file '%s' to '%s': %s", sourceMetaPath.c_str(), targetMetaPath.c_str(), ec2.message().c_str());
+            }
+
+            if (auto assetIt = assetLibrary.assetPath.find(_source); assetIt != assetLibrary.assetPath.end())
+            {
+                const int id = assetIt->second;
+                assetLibrary.assetPath.erase(assetIt);
+                assetLibrary.assetPath[_target] = id;
+            }
+
+            if (metaId >= 0)
+            {
+                assetLibrary.assetPath.erase(sourceMetaPath);
+                assetLibrary.assetPath[targetMetaPath] = metaId;
+            }
+
+            meta->name = dst.filename().string();
+            meta->path = _target;
+            assetLibrary.uuidAssetPath[meta->uuid] = _target;
 
             // save updated meta
             meta->Save();
+            return true;
+        }
+
+        bool DeleteAsset(std::string _path)
+        {
+            namespace fs = std::filesystem;
+
+            if (_path.empty())
+            {
+                Debug::Warning("DeleteAsset called with an empty path.");
+                return false;
+            }
+
+            fs::path assetPath = _path;
+            if (!fs::exists(assetPath))
+            {
+                Debug::Warning("DeleteAsset path does not exist: %s", _path.c_str());
+                return false;
+            }
+
+            auto &assetLibrary = GetAssetLibrary();
+            const std::string metaPath = _path + ".meta";
+
+            MetaFileAsset *meta = nullptr;
+            int metaId = -1;
+            if (auto metaIt = assetLibrary.assetPath.find(metaPath); metaIt != assetLibrary.assetPath.end())
+            {
+                metaId = metaIt->second;
+                if (assetLibrary.assets.contains(metaId))
+                    meta = static_cast<MetaFileAsset *>(assetLibrary.assets[metaId]);
+            }
+
+            if (meta == nullptr && FileExists(metaPath.c_str()))
+            {
+                meta = GetMetaFile(_path);
+                if (auto metaIt = assetLibrary.assetPath.find(metaPath); metaIt != assetLibrary.assetPath.end())
+                    metaId = metaIt->second;
+            }
+
+            const UUID metaUuid = meta != nullptr ? meta->uuid : UUID(0);
+
+            std::error_code ec;
+            fs::remove(assetPath, ec);
+            if (ec)
+            {
+                Debug::Warning("Failed to delete asset '%s': %s", _path.c_str(), ec.message().c_str());
+                return false;
+            }
+
+            std::error_code metaEc;
+            if (fs::exists(metaPath))
+            {
+                fs::remove(metaPath, metaEc);
+                if (metaEc)
+                {
+                    Debug::Warning("Failed to delete meta file '%s': %s", metaPath.c_str(), metaEc.message().c_str());
+                    return false;
+                }
+            }
+
+            assetLibrary.assetPath.erase(_path);
+            assetLibrary.assetPath.erase(metaPath);
+
+            if ((uint64_t)metaUuid != 0)
+                assetLibrary.uuidAssetPath.erase(metaUuid);
+
+            if (metaId >= 0)
+            {
+                if (assetLibrary.assets.contains(metaId))
+                {
+                    delete static_cast<MetaFileAsset *>(assetLibrary.assets[metaId]);
+                    assetLibrary.assets.erase(metaId);
+                }
+            }
+
+            return true;
         }
 
         int LoadTexture(const std::string &_path)

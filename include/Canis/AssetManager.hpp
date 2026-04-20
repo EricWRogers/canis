@@ -92,7 +92,8 @@ namespace Canis
             return id;
         }
 
-        void MoveAsset(std::string _source, std::string _target);
+        bool MoveAsset(std::string _source, std::string _target);
+        bool DeleteAsset(std::string _path);
 
         template <typename T>
         void Free(std::string _name)

@@ -186,6 +186,7 @@ namespace Canis
 
         // asset panel
         bool m_isRenamingAsset = false;
+        bool m_focusAssetRenameInput = false;
         std::string m_renamingPath;
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};

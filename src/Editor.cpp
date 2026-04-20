@@ -59,6 +59,20 @@ namespace Canis
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
 
+        int PlaceRenameCursorAtEnd(ImGuiInputTextCallbackData *_data)
+        {
+            bool *shouldPlaceCursor = static_cast<bool *>(_data->UserData);
+            if (shouldPlaceCursor != nullptr && *shouldPlaceCursor)
+            {
+                _data->CursorPos = _data->BufTextLen;
+                _data->SelectionStart = _data->BufTextLen;
+                _data->SelectionEnd = _data->BufTextLen;
+                *shouldPlaceCursor = false;
+            }
+
+            return 0;
+        }
+
         Shader &GetDebugLineShader()
         {
             static Shader debugLineShader("assets/shaders/debug_line.vs", "assets/shaders/debug_line.fs");
@@ -2808,11 +2822,26 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (meta == nullptr || meta->type != MetaFileAsset::FileType::MATERIAL)
             return false;
 
+        const std::string materialPath = meta->path.empty() ? _materialPath : meta->path;
+
         ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", meta->path.c_str());
+        ImGui::Text("Path: %s", materialPath.c_str());
         ImGui::Separator();
 
-        YAML::Node root = YAML::LoadFile(_materialPath);
+        if (!FileExists(materialPath.c_str()))
+            return false;
+
+        YAML::Node root;
+        try
+        {
+            root = YAML::LoadFile(materialPath);
+        }
+        catch (const YAML::Exception &exception)
+        {
+            Debug::Warning("Failed to load material '%s': %s", materialPath.c_str(), exception.what());
+            return false;
+        }
+
         bool dirty = false;
 
         auto drawAssetField = [&](const char *_label, const char *_key, bool _shaderField) -> void
@@ -2965,11 +2994,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
         if (dirty)
         {
-            std::ofstream fout(_materialPath);
+            std::ofstream fout(materialPath);
             fout << root;
             fout.close();
 
-            int id = AssetManager::GetID(_materialPath);
+            int id = AssetManager::GetID(materialPath);
             if (id >= 0)
                 ApplyMaterialNodeToAsset(root, AssetManager::GetMaterial(id));
         }
@@ -3568,28 +3597,36 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return;
 
         string newName = m_renameBuffer;
+        fs::path oldPath = m_renamingPath;
+        const std::string extension = oldPath.extension().string();
 
         // nothing entered, cancel
         if (newName.empty())
         {
             m_isRenamingAsset = false;
+            m_focusAssetRenameInput = false;
             return;
         }
 
-        fs::path oldPath = m_renamingPath;
         fs::path newPath = oldPath;
-        newPath.replace_filename(newName);
+        newPath.replace_filename(extension.empty() ? newName : newName + extension);
 
         // handle no change
         if (newPath == oldPath)
         {
             m_isRenamingAsset = false;
+            m_focusAssetRenameInput = false;
             return;
         }
 
-        AssetManager::MoveAsset(oldPath.string(), newPath.string());
+        if (AssetManager::MoveAsset(oldPath.string(), newPath.string()))
+        {
+            if (m_selectedAssetPath == oldPath.string())
+                m_selectedAssetPath = newPath.string();
+        }
 
         m_isRenamingAsset = false;
+        m_focusAssetRenameInput = false;
         m_renamingPath.clear();
     }
 
@@ -3598,7 +3635,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         namespace fs = std::filesystem;
         fs::path path = _dirPath;
 
+        std::vector<fs::directory_entry> entries = {};
         for (const auto &entry : fs::directory_iterator(path))
+            entries.push_back(entry);
+
+        for (const auto &entry : entries)
         {
             const std::string name = entry.path().filename().string();
             if (name == ".DS_Store" || entry.path().extension() == ".meta")
@@ -3619,7 +3660,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                         fs::path src = data->path;
 
-                        AssetManager::MoveAsset(src.string(), entry.path().string() + "/" + src.filename().string());
+                        const std::string targetPath = (entry.path() / src.filename()).string();
+                        if (AssetManager::MoveAsset(src.string(), targetPath) && m_selectedAssetPath == src.string())
+                            m_selectedAssetPath = targetPath;
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -3743,18 +3786,37 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                 if (isRenamingThis)
                 {
+                    const std::string extension = entry.path().extension().string();
+
                     // rename input
                     ImGui::PushID(fullPath.c_str());
-                    ImGui::SetNextItemWidth(-1.0f);
+                    if (!extension.empty())
+                    {
+                        const float extensionWidth = ImGui::CalcTextSize(extension.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
+                        ImGui::SetNextItemWidth(-extensionWidth);
+                    }
+                    else
+                    {
+                        ImGui::SetNextItemWidth(-1.0f);
+                    }
 
                     ImGuiInputTextFlags flags =
                         ImGuiInputTextFlags_EnterReturnsTrue |
-                        ImGuiInputTextFlags_AutoSelectAll |
-                        ImGuiInputTextFlags_CharsNoBlank;
+                        ImGuiInputTextFlags_CharsNoBlank |
+                        ImGuiInputTextFlags_CallbackAlways;
 
-                    if (ImGui::InputText("##rename", m_renameBuffer, sizeof(m_renameBuffer), flags))
+                    if (m_focusAssetRenameInput)
+                        ImGui::SetKeyboardFocusHere();
+
+                    if (ImGui::InputText("##rename", m_renameBuffer, sizeof(m_renameBuffer), flags, PlaceRenameCursorAtEnd, &m_focusAssetRenameInput))
                     {
                         CommitAssetRename();
+                    }
+
+                    if (!extension.empty())
+                    {
+                        ImGui::SameLine(0.0f, 0.0f);
+                        ImGui::TextUnformatted(extension.c_str());
                     }
 
                     // click elsewhere or escape will cancel
@@ -3762,12 +3824,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1)))
                     {
                         m_isRenamingAsset = false;
+                        m_focusAssetRenameInput = false;
                     }
 
                     ImGui::PopID();
                 }
                 else
                 {
+                    bool deleteThisAsset = false;
                     const bool selected = (m_selectedAssetPath == fullPath);
                     const bool clicked = ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns);
                     if (clicked)
@@ -3801,14 +3865,35 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             m_isRenamingAsset = true;
                             m_renamingPath = fullPath;
+                            m_focusAssetRenameInput = true;
 
-                            std::strncpy(m_renameBuffer, name.c_str(), sizeof(m_renameBuffer));
+                            const std::string stemName = entry.path().stem().string();
+                            std::strncpy(m_renameBuffer, stemName.c_str(), sizeof(m_renameBuffer));
                             m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
                         }
 
-                        // TODO: Delete, Reveal in Finder, etc.
+                        if (ImGui::MenuItem("Delete"))
+                            deleteThisAsset = true;
 
                         ImGui::EndPopup();
+                    }
+
+                    if (deleteThisAsset)
+                    {
+                        if (AssetManager::DeleteAsset(fullPath))
+                        {
+                            if (m_selectedAssetPath == fullPath)
+                                m_selectedAssetPath.clear();
+
+                            if (m_renamingPath == fullPath)
+                            {
+                                m_isRenamingAsset = false;
+                                m_focusAssetRenameInput = false;
+                                m_renamingPath.clear();
+                            }
+                        }
+
+                        continue;
                     }
 
                     // drag source (for moving + using UUID elsewhere)
