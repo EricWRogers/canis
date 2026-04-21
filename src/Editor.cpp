@@ -736,15 +736,13 @@ namespace Canis
                 filename == "RegisterScripts.generated.hpp";
         }
 
-        bool DeleteScriptPair(
+        std::filesystem::path GetPairedScriptPath(
             const std::filesystem::path &_includeRoot,
             const std::filesystem::path &_sourceRoot,
-            const std::filesystem::path &_filePath,
-            std::string &_error)
+            const std::filesystem::path &_filePath)
         {
             namespace fs = std::filesystem;
 
-            std::vector<fs::path> pathsToDelete = { _filePath };
             fs::path pairedPath = {};
             std::string extension = _filePath.extension().string();
             std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c)
@@ -772,6 +770,20 @@ namespace Canis
                         (relativeSourcePath.stem().string() + ".hpp");
                 }
             }
+
+            return pairedPath;
+        }
+
+        bool DeleteScriptPair(
+            const std::filesystem::path &_includeRoot,
+            const std::filesystem::path &_sourceRoot,
+            const std::filesystem::path &_filePath,
+            std::string &_error)
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<fs::path> pathsToDelete = { _filePath };
+            const fs::path pairedPath = GetPairedScriptPath(_includeRoot, _sourceRoot, _filePath);
 
             if (!pairedPath.empty() && pairedPath != _filePath && fs::exists(pairedPath))
                 pathsToDelete.push_back(pairedPath);
@@ -4799,6 +4811,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 {
                     m_selectedScriptPath = fullPath;
                     OpenInVSCode(fullPath);
+
+                    const fs::path pairedPath = GetPairedScriptPath(_includeRoot, _sourceRoot, entry.path());
+                    if (!pairedPath.empty() && pairedPath != entry.path() && fs::exists(pairedPath))
+                        OpenInVSCode(pairedPath.string());
                 }
             }
         }
