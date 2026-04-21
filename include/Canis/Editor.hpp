@@ -144,6 +144,10 @@ namespace Canis
         void DrawProjectSettings();
         void DrawSystemPanel();
         void DrawEditorPanel();
+        void ApplyEditorTheme(int _theme);
+        void RefreshEditorFontOptions();
+        void ApplyEditorFont(const std::string &_fontPath);
+        void QueueEditorFontApply(const std::string &_fontPath, bool _saveConfig);
         void DrawReloadBuildPopup();
         void FinalizeReloadBuildIfReady();
 
@@ -204,6 +208,15 @@ namespace Canis
         std::string m_scriptCreateTargetDir = {};
         std::string m_scriptCreateError = {};
         int m_scriptCreateTypeSelection = 0;
+        int m_editorThemeSelection = 0;
+        int m_editorFontSelection = 0;
+        float m_editorUiScale = 1.0f;
+        float m_editorFontScale = 1.0f;
+        std::vector<std::string> m_editorFontPaths = {};
+        std::vector<std::string> m_editorFontLabels = {};
+        bool m_editorFontApplyQueued = false;
+        bool m_editorFontApplyShouldSaveConfig = false;
+        std::string m_queuedEditorFontPath = {};
         std::thread m_reloadBuildThread = {};
         std::mutex m_reloadBuildMutex = {};
         std::string m_reloadBuildCommand = {};

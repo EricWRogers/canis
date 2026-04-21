@@ -38,6 +38,7 @@
 #include <fstream>
 #include <cctype>
 #include <sstream>
+#include <unordered_set>
 
 namespace Canis
 {
@@ -61,6 +62,97 @@ namespace Canis
     {
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
+        constexpr int kEditorThemeDark = 0;
+        constexpr int kEditorThemeLight = 1;
+
+        int NormalizeEditorThemeSelection(int _themeSelection)
+        {
+            if (_themeSelection == kEditorThemeDark || _themeSelection == kEditorThemeLight)
+                return _themeSelection;
+
+            return kEditorThemeDark;
+        }
+
+        float NormalizeEditorFontScale(float _fontScale)
+        {
+            if (!std::isfinite(_fontScale))
+                return 1.0f;
+
+            return std::clamp(_fontScale, 0.5f, 2.5f);
+        }
+
+        void ApplyEditorThemeStyle(int _themeSelection, float _uiScale)
+        {
+            const int normalizedTheme = NormalizeEditorThemeSelection(_themeSelection);
+            if (normalizedTheme == kEditorThemeLight)
+                ImGui::StyleColorsLight();
+            else
+                ImGui::StyleColorsDark();
+
+            ImGuiStyle &style = ImGui::GetStyle();
+            style.ScaleAllSizes(_uiScale);
+
+            ImGuiIO &io = ImGui::GetIO();
+            if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
+            {
+                style.WindowRounding = 0.0f;
+                style.Colors[ImGuiCol_WindowBg].w = 1.0f;
+            }
+        }
+
+        std::filesystem::path GetEditorRuntimeBasePath()
+        {
+            const char* basePath = SDL_GetBasePath();
+            if (basePath != nullptr)
+                return std::filesystem::path(basePath);
+
+            return std::filesystem::current_path();
+        }
+
+        bool HasSupportedFontExtension(const std::filesystem::path &_path)
+        {
+            std::string extension = _path.extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            return extension == ".ttf" || extension == ".otf";
+        }
+
+        std::filesystem::path ResolveEditorFontPath(const std::string &_fontPath)
+        {
+            namespace fs = std::filesystem;
+
+            if (_fontPath.empty())
+                return {};
+
+            std::error_code ec;
+            const fs::path rawPath = fs::path(_fontPath);
+            if (rawPath.is_absolute())
+            {
+                if (fs::exists(rawPath, ec))
+                    return rawPath;
+
+                return {};
+            }
+
+            std::vector<fs::path> candidates =
+            {
+                rawPath,
+                GetEditorRuntimeBasePath() / rawPath,
+                GetEditorRuntimeBasePath() / "project" / rawPath
+            };
+
+            for (const fs::path &candidate : candidates)
+            {
+                ec.clear();
+                if (fs::exists(candidate, ec))
+                    return candidate;
+            }
+
+            return {};
+        }
 
         std::filesystem::path BuildDuplicateAssetPath(const std::filesystem::path &_sourcePath)
         {
@@ -1681,29 +1773,31 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         io.ConfigViewportsNoTaskBarIcon = true;
 #endif
 
+        // Setup Dear ImGui style and scaling.
+        m_editorUiScale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
+        if (m_editorUiScale <= 0.0f)
+            m_editorUiScale = 1.0f;
 
-        // Setup Dear ImGui style
-        ImGui::StyleColorsDark();
-        // ImGui::StyleColorsLight();
+        m_editorThemeSelection = NormalizeEditorThemeSelection(Canis::GetEditorConfig().theme);
+        Canis::GetEditorConfig().theme = m_editorThemeSelection;
+        m_editorFontScale = NormalizeEditorFontScale(Canis::GetEditorConfig().fontScale);
+        Canis::GetEditorConfig().fontScale = m_editorFontScale;
+        ApplyEditorThemeStyle(m_editorThemeSelection, m_editorUiScale);
+        RefreshEditorFontOptions();
 
-        // Setup scaling
         ImGuiStyle &style = ImGui::GetStyle();
-        float main_scale = SDL_GetDisplayContentScale(SDL_GetPrimaryDisplay());
-        style.ScaleAllSizes(main_scale);   // Bake a fixed style scale. (until we have a solution for dynamic style scaling, changing this requires resetting Style + calling this again)
-        style.FontScaleDpi = main_scale;   // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
+        style.FontScaleDpi = m_editorUiScale; // Set initial font scale. (using io.ConfigDpiScaleFonts=true makes this unnecessary. We leave both here for documentation purpose)
         io.ConfigDpiScaleFonts = true;     // [Experimental] Automatically overwrite style.FontScaleDpi in Begin() when Monitor DPI changes. This will scale fonts but _NOT_ scale sizes/padding for now.
         io.ConfigDpiScaleViewports = true; // [Experimental] Scale Dear ImGui and Platform Windows when Monitor DPI changes.
-
-        // When viewports are enabled we tweak WindowRounding/WindowBg so platform windows can look identical to regular ones.
-        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
-        {
-            style.WindowRounding = 0.0f;
-            style.Colors[ImGuiCol_WindowBg].w = 1.0f;
-        }
 
         // Setup Platform/Renderer backends
         ImGui_ImplSDL3_InitForOpenGL((SDL_Window *)_window->GetSDLWindow(), (SDL_GLContext)_window->GetGLContext());
         ImGui_ImplOpenGL3_Init(OPENGLVERSION);
+
+        const std::string initialFontPath =
+            (m_editorFontSelection > 0 && m_editorFontSelection < static_cast<int>(m_editorFontPaths.size())) ?
+            m_editorFontPaths[m_editorFontSelection] : std::string();
+        ApplyEditorFont(initialFontPath);
 
         m_assetPaths = FindFilesInFolder("assets", "");
 
@@ -1814,6 +1908,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         const int gameplayWidth = (m_playViewportWidth > 0) ? m_playViewportWidth : m_window->GetWindowWidth();
         const int gameplayHeight = (m_playViewportHeight > 0) ? m_playViewportHeight : m_window->GetWindowHeight();
         m_window->SetRenderSize(gameplayWidth, gameplayHeight);
+
+        if (m_editorFontApplyQueued)
+        {
+            ApplyEditorFont(m_queuedEditorFontPath);
+            m_editorFontApplyQueued = false;
+
+            if (m_editorFontApplyShouldSaveConfig)
+            {
+                Canis::SaveEditorConfig();
+                m_editorFontApplyShouldSaveConfig = false;
+            }
+        }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
@@ -5026,6 +5132,144 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::End();
     }
 
+    void Editor::ApplyEditorTheme(int _theme)
+    {
+        m_editorThemeSelection = NormalizeEditorThemeSelection(_theme);
+        ApplyEditorThemeStyle(m_editorThemeSelection, m_editorUiScale);
+
+        ImGuiStyle &style = ImGui::GetStyle();
+        style.FontScaleDpi = m_editorUiScale;
+
+        Canis::GetEditorConfig().theme = m_editorThemeSelection;
+    }
+
+    void Editor::RefreshEditorFontOptions()
+    {
+        namespace fs = std::filesystem;
+
+        m_editorFontPaths.clear();
+        m_editorFontLabels.clear();
+        m_editorFontPaths.push_back("");
+        m_editorFontLabels.push_back("Default");
+
+        const fs::path runtimeBasePath = GetEditorRuntimeBasePath();
+        const std::vector<fs::path> fontRoots =
+        {
+            runtimeBasePath / "assets" / "fonts",
+            runtimeBasePath / "project" / "assets" / "fonts",
+            fs::path("assets") / "fonts",
+            fs::path("project") / "assets" / "fonts"
+        };
+
+        std::vector<std::string> discoveredFontPaths = {};
+        std::unordered_set<std::string> seenFontPaths = {};
+        std::error_code ec;
+
+        for (const fs::path &fontRoot : fontRoots)
+        {
+            ec.clear();
+            if (!fs::exists(fontRoot, ec) || !fs::is_directory(fontRoot, ec))
+                continue;
+
+            fs::recursive_directory_iterator it(fontRoot, fs::directory_options::skip_permission_denied, ec);
+            fs::recursive_directory_iterator end = {};
+            while (it != end)
+            {
+                if (ec)
+                {
+                    ec.clear();
+                    it.increment(ec);
+                    continue;
+                }
+
+                const fs::directory_entry entry = *it;
+                std::error_code fileEc;
+                if (entry.is_regular_file(fileEc) && !fileEc && HasSupportedFontExtension(entry.path()))
+                {
+                    std::string storedPath = entry.path().generic_string();
+
+                    std::error_code relEc;
+                    const fs::path relativeToRuntime = fs::relative(entry.path(), runtimeBasePath, relEc);
+                    if (!relEc && !relativeToRuntime.empty())
+                    {
+                        const auto firstPart = relativeToRuntime.begin();
+                        if (firstPart == relativeToRuntime.end() || firstPart->string() != "..")
+                            storedPath = relativeToRuntime.generic_string();
+                    }
+
+                    if (seenFontPaths.insert(storedPath).second)
+                        discoveredFontPaths.push_back(storedPath);
+                }
+
+                it.increment(ec);
+            }
+        }
+
+        std::sort(discoveredFontPaths.begin(), discoveredFontPaths.end());
+        for (const std::string &fontPath : discoveredFontPaths)
+        {
+            m_editorFontPaths.push_back(fontPath);
+
+            std::string label = fontPath;
+            constexpr const char* kAssetsPrefix = "assets/fonts/";
+            constexpr const char* kProjectAssetsPrefix = "project/assets/fonts/";
+            if (label.rfind(kAssetsPrefix, 0) == 0)
+                label = label.substr(std::char_traits<char>::length(kAssetsPrefix));
+            else if (label.rfind(kProjectAssetsPrefix, 0) == 0)
+                label = label.substr(std::char_traits<char>::length(kProjectAssetsPrefix));
+
+            m_editorFontLabels.push_back(label);
+        }
+
+        m_editorFontSelection = 0;
+        const std::string configuredFontPath = Canis::GetEditorConfig().fontPath;
+        for (size_t i = 1; i < m_editorFontPaths.size(); ++i)
+        {
+            if (m_editorFontPaths[i] == configuredFontPath)
+            {
+                m_editorFontSelection = static_cast<int>(i);
+                break;
+            }
+        }
+    }
+
+    void Editor::ApplyEditorFont(const std::string &_fontPath)
+    {
+        ImGuiIO &io = ImGui::GetIO();
+        io.Fonts->Clear();
+        io.FontDefault = nullptr;
+
+        const std::filesystem::path resolvedFontPath = ResolveEditorFontPath(_fontPath);
+        m_editorFontScale = NormalizeEditorFontScale(m_editorFontScale);
+        Canis::GetEditorConfig().fontScale = m_editorFontScale;
+
+        const float editorFontSize = 18.0f * m_editorFontScale;
+        ImFont *font = nullptr;
+
+        if (!resolvedFontPath.empty())
+            font = io.Fonts->AddFontFromFileTTF(resolvedFontPath.string().c_str(), editorFontSize);
+
+        if (font == nullptr)
+        {
+            font = io.Fonts->AddFontDefault();
+            Canis::GetEditorConfig().fontPath.clear();
+            m_editorFontSelection = 0;
+        }
+        else
+        {
+            Canis::GetEditorConfig().fontPath = _fontPath;
+        }
+
+        io.FontDefault = font;
+    }
+
+    void Editor::QueueEditorFontApply(const std::string &_fontPath, bool _saveConfig)
+    {
+        m_queuedEditorFontPath = _fontPath;
+        m_editorFontApplyQueued = true;
+        m_editorFontApplyShouldSaveConfig = m_editorFontApplyShouldSaveConfig || _saveConfig;
+    }
+
     void Editor::DrawProjectSettings()
     {
         ImGui::Begin("ProjectSettings");
@@ -5046,6 +5290,56 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
         ImGui::SameLine();
         ImGui::TextDisabled("(restart required)");
+
+        static const char* editorThemeLabels[] = { "Dark", "Light" };
+        int editorThemeSelection = m_editorThemeSelection;
+        ImGui::Text("editor theme");
+        ImGui::SameLine();
+        if (ImGui::Combo("##editorTheme", &editorThemeSelection, editorThemeLabels, IM_ARRAYSIZE(editorThemeLabels)))
+        {
+            ApplyEditorTheme(editorThemeSelection);
+            Canis::SaveEditorConfig();
+        }
+
+        ImGui::Text("editor font");
+        ImGui::SameLine();
+        const char* fontPreview =
+            (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontLabels.size())) ?
+            m_editorFontLabels[m_editorFontSelection].c_str() : "Default";
+        if (ImGui::BeginCombo("##editorFont", fontPreview))
+        {
+            for (int i = 0; i < static_cast<int>(m_editorFontLabels.size()); ++i)
+            {
+                const bool selected = (i == m_editorFontSelection);
+                if (ImGui::Selectable(m_editorFontLabels[i].c_str(), selected))
+                {
+                    m_editorFontSelection = i;
+                    const std::string selectedPath =
+                        (i >= 0 && i < static_cast<int>(m_editorFontPaths.size())) ? m_editorFontPaths[i] : std::string();
+                    QueueEditorFontApply(selectedPath, true);
+                }
+
+                if (selected)
+                    ImGui::SetItemDefaultFocus();
+            }
+
+            ImGui::EndCombo();
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("rescan##editorFont"))
+            RefreshEditorFontOptions();
+
+        float editorFontScale = m_editorFontScale;
+        ImGui::Text("editor font scale");
+        ImGui::SameLine();
+        if (ImGui::SliderFloat("##editorFontScale", &editorFontScale, 0.5f, 2.5f, "%.2fx"))
+        {
+            m_editorFontScale = NormalizeEditorFontScale(editorFontScale);
+            const std::string selectedPath =
+                (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontPaths.size())) ?
+                m_editorFontPaths[m_editorFontSelection] : std::string();
+            QueueEditorFontApply(selectedPath, true);
+        }
 
         SceneAssetHandle launchScene = Canis::GetProjectConfig().launchScene;
         InputSceneAsset("launch scene", "##launchScene", launchScene);

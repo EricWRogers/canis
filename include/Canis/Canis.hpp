@@ -1,6 +1,7 @@
 #pragma once
 #include <Canis/UUID.hpp>
 #include <Canis/AssetHandle.hpp>
+#include <string>
 
 namespace Canis
 {
@@ -9,6 +10,12 @@ namespace Canis
         PROJECT_SYNC_ADAPTIVE = -1,
         PROJECT_SYNC_OFF = 0,
         PROJECT_SYNC_VSYNC = 1,
+    };
+
+    enum EditorThemeMode : int
+    {
+        EDITOR_THEME_DARK = 0,
+        EDITOR_THEME_LIGHT = 1,
     };
 
     struct ProjectConfig
@@ -42,6 +49,9 @@ namespace Canis
     struct EditorConfig
     {
         SceneAssetHandle lastEditorScene = {};
+        int theme = EDITOR_THEME_DARK;
+        std::string fontPath = "";
+        float fontScale = 1.0f;
     };
 
     ProjectConfig& GetProjectConfig();

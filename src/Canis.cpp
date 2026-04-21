@@ -30,6 +30,22 @@ namespace Canis
             return PROJECT_SYNC_OFF;
         }
 
+        int NormalizeEditorThemeMode(int _value)
+        {
+            if (_value == EDITOR_THEME_DARK || _value == EDITOR_THEME_LIGHT)
+                return _value;
+
+            return EDITOR_THEME_DARK;
+        }
+
+        float NormalizeEditorFontScale(float _value)
+        {
+            if (!std::isfinite(_value))
+                return 1.0f;
+
+            return std::clamp(_value, 0.5f, 2.5f);
+        }
+
         float NormalizeVolume(float _value)
         {
             if (!std::isfinite(_value))
@@ -120,6 +136,9 @@ namespace Canis
 
         YAML::Node node;
         node["lastEditorScene"] = editorConfig.lastEditorScene;
+        node["theme"] = NormalizeEditorThemeMode(editorConfig.theme);
+        node["fontPath"] = editorConfig.fontPath;
+        node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
 
         std::error_code ec;
         fs::create_directories(fs::path(kEditorConfigPath).parent_path(), ec);
@@ -186,6 +205,9 @@ namespace Canis
         editorConfig.lastEditorScene = editorNode["lastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
         if (!editorNode["lastEditorScene"] && editorNode["LastEditorScene"])
             editorConfig.lastEditorScene = editorNode["LastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
+        editorConfig.theme = NormalizeEditorThemeMode(editorNode["theme"].as<int>(editorConfig.theme));
+        editorConfig.fontPath = editorNode["fontPath"].as<std::string>(editorConfig.fontPath);
+        editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));
 
         // Backward compatibility with older project keys.
         if (!node["editorWindowWidth"] && node["windowWidth"])
