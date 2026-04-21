@@ -86,7 +86,6 @@ target_include_directories(${PROJECT_NAME}
 target_link_libraries(${PROJECT_NAME}
     PUBLIC
     glm
-    yaml-cpp
     imgui
     ${CANIS_ENGINE_LIB}
     PRIVATE
