@@ -19,6 +19,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ConfigHelper.hpp>
+#include <Canis/VFX/Particles.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -846,6 +847,9 @@ namespace Canis
         {
             _editor.InputSceneAsset(_label, _idSuffix, _value);
         });
+
+        RegisterParticleEmitterComponent(*this);
+        RegisterParticleEmitterSystem(*this);
 
         ScriptConf canvasConf = {
             .name = "Canis::Canvas",

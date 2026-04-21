@@ -13,6 +13,14 @@ namespace Canis
     {
         namespace
         {
+            std::string NormalizeAssetLibraryPath(const std::string& value)
+            {
+                if (value.empty())
+                    return "";
+
+                return std::filesystem::path(value).lexically_normal().generic_string();
+            }
+
             std::string Trim(const std::string &value)
             {
                 const auto first = value.find_first_not_of(" \t\n\r");
@@ -98,6 +106,7 @@ namespace Canis
 
         bool Has(std::string _name)
         {
+            _name = NormalizeAssetLibraryPath(_name);
             auto &assetLibrary = GetAssetLibrary();
             return assetLibrary.assetPath.contains(_name);
         }
@@ -105,6 +114,8 @@ namespace Canis
         bool MoveAsset(std::string _source, std::string _target)
         {
             namespace fs = std::filesystem;
+            _source = NormalizeAssetLibraryPath(_source);
+            _target = NormalizeAssetLibraryPath(_target);
             fs::path src = _source;
             fs::path dst = _target;
 
@@ -198,6 +209,7 @@ namespace Canis
         bool DeleteAsset(std::string _path)
         {
             namespace fs = std::filesystem;
+            _path = NormalizeAssetLibraryPath(_path);
 
             if (_path.empty())
             {
@@ -493,10 +505,11 @@ namespace Canis
 
         int LoadMetaFile(const std::string &_path)
         {
+            const std::string normalizedPath = NormalizeAssetLibraryPath(_path);
             auto &assetLibrary = GetAssetLibrary();
 
             std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path+".meta");
+            it = assetLibrary.assetPath.find(normalizedPath + ".meta");
 
             // check if meta file already exist
             if (it != assetLibrary.assetPath.end()) // found
@@ -506,30 +519,31 @@ namespace Canis
 
             // create texture
             Asset *metaFile = new MetaFileAsset();
-            metaFile->Load(_path);
+            metaFile->Load(normalizedPath);
             int id = assetLibrary.nextId;
 
             // cache texture
             assetLibrary.assets[id] = metaFile;
 
             // cache id
-            assetLibrary.assetPath[_path+".meta"] = id;
+            assetLibrary.assetPath[normalizedPath + ".meta"] = id;
 
             // uuid (repair collisions from duplicated/copied .meta files)
             MetaFileAsset* loadedMeta = (MetaFileAsset*)metaFile;
             while (assetLibrary.uuidAssetPath.contains(loadedMeta->uuid) &&
-                   assetLibrary.uuidAssetPath[loadedMeta->uuid] != _path)
+                   assetLibrary.uuidAssetPath[loadedMeta->uuid] != normalizedPath)
             {
                 Debug::Warning(
                     "Duplicate asset UUID detected (%llu) for '%s' and '%s'. Regenerating UUID for '%s'.",
                     static_cast<unsigned long long>(loadedMeta->uuid),
                     assetLibrary.uuidAssetPath[loadedMeta->uuid].c_str(),
-                    _path.c_str(),
-                    _path.c_str());
+                    normalizedPath.c_str(),
+                    normalizedPath.c_str());
                 loadedMeta->uuid = UUID();
                 loadedMeta->Save();
             }
-            assetLibrary.uuidAssetPath[loadedMeta->uuid] = _path;
+            loadedMeta->path = normalizedPath;
+            assetLibrary.uuidAssetPath[loadedMeta->uuid] = normalizedPath;
 
             // increment id
             assetLibrary.nextId++;
@@ -539,7 +553,7 @@ namespace Canis
 
         MetaFileAsset* GetMetaFile(const std::string &_path)
         {
-            return GetMetaFile(LoadMetaFile(_path));
+            return GetMetaFile(LoadMetaFile(NormalizeAssetLibraryPath(_path)));
         }
 
         MetaFileAsset* GetMetaFile(const int _metaID)

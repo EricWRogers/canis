@@ -62,16 +62,6 @@ namespace Canis
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
 
-        bool ShouldSkipDllScriptInspector(const ScriptConf& _conf)
-        {
-#if defined(_WIN32)
-            return _conf.registeredFromGameCode;
-#else
-            (void)_conf;
-            return false;
-#endif
-        }
-
         std::filesystem::path BuildDuplicateAssetPath(const std::filesystem::path &_sourcePath)
         {
             namespace fs = std::filesystem;
@@ -3535,17 +3525,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     }
 
                     if (open)
-                    {
-                        if (ShouldSkipDllScriptInspector(conf))
-                        {
-                            ImGui::TextDisabled("Inspector editing is disabled for hot-reloaded GameCode components on Windows.");
-                            ImGui::TextWrapped("This component lives in libGameCode.dll and uses a separate ImGui state from the editor, which causes the current crash when expanded.");
-                        }
-                        else
-                        {
-                            conf.DrawInspector(*this, entity, conf);
-                        }
-                    }
+                        conf.DrawInspector(*this, entity, conf);
                 }
             }
 
