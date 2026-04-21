@@ -62,6 +62,16 @@ namespace Canis
         YAML::Node g_lastPlaySceneNode;
         std::string g_lastPlayScenePath;
 
+        bool ShouldSkipDllScriptInspector(const ScriptConf& _conf)
+        {
+#if defined(_WIN32)
+            return _conf.registeredFromGameCode;
+#else
+            (void)_conf;
+            return false;
+#endif
+        }
+
         std::filesystem::path BuildDuplicateAssetPath(const std::filesystem::path &_sourcePath)
         {
             namespace fs = std::filesystem;
@@ -533,8 +543,7 @@ namespace Canis
             (void)_onOutput;
             return true;
 #else
-            (void)_buildDir;
-            _outCommand = "cmake --build ../build --config Debug --target GameCode --";
+            _outCommand = "cmake --build \"" + _buildDir.generic_string() + "\" --target GameCode --parallel --";
             _outExitCode = -1;
 
             if (_onOutput != nullptr)
@@ -576,14 +585,17 @@ namespace Canis
 #endif
         }
 
-        bool UnloadGameCodeForReload(GameCodeObject *_gameCodeObject, App *_app, std::string &_outError)
+        bool UnloadGameCodeForReload(GameCodeObject *_gameCodeObject, App *_app, std::string &_outError, std::string &_outBackupPath)
         {
 #if defined(__EMSCRIPTEN__)
             (void)_gameCodeObject;
             (void)_app;
             (void)_outError;
+            (void)_outBackupPath;
             return true;
 #else
+            _outBackupPath.clear();
+
             if (_gameCodeObject == nullptr)
             {
                 _outError = "GameCodeObject was null.";
@@ -596,6 +608,26 @@ namespace Canis
             {
                 SDL_UnloadObject(_gameCodeObject->sharedObjectHandle);
                 _gameCodeObject->sharedObjectHandle = nullptr;
+            }
+
+            if (_gameCodeObject->path != nullptr && _gameCodeObject->path[0] != '\0')
+            {
+                std::error_code ec;
+                const std::filesystem::path sharedObjectPath(_gameCodeObject->path);
+                if (std::filesystem::exists(sharedObjectPath))
+                {
+                    const std::filesystem::path backupPath = sharedObjectPath.string() + ".reload.bak";
+                    std::filesystem::remove(backupPath, ec);
+                    ec.clear();
+                    std::filesystem::rename(sharedObjectPath, backupPath, ec);
+                    if (ec)
+                    {
+                        _outError = "Failed to move old game shared library aside before rebuild: " + ec.message();
+                        return false;
+                    }
+
+                    _outBackupPath = backupPath.string();
+                }
             }
 
             _gameCodeObject->gameData = nullptr;
@@ -636,7 +668,9 @@ namespace Canis
                 return false;
             }
 
+            _app->BeginGameCodeRegistration();
             GameCodeObjectInitFunction(_gameCodeObject, _app);
+            _app->EndGameCodeRegistration();
             return true;
 #endif
         }
@@ -3502,7 +3536,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                     if (open)
                     {
-                        conf.DrawInspector(*this, entity, conf);
+                        if (ShouldSkipDllScriptInspector(conf))
+                        {
+                            ImGui::TextDisabled("Inspector editing is disabled for hot-reloaded GameCode components on Windows.");
+                            ImGui::TextWrapped("This component lives in libGameCode.dll and uses a separate ImGui state from the editor, which causes the current crash when expanded.");
+                        }
+                        else
+                        {
+                            conf.DrawInspector(*this, entity, conf);
+                        }
                     }
                 }
             }
@@ -5178,6 +5220,33 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (!buildSucceeded)
             Debug::Warning("GameCode build failed (exit code: %d). Attempting to reload existing game library.", buildExitCode);
 
+        if (!buildSucceeded && !m_reloadBuildBackupPath.empty())
+        {
+            std::error_code ec;
+            const std::string backupPath = m_reloadBuildBackupPath;
+            const std::string backupSuffix = ".reload.bak";
+            std::string livePath = backupPath;
+            if (livePath.size() > backupSuffix.size() &&
+                livePath.compare(livePath.size() - backupSuffix.size(), backupSuffix.size(), backupSuffix) == 0)
+            {
+                livePath.erase(livePath.size() - backupSuffix.size());
+                std::filesystem::remove(livePath, ec);
+                ec.clear();
+                std::filesystem::rename(backupPath, livePath, ec);
+                if (ec)
+                    Debug::Warning("Failed to restore previous game shared library after build failure: %s", ec.message().c_str());
+                else
+                    m_reloadBuildBackupPath.clear();
+            }
+        }
+
+        if (buildSucceeded && !m_reloadBuildBackupPath.empty())
+        {
+            std::error_code ec;
+            std::filesystem::remove(m_reloadBuildBackupPath, ec);
+            m_reloadBuildBackupPath.clear();
+        }
+
         std::string loadError = "";
         if (!LoadGameCodeAfterReload(m_gameSharedLib, m_app, loadError))
             Debug::Warning("Failed to reload game code library after build: %s", loadError.c_str());
@@ -5340,7 +5409,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 m_scene->Unload();
 
                 std::string unloadError = "";
-                if (!UnloadGameCodeForReload(m_gameSharedLib, m_app, unloadError))
+                if (!UnloadGameCodeForReload(m_gameSharedLib, m_app, unloadError, m_reloadBuildBackupPath))
                 {
                     Debug::Warning("Reload canceled. Failed to unload current game code: %s", unloadError.c_str());
                     m_scene->LoadSceneNode(g_lastPlaySceneNode);
@@ -5352,7 +5421,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                     {
                         std::scoped_lock lock(m_reloadBuildMutex);
-                        m_reloadBuildCommand = "cmake --build ../build --config Debug --target GameCode --";
+                        m_reloadBuildCommand = "cmake --build \"" + buildDir.generic_string() + "\" --target GameCode --parallel --";
                         m_reloadBuildOutput = "[build] " + m_reloadBuildCommand + "\n";
                         m_reloadBuildInProgress = true;
                         m_reloadBuildFinished = false;

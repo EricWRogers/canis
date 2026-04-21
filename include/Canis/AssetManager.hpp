@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <map>
+#include <filesystem>
 
 #include <Canis/Asset.hpp>
 #include <Canis/Debug.hpp>
@@ -21,6 +22,9 @@ namespace Canis
         AssetLibrary &GetAssetLibrary();
 
         bool Has(std::string _name);
+        int LoadMetaFile(const std::string &_path);
+        MetaFileAsset* GetMetaFile(const std::string &_path);
+        MetaFileAsset* GetMetaFile(const int _metaID);
 
         template <typename T>
         T *Get(int id)
@@ -61,6 +65,26 @@ namespace Canis
                 const std::string resolvedPath = GetPath(_sceneAssetHandle.uuid);
                 if (resolvedPath != "Path was not found in AssetLibrary")
                     return resolvedPath;
+
+                // Fallback for UUID-only references that were not cached yet.
+                std::error_code ec;
+                if (std::filesystem::exists("assets", ec) && std::filesystem::is_directory("assets", ec))
+                {
+                    for (const auto& entry : std::filesystem::recursive_directory_iterator("assets", ec))
+                    {
+                        if (ec || !entry.is_regular_file())
+                            continue;
+
+                        if (entry.path().extension() == ".meta")
+                            continue;
+
+                        if (MetaFileAsset* meta = GetMetaFile(entry.path().generic_string()))
+                        {
+                            if (meta->uuid == _sceneAssetHandle.uuid)
+                                return entry.path().generic_string();
+                        }
+                    }
+                }
             }
 
             return _sceneAssetHandle.path;
@@ -150,10 +174,6 @@ namespace Canis
 
         int LoadShader(const std::string &_pathWithOutExtension);
         void ReloadLoadedShaders();
-
-        int LoadMetaFile(const std::string &_path);
-        MetaFileAsset* GetMetaFile(const std::string &_path);
-        MetaFileAsset* GetMetaFile(const int _metaID);
 
         int LoadSpriteAnimation(const std::string &_path);
         SpriteAnimationAsset* GetSpriteAnimation(const std::string &_path);

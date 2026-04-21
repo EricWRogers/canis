@@ -208,6 +208,7 @@ namespace Canis
         std::mutex m_reloadBuildMutex = {};
         std::string m_reloadBuildCommand = {};
         std::string m_reloadBuildOutput = {};
+        std::string m_reloadBuildBackupPath = {};
         bool m_reloadBuildInProgress = false;
         bool m_reloadBuildFinished = false;
         bool m_reloadBuildSucceeded = false;

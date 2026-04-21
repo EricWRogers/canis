@@ -52,6 +52,7 @@ struct PropertyRegistry {
 struct ScriptConf {
     std::string name;
     RegistryEntryKind kind = RegistryEntryKind::Component;
+    bool registeredFromGameCode = false;
     PropertyRegistry registry;
     std::function<ScriptableEntity*(Entity&, bool)> Construct = nullptr;
     std::function<void(Entity&)> Add = nullptr;

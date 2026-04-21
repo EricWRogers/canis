@@ -31,6 +31,8 @@ public:
     void UnregisterScript(ScriptConf& _conf);
     std::vector<ScriptConf>& GetScriptRegistry() { return m_scriptRegistry; }
     ScriptConf* GetScriptConf(const std::string& _name);
+    void BeginGameCodeRegistration() { m_registeringGameCodeScripts = true; }
+    void EndGameCodeRegistration() { m_registeringGameCodeScripts = false; }
     void RegisterSystem(SystemConf& _conf);
     void UnregisterSystem(SystemConf& _conf);
     std::vector<SystemConf>& GetSystemRegistry() { return m_systemRegistry; }
@@ -70,6 +72,7 @@ private:
     float m_sceneUpdateTimeMs = 0.0f;
     float m_gameCodeUpdateTimeMs = 0.0f;
     float m_renderTimeMs = 0.0f;
+    bool m_registeringGameCodeScripts = false;
     std::string m_pendingScenePath = "";
 };
 }

@@ -529,13 +529,16 @@ namespace Canis
         entity.name = _node["Name"].as<std::string>("");
         entity.tag = _node["Tag"].as<std::string>("");
 
-        std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
-
-        for (int i = 0; i < scriptRegistry.size(); i++)
+        if (app != nullptr)
         {
-            if (scriptRegistry[i].Decode)
+            std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
+
+            for (int i = 0; i < scriptRegistry.size(); i++)
             {
-                scriptRegistry[i].Decode(_node, entity, false);
+                if (scriptRegistry[i].Decode)
+                {
+                    scriptRegistry[i].Decode(_node, entity, false);
+                }
             }
         }
 
@@ -569,10 +572,13 @@ namespace Canis
         const std::string scenePath = AssetManager::ResolvePath(_sceneAssetHandle);
 
         if (scenePath.empty())
+        {
+            Debug::Warning(
+                "Scene::Instantiate could not resolve scene handle (uuid=%llu, path='%s').",
+                static_cast<unsigned long long>(_sceneAssetHandle.uuid),
+                _sceneAssetHandle.path.c_str());
             return rootEntities;
-
-        if (app == nullptr)
-            return rootEntities;
+        }
 
         if (!std::filesystem::exists(scenePath))
         {

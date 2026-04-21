@@ -597,7 +597,9 @@ namespace Canis
         scene.Init(this, runtime.window.get(), runtime.inputManager.get());
 
         runtime.gameCodeObject = GameCodeObjectInit(GetGameCodeSharedObjectPath());
+        BeginGameCodeRegistration();
         GameCodeObjectInitFunction(&runtime.gameCodeObject, this);
+        EndGameCodeRegistration();
 
         scene.Load(startupScenePath);
     }
@@ -2841,7 +2843,9 @@ namespace Canis
             if (_conf.name == sc.name)
                 return;
 
-        m_scriptRegistry.push_back(_conf);
+        ComponentConf conf = _conf;
+        conf.registeredFromGameCode = m_registeringGameCodeScripts;
+        m_scriptRegistry.push_back(conf);
     }
 
     void App::RegisterScript(ScriptConf &_conf)
