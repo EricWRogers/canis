@@ -228,6 +228,7 @@ namespace Canis
         bool m_reloadBuildAwaitingFinalize = false;
         bool m_showReloadBuildPopup = false;
         bool m_openReloadBuildPopup = false;
+        bool m_reloadBuildAutoCloseOnSuccess = false;
         int m_reloadBuildExitCode = -1;
         std::vector<UUID> m_hierarchyRootOrder = {};
 

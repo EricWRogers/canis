@@ -139,6 +139,7 @@ namespace Canis
         node["theme"] = NormalizeEditorThemeMode(editorConfig.theme);
         node["fontPath"] = editorConfig.fontPath;
         node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
+        node["reloadBuildAutoCloseOnSuccess"] = editorConfig.reloadBuildAutoCloseOnSuccess;
 
         std::error_code ec;
         fs::create_directories(fs::path(kEditorConfigPath).parent_path(), ec);
@@ -208,6 +209,8 @@ namespace Canis
         editorConfig.theme = NormalizeEditorThemeMode(editorNode["theme"].as<int>(editorConfig.theme));
         editorConfig.fontPath = editorNode["fontPath"].as<std::string>(editorConfig.fontPath);
         editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));
+        editorConfig.reloadBuildAutoCloseOnSuccess =
+            editorNode["reloadBuildAutoCloseOnSuccess"].as<bool>(editorConfig.reloadBuildAutoCloseOnSuccess);
 
         // Backward compatibility with older project keys.
         if (!node["editorWindowWidth"] && node["windowWidth"])

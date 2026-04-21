@@ -280,9 +280,13 @@ namespace Canis
 
     DEFAULT_UNREGISTER_SYSTEM(particleEmitterSystemConf, ParticleEmitter)
 
-    void ParticleEmitterSystem::Create()
+    ParticleEmitterSystem::ParticleEmitterSystem() : System()
     {
         m_name = "Canis::ParticleEmitterSystem";
+    }
+
+    void ParticleEmitterSystem::Create()
+    {
     }
 
     void ParticleEmitterSystem::Update(entt::registry& _registry, float _deltaTime)

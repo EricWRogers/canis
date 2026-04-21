@@ -76,6 +76,7 @@ namespace Canis
     class ParticleEmitterSystem : public System
     {
     public:
+        ParticleEmitterSystem();
         void Create() override;
         void Update(entt::registry& _registry, float _deltaTime) override;
     };

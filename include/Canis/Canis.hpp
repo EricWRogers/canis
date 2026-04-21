@@ -52,6 +52,7 @@ namespace Canis
         int theme = EDITOR_THEME_DARK;
         std::string fontPath = "";
         float fontScale = 1.0f;
+        bool reloadBuildAutoCloseOnSuccess = false;
     };
 
     ProjectConfig& GetProjectConfig();

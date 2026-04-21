@@ -83,14 +83,18 @@ namespace Canis
 
         void ApplyEditorThemeStyle(int _themeSelection, float _uiScale)
         {
+            const float normalizedUiScale = (std::isfinite(_uiScale) && _uiScale > 0.0f) ? _uiScale : 1.0f;
             const int normalizedTheme = NormalizeEditorThemeSelection(_themeSelection);
-            if (normalizedTheme == kEditorThemeLight)
-                ImGui::StyleColorsLight();
-            else
-                ImGui::StyleColorsDark();
-
             ImGuiStyle &style = ImGui::GetStyle();
-            style.ScaleAllSizes(_uiScale);
+
+            // Reset to the default ImGui metrics before applying theme/scale so
+            // repeated theme toggles don't multiply spacing and paddings.
+            style = ImGuiStyle();
+            if (normalizedTheme == kEditorThemeLight)
+                ImGui::StyleColorsLight(&style);
+            else
+                ImGui::StyleColorsDark(&style);
+            style.ScaleAllSizes(normalizedUiScale);
 
             ImGuiIO &io = ImGui::GetIO();
             if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
@@ -98,6 +102,12 @@ namespace Canis
                 style.WindowRounding = 0.0f;
                 style.Colors[ImGuiCol_WindowBg].w = 1.0f;
             }
+        }
+
+        float GetEditorToolbarHeight()
+        {
+            const ImGuiStyle &style = ImGui::GetStyle();
+            return ImGui::GetFrameHeightWithSpacing() + (style.WindowPadding.y * 2.0f);
         }
 
         std::filesystem::path GetEditorRuntimeBasePath()
@@ -1782,6 +1792,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         Canis::GetEditorConfig().theme = m_editorThemeSelection;
         m_editorFontScale = NormalizeEditorFontScale(Canis::GetEditorConfig().fontScale);
         Canis::GetEditorConfig().fontScale = m_editorFontScale;
+        m_reloadBuildAutoCloseOnSuccess = Canis::GetEditorConfig().reloadBuildAutoCloseOnSuccess;
         ApplyEditorThemeStyle(m_editorThemeSelection, m_editorUiScale);
         RefreshEditorFontOptions();
 
@@ -2000,8 +2011,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGuiWindowFlags windowFlags = ImGuiWindowFlags_NoDocking;
 
         const ImGuiViewport *viewport = ImGui::GetMainViewport();
-        ImGui::SetNextWindowPos(viewport->WorkPos);
-        ImGui::SetNextWindowSize(viewport->WorkSize);
+        ImVec2 dockspacePos = viewport->WorkPos;
+        ImVec2 dockspaceSize = viewport->WorkSize;
+        const float toolbarHeight = GetEditorToolbarHeight();
+        dockspacePos.y += toolbarHeight;
+        dockspaceSize.y = std::max(0.0f, dockspaceSize.y - toolbarHeight);
+        ImGui::SetNextWindowPos(dockspacePos);
+        ImGui::SetNextWindowSize(dockspaceSize);
         ImGui::SetNextWindowViewport(viewport->ID);
 
         windowFlags |= ImGuiWindowFlags_NoTitleBar;
@@ -5245,13 +5261,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
         const float editorFontSize = 18.0f * m_editorFontScale;
         ImFont *font = nullptr;
+        ImFontConfig defaultFontConfig = {};
+        defaultFontConfig.SizePixels = editorFontSize;
 
         if (!resolvedFontPath.empty())
             font = io.Fonts->AddFontFromFileTTF(resolvedFontPath.string().c_str(), editorFontSize);
 
         if (font == nullptr)
         {
-            font = io.Fonts->AddFontDefault();
+            font = io.Fonts->AddFontDefault(&defaultFontConfig);
             Canis::GetEditorConfig().fontPath.clear();
             m_editorFontSelection = 0;
         }
@@ -5261,6 +5279,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         io.FontDefault = font;
+
+        // Keep runtime text size in sync with the newly selected/rebuilt font.
+        ImGuiStyle &style = ImGui::GetStyle();
+        style.FontSizeBase = (font != nullptr && font->LegacySize > 0.0f) ? font->LegacySize : editorFontSize;
     }
 
     void Editor::QueueEditorFontApply(const std::string &_fontPath, bool _saveConfig)
@@ -5333,8 +5355,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::Text("editor font scale");
         ImGui::SameLine();
         if (ImGui::SliderFloat("##editorFontScale", &editorFontScale, 0.5f, 2.5f, "%.2fx"))
-        {
             m_editorFontScale = NormalizeEditorFontScale(editorFontScale);
+
+        if (ImGui::IsItemDeactivatedAfterEdit())
+        {
             const std::string selectedPath =
                 (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontPaths.size())) ?
                 m_editorFontPaths[m_editorFontSelection] : std::string();
@@ -5569,6 +5593,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         bool inProgress = false;
         bool finished = false;
         bool succeeded = false;
+        bool autoCloseOnSuccess = false;
         int exitCode = -1;
         {
             std::scoped_lock lock(m_reloadBuildMutex);
@@ -5577,6 +5602,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             inProgress = m_reloadBuildInProgress;
             finished = m_reloadBuildFinished;
             succeeded = m_reloadBuildSucceeded;
+            autoCloseOnSuccess = m_reloadBuildAutoCloseOnSuccess;
             exitCode = m_reloadBuildExitCode;
         }
 
@@ -5604,6 +5630,24 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();
 
+            if (ImGui::Checkbox("Auto close on success", &autoCloseOnSuccess))
+            {
+                {
+                    std::scoped_lock lock(m_reloadBuildMutex);
+                    m_reloadBuildAutoCloseOnSuccess = autoCloseOnSuccess;
+                }
+                Canis::GetEditorConfig().reloadBuildAutoCloseOnSuccess = autoCloseOnSuccess;
+                Canis::SaveEditorConfig();
+            }
+
+            if (allowClose && succeeded && autoCloseOnSuccess)
+            {
+                popupOpen = false;
+                ImGui::CloseCurrentPopup();
+            }
+
+            if (allowClose)
+                ImGui::SameLine();
             if (allowClose && ImGui::Button("Close"))
             {
                 popupOpen = false;
@@ -5627,7 +5671,22 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         static float hotKeyCoolDown = 0.0f;
         const float HOTKEYRESET = 0.1f;
 
-        ImGui::Begin("Canis Editor");
+        const ImGuiViewport* viewport = ImGui::GetMainViewport();
+        const float toolbarHeight = GetEditorToolbarHeight();
+        ImGuiWindowFlags toolbarFlags = ImGuiWindowFlags_NoTitleBar
+            | ImGuiWindowFlags_NoCollapse
+            | ImGuiWindowFlags_NoResize
+            | ImGuiWindowFlags_NoMove
+            | ImGuiWindowFlags_NoDocking
+            | ImGuiWindowFlags_NoSavedSettings
+            | ImGuiWindowFlags_NoNavFocus;
+        ImGui::SetNextWindowPos(viewport->WorkPos);
+        ImGui::SetNextWindowSize(ImVec2(viewport->WorkSize.x, toolbarHeight));
+        ImGui::SetNextWindowViewport(viewport->ID);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowRounding, 0.0f);
+        ImGui::PushStyleVar(ImGuiStyleVar_WindowBorderSize, 0.0f);
+        ImGui::Begin("##EditorToolbar", nullptr, toolbarFlags);
+        ImGui::PopStyleVar(2);
 
         if (m_mode == EditorMode::EDIT)
         {
