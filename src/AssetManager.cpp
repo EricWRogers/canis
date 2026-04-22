@@ -4,6 +4,7 @@
 
 #include <filesystem>
 #include <algorithm>
+#include <cctype>
 
 #include <Canis/Yaml.hpp>
 
@@ -95,6 +96,209 @@ namespace Canis
                     shaderPath = shaderPath.substr(0, shaderPath.size() - 3);
 
                 return shaderPath;
+            }
+
+            std::string ToLowerCopy(std::string value)
+            {
+                std::transform(value.begin(), value.end(), value.begin(), [](unsigned char c)
+                {
+                    return static_cast<char>(std::tolower(c));
+                });
+                return value;
+            }
+
+            bool IsReservedMaterialKey(const std::string &key)
+            {
+                return key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
+                       key == "emission" || key == "color" || key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
+                       key == "backFaceCulling" || key == "frontFaceCulling" || key == "uniforms";
+            }
+
+            bool ApplyTypedMaterialUniform(MaterialFields &_fields, const std::string &_uniformName, const std::string &_type, const YAML::Node &_valueNode)
+            {
+                const std::string type = ToLowerCopy(_type);
+                try
+                {
+                    if (type == "int" || type == "integer")
+                    {
+                        _fields.SetInt(_uniformName, _valueNode.as<int>(0));
+                        return true;
+                    }
+
+                    if (type == "float")
+                    {
+                        _fields.SetFloat(_uniformName, _valueNode.as<float>(0.0f));
+                        return true;
+                    }
+
+                    if (type == "vector2" || type == "vec2")
+                    {
+                        _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                        return true;
+                    }
+
+                    if (type == "vector3" || type == "vec3")
+                    {
+                        _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                        return true;
+                    }
+
+                    if (type == "vector4" || type == "vec4")
+                    {
+                        _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                        return true;
+                    }
+
+                    if (type == "color")
+                    {
+                        _fields.SetColor(_uniformName, _valueNode.as<Color>(Color(1.0f)));
+                        return true;
+                    }
+
+                    if (type == "texture" || type == "sampler2d")
+                    {
+                        std::string texturePath = ResolveAssetPath(_valueNode);
+                        i32 textureId = -1;
+                        if (!texturePath.empty())
+                            textureId = LoadTexture(texturePath);
+                        _fields.SetTexture(_uniformName, textureId);
+                        return true;
+                    }
+                }
+                catch (const YAML::Exception &)
+                {
+                }
+
+                return false;
+            }
+
+            bool ApplyInferredMaterialUniform(MaterialFields &_fields, const std::string &_uniformName, const YAML::Node &_valueNode)
+            {
+                if (!_valueNode)
+                    return false;
+
+                if (_valueNode.IsMap())
+                {
+                    std::string texturePath = ResolveAssetPath(_valueNode);
+                    i32 textureId = -1;
+                    if (!texturePath.empty())
+                        textureId = LoadTexture(texturePath);
+                    _fields.SetTexture(_uniformName, textureId);
+                    return true;
+                }
+
+                if (_valueNode.IsSequence())
+                {
+                    try
+                    {
+                        if (_valueNode.size() == 2u)
+                        {
+                            _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                            return true;
+                        }
+
+                        if (_valueNode.size() == 3u)
+                        {
+                            _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                            return true;
+                        }
+
+                        if (_valueNode.size() == 4u)
+                        {
+                            _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                            return true;
+                        }
+                    }
+                    catch (const YAML::Exception &)
+                    {
+                    }
+                }
+
+                if (_valueNode.IsScalar())
+                {
+                    try
+                    {
+                        _fields.SetFloat(_uniformName, _valueNode.as<float>());
+                        return true;
+                    }
+                    catch (const YAML::Exception &)
+                    {
+                    }
+                }
+
+                return false;
+            }
+
+            void LoadMaterialUniforms(const YAML::Node &_root, MaterialFields &_fields)
+            {
+                _fields.Clear();
+
+                if (YAML::Node uniformsNode = _root["uniforms"]; uniformsNode && uniformsNode.IsMap())
+                {
+                    for (const auto &uniformEntry : uniformsNode)
+                    {
+                        const std::string uniformName = uniformEntry.first.as<std::string>("");
+                        if (uniformName.empty())
+                            continue;
+
+                        const YAML::Node uniformNode = uniformEntry.second;
+                        if (!uniformNode)
+                            continue;
+
+                        bool loaded = false;
+                        if (uniformNode.IsMap())
+                        {
+                            const std::string type = uniformNode["type"].as<std::string>("");
+                            YAML::Node valueNode = uniformNode["value"];
+                            if (!valueNode && uniformNode["texture"])
+                                valueNode = uniformNode["texture"];
+                            if (!valueNode && uniformNode["data"])
+                                valueNode = uniformNode["data"];
+                            if (!valueNode)
+                                valueNode = uniformNode;
+
+                            if (!type.empty())
+                                loaded = ApplyTypedMaterialUniform(_fields, uniformName, type, valueNode);
+
+                            if (!loaded)
+                                loaded = ApplyInferredMaterialUniform(_fields, uniformName, valueNode);
+                        }
+                        else
+                        {
+                            loaded = ApplyInferredMaterialUniform(_fields, uniformName, uniformNode);
+                        }
+
+                        if (!loaded && uniformNode.IsScalar())
+                        {
+                            try
+                            {
+                                _fields.SetFloat(uniformName, uniformNode.as<float>());
+                            }
+                            catch (const YAML::Exception &)
+                            {
+                            }
+                        }
+                    }
+                }
+
+                // Backward compatibility for legacy root-level scalar uniforms.
+                for (const auto &entry : _root)
+                {
+                    const std::string key = entry.first.as<std::string>("");
+                    if (IsReservedMaterialKey(key) || !entry.second.IsScalar())
+                        continue;
+
+                    if (YAML::Node uniformsNode = _root["uniforms"]; uniformsNode && uniformsNode.IsMap() && uniformsNode[key])
+                        continue;
+
+                    try
+                    {
+                        _fields.SetFloat(key, entry.second.as<float>());
+                    }
+                    catch (const YAML::Exception &)
+                    {
+                    }
+                }
             }
         } // namespace
 
@@ -812,27 +1016,7 @@ namespace Canis
                     material->info |= MATERIAL_FRONT_FACE_CULLING;
             }
 
-            for (const auto &entry : root)
-            {
-                const std::string key = entry.first.as<std::string>("");
-                if (key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
-                    key == "emission" || key == "color" || key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
-                    key == "backFaceCulling" || key == "frontFaceCulling")
-                {
-                    continue;
-                }
-
-                if (entry.second.IsScalar())
-                {
-                    try
-                    {
-                        material->materialFields.SetFloat(key, entry.second.as<float>());
-                    }
-                    catch (const YAML::Exception &)
-                    {
-                    }
-                }
-            }
+            LoadMaterialUniforms(root, material->materialFields);
 
             const int id = assetLibrary.nextId;
             assetLibrary.assets[id] = material;

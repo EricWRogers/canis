@@ -223,18 +223,98 @@ namespace Canis
 
     class MaterialFields
     {
-    private:
+    public:
+        struct IntUniformData
+        {
+            std::string name = "";
+            int value = 0;
+        };
+
         struct FloatUniformData
         {
             std::string name = "";
             float value = 0.0f;
         };
 
+        struct Vec2UniformData
+        {
+            std::string name = "";
+            Vector2 value = Vector2(0.0f);
+        };
+
+        struct Vec3UniformData
+        {
+            std::string name = "";
+            Vector3 value = Vector3(0.0f);
+        };
+
+        struct Vec4UniformData
+        {
+            std::string name = "";
+            Vector4 value = Vector4(0.0f);
+        };
+
+        struct ColorUniformData
+        {
+            std::string name = "";
+            Color value = Color(1.0f);
+        };
+
+        struct TextureUniformData
+        {
+            std::string name = "";
+            i32 textureId = -1;
+        };
+
+    private:
+        std::vector<IntUniformData> m_intUniformData = {};
         std::vector<FloatUniformData> m_floatUniformData = {};
+        std::vector<Vec2UniformData> m_vec2UniformData = {};
+        std::vector<Vec3UniformData> m_vec3UniformData = {};
+        std::vector<Vec4UniformData> m_vec4UniformData = {};
+        std::vector<ColorUniformData> m_colorUniformData = {};
+        std::vector<TextureUniformData> m_textureUniformData = {};
 
     public:
-        void Use(Shader &_shader) const;
+        int Use(Shader &_shader, int _firstTextureUnit) const;
+        void Use(Shader &_shader) const { (void)Use(_shader, 5); }
+
+        void SetInt(const std::string &_name, int _value);
+        bool TryGetInt(const std::string &_name, int &_outValue) const;
+        void RemoveInt(const std::string &_name);
+
         void SetFloat(const std::string &_name, float _value);
+        bool TryGetFloat(const std::string &_name, float &_outValue) const;
+        void RemoveFloat(const std::string &_name);
+
+        void SetVec2(const std::string &_name, const Vector2 &_value);
+        bool TryGetVec2(const std::string &_name, Vector2 &_outValue) const;
+        void RemoveVec2(const std::string &_name);
+
+        void SetVec3(const std::string &_name, const Vector3 &_value);
+        bool TryGetVec3(const std::string &_name, Vector3 &_outValue) const;
+        void RemoveVec3(const std::string &_name);
+
+        void SetVec4(const std::string &_name, const Vector4 &_value);
+        bool TryGetVec4(const std::string &_name, Vector4 &_outValue) const;
+        void RemoveVec4(const std::string &_name);
+
+        void SetColor(const std::string &_name, const Color &_value);
+        bool TryGetColor(const std::string &_name, Color &_outValue) const;
+        void RemoveColor(const std::string &_name);
+
+        void SetTexture(const std::string &_name, i32 _textureId);
+        bool TryGetTexture(const std::string &_name, i32 &_outTextureId) const;
+        void RemoveTexture(const std::string &_name);
+
+        void Clear();
+        const std::vector<IntUniformData>& GetIntUniforms() const { return m_intUniformData; }
+        const std::vector<FloatUniformData>& GetFloatUniforms() const { return m_floatUniformData; }
+        const std::vector<Vec2UniformData>& GetVec2Uniforms() const { return m_vec2UniformData; }
+        const std::vector<Vec3UniformData>& GetVec3Uniforms() const { return m_vec3UniformData; }
+        const std::vector<Vec4UniformData>& GetVec4Uniforms() const { return m_vec4UniformData; }
+        const std::vector<ColorUniformData>& GetColorUniforms() const { return m_colorUniformData; }
+        const std::vector<TextureUniformData>& GetTextureUniforms() const { return m_textureUniformData; }
     };
 
     struct MaterialAsset

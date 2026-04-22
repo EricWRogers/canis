@@ -1187,6 +1187,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         enum class HierarchyCreateType
         {
             Empty,
+            Empty3D,
+            Empty2D,
             Canvas,
             Text,
             Button,
@@ -1294,6 +1296,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             case HierarchyCreateType::Canvas:
                 baseName = "Canvas";
                 break;
+            case HierarchyCreateType::Empty3D:
+                baseName = "3D Empty";
+                break;
+            case HierarchyCreateType::Empty2D:
+                baseName = "2D Empty";
+                break;
             case HierarchyCreateType::Text:
                 baseName = "Text";
                 break;
@@ -1338,6 +1346,16 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     else if (_parent->HasComponent<Transform>())
                         addRequired(*entity, Transform::ScriptName);
                 }
+                break;
+            }
+            case HierarchyCreateType::Empty3D:
+            {
+                addRequired(*entity, Transform::ScriptName);
+                break;
+            }
+            case HierarchyCreateType::Empty2D:
+            {
+                addRequired(*entity, RectTransform::ScriptName);
                 break;
             }
             case HierarchyCreateType::Canvas:
@@ -1486,6 +1504,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                 ImGui::Separator();
 
+                if (ImGui::BeginMenu("2D"))
+                {
+                    if (ImGui::MenuItem("Empty"))
+                        create(HierarchyCreateType::Empty2D);
+                    ImGui::EndMenu();
+                }
+
                 if (ImGui::BeginMenu("UI"))
                 {
                     if (ImGui::MenuItem("Canvas"))
@@ -1501,6 +1526,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                 if (ImGui::BeginMenu("3D"))
                 {
+                    if (ImGui::MenuItem("Empty"))
+                        create(HierarchyCreateType::Empty3D);
+                    ImGui::Separator();
                     if (ImGui::MenuItem("Cube"))
                         create(HierarchyCreateType::Cube);
                     if (ImGui::MenuItem("Sphere"))
@@ -1585,6 +1613,302 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         });
 
         return _value;
+    }
+
+    static bool IsReservedMaterialKey(const std::string &_key)
+    {
+        return _key == "shader" || _key == "albedo" || _key == "specular" || _key == "roughness" || _key == "metallic" ||
+               _key == "emission" || _key == "color" || _key == "specularValue" || _key == "roughnessValue" || _key == "metallicValue" ||
+               _key == "backFaceCulling" || _key == "frontFaceCulling" || _key == "uniforms";
+    }
+
+    static YAML::Node MakeAssetRefNode(const std::string &_path)
+    {
+        YAML::Node node(YAML::NodeType::Map);
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(_path))
+        {
+            node["uuid"] = (uint64_t)meta->uuid;
+            node["path"] = _path;
+        }
+        return node;
+    }
+
+    static bool ApplyTypedMaterialUniform(MaterialFields &_fields, const std::string &_uniformName, const std::string &_type, const YAML::Node &_valueNode)
+    {
+        const std::string type = ToLowerCopy(_type);
+        try
+        {
+            if (type == "int" || type == "integer")
+            {
+                _fields.SetInt(_uniformName, _valueNode.as<int>(0));
+                return true;
+            }
+
+            if (type == "float")
+            {
+                _fields.SetFloat(_uniformName, _valueNode.as<float>(0.0f));
+                return true;
+            }
+
+            if (type == "vector2" || type == "vec2")
+            {
+                _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                return true;
+            }
+
+            if (type == "vector3" || type == "vec3")
+            {
+                _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                return true;
+            }
+
+            if (type == "vector4" || type == "vec4")
+            {
+                _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                return true;
+            }
+
+            if (type == "color")
+            {
+                _fields.SetColor(_uniformName, _valueNode.as<Color>(Color(1.0f)));
+                return true;
+            }
+
+            if (type == "texture" || type == "sampler2d")
+            {
+                const std::string texturePath = ResolveAssetRefPath(_valueNode);
+                i32 textureId = -1;
+                if (!texturePath.empty())
+                    textureId = AssetManager::LoadTexture(texturePath);
+                _fields.SetTexture(_uniformName, textureId);
+                return true;
+            }
+        }
+        catch (const YAML::Exception &)
+        {
+        }
+
+        return false;
+    }
+
+    static bool ApplyInferredMaterialUniform(MaterialFields &_fields, const std::string &_uniformName, const YAML::Node &_valueNode)
+    {
+        if (!_valueNode)
+            return false;
+
+        if (_valueNode.IsMap())
+        {
+            const std::string texturePath = ResolveAssetRefPath(_valueNode);
+            i32 textureId = -1;
+            if (!texturePath.empty())
+                textureId = AssetManager::LoadTexture(texturePath);
+            _fields.SetTexture(_uniformName, textureId);
+            return true;
+        }
+
+        if (_valueNode.IsSequence())
+        {
+            try
+            {
+                if (_valueNode.size() == 2u)
+                {
+                    _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                    return true;
+                }
+
+                if (_valueNode.size() == 3u)
+                {
+                    _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                    return true;
+                }
+
+                if (_valueNode.size() == 4u)
+                {
+                    _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                    return true;
+                }
+            }
+            catch (const YAML::Exception &)
+            {
+            }
+        }
+
+        if (_valueNode.IsScalar())
+        {
+            try
+            {
+                _fields.SetFloat(_uniformName, _valueNode.as<float>());
+                return true;
+            }
+            catch (const YAML::Exception &)
+            {
+            }
+        }
+
+        return false;
+    }
+
+    static void ReadMaterialUniformsFromNode(const YAML::Node &_root, MaterialFields &_fields)
+    {
+        _fields.Clear();
+
+        if (YAML::Node uniformsNode = _root["uniforms"]; uniformsNode && uniformsNode.IsMap())
+        {
+            for (const auto &uniformEntry : uniformsNode)
+            {
+                const std::string uniformName = uniformEntry.first.as<std::string>("");
+                if (uniformName.empty())
+                    continue;
+
+                const YAML::Node uniformNode = uniformEntry.second;
+                if (!uniformNode)
+                    continue;
+
+                bool loaded = false;
+                if (uniformNode.IsMap())
+                {
+                    const std::string type = uniformNode["type"].as<std::string>("");
+                    YAML::Node valueNode = uniformNode["value"];
+                    if (!valueNode && uniformNode["texture"])
+                        valueNode = uniformNode["texture"];
+                    if (!valueNode && uniformNode["data"])
+                        valueNode = uniformNode["data"];
+                    if (!valueNode)
+                        valueNode = uniformNode;
+
+                    if (!type.empty())
+                        loaded = ApplyTypedMaterialUniform(_fields, uniformName, type, valueNode);
+
+                    if (!loaded)
+                        loaded = ApplyInferredMaterialUniform(_fields, uniformName, valueNode);
+                }
+                else
+                {
+                    loaded = ApplyInferredMaterialUniform(_fields, uniformName, uniformNode);
+                }
+
+                if (!loaded && uniformNode.IsScalar())
+                {
+                    try
+                    {
+                        _fields.SetFloat(uniformName, uniformNode.as<float>());
+                    }
+                    catch (const YAML::Exception &)
+                    {
+                    }
+                }
+            }
+        }
+
+        // Backward compatibility for old material files with root-level float uniforms.
+        for (const auto &entry : _root)
+        {
+            const std::string key = entry.first.as<std::string>("");
+            if (IsReservedMaterialKey(key) || !entry.second.IsScalar())
+                continue;
+
+            if (YAML::Node uniformsNode = _root["uniforms"]; uniformsNode && uniformsNode.IsMap() && uniformsNode[key])
+                continue;
+
+            try
+            {
+                _fields.SetFloat(key, entry.second.as<float>());
+            }
+            catch (const YAML::Exception &)
+            {
+            }
+        }
+    }
+
+    static void WriteMaterialUniformsToNode(YAML::Node &_root, const MaterialFields &_fields)
+    {
+        std::vector<std::string> legacyKeysToRemove = {};
+        for (const auto &entry : _root)
+        {
+            const std::string key = entry.first.as<std::string>("");
+            if (IsReservedMaterialKey(key))
+                continue;
+
+            if (entry.second.IsScalar())
+                legacyKeysToRemove.push_back(key);
+        }
+
+        for (const std::string &key : legacyKeysToRemove)
+            _root.remove(key);
+
+        YAML::Node uniformsNode(YAML::NodeType::Map);
+
+        for (const MaterialFields::IntUniformData &uniform : _fields.GetIntUniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "int";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::FloatUniformData &uniform : _fields.GetFloatUniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "float";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::Vec2UniformData &uniform : _fields.GetVec2Uniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "vector2";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::Vec3UniformData &uniform : _fields.GetVec3Uniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "vector3";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::Vec4UniformData &uniform : _fields.GetVec4Uniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "vector4";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::ColorUniformData &uniform : _fields.GetColorUniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "color";
+            uniformNode["value"] = uniform.value;
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        for (const MaterialFields::TextureUniformData &uniform : _fields.GetTextureUniforms())
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+            uniformNode["type"] = "texture";
+            if (uniform.textureId >= 0)
+            {
+                const std::string texturePath = AssetManager::GetPath(uniform.textureId);
+                if (texturePath.rfind("Path was not found", 0) != 0)
+                    uniformNode["value"] = MakeAssetRefNode(texturePath);
+                else
+                    uniformNode["value"] = YAML::Node();
+            }
+            else
+            {
+                uniformNode["value"] = YAML::Node();
+            }
+            uniformsNode[uniform.name] = uniformNode;
+        }
+
+        if (uniformsNode.size() > 0u)
+            _root["uniforms"] = uniformsNode;
+        else
+            _root.remove("uniforms");
     }
 
     static void SetAssetRefUUID(YAML::Node &_root, const std::string &_key, const std::string &_path)
@@ -1703,27 +2027,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (YAML::Node cullNode = _root["frontFaceCulling"]; cullNode.as<bool>(false))
             _material->info |= MATERIAL_FRONT_FACE_CULLING;
 
-        for (const auto &entry : _root)
-        {
-            const std::string key = entry.first.as<std::string>("");
-            if (key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
-                key == "emission" || key == "color" || key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
-                key == "backFaceCulling" || key == "frontFaceCulling")
-            {
-                continue;
-            }
-
-            if (!entry.second.IsScalar())
-                continue;
-
-            try
-            {
-                _material->materialFields.SetFloat(key, entry.second.as<float>());
-            }
-            catch (const YAML::Exception &)
-            {
-            }
-        }
+        ReadMaterialUniformsFromNode(_root, _material->materialFields);
     }
 
     std::vector<AddComponentEntry> BuildAddComponentEntries(App &_app, Entity &_entity)
@@ -3696,6 +4000,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         bool dirty = false;
+        constexpr float kMaterialNumberFieldMaxWidth = 240.0f;
+        auto setMaterialNumberFieldWidth = []() -> void
+        {
+            ImGui::SetNextItemWidth(kMaterialNumberFieldMaxWidth);
+        };
 
         auto drawAssetField = [&](const char *_label, const char *_key, bool _shaderField) -> void
         {
@@ -3784,6 +4093,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         float specularValue = root["specularValue"].as<float>(0.5f);
+        setMaterialNumberFieldWidth();
         if (ImGui::DragFloat("specularValue", &specularValue, 0.01f, 0.0f, 1.0f))
         {
             root["specularValue"] = specularValue;
@@ -3791,6 +4101,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         float roughnessValue = root["roughnessValue"].as<float>(0.5f);
+        setMaterialNumberFieldWidth();
         if (ImGui::DragFloat("roughnessValue", &roughnessValue, 0.01f, 0.0f, 1.0f))
         {
             root["roughnessValue"] = roughnessValue;
@@ -3798,6 +4109,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         float metallicValue = root["metallicValue"].as<float>(0.0f);
+        setMaterialNumberFieldWidth();
         if (ImGui::DragFloat("metallicValue", &metallicValue, 0.01f, 0.0f, 1.0f))
         {
             root["metallicValue"] = metallicValue;
@@ -3818,31 +4130,290 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             dirty = true;
         }
 
-        for (const auto &entry : root)
+        MaterialFields customUniforms = {};
+        ReadMaterialUniformsFromNode(root, customUniforms);
+        bool uniformsDirty = false;
+
+        ImGui::Separator();
+        ImGui::Text("custom uniforms");
+
+        static std::string newUniformName = "";
+        static int newUniformTypeIndex = 1;
+        const char *uniformTypeOptions[] = {"int", "float", "Vector2", "Vector3", "Vector4", "Color", "Texture"};
+
+        auto trimUniformName = [](const std::string &_value) -> std::string
         {
-            std::string key = entry.first.as<std::string>("");
-            if (key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
-                key == "emission" || key == "color" || key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
-                key == "backFaceCulling" || key == "frontFaceCulling")
-            {
-                continue;
-            }
+            const size_t first = _value.find_first_not_of(" \t\n\r");
+            if (first == std::string::npos)
+                return "";
+            const size_t last = _value.find_last_not_of(" \t\n\r");
+            return _value.substr(first, last - first + 1);
+        };
 
-            if (!entry.second.IsScalar())
-                continue;
+        auto getTextureDisplayName = [](i32 _textureId) -> std::string
+        {
+            if (_textureId < 0)
+                return "None";
 
-            try
+            const std::string texturePath = AssetManager::GetPath(_textureId);
+            if (texturePath.rfind("Path was not found", 0) == 0)
+                return "[ missing ]";
+
+            if (MetaFileAsset *textureMeta = AssetManager::GetMetaFile(texturePath))
+                return textureMeta->name;
+
+            return texturePath;
+        };
+
+        ImGui::SetNextItemWidth(170.0f);
+        ImGui::InputTextWithHint("##new_uniform_name", "uniform name", &newUniformName);
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(110.0f);
+        ImGui::Combo("##new_uniform_type", &newUniformTypeIndex, uniformTypeOptions, IM_ARRAYSIZE(uniformTypeOptions));
+        ImGui::SameLine();
+        if (ImGui::Button("Add Uniform"))
+        {
+            const std::string uniformName = trimUniformName(newUniformName);
+            if (!uniformName.empty())
             {
-                float value = entry.second.as<float>();
-                if (ImGui::DragFloat(key.c_str(), &value, 0.01f))
+                switch (newUniformTypeIndex)
                 {
-                    root[key] = value;
-                    dirty = true;
+                    case 0: customUniforms.SetInt(uniformName, 0); break;
+                    case 1: customUniforms.SetFloat(uniformName, 0.0f); break;
+                    case 2: customUniforms.SetVec2(uniformName, Vector2(0.0f)); break;
+                    case 3: customUniforms.SetVec3(uniformName, Vector3(0.0f)); break;
+                    case 4: customUniforms.SetVec4(uniformName, Vector4(0.0f)); break;
+                    case 5: customUniforms.SetColor(uniformName, Color(1.0f)); break;
+                    case 6: customUniforms.SetTexture(uniformName, -1); break;
+                    default: break;
                 }
+
+                uniformsDirty = true;
+                newUniformName.clear();
             }
-            catch (const YAML::Exception &)
+        }
+
+        const auto intUniforms = customUniforms.GetIntUniforms();
+        for (const MaterialFields::IntUniformData &uniform : intUniforms)
+        {
+            int value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("int_" + uniform.name).c_str());
+            setMaterialNumberFieldWidth();
+            if (ImGui::DragInt("##value", &value, 1.0f))
             {
+                customUniforms.SetInt(uniform.name, value);
+                uniformsDirty = true;
             }
+            ImGui::SameLine();
+            ImGui::Text("%s (int)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveInt(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto floatUniforms = customUniforms.GetFloatUniforms();
+        for (const MaterialFields::FloatUniformData &uniform : floatUniforms)
+        {
+            float value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("float_" + uniform.name).c_str());
+            setMaterialNumberFieldWidth();
+            if (ImGui::DragFloat("##value", &value, 0.01f))
+            {
+                customUniforms.SetFloat(uniform.name, value);
+                uniformsDirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s (float)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveFloat(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto vec2Uniforms = customUniforms.GetVec2Uniforms();
+        for (const MaterialFields::Vec2UniformData &uniform : vec2Uniforms)
+        {
+            Vector2 value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("vec2_" + uniform.name).c_str());
+            setMaterialNumberFieldWidth();
+            if (ImGui::DragFloat2("##value", &value.x, 0.01f))
+            {
+                customUniforms.SetVec2(uniform.name, value);
+                uniformsDirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s (Vector2)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveVec2(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto vec3Uniforms = customUniforms.GetVec3Uniforms();
+        for (const MaterialFields::Vec3UniformData &uniform : vec3Uniforms)
+        {
+            Vector3 value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("vec3_" + uniform.name).c_str());
+            setMaterialNumberFieldWidth();
+            if (ImGui::DragFloat3("##value", &value.x, 0.01f))
+            {
+                customUniforms.SetVec3(uniform.name, value);
+                uniformsDirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s (Vector3)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveVec3(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto vec4Uniforms = customUniforms.GetVec4Uniforms();
+        for (const MaterialFields::Vec4UniformData &uniform : vec4Uniforms)
+        {
+            Vector4 value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("vec4_" + uniform.name).c_str());
+            setMaterialNumberFieldWidth();
+            if (ImGui::DragFloat4("##value", &value.x, 0.01f))
+            {
+                customUniforms.SetVec4(uniform.name, value);
+                uniformsDirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s (Vector4)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveVec4(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto colorUniforms = customUniforms.GetColorUniforms();
+        for (const MaterialFields::ColorUniformData &uniform : colorUniforms)
+        {
+            Color value = uniform.value;
+            bool removeUniform = false;
+
+            ImGui::PushID(("color_" + uniform.name).c_str());
+            if (ImGui::ColorEdit4("##value", &value.r))
+            {
+                customUniforms.SetColor(uniform.name, value);
+                uniformsDirty = true;
+            }
+            ImGui::SameLine();
+            ImGui::Text("%s (Color)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveColor(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        const auto textureUniforms = customUniforms.GetTextureUniforms();
+        for (const MaterialFields::TextureUniformData &uniform : textureUniforms)
+        {
+            i32 textureId = uniform.textureId;
+            bool removeUniform = false;
+
+            ImGui::PushID(("texture_" + uniform.name).c_str());
+
+            const std::string buttonLabel = getTextureDisplayName(textureId) + "##texture_value";
+            ImGui::Button(buttonLabel.c_str(), ImVec2(220, 0));
+
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                    std::string droppedPath = AssetManager::GetPath(dropped.uuid);
+                    if (droppedPath.rfind("Path was not found", 0) == 0)
+                        droppedPath = std::string(dropped.path);
+
+                    if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(droppedPath))
+                    {
+                        if (droppedMeta->type == MetaFileAsset::FileType::TEXTURE)
+                            textureId = AssetManager::LoadTexture(droppedPath);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (ImGui::BeginPopupContextItem("texture_uniform_ctx"))
+            {
+                if (ImGui::MenuItem("Clear"))
+                    textureId = -1;
+                ImGui::EndPopup();
+            }
+
+            ImGui::SameLine();
+            ImGui::Text("%s (Texture)", uniform.name.c_str());
+            ImGui::SameLine();
+            if (ImGui::SmallButton("X"))
+                removeUniform = true;
+            ImGui::PopID();
+
+            if (textureId != uniform.textureId)
+            {
+                customUniforms.SetTexture(uniform.name, textureId);
+                uniformsDirty = true;
+            }
+
+            if (removeUniform)
+            {
+                customUniforms.RemoveTexture(uniform.name);
+                uniformsDirty = true;
+            }
+        }
+
+        if (uniformsDirty)
+        {
+            WriteMaterialUniformsToNode(root, customUniforms);
+            dirty = true;
         }
 
         if (dirty)
@@ -4560,6 +5131,58 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         }
 
                         MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
+                    }
+
+                    if (ImGui::MenuItem("Create Shader (Model3D Copy)"))
+                    {
+                        const fs::path folderPath = entry.path();
+                        fs::path basePath = folderPath / "new_shader";
+                        fs::path vertexPath = basePath;
+                        fs::path fragmentPath = basePath;
+                        vertexPath.replace_extension(".vs");
+                        fragmentPath.replace_extension(".fs");
+
+                        int index = 1;
+                        while (fs::exists(vertexPath) || fs::exists(fragmentPath))
+                        {
+                            basePath = folderPath / ("new_shader_" + std::to_string(index));
+                            vertexPath = basePath;
+                            fragmentPath = basePath;
+                            vertexPath.replace_extension(".vs");
+                            fragmentPath.replace_extension(".fs");
+                            ++index;
+                        }
+
+                        auto copyTemplateShader = [](const fs::path &_targetPath, const std::vector<fs::path> &_sourceCandidates) -> bool
+                        {
+                            std::error_code ec;
+                            for (const fs::path &candidate : _sourceCandidates)
+                            {
+                                ec.clear();
+                                if (!fs::exists(candidate, ec))
+                                    continue;
+
+                                ec.clear();
+                                fs::copy_file(candidate, _targetPath, ec);
+                                if (!ec)
+                                    return true;
+                            }
+
+                            return false;
+                        };
+
+                        const bool copiedVertex = copyTemplateShader(vertexPath, { "assets/shaders/model3d.vs", "project/assets/shaders/model3d.vs" });
+                        const bool copiedFragment = copyTemplateShader(fragmentPath, { "assets/shaders/model3d.fs", "project/assets/shaders/model3d.fs" });
+
+                        if (!copiedVertex)
+                            Debug::Warning("Failed to create shader vertex file from model3d template: %s", vertexPath.string().c_str());
+                        if (!copiedFragment)
+                            Debug::Warning("Failed to create shader fragment file from model3d template: %s", fragmentPath.string().c_str());
+
+                        if (copiedVertex)
+                            (void)AssetManager::GetMetaFile(vertexPath.string());
+                        if (copiedFragment)
+                            (void)AssetManager::GetMetaFile(fragmentPath.string());
                     }
 
                     if (ImGui::MenuItem("Create Skybox"))

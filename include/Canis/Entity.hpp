@@ -1153,6 +1153,7 @@ namespace Canis
         i32 materialId = -1;
         std::vector<i32> materialIds = {};
         Color color = Color(1.0f);
+        MaterialFields materialFields = {};
     };
 
     struct ModelAnimation

@@ -2386,10 +2386,98 @@ namespace Canis
         return true;
     }
 
-    void MaterialFields::Use(Shader &_shader) const
+    int MaterialFields::Use(Shader &_shader, int _firstTextureUnit) const
     {
+        for (const IntUniformData &uniform : m_intUniformData)
+            _shader.SetInt(uniform.name, uniform.value);
+
         for (const FloatUniformData &uniform : m_floatUniformData)
             _shader.SetFloat(uniform.name, uniform.value);
+
+        for (const Vec2UniformData &uniform : m_vec2UniformData)
+            _shader.SetVec2(uniform.name, uniform.value);
+
+        for (const Vec3UniformData &uniform : m_vec3UniformData)
+            _shader.SetVec3(uniform.name, uniform.value);
+
+        for (const Vec4UniformData &uniform : m_vec4UniformData)
+            _shader.SetVec4(uniform.name, uniform.value);
+
+        for (const ColorUniformData &uniform : m_colorUniformData)
+            _shader.SetVec4(uniform.name, uniform.value);
+
+        int textureUnit = std::max(_firstTextureUnit, 0);
+        for (const TextureUniformData &uniform : m_textureUniformData)
+        {
+            _shader.SetInt(uniform.name, textureUnit);
+
+            GLuint glTexture = 0;
+            if (uniform.textureId >= 0)
+            {
+                if (TextureAsset *textureAsset = AssetManager::GetTexture(uniform.textureId))
+                    glTexture = textureAsset->GetGLTexture().id;
+            }
+
+            glActiveTexture(GL_TEXTURE0 + textureUnit);
+            glBindTexture(GL_TEXTURE_2D, glTexture);
+            textureUnit++;
+        }
+
+        glActiveTexture(GL_TEXTURE0);
+        return textureUnit;
+    }
+
+    void MaterialFields::SetInt(const std::string &_name, int _value)
+    {
+        for (IntUniformData &uniform : m_intUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.value = _value;
+                RemoveFloat(_name);
+                RemoveVec2(_name);
+                RemoveVec3(_name);
+                RemoveVec4(_name);
+                RemoveColor(_name);
+                RemoveTexture(_name);
+                return;
+            }
+        }
+
+        RemoveFloat(_name);
+        RemoveVec2(_name);
+        RemoveVec3(_name);
+        RemoveVec4(_name);
+        RemoveColor(_name);
+        RemoveTexture(_name);
+        m_intUniformData.push_back(IntUniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetInt(const std::string &_name, int &_outValue) const
+    {
+        for (const IntUniformData &uniform : m_intUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveInt(const std::string &_name)
+    {
+        m_intUniformData.erase(
+            std::remove_if(
+                m_intUniformData.begin(),
+                m_intUniformData.end(),
+                [&](const IntUniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_intUniformData.end());
     }
 
     void MaterialFields::SetFloat(const std::string &_name, float _value)
@@ -2399,10 +2487,325 @@ namespace Canis
             if (uniform.name == _name)
             {
                 uniform.value = _value;
+                RemoveInt(_name);
+                RemoveVec2(_name);
+                RemoveVec3(_name);
+                RemoveVec4(_name);
+                RemoveColor(_name);
+                RemoveTexture(_name);
                 return;
             }
         }
 
+        RemoveInt(_name);
+        RemoveVec2(_name);
+        RemoveVec3(_name);
+        RemoveVec4(_name);
+        RemoveColor(_name);
+        RemoveTexture(_name);
         m_floatUniformData.push_back(FloatUniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetFloat(const std::string &_name, float &_outValue) const
+    {
+        for (const FloatUniformData &uniform : m_floatUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveFloat(const std::string &_name)
+    {
+        m_floatUniformData.erase(
+            std::remove_if(
+                m_floatUniformData.begin(),
+                m_floatUniformData.end(),
+                [&](const FloatUniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_floatUniformData.end());
+    }
+
+    void MaterialFields::SetVec2(const std::string &_name, const Vector2 &_value)
+    {
+        for (Vec2UniformData &uniform : m_vec2UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.value = _value;
+                RemoveInt(_name);
+                RemoveFloat(_name);
+                RemoveVec3(_name);
+                RemoveVec4(_name);
+                RemoveColor(_name);
+                RemoveTexture(_name);
+                return;
+            }
+        }
+
+        RemoveInt(_name);
+        RemoveFloat(_name);
+        RemoveVec3(_name);
+        RemoveVec4(_name);
+        RemoveColor(_name);
+        RemoveTexture(_name);
+        m_vec2UniformData.push_back(Vec2UniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetVec2(const std::string &_name, Vector2 &_outValue) const
+    {
+        for (const Vec2UniformData &uniform : m_vec2UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveVec2(const std::string &_name)
+    {
+        m_vec2UniformData.erase(
+            std::remove_if(
+                m_vec2UniformData.begin(),
+                m_vec2UniformData.end(),
+                [&](const Vec2UniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_vec2UniformData.end());
+    }
+
+    void MaterialFields::SetVec3(const std::string &_name, const Vector3 &_value)
+    {
+        for (Vec3UniformData &uniform : m_vec3UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.value = _value;
+                RemoveInt(_name);
+                RemoveFloat(_name);
+                RemoveVec2(_name);
+                RemoveVec4(_name);
+                RemoveColor(_name);
+                RemoveTexture(_name);
+                return;
+            }
+        }
+
+        RemoveInt(_name);
+        RemoveFloat(_name);
+        RemoveVec2(_name);
+        RemoveVec4(_name);
+        RemoveColor(_name);
+        RemoveTexture(_name);
+        m_vec3UniformData.push_back(Vec3UniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetVec3(const std::string &_name, Vector3 &_outValue) const
+    {
+        for (const Vec3UniformData &uniform : m_vec3UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveVec3(const std::string &_name)
+    {
+        m_vec3UniformData.erase(
+            std::remove_if(
+                m_vec3UniformData.begin(),
+                m_vec3UniformData.end(),
+                [&](const Vec3UniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_vec3UniformData.end());
+    }
+
+    void MaterialFields::SetVec4(const std::string &_name, const Vector4 &_value)
+    {
+        for (Vec4UniformData &uniform : m_vec4UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.value = _value;
+                RemoveInt(_name);
+                RemoveFloat(_name);
+                RemoveVec2(_name);
+                RemoveVec3(_name);
+                RemoveColor(_name);
+                RemoveTexture(_name);
+                return;
+            }
+        }
+
+        RemoveInt(_name);
+        RemoveFloat(_name);
+        RemoveVec2(_name);
+        RemoveVec3(_name);
+        RemoveColor(_name);
+        RemoveTexture(_name);
+        m_vec4UniformData.push_back(Vec4UniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetVec4(const std::string &_name, Vector4 &_outValue) const
+    {
+        for (const Vec4UniformData &uniform : m_vec4UniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveVec4(const std::string &_name)
+    {
+        m_vec4UniformData.erase(
+            std::remove_if(
+                m_vec4UniformData.begin(),
+                m_vec4UniformData.end(),
+                [&](const Vec4UniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_vec4UniformData.end());
+    }
+
+    void MaterialFields::SetColor(const std::string &_name, const Color &_value)
+    {
+        for (ColorUniformData &uniform : m_colorUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.value = _value;
+                RemoveInt(_name);
+                RemoveFloat(_name);
+                RemoveVec2(_name);
+                RemoveVec3(_name);
+                RemoveVec4(_name);
+                RemoveTexture(_name);
+                return;
+            }
+        }
+
+        RemoveInt(_name);
+        RemoveFloat(_name);
+        RemoveVec2(_name);
+        RemoveVec3(_name);
+        RemoveVec4(_name);
+        RemoveTexture(_name);
+        m_colorUniformData.push_back(ColorUniformData{.name = _name, .value = _value});
+    }
+
+    bool MaterialFields::TryGetColor(const std::string &_name, Color &_outValue) const
+    {
+        for (const ColorUniformData &uniform : m_colorUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outValue = uniform.value;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveColor(const std::string &_name)
+    {
+        m_colorUniformData.erase(
+            std::remove_if(
+                m_colorUniformData.begin(),
+                m_colorUniformData.end(),
+                [&](const ColorUniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_colorUniformData.end());
+    }
+
+    void MaterialFields::SetTexture(const std::string &_name, i32 _textureId)
+    {
+        for (TextureUniformData &uniform : m_textureUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                uniform.textureId = _textureId;
+                RemoveInt(_name);
+                RemoveFloat(_name);
+                RemoveVec2(_name);
+                RemoveVec3(_name);
+                RemoveVec4(_name);
+                RemoveColor(_name);
+                return;
+            }
+        }
+
+        RemoveInt(_name);
+        RemoveFloat(_name);
+        RemoveVec2(_name);
+        RemoveVec3(_name);
+        RemoveVec4(_name);
+        RemoveColor(_name);
+        m_textureUniformData.push_back(TextureUniformData{.name = _name, .textureId = _textureId});
+    }
+
+    bool MaterialFields::TryGetTexture(const std::string &_name, i32 &_outTextureId) const
+    {
+        for (const TextureUniformData &uniform : m_textureUniformData)
+        {
+            if (uniform.name == _name)
+            {
+                _outTextureId = uniform.textureId;
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    void MaterialFields::RemoveTexture(const std::string &_name)
+    {
+        m_textureUniformData.erase(
+            std::remove_if(
+                m_textureUniformData.begin(),
+                m_textureUniformData.end(),
+                [&](const TextureUniformData &_uniform)
+                {
+                    return _uniform.name == _name;
+                }),
+            m_textureUniformData.end());
+    }
+
+    void MaterialFields::Clear()
+    {
+        m_intUniformData.clear();
+        m_floatUniformData.clear();
+        m_vec2UniformData.clear();
+        m_vec3UniformData.clear();
+        m_vec4UniformData.clear();
+        m_colorUniformData.clear();
+        m_textureUniformData.clear();
     }
 }

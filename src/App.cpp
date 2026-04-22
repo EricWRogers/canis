@@ -26,6 +26,7 @@
 
 #include <algorithm>
 #include <cstdlib>
+#include <cctype>
 #include <filesystem>
 #include <fstream>
 #include <memory>
@@ -168,6 +169,303 @@ namespace Canis
                 assetNode["uuid"] = (uint64_t)meta->uuid;
 
             return assetNode;
+        }
+
+        std::string ResolveAssetReferencePath(const YAML::Node &_node)
+        {
+            if (!_node)
+                return "";
+
+            if (_node.IsMap())
+            {
+                if (auto uuidNode = _node["uuid"])
+                {
+                    const UUID uuid = uuidNode.as<uint64_t>(0);
+                    if ((uint64_t)uuid != 0)
+                    {
+                        std::string path = AssetManager::GetPath(uuid);
+                        if (path.rfind("Path was not found", 0) != 0)
+                            return path;
+                    }
+                }
+
+                if (auto pathNode = _node["path"])
+                    return pathNode.as<std::string>("");
+
+                return "";
+            }
+
+            if (_node.IsScalar())
+            {
+                const std::string rawValue = _node.as<std::string>("");
+                if (rawValue.empty())
+                    return "";
+
+                const bool isNumeric = std::all_of(rawValue.begin(), rawValue.end(), [](unsigned char c)
+                {
+                    return std::isdigit(c) != 0;
+                });
+                if (isNumeric)
+                {
+                    const UUID uuid = static_cast<UUID>(std::stoull(rawValue));
+                    std::string path = AssetManager::GetPath(uuid);
+                    if (path.rfind("Path was not found", 0) != 0)
+                        return path;
+                }
+
+                return rawValue;
+            }
+
+            return "";
+        }
+
+        std::string ToLowerCopy(std::string _value)
+        {
+            std::transform(_value.begin(), _value.end(), _value.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+            return _value;
+        }
+
+        bool ApplyTypedMaterialOverride(MaterialFields &_fields, const std::string &_uniformName, const std::string &_type, const YAML::Node &_valueNode)
+        {
+            const std::string type = ToLowerCopy(_type);
+            try
+            {
+                if (type == "int" || type == "integer")
+                {
+                    _fields.SetInt(_uniformName, _valueNode.as<int>(0));
+                    return true;
+                }
+
+                if (type == "float")
+                {
+                    _fields.SetFloat(_uniformName, _valueNode.as<float>(0.0f));
+                    return true;
+                }
+
+                if (type == "vector2" || type == "vec2")
+                {
+                    _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                    return true;
+                }
+
+                if (type == "vector3" || type == "vec3")
+                {
+                    _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                    return true;
+                }
+
+                if (type == "vector4" || type == "vec4")
+                {
+                    _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                    return true;
+                }
+
+                if (type == "color")
+                {
+                    _fields.SetColor(_uniformName, _valueNode.as<Color>(Color(1.0f)));
+                    return true;
+                }
+
+                if (type == "texture" || type == "sampler2d")
+                {
+                    const std::string texturePath = ResolveAssetReferencePath(_valueNode);
+                    i32 textureId = -1;
+                    if (!texturePath.empty())
+                        textureId = AssetManager::LoadTexture(texturePath);
+                    _fields.SetTexture(_uniformName, textureId);
+                    return true;
+                }
+            }
+            catch (const YAML::Exception &)
+            {
+            }
+
+            return false;
+        }
+
+        bool ApplyInferredMaterialOverride(MaterialFields &_fields, const std::string &_uniformName, const YAML::Node &_valueNode)
+        {
+            if (!_valueNode)
+                return false;
+
+            if (_valueNode.IsMap())
+            {
+                const std::string texturePath = ResolveAssetReferencePath(_valueNode);
+                i32 textureId = -1;
+                if (!texturePath.empty())
+                    textureId = AssetManager::LoadTexture(texturePath);
+                _fields.SetTexture(_uniformName, textureId);
+                return true;
+            }
+
+            if (_valueNode.IsSequence())
+            {
+                try
+                {
+                    if (_valueNode.size() == 2u)
+                    {
+                        _fields.SetVec2(_uniformName, _valueNode.as<Vector2>(Vector2(0.0f)));
+                        return true;
+                    }
+
+                    if (_valueNode.size() == 3u)
+                    {
+                        _fields.SetVec3(_uniformName, _valueNode.as<Vector3>(Vector3(0.0f)));
+                        return true;
+                    }
+
+                    if (_valueNode.size() == 4u)
+                    {
+                        _fields.SetVec4(_uniformName, _valueNode.as<Vector4>(Vector4(0.0f)));
+                        return true;
+                    }
+                }
+                catch (const YAML::Exception &)
+                {
+                }
+            }
+
+            if (_valueNode.IsScalar())
+            {
+                try
+                {
+                    _fields.SetFloat(_uniformName, _valueNode.as<float>());
+                    return true;
+                }
+                catch (const YAML::Exception &)
+                {
+                }
+            }
+
+            return false;
+        }
+
+        void EncodeMaterialOverrides(const MaterialFields &_fields, YAML::Node &_outNode)
+        {
+            YAML::Node uniformNode(YAML::NodeType::Map);
+
+            for (const MaterialFields::IntUniformData &uniform : _fields.GetIntUniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "int";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::FloatUniformData &uniform : _fields.GetFloatUniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "float";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::Vec2UniformData &uniform : _fields.GetVec2Uniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "vector2";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::Vec3UniformData &uniform : _fields.GetVec3Uniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "vector3";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::Vec4UniformData &uniform : _fields.GetVec4Uniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "vector4";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::ColorUniformData &uniform : _fields.GetColorUniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "color";
+                uniformValue["value"] = uniform.value;
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            for (const MaterialFields::TextureUniformData &uniform : _fields.GetTextureUniforms())
+            {
+                YAML::Node uniformValue(YAML::NodeType::Map);
+                uniformValue["type"] = "texture";
+                if (uniform.textureId >= 0)
+                {
+                    const std::string texturePath = AssetManager::GetPath(uniform.textureId);
+                    if (texturePath.rfind("Path was not found", 0) != 0)
+                        uniformValue["value"] = CreateAssetReferenceNode(texturePath);
+                    else
+                        uniformValue["value"] = YAML::Node();
+                }
+                else
+                {
+                    uniformValue["value"] = YAML::Node();
+                }
+                uniformNode[uniform.name] = uniformValue;
+            }
+
+            if (uniformNode.size() > 0u)
+                _outNode = uniformNode;
+        }
+
+        void DecodeMaterialOverrides(const YAML::Node &_node, MaterialFields &_fields)
+        {
+            _fields.Clear();
+            if (!_node || !_node.IsMap())
+                return;
+
+            for (const auto &entry : _node)
+            {
+                const std::string uniformName = entry.first.as<std::string>("");
+                if (uniformName.empty())
+                    continue;
+
+                const YAML::Node uniformNode = entry.second;
+                bool loaded = false;
+
+                if (uniformNode.IsMap())
+                {
+                    const std::string type = uniformNode["type"].as<std::string>("");
+                    YAML::Node valueNode = uniformNode["value"];
+                    if (!valueNode && uniformNode["texture"])
+                        valueNode = uniformNode["texture"];
+                    if (!valueNode && uniformNode["data"])
+                        valueNode = uniformNode["data"];
+                    if (!valueNode)
+                        valueNode = uniformNode;
+
+                    if (!type.empty())
+                        loaded = ApplyTypedMaterialOverride(_fields, uniformName, type, valueNode);
+
+                    if (!loaded)
+                        loaded = ApplyInferredMaterialOverride(_fields, uniformName, valueNode);
+                }
+                else
+                {
+                    loaded = ApplyInferredMaterialOverride(_fields, uniformName, uniformNode);
+                }
+
+                if (!loaded && uniformNode.IsScalar())
+                {
+                    try
+                    {
+                        _fields.SetFloat(uniformName, uniformNode.as<float>());
+                    }
+                    catch (const YAML::Exception &)
+                    {
+                    }
+                }
+            }
         }
 
         SceneAssetHandle MakeSceneAssetHandleFromPath(const std::string& _path)
@@ -2219,6 +2517,11 @@ namespace Canis
                     if (!slotAssets.IsNull() && slotAssets.size() > 0)
                         comp["MaterialSlots"] = slotAssets;
 
+                    YAML::Node uniformNode;
+                    EncodeMaterialOverrides(material.materialFields, uniformNode);
+                    if (uniformNode && uniformNode.IsMap() && uniformNode.size() > 0u)
+                        comp["UniformOverrides"] = uniformNode;
+
                     _node["Canis::Material"] = comp;
                 }
             },
@@ -2273,6 +2576,10 @@ namespace Canis
                         }
                     }
 
+                    material.materialFields.Clear();
+                    if (auto uniformOverrides = comp["UniformOverrides"]; uniformOverrides && uniformOverrides.IsMap())
+                        DecodeMaterialOverrides(uniformOverrides, material.materialFields);
+
                     if (_callCreate)
                         material.Create();
                 }
@@ -2317,6 +2624,21 @@ namespace Canis
                         ImGui::EndDragDropTarget();
                     };
 
+                    auto getTextureLabel = [](i32 _textureId) -> std::string
+                    {
+                        if (_textureId < 0)
+                            return "None";
+
+                        std::string path = AssetManager::GetPath(_textureId);
+                        if (path.rfind("Path was not found", 0) == 0)
+                            return "[ missing ]";
+
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                            return meta->name;
+
+                        return path;
+                    };
+
                     ImGui::ColorEdit4("material color", &material->color.r);
 
                     std::string materialLabel = getMaterialLabel(material->materialId);
@@ -2350,6 +2672,261 @@ namespace Canis
                             buttonLabel += "##material_slot_" + std::to_string(slotIndex);
                             ImGui::Button(buttonLabel.c_str(), ImVec2(180, 0));
                             handleMaterialDrop(material->materialIds[static_cast<size_t>(slotIndex)]);
+                        }
+                    }
+
+                    MaterialAsset *baseMaterialAsset = nullptr;
+                    if (material->materialId >= 0)
+                        baseMaterialAsset = AssetManager::GetMaterial(material->materialId);
+
+                    if (baseMaterialAsset != nullptr)
+                    {
+                        const bool hasUniforms =
+                            !baseMaterialAsset->materialFields.GetIntUniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetFloatUniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetVec2Uniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetVec3Uniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetVec4Uniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetColorUniforms().empty() ||
+                            !baseMaterialAsset->materialFields.GetTextureUniforms().empty();
+
+                        if (hasUniforms)
+                        {
+                            ImGui::Separator();
+                            ImGui::Text("uniform overrides");
+
+                            for (const MaterialFields::IntUniformData &baseUniform : baseMaterialAsset->materialFields.GetIntUniforms())
+                            {
+                                int overrideValue = 0;
+                                bool hasOverride = material->materialFields.TryGetInt(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("int_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetInt(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveInt(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                int editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::DragInt("##value", &editedValue, 1.0f) && hasOverride)
+                                    material->materialFields.SetInt(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (int)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::FloatUniformData &baseUniform : baseMaterialAsset->materialFields.GetFloatUniforms())
+                            {
+                                float overrideValue = 0.0f;
+                                bool hasOverride = material->materialFields.TryGetFloat(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("float_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetFloat(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveFloat(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                float editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::DragFloat("##value", &editedValue, 0.01f) && hasOverride)
+                                    material->materialFields.SetFloat(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (float)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::Vec2UniformData &baseUniform : baseMaterialAsset->materialFields.GetVec2Uniforms())
+                            {
+                                Vector2 overrideValue = Vector2(0.0f);
+                                bool hasOverride = material->materialFields.TryGetVec2(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("vec2_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetVec2(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveVec2(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                Vector2 editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::DragFloat2("##value", &editedValue.x, 0.01f) && hasOverride)
+                                    material->materialFields.SetVec2(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (Vector2)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::Vec3UniformData &baseUniform : baseMaterialAsset->materialFields.GetVec3Uniforms())
+                            {
+                                Vector3 overrideValue = Vector3(0.0f);
+                                bool hasOverride = material->materialFields.TryGetVec3(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("vec3_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetVec3(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveVec3(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                Vector3 editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::DragFloat3("##value", &editedValue.x, 0.01f) && hasOverride)
+                                    material->materialFields.SetVec3(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (Vector3)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::Vec4UniformData &baseUniform : baseMaterialAsset->materialFields.GetVec4Uniforms())
+                            {
+                                Vector4 overrideValue = Vector4(0.0f);
+                                bool hasOverride = material->materialFields.TryGetVec4(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("vec4_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetVec4(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveVec4(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                Vector4 editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::DragFloat4("##value", &editedValue.x, 0.01f) && hasOverride)
+                                    material->materialFields.SetVec4(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (Vector4)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::ColorUniformData &baseUniform : baseMaterialAsset->materialFields.GetColorUniforms())
+                            {
+                                Color overrideValue = Color(1.0f);
+                                bool hasOverride = material->materialFields.TryGetColor(baseUniform.name, overrideValue);
+                                if (!hasOverride)
+                                    overrideValue = baseUniform.value;
+
+                                ImGui::PushID(("color_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetColor(baseUniform.name, overrideValue);
+                                    else
+                                        material->materialFields.RemoveColor(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                Color editedValue = overrideValue;
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+                                if (ImGui::ColorEdit4("##value", &editedValue.r) && hasOverride)
+                                    material->materialFields.SetColor(baseUniform.name, editedValue);
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+                                ImGui::SameLine();
+                                ImGui::Text("%s (Color)", baseUniform.name.c_str());
+                                ImGui::PopID();
+                            }
+
+                            for (const MaterialFields::TextureUniformData &baseUniform : baseMaterialAsset->materialFields.GetTextureUniforms())
+                            {
+                                i32 overrideTextureId = -1;
+                                bool hasOverride = material->materialFields.TryGetTexture(baseUniform.name, overrideTextureId);
+                                if (!hasOverride)
+                                    overrideTextureId = baseUniform.textureId;
+                                const i32 originalOverrideTextureId = overrideTextureId;
+
+                                ImGui::PushID(("texture_" + baseUniform.name).c_str());
+                                if (ImGui::Checkbox("##override", &hasOverride))
+                                {
+                                    if (hasOverride)
+                                        material->materialFields.SetTexture(baseUniform.name, overrideTextureId);
+                                    else
+                                        material->materialFields.RemoveTexture(baseUniform.name);
+                                }
+                                ImGui::SameLine();
+
+                                if (!hasOverride)
+                                    ImGui::BeginDisabled();
+
+                                const std::string textureButtonLabel = getTextureLabel(overrideTextureId) + "##texture_override";
+                                ImGui::Button(textureButtonLabel.c_str(), ImVec2(170, 0));
+                                if (hasOverride && ImGui::BeginDragDropTarget())
+                                {
+                                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                                    {
+                                        const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                                        std::string path = std::string(dropped.path);
+                                        if (path.empty() || !FileExists(path.c_str()))
+                                            path = AssetManager::GetPath(dropped.uuid);
+
+                                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                                        {
+                                            if (meta->type == MetaFileAsset::FileType::TEXTURE)
+                                                overrideTextureId = AssetManager::LoadTexture(path);
+                                        }
+                                    }
+                                    ImGui::EndDragDropTarget();
+                                }
+
+                                if (hasOverride && ImGui::BeginPopupContextItem("texture_override_ctx"))
+                                {
+                                    if (ImGui::MenuItem("Clear"))
+                                        overrideTextureId = -1;
+                                    ImGui::EndPopup();
+                                }
+
+                                if (!hasOverride)
+                                    ImGui::EndDisabled();
+
+                                ImGui::SameLine();
+                                ImGui::Text("%s (Texture)", baseUniform.name.c_str());
+                                ImGui::PopID();
+
+                                if (hasOverride && overrideTextureId != originalOverrideTextureId)
+                                    material->materialFields.SetTexture(baseUniform.name, overrideTextureId);
+                            }
                         }
                     }
                 }

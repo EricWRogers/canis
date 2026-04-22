@@ -660,7 +660,17 @@ namespace Canis
                     glCullFace(GL_FRONT);
                 }
 
-                materialAsset->materialFields.Use(*currentShader);
+                int nextCustomTextureUnit = 5;
+                nextCustomTextureUnit = materialAsset->materialFields.Use(*currentShader, nextCustomTextureUnit);
+
+                if (material != nullptr)
+                    nextCustomTextureUnit = material->materialFields.Use(*currentShader, nextCustomTextureUnit);
+
+                (void)nextCustomTextureUnit;
+            }
+            else if (material != nullptr)
+            {
+                (void)material->materialFields.Use(*currentShader, 5);
             }
 
             if (material != nullptr)
