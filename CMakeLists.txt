@@ -43,6 +43,7 @@ target_link_libraries(${CANIS_ENGINE_LIB}
     PRIVATE
     yaml-cpp
     SDL3::SDL3
+    SDL3_net::SDL3_net
     stb
     Jolt
 )

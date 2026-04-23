@@ -8,6 +8,7 @@ namespace Canis
     {
     private:
         Entity* m_pressedButton = nullptr;
+        Entity* m_focusedInputField = nullptr;
         Entity* m_dragSource = nullptr;
         Entity* m_hoveredDropTarget = nullptr;
 

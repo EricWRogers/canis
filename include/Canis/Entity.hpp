@@ -1278,6 +1278,40 @@ namespace Canis
         bool baseValuesSaved = false;
     };
 
+    struct UIInputField
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::UIInputField";
+
+        UIInputField() = default;
+        explicit UIInputField(Canis::Entity &_entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+        void Create() {}
+
+        bool active = true;
+        Entity* displayEntity = nullptr;
+        Entity* targetEntity = nullptr;
+        std::string targetScript = "";
+        std::string targetProperty = "";
+        std::string text = "";
+        std::string placeholder = "";
+        std::string allowedCharacters = "";
+        int maxLength = 64;
+
+        Color baseColor = Color(1.0f);
+        Color hoverColor = Color(0.95f, 0.95f, 0.95f, 1.0f);
+        Color focusedColor = Color(1.0f);
+        Color baseTextColor = Color(1.0f);
+        Color textColor = Color(1.0f);
+        Color placeholderColor = Color(0.7f, 0.7f, 0.7f, 1.0f);
+
+        bool hovered = false;
+        bool focused = false;
+        bool baseValuesSaved = false;
+        float caretBlinkTimer = 0.0f;
+        bool caretVisible = true;
+    };
+
     struct UIDragSource
     {
     public:

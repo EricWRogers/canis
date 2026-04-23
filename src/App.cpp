@@ -19,6 +19,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ConfigHelper.hpp>
+#include <Canis/Network.hpp>
 #include <Canis/VFX/Particles.hpp>
 
 #include <imgui.h>
@@ -894,6 +895,7 @@ namespace Canis
             SaveLastEditorScenePath(startupScenePath);
 
         scene.Init(this, runtime.window.get(), runtime.inputManager.get());
+        m_network = std::make_unique<NetworkSession>(*this);
 
         runtime.gameCodeObject = GameCodeObjectInit(GetGameCodeSharedObjectPath());
         BeginGameCodeRegistration();
@@ -944,6 +946,9 @@ namespace Canis
 
         if (runGameTick)
         {
+            if (m_network != nullptr)
+                m_network->Update(deltaTime);
+
             Uint64 sceneUpdateStart = SDL_GetTicksNS();
             scene.Update(deltaTime);
             m_sceneUpdateTimeMs = static_cast<float>(SDL_GetTicksNS() - sceneUpdateStart) / 1000000.0f;
@@ -1086,6 +1091,7 @@ namespace Canis
         scene.Unload();
         Time::Quit();
         GameCodeObjectShutdownFunction(&runtime->gameCodeObject, this);
+        m_network.reset();
 
         // Destroy any remaining std::function state while the game shared object is still loaded.
         m_inspectorItemRegistry.clear();
@@ -1698,6 +1704,86 @@ namespace Canis
 
         RegisterScript(buttonConf);
 
+        ScriptConf inputFieldConf = {
+            .name = "Canis::UIInputField",
+            .Construct = nullptr,
+            .Add = [this](Entity& _entity) -> void {
+                if (!_entity.HasComponent<RectTransform>())
+                    _entity.AddComponent<RectTransform>();
+                _entity.AddComponent<UIInputField>();
+            },
+            .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<UIInputField>(); },
+            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<UIInputField>(); },
+            .Get = [this](Entity& _entity) -> void* { return _entity.HasComponent<UIInputField>() ? (void*)(&_entity.GetComponent<UIInputField>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (UIInputField* inputField = _entity.HasComponent<UIInputField>() ? &_entity.GetComponent<UIInputField>() : nullptr)
+                {
+                    YAML::Node comp;
+                    comp["active"] = inputField->active;
+                    comp["displayEntity"] = _entity.scene.GetLiveEntityUUID(inputField->displayEntity);
+                    comp["targetEntity"] = _entity.scene.GetLiveEntityUUID(inputField->targetEntity);
+                    comp["targetScript"] = inputField->targetScript;
+                    comp["targetProperty"] = inputField->targetProperty;
+                    comp["text"] = inputField->text;
+                    comp["placeholder"] = inputField->placeholder;
+                    comp["allowedCharacters"] = inputField->allowedCharacters;
+                    comp["maxLength"] = inputField->maxLength;
+                    comp["hoverColor"] = inputField->hoverColor;
+                    comp["focusedColor"] = inputField->focusedColor;
+                    comp["textColor"] = inputField->textColor;
+                    comp["placeholderColor"] = inputField->placeholderColor;
+                    _node["Canis::UIInputField"] = comp;
+                }
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                if (YAML::Node comp = _node["Canis::UIInputField"])
+                {
+                    UIInputField& inputField = *_entity.AddComponent<UIInputField>();
+                    inputField.active = comp["active"].as<bool>(true);
+                    inputField.targetScript = comp["targetScript"].as<std::string>("");
+                    inputField.targetProperty = comp["targetProperty"].as<std::string>("");
+                    inputField.text = comp["text"].as<std::string>("");
+                    inputField.placeholder = comp["placeholder"].as<std::string>("");
+                    inputField.allowedCharacters = comp["allowedCharacters"].as<std::string>("");
+                    inputField.maxLength = comp["maxLength"].as<int>(64);
+                    inputField.hoverColor = comp["hoverColor"].as<Vector4>(Color(0.95f, 0.95f, 0.95f, 1.0f));
+                    inputField.focusedColor = comp["focusedColor"].as<Vector4>(Color(1.0f));
+                    inputField.textColor = comp["textColor"].as<Vector4>(Color(1.0f));
+                    inputField.placeholderColor = comp["placeholderColor"].as<Vector4>(Color(0.7f, 0.7f, 0.7f, 1.0f));
+
+                    if (comp["displayEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                        _entity.scene.GetEntityAfterLoad(comp["displayEntity"].as<Canis::UUID>(0), inputField.displayEntity);
+
+                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                        _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), inputField.targetEntity);
+
+                    if (_callCreate)
+                        inputField.Create();
+                }
+            },
+            .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
+                UIInputField* inputField = _entity.HasComponent<UIInputField>() ? &_entity.GetComponent<UIInputField>() : nullptr;
+                if (inputField == nullptr)
+                    return;
+
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), inputField->active);
+                DrawInspectorField(_editor, "displayEntity", _conf.name.c_str(), inputField->displayEntity);
+                DrawInspectorField(_editor, "targetEntity", _conf.name.c_str(), inputField->targetEntity);
+                DrawInspectorField(_editor, "targetScript", _conf.name.c_str(), inputField->targetScript);
+                DrawInspectorField(_editor, "targetProperty", _conf.name.c_str(), inputField->targetProperty);
+                DrawInspectorField(_editor, "text", _conf.name.c_str(), inputField->text);
+                DrawInspectorField(_editor, "placeholder", _conf.name.c_str(), inputField->placeholder);
+                DrawInspectorField(_editor, "allowedCharacters", _conf.name.c_str(), inputField->allowedCharacters);
+                DrawInspectorField(_editor, "maxLength", _conf.name.c_str(), inputField->maxLength);
+                DrawInspectorColorField("hoverColor", _conf.name.c_str(), inputField->hoverColor);
+                DrawInspectorColorField("focusedColor", _conf.name.c_str(), inputField->focusedColor);
+                DrawInspectorColorField("textColor", _conf.name.c_str(), inputField->textColor);
+                DrawInspectorColorField("placeholderColor", _conf.name.c_str(), inputField->placeholderColor);
+            },
+        };
+
+        RegisterScript(inputFieldConf);
+
         ScriptConf dragSourceConf = {
             .name = "Canis::UIDragSource",
             .Construct = nullptr,
@@ -1954,6 +2040,60 @@ namespace Canis
         };
 
         RegisterScript(transformConf);
+
+        ScriptConf networkIdentityConf = {
+            .name = "Canis::NetworkIdentity",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                _entity.AddComponent<NetworkIdentity>();
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<NetworkIdentity>(); },
+            .Remove = [this](Entity &_entity) -> void { _entity.RemoveComponent<NetworkIdentity>(); },
+            .Get = [this](Entity &_entity) -> void* { return _entity.HasComponent<NetworkIdentity>() ? (void*)(&_entity.GetComponent<NetworkIdentity>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (NetworkIdentity *identity = _entity.HasComponent<NetworkIdentity>() ? &_entity.GetComponent<NetworkIdentity>() : nullptr)
+                {
+                    YAML::Node comp;
+                    comp["netId"] = identity->netId;
+                    comp["ownerClientId"] = identity->ownerClientId;
+                    comp["serverOwned"] = identity->serverOwned;
+                    comp["localOwned"] = identity->localOwned;
+                    comp["replicateTransform"] = identity->replicateTransform;
+                    comp["prefab"] = identity->prefab;
+                    _node["Canis::NetworkIdentity"] = comp;
+                }
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                YAML::Node comp = _node["Canis::NetworkIdentity"];
+                if (!comp)
+                    return;
+
+                NetworkIdentity &identity = *_entity.AddComponent<NetworkIdentity>();
+                identity.netId = comp["netId"].as<NetworkObjectId>(0);
+                identity.ownerClientId = comp["ownerClientId"].as<NetworkClientId>(0);
+                identity.serverOwned = comp["serverOwned"].as<bool>(false);
+                identity.localOwned = comp["localOwned"].as<bool>(false);
+                identity.replicateTransform = comp["replicateTransform"].as<bool>(true);
+                identity.prefab = comp["prefab"].as<SceneAssetHandle>(identity.prefab);
+
+                if (_callCreate)
+                    identity.Create();
+            },
+            .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
+                NetworkIdentity *identity = nullptr;
+                if (_entity.HasComponent<NetworkIdentity>() && ((identity = &_entity.GetComponent<NetworkIdentity>()), true))
+                {
+                    ImGui::InputScalar("netId", ImGuiDataType_U32, &identity->netId);
+                    ImGui::InputScalar("ownerClientId", ImGuiDataType_U32, &identity->ownerClientId);
+                    ImGui::Checkbox("serverOwned", &identity->serverOwned);
+                    ImGui::Checkbox("localOwned", &identity->localOwned);
+                    ImGui::Checkbox("replicateTransform", &identity->replicateTransform);
+                    _editor.InputSceneAsset("prefab", "NetworkIdentity", identity->prefab);
+                }
+            },
+        };
+
+        RegisterScript(networkIdentityConf);
 
         ScriptConf rigidbodyConf = {
             .name = "Canis::Rigidbody",
@@ -3355,6 +3495,22 @@ namespace Canis
     void App::LoadScene(const SceneAssetHandle& _sceneAssetHandle)
     {
         LoadScene(AssetManager::ResolvePath(_sceneAssetHandle));
+    }
+
+    NetworkSession& App::GetNetwork()
+    {
+        if (m_network == nullptr)
+            m_network = std::make_unique<NetworkSession>(*this);
+
+        return *m_network;
+    }
+
+    const NetworkSession& App::GetNetwork() const
+    {
+        if (m_network == nullptr)
+            m_network = std::make_unique<NetworkSession>(*const_cast<App*>(this));
+
+        return *m_network;
     }
 
     bool App::DispatchUIAction(Entity& _targetEntity, const std::string& _scriptName, const std::string& _actionName, const UIActionContext& _context)

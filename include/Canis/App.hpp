@@ -1,6 +1,9 @@
 #pragma once
 #include <Canis/Scene.hpp>
 #include <Canis/ConfigData.hpp>
+#include <Canis/Network.hpp>
+
+#include <memory>
 
 namespace Canis
 {
@@ -41,6 +44,8 @@ public:
     void LoadScene(const std::string& _path);
     void LoadScene(const SceneAssetHandle& _sceneAssetHandle);
     const std::string& GetPendingScenePath() const { return m_pendingScenePath; }
+    NetworkSession& GetNetwork();
+    const NetworkSession& GetNetwork() const;
 
     bool AddRequiredComponent(Entity& _entity, const std::string& _name);
     bool AddRequiredScript(Entity& _entity, const std::string& _name);
@@ -67,6 +72,7 @@ private:
     void RegisterDefaults(Editor& _editor);
     void ProcessPendingSceneLoad();
     Editor* m_editor;
+    mutable std::unique_ptr<NetworkSession> m_network = nullptr;
     RuntimeContext* m_runtime = nullptr;
     float m_updateTimeMs = 0.0f;
     float m_sceneUpdateTimeMs = 0.0f;

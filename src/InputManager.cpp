@@ -31,6 +31,8 @@ namespace Canis
                 case SDL_EVENT_KEY_DOWN:
                 case SDL_EVENT_KEY_UP:
                     return _event.key.windowID;
+                case SDL_EVENT_TEXT_INPUT:
+                    return _event.text.windowID;
                 default:
                     return 0u;
             }
@@ -56,6 +58,7 @@ namespace Canis
         SwapMaps();
         mouseRel = Vector2(0.0f);
         m_scrollVertical = 0;
+        m_textInput.clear();
 
         Window* window = (Window*)_window;
         int screenWidth = window->GetWindowWidth();
@@ -149,6 +152,17 @@ namespace Canis
                 #endif
                 PressKey(event.key.scancode);
                 m_lastInputDeviceType = InputDevice::KEYBOARD;
+                break;
+            case SDL_EVENT_TEXT_INPUT:
+                #if CANIS_EDITOR
+                if (imguiWantsKeyboard && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
+                    continue;
+                #endif
+                if ((eventWindowID == mainWindowID || eventWindowID == gameWindowID) && event.text.text != nullptr)
+                {
+                    m_textInput += event.text.text;
+                    m_lastInputDeviceType = InputDevice::KEYBOARD;
+                }
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
                 #if CANIS_EDITOR

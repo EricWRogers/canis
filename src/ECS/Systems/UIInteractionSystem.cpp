@@ -1,10 +1,14 @@
 #include <Canis/ECS/Systems/UIInteractionSystem.hpp>
 
 #include <Canis/App.hpp>
+#include <Canis/ConfigData.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Window.hpp>
+
+#include <SDL3/SDL.h>
+#include <SDL3/SDL_keyboard.h>
 
 #include <cfloat>
 
@@ -78,12 +82,147 @@ namespace Canis
                 sprite.color = _dropTarget.hovered ? _dropTarget.hoverColor : _dropTarget.baseColor;
             }
         }
+
+        Entity* GetInputFieldDisplayEntity(UIInputField& _inputField)
+        {
+            if (_inputField.displayEntity != nullptr)
+                return _inputField.displayEntity;
+            return _inputField.entity;
+        }
+
+        void SyncInputFieldFromBinding(Scene& _scene, UIInputField& _inputField)
+        {
+            if (_scene.app == nullptr || _inputField.targetScript.empty() || _inputField.targetProperty.empty())
+                return;
+
+            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity : _inputField.entity;
+            if (targetEntity == nullptr)
+                return;
+
+            ScriptConf* scriptConf = _scene.app->GetScriptConf(_inputField.targetScript);
+            if (scriptConf == nullptr || scriptConf->Get == nullptr)
+                return;
+
+            void* componentPtr = scriptConf->Get(*targetEntity);
+            if (componentPtr == nullptr)
+                return;
+
+            auto getterIt = scriptConf->registry.getters.find(_inputField.targetProperty);
+            if (getterIt == scriptConf->registry.getters.end())
+                return;
+
+            YAML::Node node = getterIt->second(componentPtr);
+            if (node && node.IsScalar())
+                _inputField.text = node.Scalar();
+        }
+
+        void PushInputFieldToBinding(Scene& _scene, UIInputField& _inputField)
+        {
+            if (_scene.app == nullptr || _inputField.targetScript.empty() || _inputField.targetProperty.empty())
+                return;
+
+            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity : _inputField.entity;
+            if (targetEntity == nullptr)
+                return;
+
+            ScriptConf* scriptConf = _scene.app->GetScriptConf(_inputField.targetScript);
+            if (scriptConf == nullptr || scriptConf->Get == nullptr)
+                return;
+
+            void* componentPtr = scriptConf->Get(*targetEntity);
+            if (componentPtr == nullptr)
+                return;
+
+            auto setterIt = scriptConf->registry.setters.find(_inputField.targetProperty);
+            if (setterIt == scriptConf->registry.setters.end())
+                return;
+
+            YAML::Node valueNode(_inputField.text);
+            setterIt->second(valueNode, componentPtr);
+        }
+
+        bool InputFieldAllowsText(const UIInputField& _inputField, const std::string& _text)
+        {
+            if (_inputField.allowedCharacters.empty())
+                return true;
+
+            for (char c : _text)
+            {
+                if (_inputField.allowedCharacters.find(c) == std::string::npos)
+                    return false;
+            }
+
+            return true;
+        }
+
+        void RefreshInputFieldDisplay(UIInputField& _inputField)
+        {
+            Entity* displayEntity = GetInputFieldDisplayEntity(_inputField);
+            if (displayEntity == nullptr || !displayEntity->HasComponent<Text>())
+                return;
+
+            Text& displayText = displayEntity->GetComponent<Text>();
+            std::string displayValue = _inputField.text;
+            if (displayValue.empty() && !_inputField.focused)
+            {
+                displayValue = _inputField.placeholder;
+                displayText.color = _inputField.placeholderColor;
+            }
+            else
+            {
+                displayText.color = _inputField.textColor;
+                if (_inputField.focused && _inputField.caretVisible)
+                    displayValue += "|";
+            }
+
+            displayText.SetText(displayValue);
+        }
+
+        void ApplyInputFieldVisual(Entity& _entity, UIInputField& _inputField)
+        {
+            if (_entity.HasComponent<Sprite2D>())
+            {
+                Sprite2D& sprite = _entity.GetComponent<Sprite2D>();
+                sprite.color = _inputField.focused ? _inputField.focusedColor : (_inputField.hovered ? _inputField.hoverColor : _inputField.baseColor);
+            }
+
+            RefreshInputFieldDisplay(_inputField);
+        }
     }
 
     void UIInteractionSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         if (scene == nullptr || scene->app == nullptr || inputManager == nullptr || window == nullptr)
             return;
+
+        auto setFocusedInputField = [&](Entity* _entity) -> void
+        {
+            if (m_focusedInputField == _entity)
+                return;
+
+            if (m_focusedInputField != nullptr && m_focusedInputField->HasComponent<UIInputField>())
+            {
+                UIInputField& previousField = m_focusedInputField->GetComponent<UIInputField>();
+                previousField.focused = false;
+                previousField.caretVisible = true;
+                previousField.caretBlinkTimer = 0.0f;
+                RefreshInputFieldDisplay(previousField);
+            }
+
+            m_focusedInputField = nullptr;
+            SDL_StopTextInput((SDL_Window*)window->GetSDLWindow());
+
+            if (_entity != nullptr && _entity->HasComponent<UIInputField>())
+            {
+                UIInputField& nextField = _entity->GetComponent<UIInputField>();
+                nextField.focused = true;
+                nextField.caretVisible = true;
+                nextField.caretBlinkTimer = 0.0f;
+                m_focusedInputField = _entity;
+                SDL_StartTextInput((SDL_Window*)window->GetSDLWindow());
+                RefreshInputFieldDisplay(nextField);
+            }
+        };
 
         auto resetDragSourceState = [](Entity* _entity) -> void
         {
@@ -104,6 +243,15 @@ namespace Canis
              !m_pressedButton->GetComponent<RectTransform>().IsActiveInHierarchy()))
         {
             m_pressedButton = nullptr;
+        }
+
+        if (m_focusedInputField != nullptr &&
+            (!m_focusedInputField->active ||
+             !m_focusedInputField->HasComponents<RectTransform, UIInputField>() ||
+             !m_focusedInputField->GetComponent<UIInputField>().active ||
+             !m_focusedInputField->GetComponent<RectTransform>().IsActiveInHierarchy()))
+        {
+            setFocusedInputField(nullptr);
         }
 
         if (m_dragSource != nullptr &&
@@ -132,6 +280,19 @@ namespace Canis
                 ApplyButtonVisual(*entity, button, rect);
             }
 
+            auto inputFieldView = _registry.view<RectTransform, UIInputField>();
+            for (auto [entityHandle, rect, inputField] : inputFieldView.each())
+            {
+                (void)entityHandle;
+                (void)rect;
+                Entity* entity = inputField.entity;
+                if (entity == nullptr || !inputField.active)
+                    continue;
+
+                inputField.hovered = false;
+                ApplyInputFieldVisual(*entity, inputField);
+            }
+
             auto dropView = _registry.view<RectTransform, UIDropTarget>();
             for (auto [entityHandle, rect, dropTarget] : dropView.each())
             {
@@ -145,6 +306,7 @@ namespace Canis
                 ApplyDropTargetVisual(*entity, dropTarget);
             }
 
+            setFocusedInputField(nullptr);
             m_hoveredDropTarget = nullptr;
             return;
         }
@@ -155,8 +317,9 @@ namespace Canis
             Entity* entity = button.entity;
             if (entity == nullptr || !button.active)
                 continue;
-            
-             if (button.baseValuesSaved == false) {
+
+            if (button.baseValuesSaved == false)
+            {
                 button.baseValuesSaved = true;
                 button.baseScale = rect.scale.x;
 
@@ -168,6 +331,37 @@ namespace Canis
             button.hovered = false;
             button.pressed = visible && (m_pressedButton == entity) && inputManager->GetLeftClick();
             ApplyButtonVisual(*entity, button, rect);
+        }
+
+        for (auto [entityHandle, rect, inputField] : _registry.view<RectTransform, UIInputField>().each())
+        {
+            (void)entityHandle;
+            (void)rect;
+            Entity* entity = inputField.entity;
+            if (entity == nullptr || !inputField.active)
+                continue;
+
+            if (inputField.baseValuesSaved == false)
+            {
+                inputField.baseValuesSaved = true;
+                if (entity->HasComponent<Sprite2D>())
+                    inputField.baseColor = entity->GetComponent<Sprite2D>().color;
+                if (Entity* displayEntity = GetInputFieldDisplayEntity(inputField); displayEntity != nullptr && displayEntity->HasComponent<Text>())
+                    inputField.baseTextColor = displayEntity->GetComponent<Text>().color;
+            }
+
+            if (!inputField.focused)
+                SyncInputFieldFromBinding(*scene, inputField);
+
+            inputField.hovered = false;
+            inputField.caretBlinkTimer += _deltaTime;
+            if (inputField.caretBlinkTimer >= 0.5f)
+            {
+                inputField.caretBlinkTimer = 0.0f;
+                inputField.caretVisible = !inputField.caretVisible;
+            }
+
+            ApplyInputFieldVisual(*entity, inputField);
         }
 
         for (auto [entityHandle, rect, dropTarget] : _registry.view<RectTransform, UIDropTarget>().each())
@@ -183,9 +377,11 @@ namespace Canis
         }
 
         Entity* hoveredButton = nullptr;
+        Entity* hoveredInputField = nullptr;
         Entity* hoveredDragSource = nullptr;
         Entity* hoveredDropTarget = nullptr;
         float hoveredButtonDepth = FLT_MAX;
+        float hoveredInputFieldDepth = FLT_MAX;
         float hoveredDragDepth = FLT_MAX;
         float hoveredDropDepth = FLT_MAX;
 
@@ -218,6 +414,14 @@ namespace Canis
                 (void)entityHandle;
                 if (button.active)
                     evaluateRectEntity(button.entity, rect, hoveredButtonDepth, hoveredButton);
+            }
+
+            auto inputFieldView = _registry.view<RectTransform, UIInputField>();
+            for (auto [entityHandle, rect, inputField] : inputFieldView.each())
+            {
+                (void)entityHandle;
+                if (inputField.active)
+                    evaluateRectEntity(inputField.entity, rect, hoveredInputFieldDepth, hoveredInputField);
             }
 
             auto dragView = _registry.view<RectTransform, UIDragSource>();
@@ -258,6 +462,13 @@ namespace Canis
             ApplyButtonVisual(*hoveredButton, button, rect);
         }
 
+        if (hoveredInputField != nullptr && hoveredInputField->HasComponents<RectTransform, UIInputField>())
+        {
+            UIInputField& inputField = hoveredInputField->GetComponent<UIInputField>();
+            inputField.hovered = true;
+            ApplyInputFieldVisual(*hoveredInputField, inputField);
+        }
+
         if (hoveredDropTarget != nullptr && hoveredDropTarget->HasComponent<UIDropTarget>())
         {
             UIDropTarget& dropTarget = hoveredDropTarget->GetComponent<UIDropTarget>();
@@ -269,6 +480,8 @@ namespace Canis
         {
             if (inputManager->JustLeftClicked())
             {
+                setFocusedInputField(hoveredInputField);
+
                 if (hoveredDragSource != nullptr && hoveredDragSource->HasComponents<RectTransform, UIDragSource>())
                 {
                     UIDragSource& dragSource = hoveredDragSource->GetComponent<UIDragSource>();
@@ -279,7 +492,7 @@ namespace Canis
                     dragSource.dragOffset = GetCenteredMousePosition(*scene) - dragRect.GetPosition();
                     m_dragSource = hoveredDragSource;
                 }
-                else if (hoveredButton != nullptr)
+                else if (hoveredInputField == nullptr && hoveredButton != nullptr)
                 {
                     m_pressedButton = hoveredButton;
                 }
@@ -328,6 +541,55 @@ namespace Canis
         else
         {
             m_hoveredDropTarget = hoveredDropTarget;
+        }
+
+        if (m_focusedInputField != nullptr && m_focusedInputField->HasComponent<UIInputField>())
+        {
+            UIInputField& inputField = m_focusedInputField->GetComponent<UIInputField>();
+            bool textChanged = false;
+
+            const std::string& textInput = inputManager->GetTextInput();
+            if (!textInput.empty() && InputFieldAllowsText(inputField, textInput))
+            {
+                const std::size_t available = (inputField.maxLength <= 0)
+                    ? std::string::npos
+                    : static_cast<std::size_t>(inputField.maxLength) > inputField.text.size()
+                        ? static_cast<std::size_t>(inputField.maxLength) - inputField.text.size()
+                        : 0u;
+                if (available == std::string::npos)
+                {
+                    inputField.text += textInput;
+                    textChanged = true;
+                }
+                else if (available > 0u)
+                {
+                    inputField.text += textInput.substr(0u, available);
+                    textChanged = true;
+                }
+            }
+
+            if (inputManager->JustPressedKey(Key::BACKSPACE) && !inputField.text.empty())
+            {
+                inputField.text.pop_back();
+                textChanged = true;
+            }
+
+            if (inputManager->JustPressedKey(Key::DELETE))
+            {
+                if (!inputField.text.empty())
+                {
+                    inputField.text.clear();
+                    textChanged = true;
+                }
+            }
+
+            if (textChanged)
+                PushInputFieldToBinding(*scene, inputField);
+
+            if (inputManager->JustPressedKey(Key::RETURN) || inputManager->JustPressedKey(Key::KP_ENTER))
+                setFocusedInputField(nullptr);
+            else
+                RefreshInputFieldDisplay(inputField);
         }
     }
 }

@@ -14,6 +14,7 @@
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/ShaderGraph.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 
@@ -1097,6 +1098,12 @@ Pos=0,54
 Size=1327,517
 Collapsed=0
 DockId=0x0000000A,0
+
+[Window][ShaderGraph]
+Pos=0,54
+Size=1327,517
+Collapsed=0
+DockId=0x0000000A,1
 
 [Window][Canis Editor]
 Pos=0,0
@@ -2247,6 +2254,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DrawEnvironment();
         DrawSystemPanel();
         DrawAssetsPanel();
+        DrawShaderGraphWindow();
         DrawScriptsPanel();
         DrawProjectSettings();
         DrawSceneView();
@@ -2337,8 +2345,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::Begin("MainDockspace", nullptr, windowFlags);
         ImGui::PopStyleVar(3);
 
-        const ImGuiID dockspaceID = ImGui::GetID("MainDockspaceID");
-        ImGui::DockSpace(dockspaceID, ImVec2(0.0f, 0.0f), dockspaceFlags);
+        m_mainDockspaceID = ImGui::GetID("MainDockspaceID");
+        ImGui::DockSpace(m_mainDockspaceID, ImVec2(0.0f, 0.0f), dockspaceFlags);
         ImGui::End();
     }
 
@@ -3904,6 +3912,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::End();
                 return;
             }
+
+            if (DrawShaderGraphAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
         }
 
         std::vector<Entity *> &entities = m_scene->GetEntities();
@@ -5047,6 +5061,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         {
             if (m_selectedAssetPath == oldPath.string())
                 m_selectedAssetPath = newPath.string();
+            if (m_shaderGraphStatePath == oldPath.string())
+                m_shaderGraphStatePath = newPath.string();
         }
 
         m_isRenamingAsset = false;
@@ -5085,8 +5101,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         fs::path src = data->path;
 
                         const std::string targetPath = (entry.path() / src.filename()).string();
-                        if (AssetManager::MoveAsset(src.string(), targetPath) && m_selectedAssetPath == src.string())
-                            m_selectedAssetPath = targetPath;
+                        if (AssetManager::MoveAsset(src.string(), targetPath))
+                        {
+                            if (m_selectedAssetPath == src.string())
+                                m_selectedAssetPath = targetPath;
+                            if (m_shaderGraphStatePath == src.string())
+                                m_shaderGraphStatePath = targetPath;
+                        }
                     }
                     ImGui::EndDragDropTarget();
                 }
@@ -5183,6 +5204,39 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             (void)AssetManager::GetMetaFile(vertexPath.string());
                         if (copiedFragment)
                             (void)AssetManager::GetMetaFile(fragmentPath.string());
+                    }
+
+                    if (ImGui::MenuItem("Create Shader Graph"))
+                    {
+                        const fs::path folderPath = entry.path();
+                        fs::path targetPath = folderPath / "new_shader_graph.shadergraph";
+                        int index = 1;
+                        while (fs::exists(targetPath))
+                        {
+                            targetPath = folderPath / ("new_shader_graph_" + std::to_string(index) + ".shadergraph");
+                            ++index;
+                        }
+
+                        ShaderGraphDocument document = MakeDefaultShaderGraphDocument();
+                        if (!SaveShaderGraphDocument(targetPath.string(), document))
+                        {
+                            Debug::Warning("Failed to create shader graph asset: %s", targetPath.string().c_str());
+                        }
+                        else
+                        {
+                            std::string errorMessage = {};
+                            if (!GenerateShaderGraphAssets(targetPath.string(), document, &errorMessage) && !errorMessage.empty())
+                                Debug::Warning("%s", errorMessage.c_str());
+
+                            (void)AssetManager::GetMetaFile(targetPath.string());
+                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedVertexPath(targetPath.string()));
+                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedFragmentPath(targetPath.string()));
+                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedMaterialPath(targetPath.string()));
+
+                            m_selectedAssetPath = targetPath.string();
+                            m_shaderGraphStatePath.clear();
+                            m_shaderGraphSelectedNodeId = -1;
+                        }
                     }
 
                     if (ImGui::MenuItem("Create Skybox"))
@@ -5317,7 +5371,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
-                                meta->type == MetaFileAsset::FileType::POSTPROCESS)
+                                meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                             {
                                 m_selectedAssetPath = fullPath;
                             }
@@ -5330,7 +5385,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
-                                meta->type == MetaFileAsset::FileType::POSTPROCESS)
+                                meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                 m_selectedAssetPath = fullPath;
                         }
                     }
@@ -5386,7 +5442,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             {
                                 if (duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SKYBOX ||
-                                    duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS)
+                                    duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                 {
                                     m_selectedAssetPath = duplicatePath.string();
                                 }
@@ -5402,6 +5459,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             if (m_selectedAssetPath == fullPath)
                                 m_selectedAssetPath.clear();
+                            if (m_shaderGraphStatePath == fullPath)
+                            {
+                                m_shaderGraphStatePath.clear();
+                                m_shaderGraphSelectedNodeId = -1;
+                            }
 
                             if (m_renamingPath == fullPath)
                             {
@@ -5445,6 +5507,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             Canis::SaveEditorConfig();
                             m_scene->Unload();
                             m_scene->Load(meta->path);
+                        }
+                        else if (meta->type == MetaFileAsset::FileType::MATERIAL ||
+                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
+                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                        {
+                            m_selectedAssetPath = fullPath;
                         }
                         else if ((meta->type == MetaFileAsset::FileType::FRAGMENT ||
                                   meta->type == MetaFileAsset::FileType::VERTEX) &&

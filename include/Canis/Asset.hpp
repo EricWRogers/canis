@@ -163,6 +163,7 @@ namespace Canis
             MATERIAL,
             SKYBOX,
             POSTPROCESS,
+            SHADERGRAPH,
         };
 
         MetaFileAsset() {}

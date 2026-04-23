@@ -141,6 +141,8 @@ namespace Canis
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
         bool DrawPostProcessAssetInspector(const std::string &_postProcessPath);
+        bool DrawShaderGraphAssetInspector(const std::string &_shaderGraphPath);
+        void DrawShaderGraphWindow();
         void DrawProjectSettings();
         void DrawSystemPanel();
         void DrawEditorPanel();
@@ -202,6 +204,8 @@ namespace Canis
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
         std::string m_selectedScriptPath = {};
+        std::string m_shaderGraphStatePath = {};
+        int m_shaderGraphSelectedNodeId = -1;
         bool m_openScriptCreatePopup = false;
         bool m_focusScriptCreateNameInput = false;
         char m_scriptCreateNameBuffer[128] = {};
@@ -267,6 +271,7 @@ namespace Canis
         int m_playTextureWidth = 0;
         int m_playTextureHeight = 0;
 
+        unsigned int m_mainDockspaceID = 0;
         unsigned int m_gameInputWindowID = 0;
         std::unordered_map<std::type_index, InspectorFieldDrawer> m_inspectorFieldDrawers = {};
         int m_addComponentSelection = 0;

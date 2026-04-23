@@ -5,6 +5,7 @@
 #include <Canis/OpenGL.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Shader.hpp>
+#include <Canis/Time.hpp>
 #include <Canis/Window.hpp>
 #include <algorithm>
 #include <array>
@@ -676,6 +677,7 @@ namespace Canis
             if (material != nullptr)
                 baseColor *= material->color;
 
+            currentShader->SetFloat("TIME", static_cast<float>(Time::TimeSinceLaunch()) / 1000.0f);
             currentShader->SetFloat("specularValue", specularValue);
             currentShader->SetFloat("roughnessValue", roughnessValue);
             currentShader->SetFloat("metallicValue", metallicValue);

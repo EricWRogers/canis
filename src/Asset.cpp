@@ -944,6 +944,8 @@ namespace Canis
                 return "SKYBOX";
             case MetaFileAsset::FileType::POSTPROCESS:
                 return "POSTPROCESS";
+            case MetaFileAsset::FileType::SHADERGRAPH:
+                return "SHADERGRAPH";
             default:
                 return "FILE_UNKNOWN";
         }
@@ -971,6 +973,8 @@ namespace Canis
             return MetaFileAsset::FileType::SKYBOX;
         else if (_type == "POSTPROCESS")
             return MetaFileAsset::FileType::POSTPROCESS;
+        else if (_type == "SHADERGRAPH")
+            return MetaFileAsset::FileType::SHADERGRAPH;
         else
             return MetaFileAsset::FileType::FILE_UNKNOWN;
     }
@@ -1005,6 +1009,8 @@ namespace Canis
                 type = FileType::SKYBOX;
             else if (extension == "postprocess")
                 type = FileType::POSTPROCESS;
+            else if (extension == "shadergraph")
+                type = FileType::SHADERGRAPH;
             else
                 type = FileType::FILE_UNKNOWN;
 

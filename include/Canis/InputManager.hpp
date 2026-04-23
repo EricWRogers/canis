@@ -1,6 +1,7 @@
 #pragma once
 #include <Canis/Math.hpp>
 #include <vector>
+#include <string>
 #include <Canis/Data/Key.hpp>
 
 
@@ -112,6 +113,7 @@ namespace Canis
 
         Vector2 mouse;
         Vector2 mouseRel;
+        const std::string& GetTextInput() const { return m_textInput; }
 
         bool active = true;
         
@@ -152,5 +154,6 @@ namespace Canis
         float m_gameMouseViewportDrawHeight = 0.0f;
         float m_gameMouseViewportLogicalWidth = 0.0f;
         float m_gameMouseViewportLogicalHeight = 0.0f;
+        std::string m_textInput = "";
     };
 } // end of Canis namespace
