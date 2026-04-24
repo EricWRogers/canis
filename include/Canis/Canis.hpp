@@ -40,6 +40,9 @@ namespace Canis
         int syncMode = PROJECT_SYNC_OFF;
         UUID iconUUID = UUID(0);
         SceneAssetHandle launchScene = {};
+        std::string launchExecutablePath = "";
+        std::string launchWorkingDirectory = "";
+        std::string launchArguments = "";
         int editorWindowWidth = 512;
         int editorWindowHeight = 512;
         int targetGameWidth = 512;
@@ -57,6 +60,8 @@ namespace Canis
 
     ProjectConfig& GetProjectConfig();
     EditorConfig& GetEditorConfig();
+    bool IsEditorRuntimeEnabled();
+    void SetEditorRuntimeEnabled(bool _enabled);
     extern bool SaveProjectConfig();
     extern bool SaveEditorConfig();
 

@@ -105,6 +105,20 @@ namespace Canis
     float Lerp(float _min, float _max, float _fraction);
 
     float Clamp01(float _value);
+
+    inline Vector3 FlattenY(const Vector3 &_value)
+    {
+        return Vector3(_value.x, 0.0f, _value.z);
+    }
+
+    inline Vector3 SafeNormalize(const Vector3 &_value, const Vector3 &_fallback = Vector3(0.0f))
+    {
+        const float lengthSquared = glm::dot(_value, _value);
+        if (lengthSquared <= 0.000001f)
+            return _fallback;
+
+        return _value * glm::inversesqrt(lengthSquared);
+    }
 }
 
 namespace std

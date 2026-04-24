@@ -75,7 +75,7 @@ namespace Canis
             #if CANIS_EDITOR
             bool imguiWantsMouse = false;
             bool imguiWantsKeyboard = false;
-            if (Canis::GetProjectConfig().editor)
+            if (Canis::IsEditorRuntimeEnabled())
             {
                 ImGui_ImplSDL3_ProcessEvent(&event);
                 ImGuiIO& io = ImGui::GetIO();

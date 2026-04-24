@@ -319,6 +319,7 @@ namespace Canis
             hash = HashCombine(hash, std::hash<float>{}(_rigidbody.linearDamping));
             hash = HashCombine(hash, std::hash<float>{}(_rigidbody.angularDamping));
             hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.useGravity));
+            hash = HashCombine(hash, std::hash<float>{}(_rigidbody.gravityFactor));
             hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.isSensor));
             hash = HashCombine(hash, std::hash<u32>{}(_rigidbody.layer));
             hash = HashCombine(hash, std::hash<u32>{}(_rigidbody.mask));
@@ -978,7 +979,7 @@ namespace Canis
             bodySettings.mRestitution = glm::max(0.0f, rigidbody->restitution);
             bodySettings.mLinearDamping = glm::max(0.0f, rigidbody->linearDamping);
             bodySettings.mAngularDamping = glm::max(0.0f, rigidbody->angularDamping);
-            bodySettings.mGravityFactor = rigidbody->useGravity ? 1.0f : 0.0f;
+            bodySettings.mGravityFactor = rigidbody->useGravity ? glm::max(0.0f, rigidbody->gravityFactor) : 0.0f;
             bodySettings.mAllowedDOFs = BuildAllowedDOFs(*rigidbody);
             bodySettings.mLinearVelocity = ToJoltVec3(rigidbody->linearVelocity);
             bodySettings.mAngularVelocity = ToJoltVec3(rigidbody->angularVelocity);

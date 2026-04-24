@@ -973,6 +973,7 @@ namespace Canis
         float linearDamping = 0.05f;
         float angularDamping = 0.05f;
         bool useGravity = true;
+        float gravityFactor = 1.0f;
         bool isSensor = false;
         Mask layer = DefaultLayer;
         Mask mask = DefaultMask;

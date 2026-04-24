@@ -236,6 +236,9 @@ namespace Canis
         m_nextClientId = 2;
         m_players.clear();
         m_transformStates.clear();
+        m_inputStates.clear();
+        m_rigidbodyStates.clear();
+        m_combatStates.clear();
         m_players.push_back(NetworkPlayer{ .id = 1, .name = m_playerName, .ready = true, .host = true, .connected = true });
 
         if (!m_impl->Open(_port))
@@ -257,6 +260,9 @@ namespace Canis
         m_localClientId = 0;
         m_players.clear();
         m_transformStates.clear();
+        m_inputStates.clear();
+        m_rigidbodyStates.clear();
+        m_combatStates.clear();
 
         const std::string address = _address.empty() ? "127.0.0.1" : _address;
 
@@ -292,6 +298,7 @@ namespace Canis
         m_transformStates.clear();
         m_inputStates.clear();
         m_rigidbodyStates.clear();
+        m_combatStates.clear();
         m_broadcastTimer = 0.0f;
     }
 
@@ -370,6 +377,10 @@ namespace Canis
         m_matchScenePath = _scenePath;
         m_matchDurationSeconds = std::max(1.0f, _durationSeconds);
         m_matchRemainingSeconds = m_matchDurationSeconds;
+        m_transformStates.clear();
+        m_inputStates.clear();
+        m_rigidbodyStates.clear();
+        m_combatStates.clear();
 
         BroadcastMessage("START|" + m_matchScenePath + "|" + FormatFloat(m_matchDurationSeconds));
         m_app.LoadScene(m_matchScenePath);
@@ -386,6 +397,7 @@ namespace Canis
         m_transformStates.clear();
         m_inputStates.clear();
         m_rigidbodyStates.clear();
+        m_combatStates.clear();
 
         if (m_mode == NetworkMode::Host)
             BroadcastMessage("LOBBY|" + m_lobbyScenePath);
@@ -421,24 +433,37 @@ namespace Canis
         return true;
     }
 
-    void NetworkSession::PublishInput(const std::string &_key, float _throttle, float _steer)
+    void NetworkSession::PublishInput(const std::string &_key, const NetworkInputState &_state)
     {
         if (_key.empty())
             return;
 
-        NetworkInputState state{};
-        state.throttle = _throttle;
-        state.steer = _steer;
+        NetworkInputState state = _state;
         state.receivedTime = m_timeSeconds;
         m_inputStates[_key] = state;
 
         const std::string message =
             "INPUT|" + _key + "|" +
-            FormatFloat(_throttle) + "|" +
-            FormatFloat(_steer);
+            FormatFloat(state.throttle) + "|" +
+            FormatFloat(state.steer) + "|" +
+            FormatFloat(state.lookYaw) + "|" +
+            FormatFloat(state.lookPitch) + "|" +
+            (state.jump ? "1" : "0") + "|" +
+            (state.firePrimary ? "1" : "0") + "|" +
+            (state.fireSecondary ? "1" : "0");
 
-        if (m_mode == NetworkMode::Client && m_localClientId != 0)
+        if (m_mode == NetworkMode::Host)
+            BroadcastMessage(message);
+        else if (m_mode == NetworkMode::Client && m_localClientId != 0)
             SendMessageToServer(message);
+    }
+
+    void NetworkSession::PublishInput(const std::string &_key, float _throttle, float _steer)
+    {
+        NetworkInputState state = {};
+        state.throttle = _throttle;
+        state.steer = _steer;
+        PublishInput(_key, state);
     }
 
     bool NetworkSession::TryGetInput(const std::string &_key, NetworkInputState &_outState) const
@@ -484,6 +509,39 @@ namespace Canis
     {
         const auto it = m_rigidbodyStates.find(_key);
         if (it == m_rigidbodyStates.end())
+            return false;
+
+        _outState = it->second;
+        return true;
+    }
+
+    void NetworkSession::PublishCombat(const std::string &_key, const NetworkCombatState &_state)
+    {
+        if (_key.empty())
+            return;
+
+        NetworkCombatState state = _state;
+        state.receivedTime = m_timeSeconds;
+        m_combatStates[_key] = state;
+
+        const std::string message =
+            "COMBAT|" + _key + "|" +
+            std::to_string(state.health) + "|" +
+            std::to_string(state.maxHealth) + "|" +
+            std::to_string(state.kills) + "|" +
+            std::to_string(state.deaths) + "|" +
+            (state.alive ? "1" : "0") + "|" +
+            FormatFloat(state.respawnSecondsRemaining) + "|" +
+            FormatFloat(state.damageFlash);
+
+        if (m_mode == NetworkMode::Host)
+            BroadcastMessage(message);
+    }
+
+    bool NetworkSession::TryGetCombat(const std::string &_key, NetworkCombatState &_outState) const
+    {
+        const auto it = m_combatStates.find(_key);
+        if (it == m_combatStates.end())
             return false;
 
         _outState = it->second;
@@ -586,8 +644,40 @@ namespace Canis
                 NetworkInputState state{};
                 state.throttle = ParseNumber(parts[2], 0.0f);
                 state.steer = ParseNumber(parts[3], 0.0f);
+                if (parts.size() >= 8u)
+                {
+                    state.lookYaw = ParseNumber(parts[4], 0.0f);
+                    state.lookPitch = ParseNumber(parts[5], 0.0f);
+                    state.jump = ParseNumber<int>(parts[6], 0) != 0;
+                    state.firePrimary = ParseNumber<int>(parts[7], 0) != 0;
+                    if (parts.size() >= 9u)
+                        state.fireSecondary = ParseNumber<int>(parts[8], 0) != 0;
+                }
                 state.receivedTime = m_timeSeconds;
                 m_inputStates[parts[1]] = state;
+                BroadcastMessage(
+                    "INPUT|" + parts[1] + "|" +
+                    FormatFloat(state.throttle) + "|" +
+                    FormatFloat(state.steer) + "|" +
+                    FormatFloat(state.lookYaw) + "|" +
+                    FormatFloat(state.lookPitch) + "|" +
+                    (state.jump ? "1" : "0") + "|" +
+                    (state.firePrimary ? "1" : "0") + "|" +
+                    (state.fireSecondary ? "1" : "0"));
+            }
+            else if (type == "COMBAT" && parts.size() >= 9u)
+            {
+                NetworkCombatState state{};
+                state.health = ParseNumber(parts[2], 100);
+                state.maxHealth = ParseNumber(parts[3], 100);
+                state.kills = ParseNumber(parts[4], 0);
+                state.deaths = ParseNumber(parts[5], 0);
+                state.alive = ParseNumber<int>(parts[6], 1) != 0;
+                state.respawnSecondsRemaining = ParseNumber(parts[7], 0.0f);
+                state.damageFlash = ParseNumber(parts[8], 0.0f);
+                state.receivedTime = m_timeSeconds;
+                m_combatStates[parts[1]] = state;
+                BroadcastMessage(_message);
             }
 
             return;
@@ -628,6 +718,10 @@ namespace Canis
                 m_phase = NetworkPhase::Match;
                 m_matchScenePath = parts[1];
                 m_matchRemainingSeconds = ParseNumber(parts[2], 60.0f);
+                m_transformStates.clear();
+                m_inputStates.clear();
+                m_rigidbodyStates.clear();
+                m_combatStates.clear();
                 m_app.LoadScene(m_matchScenePath);
             }
             else if (type == "LOBBY" && parts.size() >= 2u)
@@ -637,6 +731,7 @@ namespace Canis
                 m_transformStates.clear();
                 m_inputStates.clear();
                 m_rigidbodyStates.clear();
+                m_combatStates.clear();
                 LoadLobbyScene();
             }
             else if (type == "STATE" && parts.size() >= 8u)
@@ -656,6 +751,36 @@ namespace Canis
                 state.angularVelocity = Vector3(ParseNumber(parts[11], 0.0f), ParseNumber(parts[12], 0.0f), ParseNumber(parts[13], 0.0f));
                 state.receivedTime = m_timeSeconds;
                 m_rigidbodyStates[parts[1]] = state;
+            }
+            else if (type == "INPUT" && parts.size() >= 4u)
+            {
+                NetworkInputState state{};
+                state.throttle = ParseNumber(parts[2], 0.0f);
+                state.steer = ParseNumber(parts[3], 0.0f);
+                if (parts.size() >= 8u)
+                {
+                    state.lookYaw = ParseNumber(parts[4], 0.0f);
+                    state.lookPitch = ParseNumber(parts[5], 0.0f);
+                    state.jump = ParseNumber<int>(parts[6], 0) != 0;
+                    state.firePrimary = ParseNumber<int>(parts[7], 0) != 0;
+                    if (parts.size() >= 9u)
+                        state.fireSecondary = ParseNumber<int>(parts[8], 0) != 0;
+                }
+                state.receivedTime = m_timeSeconds;
+                m_inputStates[parts[1]] = state;
+            }
+            else if (type == "COMBAT" && parts.size() >= 9u)
+            {
+                NetworkCombatState state{};
+                state.health = ParseNumber(parts[2], 100);
+                state.maxHealth = ParseNumber(parts[3], 100);
+                state.kills = ParseNumber(parts[4], 0);
+                state.deaths = ParseNumber(parts[5], 0);
+                state.alive = ParseNumber<int>(parts[6], 1) != 0;
+                state.respawnSecondsRemaining = ParseNumber(parts[7], 0.0f);
+                state.damageFlash = ParseNumber(parts[8], 0.0f);
+                state.receivedTime = m_timeSeconds;
+                m_combatStates[parts[1]] = state;
             }
         }
     }

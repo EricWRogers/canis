@@ -7,6 +7,7 @@
 #include <string>
 #include <limits>
 #include <vector>
+#include <algorithm>
 
 namespace YAML
 {
@@ -84,6 +85,10 @@ namespace Canis
         const Matrix4& GetEditorCamera3DProjection() const { return m_editorCamera3DProjection; }
         const Matrix4& GetEditorCamera2DMatrix() const { return m_editorCamera2DMatrix; }
         const Vector2& GetEditorCamera2DPosition() const { return m_editorCamera2DPosition; }
+        const Color& GetEnvironmentAmbientLight() const { return m_environmentAmbientLight; }
+        void SetEnvironmentAmbientLight(const Color &_ambientLight) { m_environmentAmbientLight = _ambientLight; }
+        float GetEnvironmentAmbientLightIntensity() const { return m_environmentAmbientLightIntensity; }
+        void SetEnvironmentAmbientLightIntensity(float _intensity) { m_environmentAmbientLightIntensity = std::max(_intensity, 0.0f); }
         UUID GetEnvironmentSkyboxUUID() const { return m_environmentSkyboxUUID; }
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
@@ -164,6 +169,8 @@ namespace Canis
         Matrix4 m_editorCamera3DProjection = Matrix4(1.0f);
         Matrix4 m_editorCamera2DMatrix = Matrix4(1.0f);
         Vector2 m_editorCamera2DPosition = Vector2(0.0f);
+        Color m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
+        float m_environmentAmbientLightIntensity = 1.0f;
         UUID m_environmentSkyboxUUID = UUID(0);
         UUID m_environmentPostProcessUUID = UUID(0);
         Matrix4 m_lastRenderView = Matrix4(1.0f);

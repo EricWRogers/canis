@@ -19,6 +19,7 @@
 #include <Canis/PostProcessPipeline.hpp>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_process.h>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -118,6 +119,264 @@ namespace Canis
                 return std::filesystem::path(basePath);
 
             return std::filesystem::current_path();
+        }
+
+        std::filesystem::path GetDefaultStandaloneExecutablePath()
+        {
+#if defined(_WIN32)
+            return GetEditorRuntimeBasePath() / "c-engine.exe";
+#else
+            return GetEditorRuntimeBasePath() / "c-engine";
+#endif
+        }
+
+        bool IsRegularFilePath(const std::filesystem::path &_path)
+        {
+            std::error_code ec;
+            return !_path.empty() && std::filesystem::exists(_path, ec) && std::filesystem::is_regular_file(_path, ec);
+        }
+
+        bool IsDirectoryPath(const std::filesystem::path &_path)
+        {
+            std::error_code ec;
+            return !_path.empty() && std::filesystem::exists(_path, ec) && std::filesystem::is_directory(_path, ec);
+        }
+
+        std::vector<std::filesystem::path> BuildPathCandidates(const std::string &_configuredPath)
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<fs::path> candidates = {};
+            if (_configuredPath.empty())
+                return candidates;
+
+            const fs::path rawPath(_configuredPath);
+            if (rawPath.is_absolute())
+            {
+                candidates.push_back(rawPath);
+                return candidates;
+            }
+
+            candidates.push_back(rawPath);
+            candidates.push_back(fs::current_path() / rawPath);
+            candidates.push_back(GetEditorRuntimeBasePath() / rawPath);
+            candidates.push_back(GetEditorRuntimeBasePath() / "project" / rawPath);
+            return candidates;
+        }
+
+        std::filesystem::path ResolveLaunchExecutablePath(const std::string &_configuredPath)
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<fs::path> candidates = BuildPathCandidates(_configuredPath);
+            if (_configuredPath.empty())
+                candidates.push_back(GetDefaultStandaloneExecutablePath());
+
+#if defined(_WIN32)
+            const std::size_t originalCount = candidates.size();
+            for (std::size_t i = 0; i < originalCount; ++i)
+            {
+                if (!candidates[i].has_extension())
+                    candidates.push_back(candidates[i].string() + ".exe");
+            }
+#endif
+
+            for (const fs::path &candidate : candidates)
+            {
+                if (IsRegularFilePath(candidate))
+                    return candidate.lexically_normal();
+            }
+
+            return {};
+        }
+
+        std::filesystem::path ResolveLaunchWorkingDirectory(const std::string &_configuredPath, const std::filesystem::path &_executablePath)
+        {
+            namespace fs = std::filesystem;
+
+            if (_configuredPath.empty())
+            {
+                const fs::path currentDirectory = fs::current_path();
+                if (IsDirectoryPath(currentDirectory))
+                    return currentDirectory;
+
+                if (!_executablePath.empty() && IsDirectoryPath(_executablePath.parent_path()))
+                    return _executablePath.parent_path();
+
+                return GetEditorRuntimeBasePath();
+            }
+
+            for (const fs::path &candidate : BuildPathCandidates(_configuredPath))
+            {
+                if (IsDirectoryPath(candidate))
+                    return candidate.lexically_normal();
+            }
+
+            return {};
+        }
+
+        std::vector<std::string> TokenizeLaunchArguments(const std::string &_arguments)
+        {
+            std::vector<std::string> tokens = {};
+            std::string current = "";
+            bool inQuotes = false;
+            char quoteChar = '\0';
+            bool escapeNext = false;
+
+            for (char c : _arguments)
+            {
+                if (escapeNext)
+                {
+                    current.push_back(c);
+                    escapeNext = false;
+                    continue;
+                }
+
+                if (c == '\\' && inQuotes)
+                {
+                    escapeNext = true;
+                    continue;
+                }
+
+                if (c == '"' || c == '\'')
+                {
+                    if (inQuotes && c == quoteChar)
+                    {
+                        inQuotes = false;
+                        quoteChar = '\0';
+                    }
+                    else if (!inQuotes)
+                    {
+                        inQuotes = true;
+                        quoteChar = c;
+                    }
+                    else
+                    {
+                        current.push_back(c);
+                    }
+                    continue;
+                }
+
+                if (!inQuotes && std::isspace(static_cast<unsigned char>(c)))
+                {
+                    if (!current.empty())
+                    {
+                        tokens.push_back(current);
+                        current.clear();
+                    }
+                    continue;
+                }
+
+                current.push_back(c);
+            }
+
+            if (escapeNext)
+                current.push_back('\\');
+
+            if (!current.empty())
+                tokens.push_back(current);
+
+            return tokens;
+        }
+
+        bool LaunchStandaloneGameFromProjectConfig(std::string &_outMessage)
+        {
+            const ProjectConfig &projectConfig = GetProjectConfig();
+            const std::filesystem::path executablePath = ResolveLaunchExecutablePath(projectConfig.launchExecutablePath);
+            if (executablePath.empty())
+            {
+                _outMessage = "Launch failed. Set a valid launch executable in Project Settings or place c-engine next to the editor executable.";
+                return false;
+            }
+
+            const std::filesystem::path workingDirectory = ResolveLaunchWorkingDirectory(projectConfig.launchWorkingDirectory, executablePath);
+            if (workingDirectory.empty())
+            {
+                _outMessage = "Launch failed. The configured working directory does not exist.";
+                return false;
+            }
+
+            std::vector<std::string> argvStorage = {};
+            argvStorage.push_back(executablePath.string());
+            const std::vector<std::string> extraArguments = TokenizeLaunchArguments(projectConfig.launchArguments);
+            argvStorage.insert(argvStorage.end(), extraArguments.begin(), extraArguments.end());
+
+            std::vector<const char*> argv = {};
+            argv.reserve(argvStorage.size() + 1u);
+            for (const std::string &argument : argvStorage)
+                argv.push_back(argument.c_str());
+            argv.push_back(nullptr);
+
+            SDL_Environment *launchEnvironment = SDL_CreateEnvironment(true);
+            if (launchEnvironment == nullptr)
+            {
+                _outMessage = "Launch failed. Unable to create process environment: " + std::string(SDL_GetError());
+                return false;
+            }
+
+            bool success = SDL_SetEnvironmentVariable(launchEnvironment, "CANIS_EDITOR_RUNTIME", "0", true);
+            success = success && SDL_SetEnvironmentVariable(launchEnvironment, "CANIS_EDITOR", "0", true);
+            if (!success)
+            {
+                _outMessage = "Launch failed. Unable to set no-editor environment override: " + std::string(SDL_GetError());
+                SDL_DestroyEnvironment(launchEnvironment);
+                return false;
+            }
+
+            SDL_PropertiesID launchProperties = SDL_CreateProperties();
+            if (launchProperties == 0)
+            {
+                _outMessage = "Launch failed. Unable to create process properties: " + std::string(SDL_GetError());
+                SDL_DestroyEnvironment(launchEnvironment);
+                return false;
+            }
+
+            success = SDL_SetPointerProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
+                const_cast<const char**>(argv.data()));
+            success = success && SDL_SetPointerProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_ENVIRONMENT_POINTER,
+                launchEnvironment);
+            success = success && SDL_SetStringProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_WORKING_DIRECTORY_STRING,
+                workingDirectory.string().c_str());
+            success = success && SDL_SetBooleanProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN,
+                true);
+            success = success && SDL_SetNumberProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
+                SDL_PROCESS_STDIO_INHERITED);
+            success = success && SDL_SetNumberProperty(
+                launchProperties,
+                SDL_PROP_PROCESS_CREATE_STDERR_NUMBER,
+                SDL_PROCESS_STDIO_INHERITED);
+
+            if (!success)
+            {
+                _outMessage = "Launch failed. Unable to configure process properties: " + std::string(SDL_GetError());
+                SDL_DestroyProperties(launchProperties);
+                SDL_DestroyEnvironment(launchEnvironment);
+                return false;
+            }
+
+            SDL_Process *process = SDL_CreateProcessWithProperties(launchProperties);
+            SDL_DestroyProperties(launchProperties);
+            SDL_DestroyEnvironment(launchEnvironment);
+
+            if (process == nullptr)
+            {
+                _outMessage = "Launch failed. SDL could not create the process: " + std::string(SDL_GetError());
+                return false;
+            }
+
+            SDL_DestroyProcess(process);
+            _outMessage = "Launched standalone game: " + executablePath.generic_string();
+            return true;
         }
 
         bool HasSupportedFontExtension(const std::filesystem::path &_path)
@@ -2480,6 +2739,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (m_mode != EditorMode::PLAY && m_mode != EditorMode::PAUSE)
             return;
 
+        if (m_window != nullptr && m_window->IsMouseLocked())
+            m_window->LockMouse(false);
+
         AudioManager::StopMusic();
         AudioManager::StopAllSounds();
 
@@ -3684,7 +3946,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     bool Editor::DrawHierarchyPanel()
     {
-        ImGui::Begin("Hierarchy");
+        std::string hierarchyWindowTitle = "Hierarchy";
+        if (m_scene != nullptr && !m_scene->m_path.empty())
+            hierarchyWindowTitle += " - " + Canis::GetFileName(m_scene->m_path);
+
+        hierarchyWindowTitle += "###Hierarchy";
+        ImGui::Begin(hierarchyWindowTitle.c_str());
         bool refresh = false;
 
         std::vector<Canis::Entity *> &entities = m_scene->GetEntities();
@@ -4937,6 +5204,17 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (background != m_window->GetClearColor())
             m_window->SetClearColor(background);
 
+        Color ambientLight = m_scene->GetEnvironmentAmbientLight();
+        if (ImGui::ColorEdit3("Ambient Light##", &ambientLight.r))
+        {
+            ambientLight.a = 1.0f;
+            m_scene->SetEnvironmentAmbientLight(ambientLight);
+        }
+        float ambientLightIntensity = m_scene->GetEnvironmentAmbientLightIntensity();
+        if (ImGui::SliderFloat("Ambient Intensity##", &ambientLightIntensity, 0.0f, 8.0f, "%.2f"))
+            m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
+        ImGui::TextDisabled("Scene-wide fill light for darker areas.");
+
         ImGui::Text("Skybox");
         ImGui::SameLine();
 
@@ -6065,6 +6343,28 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             Canis::SaveProjectConfig();
         }
 
+        std::string &launchExecutablePath = Canis::GetProjectConfig().launchExecutablePath;
+        ImGui::Text("launch executable");
+        ImGui::SameLine();
+        if (ImGui::InputText("##launchExecutablePath", &launchExecutablePath))
+            Canis::SaveProjectConfig();
+
+        std::string &launchWorkingDirectory = Canis::GetProjectConfig().launchWorkingDirectory;
+        ImGui::Text("launch working dir");
+        ImGui::SameLine();
+        if (ImGui::InputText("##launchWorkingDirectory", &launchWorkingDirectory))
+            Canis::SaveProjectConfig();
+
+        std::string &launchArguments = Canis::GetProjectConfig().launchArguments;
+        ImGui::Text("launch arguments");
+        ImGui::SameLine();
+        if (ImGui::InputText("##launchArguments", &launchArguments))
+            Canis::SaveProjectConfig();
+
+        ImGui::TextDisabled(
+            "Launch runs a separate no-editor process. Empty executable defaults to %s",
+            GetDefaultStandaloneExecutablePath().generic_string().c_str());
+
         int targetGameWidth = Canis::GetProjectConfig().targetGameWidth;
         int targetGameHeight = Canis::GetProjectConfig().targetGameHeight;
         ImGui::Text("target game width");
@@ -6402,6 +6702,17 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                 m_mode = EditorMode::PLAY;
             }
+            ImGui::SameLine();
+            if (ImGui::Button("Launch##ScenePanel"))
+            {
+                std::string launchMessage = "";
+                if (LaunchStandaloneGameFromProjectConfig(launchMessage))
+                    Debug::Log("%s", launchMessage.c_str());
+                else
+                    Debug::Error("%s", launchMessage.c_str());
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Launch a separate no-editor runtime using Project Settings.");
             ImGui::SameLine();
             if (ImGui::Button("Reload##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {

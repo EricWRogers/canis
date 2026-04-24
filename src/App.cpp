@@ -74,6 +74,32 @@ namespace Canis
             return fs::exists(assetsPath) && fs::is_directory(assetsPath);
         }
 
+        bool TryParseEnvironmentBool(const char *_value, bool &_outValue)
+        {
+            if (_value == nullptr || _value[0] == '\0')
+                return false;
+
+            std::string normalized(_value);
+            std::transform(normalized.begin(), normalized.end(), normalized.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            if (normalized == "1" || normalized == "true" || normalized == "yes" || normalized == "on")
+            {
+                _outValue = true;
+                return true;
+            }
+
+            if (normalized == "0" || normalized == "false" || normalized == "no" || normalized == "off")
+            {
+                _outValue = false;
+                return true;
+            }
+
+            return false;
+        }
+
         void DrawInspectorColorField(const char *_label, const char *_idSuffix, Color &_value)
         {
             const std::string imguiLabel = BuildInspectorFieldLabel(_label, _idSuffix);
@@ -545,6 +571,8 @@ namespace Canis
 
             YAML::Node environmentNode(YAML::NodeType::Map);
             environmentNode["ClearColor"] = _clearColor;
+            environmentNode["AmbientLight"] = Color(0.24f, 0.26f, 0.32f, 1.0f);
+            environmentNode["AmbientLightIntensity"] = 1.0f;
             environmentNode["PostProcessAsset"] = CreateAssetReferenceNode("assets/defaults/postprocess/default.postprocess");
 
             YAML::Node cameraNode(YAML::NodeType::Map);
@@ -837,7 +865,14 @@ namespace Canis
 
 #if CANIS_EDITOR
         runtime.editorRuntimeEnabled = Canis::GetProjectConfig().editor;
+        bool editorRuntimeOverride = runtime.editorRuntimeEnabled;
+        if (TryParseEnvironmentBool(std::getenv("CANIS_EDITOR_RUNTIME"), editorRuntimeOverride) ||
+            TryParseEnvironmentBool(std::getenv("CANIS_EDITOR"), editorRuntimeOverride))
+        {
+            runtime.editorRuntimeEnabled = editorRuntimeOverride;
+        }
 #endif
+        Canis::SetEditorRuntimeEnabled(runtime.editorRuntimeEnabled);
 
         const int startupWidth = std::max(320, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowWidth
                                                                              : GetProjectConfig().targetGameWidth);
@@ -2126,6 +2161,7 @@ namespace Canis
                     comp["linearDamping"] = rigidbody->linearDamping;
                     comp["angularDamping"] = rigidbody->angularDamping;
                     comp["useGravity"] = rigidbody->useGravity;
+                    comp["gravityFactor"] = rigidbody->gravityFactor;
                     comp["isSensor"] = rigidbody->isSensor;
                     comp["layer"] = rigidbody->layer;
                     comp["mask"] = rigidbody->mask;
@@ -2154,6 +2190,7 @@ namespace Canis
                     rigidbody.linearDamping = comp["linearDamping"].as<float>(0.05f);
                     rigidbody.angularDamping = comp["angularDamping"].as<float>(0.05f);
                     rigidbody.useGravity = comp["useGravity"].as<bool>(true);
+                    rigidbody.gravityFactor = comp["gravityFactor"].as<float>(1.0f);
                     rigidbody.isSensor = comp["isSensor"].as<bool>(false);
                     rigidbody.layer = comp["layer"].as<Mask>(
                         comp["collisionLayer"].as<Mask>(
@@ -2190,6 +2227,8 @@ namespace Canis
                 ImGui::InputFloat(("linearDamping##" + _conf.name).c_str(), &rigidbody->linearDamping);
                 ImGui::InputFloat(("angularDamping##" + _conf.name).c_str(), &rigidbody->angularDamping);
                 ImGui::Checkbox(("useGravity##" + _conf.name).c_str(), &rigidbody->useGravity);
+                ImGui::InputFloat(("gravityFactor##" + _conf.name).c_str(), &rigidbody->gravityFactor);
+                rigidbody->gravityFactor = std::max(0.0f, rigidbody->gravityFactor);
                 ImGui::Checkbox(("isSensor##" + _conf.name).c_str(), &rigidbody->isSensor);
                 DrawInspectorField("layer", _conf.name.c_str(), rigidbody->layer);
                 DrawInspectorField("mask", _conf.name.c_str(), rigidbody->mask);

@@ -53,6 +53,11 @@ namespace Canis
     {
         float throttle = 0.0f;
         float steer = 0.0f;
+        float lookYaw = 0.0f;
+        float lookPitch = 0.0f;
+        bool jump = false;
+        bool firePrimary = false;
+        bool fireSecondary = false;
         float receivedTime = 0.0f;
     };
 
@@ -62,6 +67,18 @@ namespace Canis
         Vector3 rotation = Vector3(0.0f);
         Vector3 linearVelocity = Vector3(0.0f);
         Vector3 angularVelocity = Vector3(0.0f);
+        float receivedTime = 0.0f;
+    };
+
+    struct NetworkCombatState
+    {
+        int health = 100;
+        int maxHealth = 100;
+        int kills = 0;
+        int deaths = 0;
+        bool alive = true;
+        float respawnSecondsRemaining = 0.0f;
+        float damageFlash = 0.0f;
         float receivedTime = 0.0f;
     };
 
@@ -124,6 +141,7 @@ namespace Canis
 
         void PublishTransform(const std::string &_key, const Vector3 &_position, const Vector3 &_rotation);
         bool TryGetTransform(const std::string &_key, NetworkTransformState &_outState) const;
+        void PublishInput(const std::string &_key, const NetworkInputState &_state);
         void PublishInput(const std::string &_key, float _throttle, float _steer);
         bool TryGetInput(const std::string &_key, NetworkInputState &_outState) const;
         void PublishRigidbody(
@@ -133,6 +151,8 @@ namespace Canis
             const Vector3 &_linearVelocity,
             const Vector3 &_angularVelocity);
         bool TryGetRigidbody(const std::string &_key, NetworkRigidbodyState &_outState) const;
+        void PublishCombat(const std::string &_key, const NetworkCombatState &_state);
+        bool TryGetCombat(const std::string &_key, NetworkCombatState &_outState) const;
 
     private:
         struct Impl;
@@ -154,6 +174,7 @@ namespace Canis
         std::unordered_map<std::string, NetworkTransformState> m_transformStates = {};
         std::unordered_map<std::string, NetworkInputState> m_inputStates = {};
         std::unordered_map<std::string, NetworkRigidbodyState> m_rigidbodyStates = {};
+        std::unordered_map<std::string, NetworkCombatState> m_combatStates = {};
 
         NetworkPlayer* FindPlayer(NetworkClientId _id);
         const NetworkPlayer* FindPlayer(NetworkClientId _id) const;

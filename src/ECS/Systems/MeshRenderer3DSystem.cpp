@@ -592,6 +592,9 @@ namespace Canis
                 currentShader->SetMat4("P", projection);
                 currentShader->SetMat4("V", view);
                 currentShader->SetVec3("cameraPosition", cameraPosition);
+                const Color ambientLight = scene->GetEnvironmentAmbientLight();
+                currentShader->SetVec3("ambientLightColor", ambientLight.r, ambientLight.g, ambientLight.b);
+                currentShader->SetFloat("ambientLightIntensity", scene->GetEnvironmentAmbientLightIntensity());
 
                 currentShader->SetBool("useDirectionalLight", directionalLight.enabled);
                 currentShader->SetVec3("directionalLightDirection", directionalLight.direction);

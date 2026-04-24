@@ -58,6 +58,7 @@ namespace Canis
             ShaderGraphTemplate_Time,
             ShaderGraphTemplate_Position,
             ShaderGraphTemplate_Normal,
+            ShaderGraphTemplate_AmbientLight,
             ShaderGraphTemplate_PropertyFloat,
             ShaderGraphTemplate_PropertyVector2,
             ShaderGraphTemplate_PropertyVector3,
@@ -90,6 +91,7 @@ namespace Canis
         const char *kTimeOutputNames[] = { "Time" };
         const char *kPositionOutputNames[] = { "Position" };
         const char *kNormalOutputNames[] = { "Normal" };
+        const char *kAmbientLightOutputNames[] = { "Ambient" };
         const char *kVertexOutputInputNames[] = { "Position", "Normal" };
         const char *kOutputInputNames[] = { "Color", "Alpha" };
 
@@ -199,7 +201,8 @@ namespace Canis
             UV,
             TIME,
             POSITION,
-            NORMAL
+            NORMAL,
+            AMBIENT_LIGHT
         };
 
         struct ShaderGraphPreviewValue
@@ -246,7 +249,8 @@ namespace Canis
                 _preview.kind == ShaderGraphPreviewKind::VEC2 ||
                 _preview.kind == ShaderGraphPreviewKind::VEC3 ||
                 _preview.kind == ShaderGraphPreviewKind::VEC4 ||
-                _preview.kind == ShaderGraphPreviewKind::COLOR;
+                _preview.kind == ShaderGraphPreviewKind::COLOR ||
+                _preview.kind == ShaderGraphPreviewKind::AMBIENT_LIGHT;
         }
 
         ShaderGraphPreviewValue MakeShaderGraphNumericPreview(ShaderGraphValueType _type, const Vector4 &_value, bool _preferColor = false)
@@ -346,6 +350,8 @@ namespace Canis
                     return "World Position";
                 case ShaderGraphPreviewKind::NORMAL:
                     return "World Normal";
+                case ShaderGraphPreviewKind::AMBIENT_LIGHT:
+                    return "Scene Ambient";
                 default:
                     return "Connect any output to inspect it here.";
             }
@@ -398,6 +404,15 @@ namespace Canis
             {
                 ShaderGraphPreviewValue preview;
                 preview.kind = ShaderGraphPreviewKind::NORMAL;
+                return preview;
+            }
+
+            if (_node.type == "AmbientLight")
+            {
+                ShaderGraphPreviewValue preview;
+                preview.kind = ShaderGraphPreviewKind::AMBIENT_LIGHT;
+                preview.numericType = ShaderGraphValueType::VEC3;
+                preview.numericValue = Vector4(0.24f, 0.26f, 0.32f, 1.0f);
                 return preview;
             }
 
@@ -698,6 +713,8 @@ namespace Canis
                     return MakeTemplate(IM_COL32(56, 150, 114, 255), IM_COL32(32, 84, 66, 255), IM_COL32(38, 96, 76, 255), 0, nullptr, nullptr, 1, kPositionOutputNames, kSingleOutputVec3Colors);
                 case ShaderGraphTemplate_Normal:
                     return MakeTemplate(IM_COL32(72, 160, 138, 255), IM_COL32(36, 88, 78, 255), IM_COL32(42, 102, 90, 255), 0, nullptr, nullptr, 1, kNormalOutputNames, kSingleOutputVec3Colors);
+                case ShaderGraphTemplate_AmbientLight:
+                    return MakeTemplate(IM_COL32(78, 168, 132, 255), IM_COL32(34, 82, 62, 255), IM_COL32(42, 96, 74, 255), 0, nullptr, nullptr, 1, kAmbientLightOutputNames, kSingleOutputVec3Colors);
                 case ShaderGraphTemplate_PropertyFloat:
                     return MakeTemplate(IM_COL32(150, 112, 206, 255), IM_COL32(56, 48, 72, 255), IM_COL32(68, 58, 88, 255), 0, nullptr, nullptr, 1, kSingleOutputName, kSingleOutputFloatColors);
                 case ShaderGraphTemplate_PropertyVector2:
@@ -758,6 +775,7 @@ namespace Canis
             if (_node.type == "Time") return ShaderGraphTemplate_Time;
             if (_node.type == "Position") return ShaderGraphTemplate_Position;
             if (_node.type == "Normal") return ShaderGraphTemplate_Normal;
+            if (_node.type == "AmbientLight") return ShaderGraphTemplate_AmbientLight;
             if (_node.type == "Texture2D") return ShaderGraphTemplate_Texture2D;
             if (_node.type == "Add") return ShaderGraphTemplate_Add;
             if (_node.type == "Multiply") return ShaderGraphTemplate_Multiply;
@@ -822,6 +840,8 @@ namespace Canis
                 return "Current world-space position. In the vertex stage it is the editable vertex position, and in the fragment stage it is the interpolated world position.";
             if (_node.type == "Normal")
                 return "Current world-space normal. In the vertex stage it is the editable vertex normal, and in the fragment stage it is the interpolated surface normal.";
+            if (_node.type == "AmbientLight")
+                return "Scene-wide ambient light from the Environment panel. Use it to lift dark materials or tint stylized shading.";
             if (_node.type == "Texture2D")
                 return "Samples a texture using the UV input. If no UV is connected, it uses the mesh UVs.";
             if (_node.type == "Property")
@@ -1135,6 +1155,10 @@ namespace Canis
                 else if (node->type == "Normal")
                 {
                     drawLine("World normal", IM_COL32(206, 242, 224, 255));
+                }
+                else if (node->type == "AmbientLight")
+                {
+                    drawLine("Scene ambient", IM_COL32(206, 242, 224, 255));
                 }
                 else if (node->type == "StickyNote")
                 {
@@ -2172,6 +2196,10 @@ namespace Canis
                 {
                     ImGui::TextDisabled("Built-in world normal input.");
                 }
+                else if (selectedNode->type == "AmbientLight")
+                {
+                    ImGui::TextDisabled("Built-in scene ambient light color from the Environment panel.");
+                }
                 else if (selectedNode->type == "StickyNote")
                 {
                     std::string title = selectedNode->title;
@@ -2387,6 +2415,7 @@ namespace Canis
             if (ImGui::BeginMenu("Input"))
             {
                 addNodeMenuItem("Time", "Time");
+                addNodeMenuItem("Ambient Light", "AmbientLight");
                 addNodeMenuItem("Texture2D", "Texture2D");
                 ImGui::EndMenu();
             }

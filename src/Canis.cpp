@@ -17,6 +17,7 @@ namespace Canis
         constexpr const char* kProjectConfigPath = "project_settings/project.canis";
         constexpr const char* kLegacyProjectConfigPath = "project.canis";
         constexpr const char* kEditorConfigPath = "user_settings/editor.conf";
+        bool g_editorRuntimeEnabled = true;
 
         int NormalizeProjectSyncMode(int _value)
         {
@@ -86,6 +87,16 @@ namespace Canis
         return editorConfig;
     }
 
+    bool IsEditorRuntimeEnabled()
+    {
+        return g_editorRuntimeEnabled;
+    }
+
+    void SetEditorRuntimeEnabled(bool _enabled)
+    {
+        g_editorRuntimeEnabled = _enabled;
+    }
+
     bool SaveProjectConfig()
     {
         ProjectConfig projectConfig = GetProjectConfig();
@@ -105,6 +116,9 @@ namespace Canis
         node["syncMode"] = NormalizeProjectSyncMode(projectConfig.syncMode);
         node["iconUUID"] = std::to_string(projectConfig.iconUUID);
         node["launchScene"] = projectConfig.launchScene;
+        node["launchExecutablePath"] = projectConfig.launchExecutablePath;
+        node["launchWorkingDirectory"] = projectConfig.launchWorkingDirectory;
+        node["launchArguments"] = projectConfig.launchArguments;
         node["editorWindowWidth"] = projectConfig.editorWindowWidth;
         node["editorWindowHeight"] = projectConfig.editorWindowHeight;
         node["targetGameWidth"] = projectConfig.targetGameWidth;
@@ -198,10 +212,15 @@ namespace Canis
         projectConfig.launchScene = node["launchScene"].as<SceneAssetHandle>(projectConfig.launchScene);
         if (!node["launchScene"] && node["LaunchScene"])
             projectConfig.launchScene = node["LaunchScene"].as<SceneAssetHandle>(projectConfig.launchScene);
+        projectConfig.launchExecutablePath = node["launchExecutablePath"].as<std::string>(projectConfig.launchExecutablePath);
+        projectConfig.launchWorkingDirectory = node["launchWorkingDirectory"].as<std::string>(projectConfig.launchWorkingDirectory);
+        projectConfig.launchArguments = node["launchArguments"].as<std::string>(projectConfig.launchArguments);
         projectConfig.editorWindowWidth = node["editorWindowWidth"].as<int>(projectConfig.editorWindowWidth);
         projectConfig.editorWindowHeight = node["editorWindowHeight"].as<int>(projectConfig.editorWindowHeight);
         projectConfig.targetGameWidth = node["targetGameWidth"].as<int>(projectConfig.targetGameWidth);
         projectConfig.targetGameHeight = node["targetGameHeight"].as<int>(projectConfig.targetGameHeight);
+
+        SetEditorRuntimeEnabled(projectConfig.editor);
 
         editorConfig.lastEditorScene = editorNode["lastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
         if (!editorNode["lastEditorScene"] && editorNode["LastEditorScene"])

@@ -303,6 +303,11 @@ namespace Canis
             return { ShaderGraphValueType::VEC3, "normalize(fragmentNormal)" };
         }
 
+        ExpressionResult GetAmbientLightExpression()
+        {
+            return { ShaderGraphValueType::VEC3, "ambientLightLinear" };
+        }
+
         void AppendTextureUniforms(std::vector<TextureUniformInfo> &_target, const std::vector<TextureUniformInfo> &_source)
         {
             for (const TextureUniformInfo &uniform : _source)
@@ -531,6 +536,10 @@ namespace Canis
             {
                 result = GetStageNormalExpression(_context.stage);
             }
+            else if (_node.type == "AmbientLight")
+            {
+                result = GetAmbientLightExpression();
+            }
             else if (_node.type == "Property")
             {
                 const ShaderGraphProperty *property = FindShaderGraphProperty(*_context.document, _node.propertyId);
@@ -690,6 +699,8 @@ namespace Canis
                 << "in vec2 fragmentUV;\n\n"
                 << "in vec3 fragmentWorldPos;\n\n"
                 << "uniform vec4 albedoValue;\n"
+                << "uniform vec3 ambientLightColor;\n"
+                << "uniform float ambientLightIntensity;\n"
                 << "uniform float TIME;\n";
 
             for (const TextureUniformInfo &uniform : context.textureUniforms)
@@ -699,9 +710,15 @@ namespace Canis
 
             shader
                 << "\n"
+                << "vec3 SRGBToLinear(vec3 value)\n"
+                << "{\n"
+                << "    return pow(max(value, vec3(0.0)), vec3(2.2));\n"
+                << "}\n"
+                << "\n"
                 << "out vec4 color;\n\n"
                 << "void main()\n"
                 << "{\n"
+                << "    vec3 ambientLightLinear = clamp(ambientLightColor, vec3(0.0), vec3(1.0)) * max(ambientLightIntensity, 0.0);\n"
                 << "    vec4 sgSurfaceColor = " << ConvertExpression(colorExpression, ShaderGraphValueType::VEC4) << ";\n"
                 << "    sgSurfaceColor *= albedoValue;\n"
                 << "    float sgSurfaceAlpha = clamp(" << ConvertExpression(alphaExpression, ShaderGraphValueType::FLOAT, true) << ", 0.0, 1.0);\n"
@@ -853,6 +870,10 @@ namespace Canis
         else if (_type == "Normal")
         {
             node.title = "Normal";
+        }
+        else if (_type == "AmbientLight")
+        {
+            node.title = "Ambient Light";
         }
 
         return node;
@@ -1144,6 +1165,7 @@ namespace Canis
         if (_type == "Time") return "Time";
         if (_type == "Position") return "Position";
         if (_type == "Normal") return "Normal";
+        if (_type == "AmbientLight") return "Ambient Light";
         if (_type == "Texture2D") return "Texture2D";
         if (_type == "Add") return "Add";
         if (_type == "Multiply") return "Multiply";
@@ -1247,6 +1269,8 @@ namespace Canis
             return { ShaderGraphPinInfo{ .name = "position", .type = ShaderGraphValueType::VEC3 } };
         if (_node.type == "Normal")
             return { ShaderGraphPinInfo{ .name = "normal", .type = ShaderGraphValueType::VEC3 } };
+        if (_node.type == "AmbientLight")
+            return { ShaderGraphPinInfo{ .name = "ambient", .type = ShaderGraphValueType::VEC3 } };
         if (_node.type == "Texture2D")
             return { ShaderGraphPinInfo{ .name = "color", .type = ShaderGraphValueType::VEC4 } };
         if (_node.type == "Panner")

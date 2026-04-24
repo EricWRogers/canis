@@ -356,6 +356,8 @@ namespace Canis
             }
         }
 
+        m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
+        m_environmentAmbientLightIntensity = 1.0f;
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
         m_paused = false;
@@ -377,6 +379,8 @@ namespace Canis
             m_window->SetClearColor(
                 environment["ClearColor"].as<Vector4>(Vector4(0.05f, 0.05f, 0.05f, 1.0f))
             );
+            m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
+            m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
 
             if (YAML::Node skyboxNode = environment["SkyboxAsset"])
             {
@@ -648,6 +652,8 @@ namespace Canis
 
         YAML::Node environment;
         environment["ClearColor"] = m_window->GetClearColor();
+        environment["AmbientLight"] = m_environmentAmbientLight;
+        environment["AmbientLightIntensity"] = m_environmentAmbientLightIntensity;
         if ((uint64_t)m_environmentSkyboxUUID != 0)
         {
             YAML::Node skyboxAsset(YAML::NodeType::Map);
