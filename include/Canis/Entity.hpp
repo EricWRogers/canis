@@ -1150,6 +1150,8 @@ namespace Canis
 
 
         i32 modelId = -1;
+        i32 nodeIndex = -1;
+        bool applyNodeTransform = true;
         Color color = Color(1.0f);
     };
 

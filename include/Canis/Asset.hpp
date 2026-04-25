@@ -381,6 +381,7 @@ namespace Canis
 
         struct Node3D
         {
+            std::string name = "";
             i32 parent = -1;
             std::vector<i32> children = {};
             i32 mesh = -1;
@@ -458,18 +459,25 @@ namespace Canis
             const Pose3D *_pose = nullptr,
             i32 _overrideTextureId = -1,
             const Color &_baseColor = Color(1.0f),
-            const std::vector<MaterialAsset*> *_slotMaterialOverrides = nullptr);
+            const std::vector<MaterialAsset*> *_slotMaterialOverrides = nullptr,
+            i32 _nodeIndex = -1,
+            bool _applyNodeTransform = true);
 
         i32 GetAnimationCount() const { return (i32)m_animations.size(); }
         std::string GetAnimationName(i32 _index) const;
         float GetAnimationDuration(i32 _index) const;
         i32 GetMaterialSlotCount() const { return static_cast<i32>(m_materialSlotNames.size()); }
         std::string GetMaterialSlotName(i32 _index) const;
+        i32 GetNodeCount() const { return static_cast<i32>(m_nodes.size()); }
+        const Node3D* GetNode(i32 _index) const;
+        const std::vector<i32>& GetSceneRoots() const { return m_sceneRoots; }
+        std::string GetNodeName(i32 _index) const;
+        bool NodeHasPrimitives(i32 _index) const;
 
         std::string GetPath() const { return m_path; }
         u64 GetGeometryRevision() const { return m_geometryRevision; }
-        bool GetLocalBounds(Vector3 &_min, Vector3 &_max) const;
-        bool BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices) const;
+        bool GetLocalBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
+        bool BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
 
     private:
         std::string m_path = "";

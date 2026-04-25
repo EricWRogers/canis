@@ -73,6 +73,7 @@ namespace Canis
         void FocusEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
+        void ApplyPrefabInstanceOverrides(Canis::Entity* _entity);
 
         // inspector variables
         void InputEntity(const std::string& _name, Canis::Entity* &_variable);

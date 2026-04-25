@@ -40,6 +40,11 @@ namespace Canis
 {
     namespace
     {
+        bool PrimitiveMatchesNodeFilter(const ModelAsset::Primitive3D &_primitive, i32 _nodeIndex)
+        {
+            return _nodeIndex < 0 || _primitive.nodeIndex == _nodeIndex;
+        }
+
         std::string ResolveAssetRefPath(const YAML::Node &_node)
         {
             if (!_node)
@@ -1465,6 +1470,7 @@ namespace Canis
         {
             const tinygltf::Node &gltfNode = gltfModel.nodes[i];
             Node3D node;
+            node.name = gltfNode.name;
             node.mesh = gltfNode.mesh;
             node.skin = gltfNode.skin;
             node.hasMatrix = (gltfNode.matrix.size() == 16);
@@ -2062,15 +2068,21 @@ namespace Canis
         const Pose3D *_pose,
         i32 _overrideTextureId,
         const Color &_baseColor,
-        const std::vector<MaterialAsset*> *_slotMaterialOverrides)
+        const std::vector<MaterialAsset*> *_slotMaterialOverrides,
+        i32 _nodeIndex,
+        bool _applyNodeTransform)
     {
         const Pose3D *pose = (_pose == nullptr) ? &m_sharedPose : _pose;
+        const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
 
         for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)
         {
             Primitive3D &primitive = m_primitives[primitiveIndex];
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
+                continue;
+
             Matrix4 model = _modelMatrix;
-            if (primitive.nodeIndex >= 0 && primitive.nodeIndex < (i32)m_nodes.size())
+            if (applyPrimitiveNodeTransform && primitive.nodeIndex >= 0 && primitive.nodeIndex < (i32)m_nodes.size())
             {
                 if (pose != nullptr && pose->globalNodeMatrices.size() == m_nodes.size())
                     model = _modelMatrix * pose->globalNodeMatrices[primitive.nodeIndex];
@@ -2144,6 +2156,36 @@ namespace Canis
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
+    }
+
+    const ModelAsset::Node3D* ModelAsset::GetNode(i32 _index) const
+    {
+        if (_index < 0 || _index >= static_cast<i32>(m_nodes.size()))
+            return nullptr;
+
+        return &m_nodes[_index];
+    }
+
+    std::string ModelAsset::GetNodeName(i32 _index) const
+    {
+        if (const Node3D *node = GetNode(_index))
+            return node->name;
+
+        return "";
+    }
+
+    bool ModelAsset::NodeHasPrimitives(i32 _index) const
+    {
+        if (_index < 0)
+            return !m_primitives.empty();
+
+        for (const Primitive3D &primitive : m_primitives)
+        {
+            if (primitive.nodeIndex == _index)
+                return true;
+        }
+
+        return false;
     }
 
     std::string ModelAsset::GetMaterialSlotName(i32 _index) const
@@ -2340,7 +2382,7 @@ namespace Canis
         }
     }
 
-    bool ModelAsset::BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices) const
+    bool ModelAsset::BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices, i32 _nodeIndex, bool _applyNodeTransform) const
     {
         _vertices.clear();
         _indices.clear();
@@ -2349,6 +2391,9 @@ namespace Canis
         size_t totalIndexCount = 0;
         for (const Primitive3D &primitive : m_primitives)
         {
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
+                continue;
+
             totalVertexCount += primitive.bindVertices.size();
             totalIndexCount += primitive.indices.size();
         }
@@ -2361,13 +2406,20 @@ namespace Canis
 
         for (const Primitive3D &primitive : m_primitives)
         {
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
+                continue;
+
             if (primitive.bindVertices.empty() || primitive.indices.empty())
                 continue;
 
             const u32 vertexOffset = static_cast<u32>(_vertices.size());
             Matrix4 nodeMatrix = Matrix4(1.0f);
-            if (primitive.nodeIndex >= 0 && primitive.nodeIndex < static_cast<i32>(m_nodes.size()))
+            if ((_nodeIndex < 0 || _applyNodeTransform) &&
+                primitive.nodeIndex >= 0 &&
+                primitive.nodeIndex < static_cast<i32>(m_nodes.size()))
+            {
                 nodeMatrix = m_nodes[primitive.nodeIndex].globalMatrix;
+            }
 
             for (const RenderVertex3D &vertex : primitive.bindVertices)
             {
@@ -2382,7 +2434,7 @@ namespace Canis
         return !_vertices.empty() && !_indices.empty();
     }
 
-    bool ModelAsset::GetLocalBounds(Vector3 &_min, Vector3 &_max) const
+    bool ModelAsset::GetLocalBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex, bool _applyNodeTransform) const
     {
         bool hasBounds = false;
         Vector3 minBounds(0.0f);
@@ -2390,9 +2442,16 @@ namespace Canis
 
         for (const Primitive3D &primitive : m_primitives)
         {
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
+                continue;
+
             Matrix4 nodeMatrix = Matrix4(1.0f);
-            if (primitive.nodeIndex >= 0 && primitive.nodeIndex < static_cast<i32>(m_nodes.size()))
+            if ((_nodeIndex < 0 || _applyNodeTransform) &&
+                primitive.nodeIndex >= 0 &&
+                primitive.nodeIndex < static_cast<i32>(m_nodes.size()))
+            {
                 nodeMatrix = m_nodes[primitive.nodeIndex].globalMatrix;
+            }
 
             for (const RenderVertex3D &vertex : primitive.bindVertices)
             {

@@ -416,7 +416,9 @@ namespace Canis
                 pose,
                 -1,
                 Color(1.0f),
-                nullptr);
+                nullptr,
+                modelRenderer.nodeIndex,
+                modelRenderer.applyNodeTransform);
         }
 
         m_shadowShader->UnUse();
@@ -842,7 +844,9 @@ namespace Canis
                 pose,
                 overrideTextureId,
                 baseColor,
-                slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides);
+                slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides,
+                modelRenderer.nodeIndex,
+                modelRenderer.applyNodeTransform);
         };
 
         glDepthMask(GL_TRUE);

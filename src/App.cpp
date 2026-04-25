@@ -1253,6 +1253,12 @@ namespace Canis
                     return;
                 }
 
+                if (ImGui::Button(BuildInspectorFieldLabel("Apply Overrides To Prefab", _conf.name.c_str()).c_str()))
+                {
+                    _editor.ApplyPrefabInstanceOverrides(&_entity);
+                    return;
+                }
+
                 if (ImGui::Button(BuildInspectorFieldLabel("Rebuild All Prefabs In Scene", _conf.name.c_str()).c_str()))
                 {
                     _editor.RebuildAllPrefabInstances();
@@ -3239,6 +3245,10 @@ namespace Canis
                     Model& model = _entity.GetComponent<Model>();
                     YAML::Node comp;
                     comp["color"] = model.color;
+                    if (model.nodeIndex >= 0)
+                        comp["nodeIndex"] = model.nodeIndex;
+                    if (!model.applyNodeTransform)
+                        comp["applyNodeTransform"] = model.applyNodeTransform;
 
                     if (model.modelId > -1)
                     {
@@ -3264,6 +3274,8 @@ namespace Canis
                 {
                     auto &model = *_entity.AddComponent<Model>();
                     model.color = comp["color"].as<Vector4>(Color(1.0f));
+                    model.nodeIndex = comp["nodeIndex"].as<i32>(-1);
+                    model.applyNodeTransform = comp["applyNodeTransform"].as<bool>(true);
 
                     std::string path = "";
                     if (auto modelAsset = comp["ModelAsset"])
@@ -3346,6 +3358,8 @@ namespace Canis
                             if (extension == "gltf" || extension == "glb" || extension == "obj")
                             {
                                 model->modelId = AssetManager::LoadModel(path);
+                                model->nodeIndex = -1;
+                                model->applyNodeTransform = true;
                                 if (ModelAnimation* animation = _entity.HasComponent<ModelAnimation>() ? &_entity.GetComponent<ModelAnimation>() : nullptr)
                                 {
                                     animation->animationTime = 0.0f;
@@ -3355,6 +3369,50 @@ namespace Canis
                             }
                         }
                         ImGui::EndDragDropTarget();
+                    }
+
+                    if (modelAsset != nullptr)
+                    {
+                        if (model->nodeIndex >= modelAsset->GetNodeCount())
+                            model->nodeIndex = -1;
+
+                        auto getNodeLabel = [&](i32 _nodeIndex) -> std::string
+                        {
+                            if (_nodeIndex < 0)
+                                return "Whole Model";
+
+                            std::string nodeName = modelAsset->GetNodeName(_nodeIndex);
+                            if (nodeName.empty())
+                                nodeName = "Node " + std::to_string(_nodeIndex);
+
+                            return nodeName;
+                        };
+
+                        const std::string selectedNodeLabel = getNodeLabel(model->nodeIndex);
+                        ImGui::Text("submodel");
+                        ImGui::SameLine();
+                        if (ImGui::BeginCombo("##modelNode", selectedNodeLabel.c_str()))
+                        {
+                            if (ImGui::Selectable("Whole Model", model->nodeIndex < 0))
+                                model->nodeIndex = -1;
+
+                            const i32 nodeCount = modelAsset->GetNodeCount();
+                            for (i32 nodeIndex = 0; nodeIndex < nodeCount; ++nodeIndex)
+                            {
+                                const std::string nodeName = getNodeLabel(nodeIndex);
+                                if (ImGui::Selectable(nodeName.c_str(), model->nodeIndex == nodeIndex))
+                                    model->nodeIndex = nodeIndex;
+                            }
+
+                            ImGui::EndCombo();
+                        }
+
+                        if (model->nodeIndex >= 0)
+                        {
+                            ImGui::Text("apply node transform");
+                            ImGui::SameLine();
+                            ImGui::Checkbox("##modelApplyNodeTransform", &model->applyNodeTransform);
+                        }
                     }
 
                 }

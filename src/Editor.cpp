@@ -29,7 +29,10 @@
 
 #include <ImGuizmo.h>
 
+#define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/type_ptr.hpp>
+#include <glm/gtx/matrix_decompose.hpp>
+#include <glm/gtx/quaternion.hpp>
 
 #include <filesystem>
 #include <cstdint>
@@ -59,6 +62,12 @@ namespace Canis
 
         ImGui::PopID();
     }
+
+    static bool ExportHierarchyRootsToPrefabAsset(
+        Canis::Scene &_scene,
+        const std::vector<Canis::Entity*> &_roots,
+        const std::string &_prefabPath);
+    static void AssignPrefabHandle(Canis::Entity *_entity, const SceneAssetHandle &_prefabHandle);
 
     namespace
     {
@@ -3426,6 +3435,45 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_rebuildAllPrefabInstancesRequested = true;
     }
 
+    void Editor::ApplyPrefabInstanceOverrides(Canis::Entity *_entity)
+    {
+        if (m_scene == nullptr || _entity == nullptr || !_entity->HasComponent<PrefabInstance>())
+            return;
+
+        PrefabInstance &prefabInstance = _entity->GetComponent<PrefabInstance>();
+        const std::string prefabPath = AssetManager::ResolvePath(prefabInstance.prefab);
+        if (prefabPath.empty())
+            return;
+
+        MetaFileAsset *meta = AssetManager::GetMetaFile(prefabPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::SCENE)
+            return;
+
+        std::vector<Canis::Entity*> exportRoots = {};
+        if (prefabInstance.firstEntity != nullptr && prefabInstance.firstEntity != _entity)
+        {
+            if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(_entity))
+            {
+                for (Canis::Entity *child : *children)
+                {
+                    if (child != nullptr)
+                        exportRoots.push_back(child);
+                }
+            }
+        }
+
+        if (exportRoots.empty())
+            exportRoots.push_back(_entity);
+
+        if (!ExportHierarchyRootsToPrefabAsset(*m_scene, exportRoots, prefabPath))
+            return;
+
+        prefabInstance.prefab = MakeSceneAssetHandleFromPath(prefabPath);
+        AssignPrefabHandle(_entity, prefabInstance.prefab);
+        m_selectedAssetPath = prefabPath;
+        m_forceRefresh = true;
+    }
+
     Canis::Entity* Editor::RebuildPrefabInstanceNow(Canis::Entity *_entity, bool _focusSelection)
     {
         if (m_scene == nullptr || _entity == nullptr || !_entity->HasComponent<PrefabInstance>())
@@ -4309,6 +4357,329 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         return true;
     }
 
+    static std::string SanitizePrefabAssetStem(const std::string &_name)
+    {
+        std::string sanitized = {};
+        sanitized.reserve(_name.size());
+
+        bool lastWasUnderscore = false;
+        for (const char c : _name)
+        {
+            const unsigned char uc = static_cast<unsigned char>(c);
+            if (std::isalnum(uc))
+            {
+                sanitized.push_back(static_cast<char>(std::tolower(uc)));
+                lastWasUnderscore = false;
+            }
+            else if (!lastWasUnderscore)
+            {
+                sanitized.push_back('_');
+                lastWasUnderscore = true;
+            }
+        }
+
+        while (!sanitized.empty() && sanitized.front() == '_')
+            sanitized.erase(sanitized.begin());
+        while (!sanitized.empty() && sanitized.back() == '_')
+            sanitized.pop_back();
+
+        if (sanitized.empty())
+            sanitized = "new_prefab";
+
+        return sanitized;
+    }
+
+    static std::filesystem::path BuildUniquePrefabScenePath(const std::filesystem::path &_targetDirectory, const std::string &_entityName)
+    {
+        namespace fs = std::filesystem;
+
+        const std::string stem = SanitizePrefabAssetStem(_entityName);
+        fs::path candidate = _targetDirectory / (stem + ".scene");
+        int index = 1;
+        while (fs::exists(candidate) || fs::exists(candidate.string() + ".meta"))
+        {
+            candidate = _targetDirectory / (stem + "_" + std::to_string(index) + ".scene");
+            ++index;
+        }
+
+        return candidate;
+    }
+
+    static void PrepareExportedPrefabRootNode(YAML::Node &_rootNode)
+    {
+        if (!_rootNode || !_rootNode.IsMap())
+            return;
+
+        _rootNode.remove(PrefabInstance::ScriptName);
+
+        if (YAML::Node transformNode = _rootNode[Transform::ScriptName])
+            transformNode["parent"] = static_cast<uint64_t>(0);
+
+        if (YAML::Node rectTransformNode = _rootNode[RectTransform::ScriptName])
+            rectTransformNode["parent"] = static_cast<uint64_t>(0);
+
+        if (YAML::Node networkIdentityNode = _rootNode[NetworkIdentity::ScriptName])
+            networkIdentityNode.remove("prefab");
+    }
+
+    static bool ExportHierarchyEntityToPrefabAsset(
+        Canis::Scene &_scene,
+        Canis::Entity &_rootEntity,
+        const std::filesystem::path &_targetDirectory,
+        std::string &_outPrefabPath)
+    {
+        namespace fs = std::filesystem;
+
+        _outPrefabPath.clear();
+        if (!fs::exists(_targetDirectory) || !fs::is_directory(_targetDirectory))
+            return false;
+
+        std::vector<Canis::Entity*> entities = { &_rootEntity };
+        GetHierarchyChildrenRecursive(&_rootEntity, entities);
+
+        YAML::Node entitiesNode(YAML::NodeType::Sequence);
+        for (Canis::Entity *entity : entities)
+        {
+            if (entity == nullptr)
+                continue;
+
+            entitiesNode.push_back(_scene.EncodeEntity(*entity));
+        }
+
+        if (!entitiesNode.IsSequence() || entitiesNode.size() == 0)
+            return false;
+
+        YAML::Node rootNode = entitiesNode[0];
+        PrepareExportedPrefabRootNode(rootNode);
+
+        YAML::Node prefabSceneRoot(YAML::NodeType::Map);
+        prefabSceneRoot["Environment"] = YAML::Node(YAML::NodeType::Map);
+        prefabSceneRoot["Entities"] = entitiesNode;
+
+        const fs::path prefabPath = BuildUniquePrefabScenePath(_targetDirectory, _rootEntity.name);
+        YAML::Emitter out;
+        out << prefabSceneRoot;
+
+        std::ofstream file(prefabPath);
+        if (!file.is_open())
+            return false;
+
+        file << out.c_str();
+        file.close();
+        if (!file.good())
+            return false;
+
+        _outPrefabPath = prefabPath.generic_string();
+        return AssetManager::GetMetaFile(_outPrefabPath) != nullptr;
+    }
+
+    static bool ExportHierarchyRootsToPrefabAsset(
+        Canis::Scene &_scene,
+        const std::vector<Canis::Entity*> &_roots,
+        const std::string &_prefabPath)
+    {
+        if (_roots.empty() || _prefabPath.empty())
+            return false;
+
+        YAML::Node entitiesNode(YAML::NodeType::Sequence);
+        std::vector<std::size_t> rootNodeIndices = {};
+        std::unordered_set<uint64_t> seenEntityIds = {};
+
+        for (Canis::Entity *root : _roots)
+        {
+            if (root == nullptr)
+                continue;
+
+            std::vector<Canis::Entity*> entities = { root };
+            GetHierarchyChildrenRecursive(root, entities);
+
+            rootNodeIndices.push_back(entitiesNode.size());
+            for (Canis::Entity *entity : entities)
+            {
+                if (entity == nullptr)
+                    continue;
+
+                const Canis::UUID liveUUID = _scene.GetLiveEntityUUID(entity);
+                if ((uint64_t)liveUUID == 0 || !seenEntityIds.insert((uint64_t)liveUUID).second)
+                    continue;
+
+                entitiesNode.push_back(_scene.EncodeEntity(*entity));
+            }
+        }
+
+        if (!entitiesNode.IsSequence() || entitiesNode.size() == 0)
+            return false;
+
+        for (const std::size_t rootNodeIndex : rootNodeIndices)
+        {
+            if (rootNodeIndex < entitiesNode.size())
+            {
+                YAML::Node rootNode = entitiesNode[rootNodeIndex];
+                PrepareExportedPrefabRootNode(rootNode);
+            }
+        }
+
+        YAML::Node prefabSceneRoot(YAML::NodeType::Map);
+        prefabSceneRoot["Environment"] = YAML::Node(YAML::NodeType::Map);
+        prefabSceneRoot["Entities"] = entitiesNode;
+
+        YAML::Emitter out;
+        out << prefabSceneRoot;
+
+        std::ofstream file(_prefabPath);
+        if (!file.is_open())
+            return false;
+
+        file << out.c_str();
+        file.close();
+        if (!file.good())
+            return false;
+
+        return AssetManager::GetMetaFile(_prefabPath) != nullptr;
+    }
+
+    static void AssignPrefabHandle(Canis::Entity *_entity, const SceneAssetHandle &_prefabHandle)
+    {
+        if (_entity == nullptr || !_entity->HasComponent<NetworkIdentity>())
+            return;
+
+        NetworkIdentity &identity = _entity->GetComponent<NetworkIdentity>();
+        identity.prefab = _prefabHandle;
+    }
+
+    static std::string GetModelNodeDisplayName(const ModelAsset &_modelAsset, i32 _nodeIndex)
+    {
+        std::string nodeName = _modelAsset.GetNodeName(_nodeIndex);
+        if (nodeName.empty())
+            nodeName = "Node " + std::to_string(_nodeIndex);
+
+        return nodeName;
+    }
+
+    static void ApplyModelNodeLocalTransform(Canis::Entity &_entity, const ModelAsset::Node3D &_node)
+    {
+        Transform &transform = _entity.GetComponent<Transform>();
+        transform.position = _node.translation;
+        transform.scale = _node.scale;
+        transform.rotation = glm::eulerAngles(glm::quat(_node.rotation.w, _node.rotation.x, _node.rotation.y, _node.rotation.z));
+
+        if (_node.hasMatrix)
+        {
+            Vector3 skew = Vector3(0.0f);
+            Vector4 perspective = Vector4(0.0f);
+            glm::quat orientation = glm::quat(1.0f, 0.0f, 0.0f, 0.0f);
+            Vector3 translation = Vector3(0.0f);
+            Vector3 scale = Vector3(1.0f);
+
+            if (glm::decompose(_node.localMatrix, scale, orientation, translation, skew, perspective))
+            {
+                orientation = glm::normalize(orientation);
+                transform.position = translation;
+                transform.scale = scale;
+                transform.rotation = glm::eulerAngles(orientation);
+            }
+        }
+    }
+
+    static void ConfigureModelNodeRenderer(Canis::Entity &_entity, i32 _modelId, i32 _nodeIndex)
+    {
+        Model &model = _entity.AddOrReplaceComponent<Model>();
+        model.modelId = _modelId;
+        model.nodeIndex = _nodeIndex;
+        model.applyNodeTransform = false;
+        model.color = Color(1.0f);
+
+        Material &material = _entity.AddOrReplaceComponent<Material>();
+        material.materialId = AssetManager::LoadMaterial("assets/defaults/materials/default.material");
+    }
+
+    static Canis::Entity* InstantiateModelNodeHierarchyRecursive(
+        Canis::Scene &_scene,
+        const ModelAsset &_modelAsset,
+        i32 _modelId,
+        i32 _nodeIndex,
+        const std::string &_entityName)
+    {
+        const ModelAsset::Node3D *node = _modelAsset.GetNode(_nodeIndex);
+        if (node == nullptr)
+            return nullptr;
+
+        Canis::Entity *entity = _scene.CreateEntity(_entityName);
+        if (entity == nullptr)
+            return nullptr;
+
+        entity->AddComponent<Transform>();
+        ApplyModelNodeLocalTransform(*entity, *node);
+
+        if (_modelAsset.NodeHasPrimitives(_nodeIndex))
+            ConfigureModelNodeRenderer(*entity, _modelId, _nodeIndex);
+
+        for (std::size_t childIndex = 0; childIndex < node->children.size(); ++childIndex)
+        {
+            const i32 modelChildIndex = node->children[childIndex];
+            Canis::Entity *childEntity = InstantiateModelNodeHierarchyRecursive(
+                _scene,
+                _modelAsset,
+                _modelId,
+                modelChildIndex,
+                GetModelNodeDisplayName(_modelAsset, modelChildIndex));
+            if (childEntity == nullptr)
+                continue;
+
+            if (!SetHierarchyParentAtIndexKeepingLocal(childEntity, entity, childIndex))
+                _scene.Destroy(*childEntity);
+        }
+
+        return entity;
+    }
+
+    static Canis::Entity* InstantiateModelAssetHierarchyRoot(
+        Canis::Scene &_scene,
+        const std::string &_displayName,
+        i32 _modelId,
+        ModelAsset &_modelAsset)
+    {
+        const std::string uniqueDisplayName = MakeUniqueEntityName(_scene, _displayName);
+        const std::vector<i32> &sceneRoots = _modelAsset.GetSceneRoots();
+
+        if (sceneRoots.empty() || _modelAsset.GetNodeCount() <= 0)
+        {
+            Canis::Entity *entity = _scene.CreateEntity(uniqueDisplayName);
+            if (entity == nullptr)
+                return nullptr;
+
+            entity->AddComponent<Transform>();
+            ConfigureModelNodeRenderer(*entity, _modelId, -1);
+            return entity;
+        }
+
+        if (sceneRoots.size() == 1)
+            return InstantiateModelNodeHierarchyRecursive(_scene, _modelAsset, _modelId, sceneRoots.front(), uniqueDisplayName);
+
+        Canis::Entity *wrapper = _scene.CreateEntity(uniqueDisplayName);
+        if (wrapper == nullptr)
+            return nullptr;
+
+        wrapper->AddComponent<Transform>();
+        for (std::size_t rootIndex = 0; rootIndex < sceneRoots.size(); ++rootIndex)
+        {
+            const i32 modelRootIndex = sceneRoots[rootIndex];
+            Canis::Entity *rootEntity = InstantiateModelNodeHierarchyRecursive(
+                _scene,
+                _modelAsset,
+                _modelId,
+                modelRootIndex,
+                GetModelNodeDisplayName(_modelAsset, modelRootIndex));
+            if (rootEntity == nullptr)
+                continue;
+
+            if (!SetHierarchyParentAtIndexKeepingLocal(rootEntity, wrapper, rootIndex))
+                _scene.Destroy(*rootEntity);
+        }
+
+        return wrapper;
+    }
+
     static bool InstantiateSceneAssetIntoHierarchy(
         Canis::Scene &_scene,
         const AssetDragData &_dropped,
@@ -4325,12 +4696,31 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return false;
 
         MetaFileAsset *meta = AssetManager::GetMetaFile(droppedPath);
-        if (meta == nullptr || meta->type != MetaFileAsset::FileType::SCENE)
+        if (meta == nullptr)
             return false;
 
-        const SceneAssetHandle prefabHandle = MakeSceneAssetHandleFromPath(droppedPath);
         const std::string displayName = meta->name.empty() ? GetFileName(droppedPath) : meta->name;
-        Canis::Entity* topLevel = InstantiatePrefabHierarchyRoot(_scene, prefabHandle, displayName);
+        Canis::Entity* topLevel = nullptr;
+
+        if (meta->type == MetaFileAsset::FileType::SCENE)
+        {
+            const SceneAssetHandle prefabHandle = MakeSceneAssetHandleFromPath(droppedPath);
+            topLevel = InstantiatePrefabHierarchyRoot(_scene, prefabHandle, displayName);
+        }
+        else if (meta->type == MetaFileAsset::FileType::MODEL)
+        {
+            const i32 modelId = AssetManager::LoadModel(droppedPath);
+            ModelAsset *modelAsset = AssetManager::GetModel(modelId);
+            if (modelAsset == nullptr)
+                return false;
+
+            topLevel = InstantiateModelAssetHierarchyRoot(_scene, displayName, modelId, *modelAsset);
+        }
+        else
+        {
+            return false;
+        }
+
         if (topLevel == nullptr)
             return false;
 
@@ -4343,7 +4733,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             if (!parented)
             {
                 Debug::Warning(
-                    "Editor could not parent prefab '%s' under '%s' because the hierarchy types do not match.",
+                    "Editor could not parent asset '%s' under '%s' because the hierarchy types do not match.",
                     droppedPath.c_str(),
                     _parent->name.c_str());
                 _scene.Destroy(*topLevel);
@@ -6029,6 +6419,25 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                 if (ImGui::BeginDragDropTarget())
                 {
+                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
+                    {
+                        if (m_scene != nullptr && m_mode == EditorMode::EDIT)
+                        {
+                            const Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
+                            if (Canis::Entity *droppedEntity = m_scene->GetEntityWithUUID(droppedUUID))
+                            {
+                                std::string prefabPath = {};
+                                if (ExportHierarchyEntityToPrefabAsset(*m_scene, *droppedEntity, entry.path(), prefabPath))
+                                {
+                                    const SceneAssetHandle prefabHandle = MakeSceneAssetHandleFromPath(prefabPath);
+                                    AssignPrefabInstanceMetadata(droppedEntity, prefabHandle, droppedEntity);
+                                    AssignPrefabHandle(droppedEntity, prefabHandle);
+                                    m_selectedAssetPath = prefabPath;
+                                }
+                            }
+                        }
+                    }
+
                     if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
                     {
                         const AssetDragData *data = static_cast<const AssetDragData *>(payload->Data);
@@ -7796,7 +8205,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 pose,
                 -1,
                 EncodeEntityIdColor(entityId),
-                nullptr);
+                nullptr,
+                modelRenderer.nodeIndex,
+                modelRenderer.applyNodeTransform);
         }
 
         pickingShader.UnUse();

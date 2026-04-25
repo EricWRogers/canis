@@ -301,6 +301,28 @@ namespace Canis
             return -1;
         }
 
+        i32 ResolveMeshColliderNodeIndex(entt::registry &_registry, entt::entity _entityHandle, const MeshCollider *_meshCollider)
+        {
+            if (_meshCollider == nullptr || !_meshCollider->useAttachedModel)
+                return -1;
+
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->nodeIndex;
+
+            return -1;
+        }
+
+        bool ResolveMeshColliderApplyNodeTransform(entt::registry &_registry, entt::entity _entityHandle, const MeshCollider *_meshCollider)
+        {
+            if (_meshCollider == nullptr || !_meshCollider->useAttachedModel)
+                return true;
+
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->applyNodeTransform;
+
+            return true;
+        }
+
         size_t BuildSettingsHash(
             entt::registry &_registry,
             entt::entity _entityHandle,
@@ -353,7 +375,11 @@ namespace Canis
                 hash = HashCombine(hash, std::hash<std::string>{}(_meshCollider->modelPath));
 
                 const i32 modelId = ResolveMeshColliderModelId(_registry, _entityHandle, _meshCollider);
+                const i32 nodeIndex = ResolveMeshColliderNodeIndex(_registry, _entityHandle, _meshCollider);
+                const bool applyNodeTransform = ResolveMeshColliderApplyNodeTransform(_registry, _entityHandle, _meshCollider);
                 hash = HashCombine(hash, std::hash<int>{}(modelId));
+                hash = HashCombine(hash, std::hash<int>{}(nodeIndex));
+                hash = HashCombine(hash, std::hash<bool>{}(applyNodeTransform));
                 if (const ModelAsset *model = AssetManager::GetModel(modelId))
                     hash = HashCombine(hash, std::hash<u64>{}(model->GetGeometryRevision()));
             }
@@ -421,6 +447,8 @@ namespace Canis
             if (_meshCollider != nullptr)
             {
                 const i32 modelId = ResolveMeshColliderModelId(_registry, _entityHandle, _meshCollider);
+                const i32 nodeIndex = ResolveMeshColliderNodeIndex(_registry, _entityHandle, _meshCollider);
+                const bool applyNodeTransform = ResolveMeshColliderApplyNodeTransform(_registry, _entityHandle, _meshCollider);
                 const ModelAsset *model = AssetManager::GetModel(modelId);
                 if (model == nullptr)
                 {
@@ -430,7 +458,7 @@ namespace Canis
 
                 std::vector<Vector3> vertices = {};
                 std::vector<u32> indices = {};
-                if (!model->BuildTriangleMesh(vertices, indices) || indices.size() < 3)
+                if (!model->BuildTriangleMesh(vertices, indices, nodeIndex, applyNodeTransform) || indices.size() < 3)
                 {
                     Debug::Log("Jolt MeshCollider shape error: source model has no triangle mesh.");
                     return nullptr;
