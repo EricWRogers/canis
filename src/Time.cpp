@@ -2,8 +2,15 @@
 #include <Canis/Time.hpp>
 #include <SDL3/SDL_timer.h>
 
+#include <cmath>
+
 namespace Canis::Time
 {
+    namespace
+    {
+        constexpr float kMaxReasonableFrameDeltaSeconds = 0.25f;
+    }
+
     struct TimeData
     {
         float deltaTime = 0.0f;
@@ -47,6 +54,21 @@ namespace Canis::Time
         }
     }
 
+    void ResetFrameClock()
+    {
+        if (timeData == NULL)
+            return;
+
+        const Uint64 currentTicks = SDL_GetTicksNS();
+        timeData->startFrameTicks = currentTicks;
+        timeData->prevTicks = currentTicks;
+        timeData->nanoSecondsDeltaTime = 0;
+        timeData->frameTime = 0;
+        timeData->deltaTime = 0.0f;
+        timeData->unscaledDeltaTime = 0.0f;
+        timeData->carryOverFrameDelay = 0.0f;
+    }
+
     float StartFrame()
     {
         if (timeData)
@@ -54,6 +76,20 @@ namespace Canis::Time
             const Uint64 currentTicks = SDL_GetTicksNS();
             timeData->nanoSecondsDeltaTime = currentTicks - timeData->startFrameTicks;
             timeData->unscaledDeltaTime = timeData->nanoSecondsDeltaTime / 1000000000.0f;
+
+            if (!std::isfinite(timeData->unscaledDeltaTime) || timeData->unscaledDeltaTime > kMaxReasonableFrameDeltaSeconds)
+            {
+                Debug::Warning(
+                    "Discarding oversized frame delta of %.3fs after a long pause or resume.",
+                    timeData->unscaledDeltaTime);
+                timeData->startFrameTicks = currentTicks;
+                timeData->nanoSecondsDeltaTime = 0;
+                timeData->unscaledDeltaTime = 0.0f;
+                timeData->deltaTime = 0.0f;
+                timeData->carryOverFrameDelay = 0.0f;
+                return 0.0f;
+            }
+
             timeData->deltaTime = timeData->unscaledDeltaTime * timeData->timeScale;
             timeData->startFrameTicks = currentTicks;
             return timeData->deltaTime;

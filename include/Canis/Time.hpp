@@ -10,6 +10,9 @@ namespace Canis::Time {
   // return deltaTime
   float StartFrame();
 
+  // reset frame timing after long pauses like sleep/resume
+  void ResetFrameClock();
+
   // call when you finish your frame
   // return fps
   float EndFrame();

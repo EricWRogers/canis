@@ -71,6 +71,8 @@ namespace Canis
         }
         void StopPlayMode();
         void FocusEntity(Canis::Entity* _entity);
+        void RebuildPrefabInstance(Canis::Entity* _entity);
+        void RebuildAllPrefabInstances();
 
         // inspector variables
         void InputEntity(const std::string& _name, Canis::Entity* &_variable);
@@ -152,6 +154,10 @@ namespace Canis
         void QueueEditorFontApply(const std::string &_fontPath, bool _saveConfig);
         void DrawReloadBuildPopup();
         void FinalizeReloadBuildIfReady();
+        void FrameEntityInScene(Canis::Entity *_entity);
+        Canis::Entity* RebuildPrefabInstanceNow(Canis::Entity* _entity, bool _focusSelection);
+        void ProcessQueuedPrefabRebuilds();
+        void RequestHierarchyReveal(Canis::Entity *_entity);
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -235,6 +241,10 @@ namespace Canis
         bool m_reloadBuildAutoCloseOnSuccess = false;
         int m_reloadBuildExitCode = -1;
         std::vector<UUID> m_hierarchyRootOrder = {};
+        std::vector<UUID> m_queuedPrefabInstanceRebuilds = {};
+        bool m_rebuildAllPrefabInstancesRequested = false;
+        UUID m_hierarchyRevealTargetUUID = UUID(0);
+        std::vector<UUID> m_hierarchyRevealPath = {};
 
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;

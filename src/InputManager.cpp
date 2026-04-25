@@ -16,11 +16,11 @@ namespace Canis
     {
         Uint32 GetEventWindowID(const SDL_Event& _event)
         {
+            if (_event.type >= SDL_EVENT_WINDOW_FIRST && _event.type <= SDL_EVENT_WINDOW_LAST)
+                return _event.window.windowID;
+
             switch (_event.type)
             {
-                case SDL_EVENT_WINDOW_CLOSE_REQUESTED:
-                case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
-                    return _event.window.windowID;
                 case SDL_EVENT_MOUSE_MOTION:
                     return _event.motion.windowID;
                 case SDL_EVENT_MOUSE_WHEEL:
@@ -40,8 +40,28 @@ namespace Canis
     } // namespace
 
     InputManager::InputManager()
+        {
+            
+        }
+
+    void InputManager::ResetState()
     {
-        
+        m_keyVec.clear();
+        m_lastKnown.clear();
+        mouseRel = Vector2(0.0f);
+        m_scrollVertical = 0;
+        m_textInput.clear();
+        m_leftClick = false;
+        m_rightClick = false;
+        m_wasLeftClick = false;
+        m_wasRightClick = false;
+
+        for (GameController &controller : m_gameControllers)
+        {
+            controller.currentData = {};
+            controller.oldData = {};
+            controller.lastButtonsPressed = 0u;
+        }
     }
 
     InputManager::~InputManager()
@@ -92,11 +112,37 @@ namespace Canis
             case SDL_EVENT_QUIT:
                 return false;
                 break;
+            case SDL_EVENT_WINDOW_HIDDEN:
+            case SDL_EVENT_WINDOW_MINIMIZED:
+            case SDL_EVENT_WINDOW_OCCLUDED:
+            case SDL_EVENT_WINDOW_FOCUS_LOST:
+                if (eventWindowID == mainWindowID)
+                {
+                    ResetState();
+                    m_windowWasBackgrounded = true;
+                }
+                break;
+            case SDL_EVENT_WINDOW_SHOWN:
+            case SDL_EVENT_WINDOW_EXPOSED:
+            case SDL_EVENT_WINDOW_RESTORED:
+            case SDL_EVENT_WINDOW_FOCUS_GAINED:
+                if (eventWindowID == mainWindowID)
+                {
+                    if (m_windowWasBackgrounded)
+                        m_resumeFrameResetRequested = true;
+                    m_windowWasBackgrounded = false;
+                }
+                break;
             case SDL_EVENT_WINDOW_PIXEL_SIZE_CHANGED:
                 if(eventWindowID == mainWindowID) {
                     screenWidth = event.window.data1;
                     screenHeight = event.window.data2;
                     window->SetWindowSize(screenWidth, screenHeight);
+                    if (m_windowWasBackgrounded)
+                    {
+                        m_resumeFrameResetRequested = true;
+                        m_windowWasBackgrounded = false;
+                    }
                 }
                 break;
             case SDL_EVENT_MOUSE_MOTION:

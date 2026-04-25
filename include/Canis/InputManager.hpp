@@ -71,6 +71,12 @@ namespace Canis
         ~InputManager();
 
         bool Update(void* _window);
+        bool ConsumeResumeFrameResetRequest()
+        {
+            const bool requested = m_resumeFrameResetRequested;
+            m_resumeFrameResetRequested = false;
+            return requested;
+        }
         void SetGameInputWindowID(unsigned int _windowID) { m_gameInputWindowID = _windowID; }
         void SetGameMouseViewport(float _x, float _y, float _drawWidth, float _drawHeight, float _logicalWidth, float _logicalHeight);
         void ClearGameMouseViewport();
@@ -129,6 +135,7 @@ namespace Canis
 
         void OnGameControllerConnected(void *_device);
         void OnGameControllerDisconnect(void *_device);
+        void ResetState();
 
         std::vector<InputData> m_keyVec;
         std::vector<InputData> m_lastKnown;
@@ -155,5 +162,7 @@ namespace Canis
         float m_gameMouseViewportLogicalWidth = 0.0f;
         float m_gameMouseViewportLogicalHeight = 0.0f;
         std::string m_textInput = "";
+        bool m_windowWasBackgrounded = false;
+        bool m_resumeFrameResetRequested = false;
     };
 } // end of Canis namespace

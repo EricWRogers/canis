@@ -532,6 +532,7 @@ namespace Canis
         
         entity.name = _node["Name"].as<std::string>("");
         entity.tag = _node["Tag"].as<std::string>("");
+        entity.active = _node["Active"].as<bool>(true);
 
         if (app != nullptr)
         {
@@ -689,6 +690,7 @@ namespace Canis
         node["Entity"] = _entity.uuid;
         node["Name"] = _entity.name;
         node["Tag"] = _entity.tag;
+        node["Active"] = _entity.active;
 
         std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
 

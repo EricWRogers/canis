@@ -31,6 +31,8 @@ namespace Canis
         void SetMousePosition(int _x, int _y);
         void RequestClose() { m_shouldClose = true; }
         bool ShouldClose() const { return m_shouldClose; }
+        bool MakeContextCurrent() const;
+        bool HasDrawableSurface() const;
 
         void Clear() const;
         void SetClearColor(Color _color);

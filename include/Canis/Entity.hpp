@@ -914,6 +914,21 @@ namespace Canis
         }
     };
 
+    struct PrefabInstance
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::PrefabInstance";
+
+        PrefabInstance() = default;
+        explicit PrefabInstance(Canis::Entity& _entity) : entity(&_entity) {}
+
+        void Create() {}
+
+        Entity* entity = nullptr;
+        SceneAssetHandle prefab = {};
+        Entity* firstEntity = nullptr;
+    };
+
     namespace RigidbodyMotionType
     {
         constexpr int STATIC = 0;

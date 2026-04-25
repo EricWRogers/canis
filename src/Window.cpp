@@ -77,13 +77,33 @@ namespace Canis
         SDL_Quit();
     }
 
-    void Window::LockMouse(bool _lock)
+    bool Window::MakeContextCurrent() const
     {
+        if (m_window == nullptr || m_context == nullptr)
+            return false;
+
         if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
         {
-            Debug::Warning("SDL_GL_MakeCurrent failed while setting mouse lock: %s", SDL_GetError());
-            return;
+            Debug::Warning("SDL_GL_MakeCurrent failed: %s", SDL_GetError());
+            return false;
         }
+
+        return true;
+    }
+
+    bool Window::HasDrawableSurface() const
+    {
+        if (m_window == nullptr || m_screenWidth <= 0 || m_screenHeight <= 0)
+            return false;
+
+        const Uint64 flags = SDL_GetWindowFlags(static_cast<SDL_Window*>(m_window));
+        return (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) == 0u;
+    }
+
+    void Window::LockMouse(bool _lock)
+    {
+        if (!MakeContextCurrent())
+            return;
 
         m_mouseLock = _lock;
         SDL_CaptureMouse(m_mouseLock);
@@ -92,22 +112,16 @@ namespace Canis
 
     void Window::CenterMouse()
     {
-        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
-        {
-            Debug::Warning("SDL_GL_MakeCurrent failed while setting center mouse: %s", SDL_GetError());
+        if (!MakeContextCurrent())
             return;
-        }
 
         SetMousePosition(m_renderWidth/2, m_renderHeight/2);
     }
 
     void Window::SetMousePosition(int _x, int _y)
     {
-        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
-        {
-            Debug::Warning("SDL_GL_MakeCurrent failed while setting set mouse position: %s", SDL_GetError());
+        if (!MakeContextCurrent())
             return;
-        }
 
         SDL_WarpMouseInWindow((SDL_Window*)m_window, _x, m_renderHeight - _y);
     }
@@ -171,7 +185,8 @@ namespace Canis
 #ifdef __EMSCRIPTEN__
 
 #else
-        SDL_GL_MakeCurrent((SDL_Window*)m_window, (SDL_GLContext)m_context);
+        if (!MakeContextCurrent())
+            std::exit(1);
         
         glewExperimental = GL_TRUE; // required for core profile
         GLenum err = glewInit();
@@ -231,11 +246,8 @@ namespace Canis
 
     void Window::SetSync(Sync _type)
     {
-        if (!SDL_GL_MakeCurrent(static_cast<SDL_Window*>(m_window), static_cast<SDL_GLContext>(m_context)))
-        {
-            Debug::Warning("SDL_GL_MakeCurrent failed while setting sync: %s", SDL_GetError());
+        if (!MakeContextCurrent())
             return;
-        }
 
         if (!SDL_GL_SetSwapInterval(static_cast<int>(_type)))
         {

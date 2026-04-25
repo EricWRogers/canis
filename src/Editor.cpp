@@ -2301,6 +2301,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         std::vector<AddComponentEntry> entries = {};
         for (ScriptConf &conf : _app.GetScriptRegistry())
         {
+            if (conf.name == PrefabInstance::ScriptName)
+                continue;
+
             if (conf.Has(_entity))
                 continue;
 
@@ -2519,6 +2522,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DrawSceneView();
         DrawGameView();
         DrawEditorPanel(); // draw last
+        ProcessQueuedPrefabRebuilds();
 
         if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
             SelectModel3D();
@@ -3347,6 +3351,27 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_playTextureHeight = 0;
     }
 
+    static std::vector<Canis::Entity*>* GetHierarchyChildren(Canis::Entity *_entity);
+    static Canis::Entity* GetHierarchyParent(Canis::Entity *_entity);
+    static bool SetHierarchyParentAtIndexKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent, std::size_t _index);
+    static bool SetHierarchyParentKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent);
+    static Canis::Entity* InstantiatePrefabHierarchyRoot(Canis::Scene &_scene, const SceneAssetHandle &_prefabHandle, const std::string &_displayName);
+    static bool InsertRootEntityOrder(std::vector<Canis::UUID> &_rootOrder, Canis::Entity *_entity, int _targetRootPos);
+
+    void Editor::RequestHierarchyReveal(Canis::Entity *_entity)
+    {
+        m_hierarchyRevealTargetUUID = UUID(0);
+        m_hierarchyRevealPath.clear();
+
+        if (_entity == nullptr)
+            return;
+
+        m_hierarchyRevealTargetUUID = _entity->uuid;
+
+        for (Canis::Entity *current = GetHierarchyParent(_entity); current != nullptr; current = GetHierarchyParent(current))
+            m_hierarchyRevealPath.push_back(current->uuid);
+    }
+
     void Editor::FocusEntity(Canis::Entity *_entity)
     {
         for (int i = 0; i < m_scene->GetEntities().size(); i++)
@@ -3355,9 +3380,292 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             {
                 m_index = i;
                 m_selectedAssetPath.clear();
+                RequestHierarchyReveal(_entity);
                 return;
             }
         }
+    }
+
+    void Editor::RebuildPrefabInstance(Canis::Entity *_entity)
+    {
+        if (_entity == nullptr || !_entity->HasComponent<PrefabInstance>())
+            return;
+
+        if (std::find(m_queuedPrefabInstanceRebuilds.begin(), m_queuedPrefabInstanceRebuilds.end(), _entity->uuid) ==
+            m_queuedPrefabInstanceRebuilds.end())
+        {
+            m_queuedPrefabInstanceRebuilds.push_back(_entity->uuid);
+        }
+    }
+
+    void Editor::RebuildAllPrefabInstances()
+    {
+        m_rebuildAllPrefabInstancesRequested = true;
+    }
+
+    Canis::Entity* Editor::RebuildPrefabInstanceNow(Canis::Entity *_entity, bool _focusSelection)
+    {
+        if (m_scene == nullptr || _entity == nullptr || !_entity->HasComponent<PrefabInstance>())
+            return nullptr;
+
+        PrefabInstance &prefabInstance = _entity->GetComponent<PrefabInstance>();
+        if (prefabInstance.prefab.Empty())
+            return nullptr;
+
+        struct SavedTransformState
+        {
+            bool valid = false;
+            Vector3 position = Vector3(0.0f);
+            Vector3 rotation = Vector3(0.0f);
+            Vector3 scale = Vector3(1.0f);
+        };
+
+        struct SavedRectTransformState
+        {
+            bool valid = false;
+            Vector2 position = Vector2(0.0f);
+            Vector2 size = Vector2(0.0f);
+            Vector2 scale = Vector2(1.0f);
+            Vector2 anchorMin = Vector2(0.5f);
+            Vector2 anchorMax = Vector2(0.5f);
+            Vector2 pivot = Vector2(0.5f);
+            Vector2 originOffset = Vector2(0.0f);
+            float depth = 0.0f;
+            float rotation = 0.0f;
+            Vector2 rotationOriginOffset = Vector2(0.0f);
+        };
+
+        auto saveTransformState = [](Canis::Entity *_target) -> SavedTransformState
+        {
+            SavedTransformState state = {};
+            if (_target == nullptr || !_target->HasComponent<Transform>())
+                return state;
+
+            const Transform &transform = _target->GetComponent<Transform>();
+            state.valid = true;
+            state.position = transform.position;
+            state.rotation = transform.rotation;
+            state.scale = transform.scale;
+            return state;
+        };
+
+        auto saveRectTransformState = [](Canis::Entity *_target) -> SavedRectTransformState
+        {
+            SavedRectTransformState state = {};
+            if (_target == nullptr || !_target->HasComponent<RectTransform>())
+                return state;
+
+            const RectTransform &transform = _target->GetComponent<RectTransform>();
+            state.valid = true;
+            state.position = transform.position;
+            state.size = transform.size;
+            state.scale = transform.scale;
+            state.anchorMin = transform.anchorMin;
+            state.anchorMax = transform.anchorMax;
+            state.pivot = transform.pivot;
+            state.originOffset = transform.originOffset;
+            state.depth = transform.depth;
+            state.rotation = transform.rotation;
+            state.rotationOriginOffset = transform.rotationOriginOffset;
+            return state;
+        };
+
+        auto applyTransformState = [](Canis::Entity *_target, const SavedTransformState &_state) -> void
+        {
+            if (_target == nullptr || !_state.valid || !_target->HasComponent<Transform>())
+                return;
+
+            Transform &transform = _target->GetComponent<Transform>();
+            transform.position = _state.position;
+            transform.rotation = _state.rotation;
+            transform.scale = _state.scale;
+        };
+
+        auto applyRectTransformState = [](Canis::Entity *_target, const SavedRectTransformState &_state) -> void
+        {
+            if (_target == nullptr || !_state.valid || !_target->HasComponent<RectTransform>())
+                return;
+
+            RectTransform &transform = _target->GetComponent<RectTransform>();
+            transform.position = _state.position;
+            transform.size = _state.size;
+            transform.scale = _state.scale;
+            transform.anchorMin = _state.anchorMin;
+            transform.anchorMax = _state.anchorMax;
+            transform.pivot = _state.pivot;
+            transform.originOffset = _state.originOffset;
+            transform.depth = _state.depth;
+            transform.rotation = _state.rotation;
+            transform.rotationOriginOffset = _state.rotationOriginOffset;
+        };
+
+        Canis::Entity *parent = GetHierarchyParent(_entity);
+        int childIndex = -1;
+        if (parent != nullptr)
+        {
+            if (std::vector<Canis::Entity*> *siblings = GetHierarchyChildren(parent))
+            {
+                auto it = std::find(siblings->begin(), siblings->end(), _entity);
+                if (it != siblings->end())
+                    childIndex = static_cast<int>(std::distance(siblings->begin(), it));
+            }
+        }
+
+        int rootIndex = -1;
+        if (parent == nullptr)
+        {
+            auto it = std::find(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), _entity->uuid);
+            if (it != m_hierarchyRootOrder.end())
+                rootIndex = static_cast<int>(std::distance(m_hierarchyRootOrder.begin(), it));
+            else
+                rootIndex = static_cast<int>(m_hierarchyRootOrder.size());
+        }
+
+        const std::string instanceName = _entity->name;
+        const std::string instanceTag = _entity->tag;
+        const bool instanceActive = _entity->active;
+        const SavedTransformState rootTransformState = saveTransformState(_entity);
+        const SavedRectTransformState rootRectState = saveRectTransformState(_entity);
+        const SavedTransformState firstTransformState = saveTransformState(prefabInstance.firstEntity);
+        const SavedRectTransformState firstRectState = saveRectTransformState(prefabInstance.firstEntity);
+        const SceneAssetHandle prefabHandle = prefabInstance.prefab;
+
+        std::vector<Canis::UUID> updatedRootOrder = m_hierarchyRootOrder;
+        if (parent == nullptr)
+        {
+            if (auto it = std::find(updatedRootOrder.begin(), updatedRootOrder.end(), _entity->uuid); it != updatedRootOrder.end())
+                updatedRootOrder.erase(it);
+        }
+
+        m_scene->Destroy(*_entity);
+
+        Canis::Entity *newTopLevel = InstantiatePrefabHierarchyRoot(*m_scene, prefabHandle, instanceName);
+        if (newTopLevel == nullptr)
+            return nullptr;
+
+        newTopLevel->name = instanceName;
+        newTopLevel->tag = instanceTag;
+        newTopLevel->active = instanceActive;
+
+        if (parent != nullptr)
+        {
+            const bool parented =
+                (childIndex >= 0)
+                    ? SetHierarchyParentAtIndexKeepingLocal(newTopLevel, parent, static_cast<std::size_t>(childIndex))
+                    : SetHierarchyParentKeepingLocal(newTopLevel, parent);
+
+            if (!parented)
+            {
+                m_scene->Destroy(*newTopLevel);
+                return nullptr;
+            }
+        }
+        else
+        {
+            InsertRootEntityOrder(updatedRootOrder, newTopLevel, rootIndex);
+            m_hierarchyRootOrder = updatedRootOrder;
+        }
+
+        applyTransformState(newTopLevel, rootTransformState);
+        applyRectTransformState(newTopLevel, rootRectState);
+
+        if (newTopLevel->HasComponent<PrefabInstance>())
+        {
+            PrefabInstance &newPrefabInstance = newTopLevel->GetComponent<PrefabInstance>();
+            applyTransformState(newPrefabInstance.firstEntity, firstTransformState);
+            applyRectTransformState(newPrefabInstance.firstEntity, firstRectState);
+        }
+
+        if (_focusSelection)
+        {
+            FocusEntity(newTopLevel);
+            m_selectedAssetPath.clear();
+        }
+        m_forceRefresh = true;
+        return newTopLevel;
+    }
+
+    void Editor::ProcessQueuedPrefabRebuilds()
+    {
+        if (m_scene == nullptr)
+            return;
+
+        if (!m_rebuildAllPrefabInstancesRequested && m_queuedPrefabInstanceRebuilds.empty())
+            return;
+
+        std::vector<Canis::UUID> targets = {};
+        targets.reserve(m_queuedPrefabInstanceRebuilds.size() + m_scene->GetEntities().size());
+
+        if (m_rebuildAllPrefabInstancesRequested)
+        {
+            for (Canis::Entity *entity : m_scene->GetEntities())
+            {
+                if (entity != nullptr && entity->HasComponent<PrefabInstance>())
+                    targets.push_back(entity->uuid);
+            }
+        }
+
+        targets.insert(targets.end(), m_queuedPrefabInstanceRebuilds.begin(), m_queuedPrefabInstanceRebuilds.end());
+
+        m_queuedPrefabInstanceRebuilds.clear();
+        m_rebuildAllPrefabInstancesRequested = false;
+
+        Canis::UUID selectedUuid = Canis::UUID(0);
+        if (m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()) && m_scene->GetEntities()[m_index] != nullptr)
+            selectedUuid = m_scene->GetEntities()[m_index]->uuid;
+
+        std::unordered_set<Canis::UUID> seen = {};
+        const bool multipleTargets = targets.size() > 1;
+
+        for (Canis::UUID uuid : targets)
+        {
+            if (!seen.insert(uuid).second)
+                continue;
+
+            Canis::Entity *entity = m_scene->GetEntityWithUUID(uuid);
+            if (entity == nullptr || !entity->HasComponent<PrefabInstance>())
+                continue;
+
+            const bool focusSelection = !multipleTargets || uuid == selectedUuid;
+            Canis::Entity *rebuilt = RebuildPrefabInstanceNow(entity, focusSelection);
+            if (rebuilt != nullptr && uuid == selectedUuid)
+                selectedUuid = rebuilt->uuid;
+        }
+    }
+
+    void Editor::FrameEntityInScene(Canis::Entity *_entity)
+    {
+        if (_entity == nullptr || !_entity->HasComponent<Canis::Transform>())
+            return;
+
+        const Canis::Transform &transform = _entity->GetComponent<Canis::Transform>();
+        const Vector3 target = transform.GetGlobalPosition();
+        const Vector3 globalScale = transform.GetGlobalScale();
+        const float radius = std::max({
+            std::abs(globalScale.x),
+            std::abs(globalScale.y),
+            std::abs(globalScale.z),
+            0.75f});
+
+        const float yaw = DEG2RAD * m_editorCamera3DYaw;
+        const float pitch = DEG2RAD * m_editorCamera3DPitch;
+
+        Vector3 forward = Vector3(
+            std::cos(pitch) * std::cos(yaw),
+            std::sin(pitch),
+            std::cos(pitch) * std::sin(yaw));
+
+        if (glm::length(forward) <= 0.0001f)
+            forward = Vector3(0.0f, 0.0f, -1.0f);
+        else
+            forward = glm::normalize(forward);
+
+        const float halfFovRadians = DEG2RAD * m_editorCamera3DFovDegrees * 0.5f;
+        const float fovTangent = std::max(std::tan(halfFovRadians), 0.15f);
+        const float distance = std::clamp((radius / fovTangent) + radius, 4.0f, 500.0f);
+
+        m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_3D;
+        m_editorCamera3DPosition = target - forward * distance;
     }
 
     void Editor::InputEntity(const std::string &_name, Canis::Entity *&_variable)
@@ -3749,6 +4057,285 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
+    enum class HierarchyEntityKind
+    {
+        None,
+        Rect,
+        Transform,
+        Mixed
+    };
+
+    static std::string ResolveAssetDragPath(const AssetDragData &_dropped)
+    {
+        std::string path = AssetManager::GetPath(_dropped.uuid);
+        if (path.rfind("Path was not found", 0) == 0)
+            path = _dropped.path;
+
+        return path;
+    }
+
+    static Canis::Entity* FindHierarchyEntityByUUID(const std::vector<Canis::Entity*> &_entities, Canis::UUID _uuid)
+    {
+        for (Canis::Entity* entity : _entities)
+        {
+            if (entity != nullptr && entity->uuid == _uuid)
+                return entity;
+        }
+
+        return nullptr;
+    }
+
+    static HierarchyEntityKind GetHierarchyEntityKind(Canis::Entity *_entity)
+    {
+        if (_entity == nullptr)
+            return HierarchyEntityKind::None;
+
+        if (_entity->HasComponent<RectTransform>())
+            return HierarchyEntityKind::Rect;
+
+        if (_entity->HasComponent<Transform>())
+            return HierarchyEntityKind::Transform;
+
+        return HierarchyEntityKind::None;
+    }
+
+    static HierarchyEntityKind GetHierarchyEntityKind(const std::vector<Canis::Entity*> &_entities)
+    {
+        HierarchyEntityKind kind = HierarchyEntityKind::None;
+
+        for (Canis::Entity* entity : _entities)
+        {
+            const HierarchyEntityKind entityKind = GetHierarchyEntityKind(entity);
+            if (entityKind == HierarchyEntityKind::None)
+                return HierarchyEntityKind::None;
+
+            if (kind == HierarchyEntityKind::None)
+            {
+                kind = entityKind;
+                continue;
+            }
+
+            if (kind != entityKind)
+                return HierarchyEntityKind::Mixed;
+        }
+
+        return kind;
+    }
+
+    static bool SetHierarchyParentAtIndexKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent, std::size_t _index)
+    {
+        if (_child == nullptr)
+            return false;
+
+        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
+        {
+            if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
+                return false;
+
+            const Vector2 localPosition = childTransform->position;
+            childTransform->SetParentAtIndex(_parent, _index);
+            childTransform->position = localPosition;
+            return true;
+        }
+
+        if (Canis::Transform* childTransform = (_child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
+        {
+            if (_parent != nullptr && !_parent->HasComponent<Transform>())
+                return false;
+
+            const Vector3 localPosition = childTransform->position;
+            const Vector3 localRotation = childTransform->rotation;
+            const Vector3 localScale = childTransform->scale;
+            childTransform->SetParentAtIndex(_parent, _index);
+            childTransform->position = localPosition;
+            childTransform->rotation = localRotation;
+            childTransform->scale = localScale;
+            return true;
+        }
+
+        return false;
+    }
+
+    static bool SetHierarchyParentKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent)
+    {
+        if (_parent == nullptr)
+            return SetHierarchyParent(_child, nullptr);
+
+        if (std::vector<Canis::Entity*>* children = GetHierarchyChildren(_parent))
+            return SetHierarchyParentAtIndexKeepingLocal(_child, _parent, children->size());
+
+        return false;
+    }
+
+    static Canis::Entity* CreatePrefabWrapperEntity(Canis::Scene &_scene, const std::string &_displayName, HierarchyEntityKind _kind)
+    {
+        if (_kind != HierarchyEntityKind::Rect && _kind != HierarchyEntityKind::Transform)
+            return nullptr;
+
+        Canis::Entity* wrapper = _scene.CreateEntity(MakeUniqueEntityName(_scene, _displayName));
+        if (wrapper == nullptr)
+            return nullptr;
+
+        if (_kind == HierarchyEntityKind::Rect)
+            wrapper->AddComponent<RectTransform>();
+        else
+            wrapper->AddComponent<Transform>();
+
+        return wrapper;
+    }
+
+    static void TryAssignPrefabHandle(Canis::Entity *_entity, const SceneAssetHandle &_prefabHandle)
+    {
+        if (_entity == nullptr || !_entity->HasComponent<NetworkIdentity>())
+            return;
+
+        NetworkIdentity &identity = _entity->GetComponent<NetworkIdentity>();
+        if (identity.prefab.Empty())
+            identity.prefab = _prefabHandle;
+    }
+
+    static void AssignPrefabInstanceMetadata(Canis::Entity *_entity, const SceneAssetHandle &_prefabHandle, Canis::Entity *_firstEntity)
+    {
+        if (_entity == nullptr)
+            return;
+
+        PrefabInstance &prefabInstance = *_entity->AddComponent<PrefabInstance>();
+        prefabInstance.prefab = _prefabHandle;
+        prefabInstance.firstEntity = (_firstEntity != nullptr) ? _firstEntity : _entity;
+    }
+
+    static Canis::Entity* InstantiatePrefabHierarchyRoot(Canis::Scene &_scene, const SceneAssetHandle &_prefabHandle, const std::string &_displayName)
+    {
+        std::vector<Canis::Entity*> roots = _scene.Instantiate(_prefabHandle);
+        if (roots.empty())
+            return nullptr;
+
+        const std::string uniqueDisplayName = MakeUniqueEntityName(_scene, _displayName);
+        if (roots.size() == 1)
+        {
+            Canis::Entity* root = roots.front();
+            if (root != nullptr)
+            {
+                root->name = uniqueDisplayName;
+                AssignPrefabInstanceMetadata(root, _prefabHandle, root);
+                TryAssignPrefabHandle(root, _prefabHandle);
+            }
+
+            return root;
+        }
+
+        const HierarchyEntityKind kind = GetHierarchyEntityKind(roots);
+        if (kind != HierarchyEntityKind::Rect && kind != HierarchyEntityKind::Transform)
+        {
+            Debug::Warning(
+                "Editor could not create a single hierarchy item for prefab '%s' because its roots do not share a supported hierarchy type.",
+                _prefabHandle.path.c_str());
+
+            for (Canis::Entity* root : roots)
+            {
+                if (root != nullptr)
+                    _scene.Destroy(*root);
+            }
+
+            return nullptr;
+        }
+
+        Canis::Entity* wrapper = CreatePrefabWrapperEntity(_scene, uniqueDisplayName, kind);
+        if (wrapper == nullptr)
+        {
+            for (Canis::Entity* root : roots)
+            {
+                if (root != nullptr)
+                    _scene.Destroy(*root);
+            }
+
+            return nullptr;
+        }
+
+        for (std::size_t i = 0; i < roots.size(); ++i)
+        {
+            if (!SetHierarchyParentAtIndexKeepingLocal(roots[i], wrapper, i))
+            {
+                _scene.Destroy(*wrapper);
+
+                for (Canis::Entity* root : roots)
+                {
+                    if (root != nullptr && _scene.GetEntity(root->id) == root)
+                        _scene.Destroy(*root);
+                }
+
+                return nullptr;
+            }
+        }
+
+        AssignPrefabInstanceMetadata(wrapper, _prefabHandle, roots.front());
+        TryAssignPrefabHandle(wrapper, _prefabHandle);
+        return wrapper;
+    }
+
+    static bool InsertRootEntityOrder(std::vector<Canis::UUID> &_rootOrder, Canis::Entity *_entity, int _targetRootPos)
+    {
+        if (_entity == nullptr)
+            return false;
+
+        if (auto it = std::find(_rootOrder.begin(), _rootOrder.end(), _entity->uuid); it != _rootOrder.end())
+            _rootOrder.erase(it);
+
+        _targetRootPos = std::clamp(_targetRootPos, 0, static_cast<int>(_rootOrder.size()));
+        _rootOrder.insert(_rootOrder.begin() + _targetRootPos, _entity->uuid);
+        return true;
+    }
+
+    static bool InstantiateSceneAssetIntoHierarchy(
+        Canis::Scene &_scene,
+        const AssetDragData &_dropped,
+        Canis::Entity *_parent,
+        int _childIndex,
+        std::vector<Canis::UUID> *_rootOrder,
+        int _targetRootPos,
+        Canis::Entity* &_outTopLevel)
+    {
+        _outTopLevel = nullptr;
+
+        const std::string droppedPath = ResolveAssetDragPath(_dropped);
+        if (droppedPath.empty())
+            return false;
+
+        MetaFileAsset *meta = AssetManager::GetMetaFile(droppedPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::SCENE)
+            return false;
+
+        const SceneAssetHandle prefabHandle = MakeSceneAssetHandleFromPath(droppedPath);
+        const std::string displayName = meta->name.empty() ? GetFileName(droppedPath) : meta->name;
+        Canis::Entity* topLevel = InstantiatePrefabHierarchyRoot(_scene, prefabHandle, displayName);
+        if (topLevel == nullptr)
+            return false;
+
+        if (_parent != nullptr)
+        {
+            const bool parented = (_childIndex >= 0)
+                ? SetHierarchyParentAtIndexKeepingLocal(topLevel, _parent, static_cast<std::size_t>(_childIndex))
+                : SetHierarchyParentKeepingLocal(topLevel, _parent);
+
+            if (!parented)
+            {
+                Debug::Warning(
+                    "Editor could not parent prefab '%s' under '%s' because the hierarchy types do not match.",
+                    droppedPath.c_str(),
+                    _parent->name.c_str());
+                _scene.Destroy(*topLevel);
+                return false;
+            }
+        }
+        else if (_rootOrder != nullptr)
+        {
+            InsertRootEntityOrder(*_rootOrder, topLevel, _targetRootPos);
+        }
+
+        _outTopLevel = topLevel;
+        return true;
+    }
+
     void Editor::DrawHierarchyNode(Canis::Entity *_entity, std::vector<Canis::Entity *> &_entities, bool &_refresh)
     {
         if (!_entity)
@@ -3767,8 +4354,21 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (isSelected)
             flags |= ImGuiTreeNodeFlags_Selected;
 
+        if (hasChildren &&
+            std::find(m_hierarchyRevealPath.begin(), m_hierarchyRevealPath.end(), _entity->uuid) != m_hierarchyRevealPath.end())
+        {
+            ImGui::SetNextItemOpen(true, ImGuiCond_Always);
+        }
+
         std::string label = _entity->name + "##" + std::to_string(_entity->uuid);
         bool nodeOpen = ImGui::TreeNodeEx(label.c_str(), flags);
+
+        if (m_hierarchyRevealTargetUUID == _entity->uuid)
+        {
+            ImGui::SetScrollHereY(0.5f);
+            m_hierarchyRevealTargetUUID = UUID(0);
+            m_hierarchyRevealPath.clear();
+        }
 
         // select on click
         if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
@@ -3783,6 +4383,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     break;
                 }
             }
+        }
+
+        if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        {
+            FocusEntity(_entity);
+            FrameEntityInScene(_entity);
+            _refresh = true;
         }
 
         // drag source
@@ -3800,16 +4407,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
             {
                 Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-
-                Canis::Entity *droppedEntity = nullptr;
-                for (auto *e : _entities)
-                {
-                    if (e && e->uuid == droppedUUID)
-                    {
-                        droppedEntity = e;
-                        break;
-                    }
-                }
+                Canis::Entity *droppedEntity = FindHierarchyEntityByUUID(_entities, droppedUUID);
 
                 if (droppedEntity && droppedEntity != _entity)
                 {
@@ -3818,6 +4416,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     {
                         _refresh = true;
                     }
+                }
+            }
+
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                Canis::Entity* spawnedEntity = nullptr;
+                if (InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, _entity, -1, nullptr, -1, spawnedEntity))
+                {
+                    FocusEntity(spawnedEntity);
+                    m_selectedAssetPath.clear();
+                    _refresh = true;
                 }
             }
             ImGui::EndDragDropTarget();
@@ -3908,16 +4518,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
                             {
                                 Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-
-                                Canis::Entity *droppedEntity = nullptr;
-                                for (auto *e2 : _entities)
-                                {
-                                    if (e2 && e2->uuid == droppedUUID)
-                                    {
-                                        droppedEntity = e2;
-                                        break;
-                                    }
-                                }
+                                Canis::Entity *droppedEntity = FindHierarchyEntityByUUID(_entities, droppedUUID);
 
                                 if (droppedEntity && droppedEntity != _entity)
                                 {
@@ -3926,6 +4527,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                     {
                                         _refresh = true;
                                     }
+                                }
+                            }
+
+                            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                            {
+                                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                                Canis::Entity* spawnedEntity = nullptr;
+                                if (InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, _entity, static_cast<int>(ci), nullptr, -1, spawnedEntity))
+                                {
+                                    FocusEntity(spawnedEntity);
+                                    m_selectedAssetPath.clear();
+                                    _refresh = true;
                                 }
                             }
                             ImGui::EndDragDropTarget();
@@ -4060,16 +4673,21 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
                 {
                     Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-                    Canis::Entity *droppedEntity = nullptr;
-                    for (auto *e : entities)
-                    {
-                        if (e && e->uuid == droppedUUID)
-                        {
-                            droppedEntity = e;
-                            break;
-                        }
-                    }
+                    Canis::Entity *droppedEntity = FindHierarchyEntityByUUID(entities, droppedUUID);
                     moveRootToPos(droppedEntity, 0); // move to first root
+                }
+
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                    Canis::Entity* spawnedEntity = nullptr;
+                    if (InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, nullptr, -1, &rootOrderThisFrame, 0, spawnedEntity))
+                    {
+                        m_hierarchyRootOrder = rootOrderThisFrame;
+                        FocusEntity(spawnedEntity);
+                        m_selectedAssetPath.clear();
+                        refresh = true;
+                    }
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -4096,16 +4714,21 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
                 {
                     Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-                    Canis::Entity *droppedEntity = nullptr;
-                    for (auto *e : entities)
-                    {
-                        if (e && e->uuid == droppedUUID)
-                        {
-                            droppedEntity = e;
-                            break;
-                        }
-                    }
+                    Canis::Entity *droppedEntity = FindHierarchyEntityByUUID(entities, droppedUUID);
                     moveRootToPos(droppedEntity, ri + 1);
+                }
+
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                    Canis::Entity* spawnedEntity = nullptr;
+                    if (InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, nullptr, -1, &rootOrderThisFrame, ri + 1, spawnedEntity))
+                    {
+                        m_hierarchyRootOrder = rootOrderThisFrame;
+                        FocusEntity(spawnedEntity);
+                        m_selectedAssetPath.clear();
+                        refresh = true;
+                    }
                 }
                 ImGui::EndDragDropTarget();
             }
@@ -4126,20 +4749,31 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
             {
                 Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-
-                Canis::Entity *droppedEntity = nullptr;
-                for (auto *e : entities)
-                {
-                    if (e && e->uuid == droppedUUID)
-                    {
-                        droppedEntity = e;
-                        break;
-                    }
-                }
+                Canis::Entity *droppedEntity = FindHierarchyEntityByUUID(entities, droppedUUID);
 
                 if (droppedEntity)
                 {
                     moveRootToPos(droppedEntity, static_cast<int>(rootOrderThisFrame.size()));
+                }
+            }
+
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                Canis::Entity* spawnedEntity = nullptr;
+                if (InstantiateSceneAssetIntoHierarchy(
+                        *m_scene,
+                        dropped,
+                        nullptr,
+                        -1,
+                        &rootOrderThisFrame,
+                        static_cast<int>(rootOrderThisFrame.size()),
+                        spawnedEntity))
+                {
+                    m_hierarchyRootOrder = rootOrderThisFrame;
+                    FocusEntity(spawnedEntity);
+                    m_selectedAssetPath.clear();
+                    refresh = true;
                 }
             }
             ImGui::EndDragDropTarget();
@@ -7092,7 +7726,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (entityIndex < 0 || entityIndex >= static_cast<int>(entities.size()) || entities[entityIndex] == nullptr)
             return;
 
-        m_index = entityIndex;
+        FocusEntity(entities[entityIndex]);
     }
 
     void Editor::DrawSelectionMouseDebug(Camera2D *_camera2D)

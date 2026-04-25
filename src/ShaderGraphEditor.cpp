@@ -8,7 +8,7 @@
 #include <imgui.h>
 #include <imgui_stdlib.h>
 
-#include <GraphEditor.h>
+#include <Canis/ShaderGraphGraphEditor.hpp>
 
 #include <algorithm>
 #include <array>
@@ -21,6 +21,8 @@
 
 namespace Canis
 {
+    namespace GraphEditor = CanisGraphEditor;
+
     namespace
     {
         constexpr int kShaderGraphFragmentOutputSelectionId = -2;

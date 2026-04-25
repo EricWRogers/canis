@@ -971,6 +971,9 @@ namespace Canis
             }
         }
 
+        if (inputManager.ConsumeResumeFrameResetRequest())
+            Time::ResetFrameClock();
+
         f32 deltaTime = Time::StartFrame();
 
         bool runGameTick = true;
@@ -1025,6 +1028,22 @@ namespace Canis
         }
 
         ProcessPendingSceneLoad();
+
+        if (!window.MakeContextCurrent())
+        {
+            Debug::Warning("Skipping render frame because the OpenGL context is unavailable after resume.");
+            m_renderTimeMs = 0.0f;
+            Time::ResetFrameClock();
+            Time::EndFrame();
+            return true;
+        }
+
+        if (!window.HasDrawableSurface())
+        {
+            m_renderTimeMs = 0.0f;
+            Time::EndFrame();
+            return true;
+        }
 
         Uint64 renderStart = SDL_GetTicksNS();
         window.Clear();
@@ -1186,6 +1205,84 @@ namespace Canis
         {
             _editor.InputSceneAsset(_label, _idSuffix, _value);
         });
+
+        ScriptConf prefabInstanceConf = {
+            .name = "Canis::PrefabInstance",
+            .Construct = nullptr,
+            .Add = [this](Entity& _entity) -> void {
+                _entity.AddComponent<PrefabInstance>();
+            },
+            .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<PrefabInstance>(); },
+            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<PrefabInstance>(); },
+            .Get = [this](Entity& _entity) -> void* { return _entity.HasComponent<PrefabInstance>() ? (void*)(&_entity.GetComponent<PrefabInstance>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                PrefabInstance* prefabInstance = _entity.HasComponent<PrefabInstance>() ? &_entity.GetComponent<PrefabInstance>() : nullptr;
+                if (prefabInstance == nullptr)
+                    return;
+
+                YAML::Node comp;
+                comp["prefab"] = prefabInstance->prefab;
+                comp["firstEntity"] = _entity.scene.GetLiveEntityUUID(prefabInstance->firstEntity);
+                _node["Canis::PrefabInstance"] = comp;
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                YAML::Node comp = _node["Canis::PrefabInstance"];
+                if (!comp)
+                    return;
+
+                PrefabInstance &prefabInstance = *_entity.AddComponent<PrefabInstance>();
+                prefabInstance.prefab = comp["prefab"].as<SceneAssetHandle>(prefabInstance.prefab);
+
+                if (comp["firstEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    _entity.scene.GetEntityAfterLoad(comp["firstEntity"].as<Canis::UUID>(0), prefabInstance.firstEntity);
+
+                if (_callCreate)
+                    prefabInstance.Create();
+            },
+            .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
+                PrefabInstance* prefabInstance = _entity.HasComponent<PrefabInstance>() ? &_entity.GetComponent<PrefabInstance>() : nullptr;
+                if (prefabInstance == nullptr)
+                    return;
+
+                DrawInspectorField(_editor, "prefab", _conf.name.c_str(), prefabInstance->prefab);
+                DrawInspectorField(_editor, "firstEntity", _conf.name.c_str(), prefabInstance->firstEntity);
+
+                if (ImGui::Button(BuildInspectorFieldLabel("Rebuild From Prefab", _conf.name.c_str()).c_str()))
+                {
+                    _editor.RebuildPrefabInstance(&_entity);
+                    return;
+                }
+
+                if (ImGui::Button(BuildInspectorFieldLabel("Rebuild All Prefabs In Scene", _conf.name.c_str()).c_str()))
+                {
+                    _editor.RebuildAllPrefabInstances();
+                    return;
+                }
+
+                if (prefabInstance->firstEntity != nullptr)
+                {
+                    if (ImGui::Button(BuildInspectorFieldLabel("Select First Entity", _conf.name.c_str()).c_str()))
+                        _editor.FocusEntity(prefabInstance->firstEntity);
+
+                    if (prefabInstance->firstEntity->HasComponent<RectTransform>())
+                    {
+                        RectTransform &transform = prefabInstance->firstEntity->GetComponent<RectTransform>();
+                        ImGui::InputFloat2(BuildInspectorFieldLabel("overridePosition", _conf.name.c_str()).c_str(), &transform.position.x, "%.3f");
+                    }
+                    else if (prefabInstance->firstEntity->HasComponent<Transform>())
+                    {
+                        Transform &transform = prefabInstance->firstEntity->GetComponent<Transform>();
+                        ImGui::InputFloat3(BuildInspectorFieldLabel("overridePosition", _conf.name.c_str()).c_str(), &transform.position.x, "%.3f");
+                    }
+                    else
+                    {
+                        ImGui::Text("first entity has no transform");
+                    }
+                }
+            },
+        };
+
+        RegisterScript(prefabInstanceConf);
 
         RegisterParticleEmitterComponent(*this);
         RegisterParticleEmitterSystem(*this);
