@@ -28,6 +28,17 @@ namespace Canis
         }
     };
 
+    struct ShaderGraphAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path = "";
+
+        bool Empty() const
+        {
+            return uuid == UUID(0) && path.empty();
+        }
+    };
+
     struct TextureHandle
     {
         int id = -1;

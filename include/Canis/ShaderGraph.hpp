@@ -54,6 +54,8 @@ namespace Canis
         ShaderGraphPropertyType propertyType = ShaderGraphPropertyType::FLOAT;
         std::string title = {};
         std::string text = {};
+        std::string previewMesh = "sphere";
+        std::string previewModelPath = {};
 
         ShaderGraphLink inputA = {};
         ShaderGraphLink inputB = {};

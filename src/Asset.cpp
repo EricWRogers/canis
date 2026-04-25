@@ -2382,6 +2382,44 @@ namespace Canis
         return !_vertices.empty() && !_indices.empty();
     }
 
+    bool ModelAsset::GetLocalBounds(Vector3 &_min, Vector3 &_max) const
+    {
+        bool hasBounds = false;
+        Vector3 minBounds(0.0f);
+        Vector3 maxBounds(0.0f);
+
+        for (const Primitive3D &primitive : m_primitives)
+        {
+            Matrix4 nodeMatrix = Matrix4(1.0f);
+            if (primitive.nodeIndex >= 0 && primitive.nodeIndex < static_cast<i32>(m_nodes.size()))
+                nodeMatrix = m_nodes[primitive.nodeIndex].globalMatrix;
+
+            for (const RenderVertex3D &vertex : primitive.bindVertices)
+            {
+                const Vector4 transformed = nodeMatrix * Vector4(vertex.position, 1.0f);
+                const Vector3 point(transformed.x, transformed.y, transformed.z);
+
+                if (!hasBounds)
+                {
+                    minBounds = point;
+                    maxBounds = point;
+                    hasBounds = true;
+                    continue;
+                }
+
+                minBounds = glm::min(minBounds, point);
+                maxBounds = glm::max(maxBounds, point);
+            }
+        }
+
+        if (!hasBounds)
+            return false;
+
+        _min = minBounds;
+        _max = maxBounds;
+        return true;
+    }
+
     bool SpriteAnimationAsset::Load(std::string _path)
     {
         return true;

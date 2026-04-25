@@ -19,6 +19,8 @@ extern YAML::Node YAMLEncodeAudioAssetHandle(const Canis::AudioAssetHandle &_aud
 extern Canis::AudioAssetHandle YAMLDecodeAudioAssetHandle(const YAML::Node &_node);
 extern YAML::Node YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAssetHandle);
 extern Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const YAML::Node &_node);
+extern YAML::Node YAMLEncodeShaderGraphAssetHandle(const Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle);
+extern Canis::ShaderGraphAssetHandle YAMLDecodeShaderGraphAssetHandle(const YAML::Node &_node);
 
 namespace YAML
 {
@@ -129,6 +131,21 @@ namespace YAML
         static bool decode(const Node &_node, Canis::SceneAssetHandle &_sceneAssetHandle)
         {
             _sceneAssetHandle = YAMLDecodeSceneAssetHandle(_node);
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::ShaderGraphAssetHandle>
+    {
+        static Node encode(const Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle)
+        {
+            return YAMLEncodeShaderGraphAssetHandle(_shaderGraphAssetHandle);
+        }
+
+        static bool decode(const Node &_node, Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle)
+        {
+            _shaderGraphAssetHandle = YAMLDecodeShaderGraphAssetHandle(_node);
             return true;
         }
     };

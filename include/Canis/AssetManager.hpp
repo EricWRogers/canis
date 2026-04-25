@@ -90,6 +90,37 @@ namespace Canis
             return _sceneAssetHandle.path;
         }
 
+        inline std::string ResolvePath(const ShaderGraphAssetHandle &_shaderGraphAssetHandle)
+        {
+            if (_shaderGraphAssetHandle.uuid != UUID(0))
+            {
+                const std::string resolvedPath = GetPath(_shaderGraphAssetHandle.uuid);
+                if (resolvedPath != "Path was not found in AssetLibrary")
+                    return resolvedPath;
+
+                std::error_code ec;
+                if (std::filesystem::exists("assets", ec) && std::filesystem::is_directory("assets", ec))
+                {
+                    for (const auto &entry : std::filesystem::recursive_directory_iterator("assets", ec))
+                    {
+                        if (ec || !entry.is_regular_file())
+                            continue;
+
+                        if (entry.path().extension() == ".meta")
+                            continue;
+
+                        if (MetaFileAsset *meta = GetMetaFile(entry.path().generic_string()))
+                        {
+                            if (meta->uuid == _shaderGraphAssetHandle.uuid)
+                                return entry.path().generic_string();
+                        }
+                    }
+                }
+            }
+
+            return _shaderGraphAssetHandle.path;
+        }
+
         inline int GetID(UUID _uuid)
         {
             auto &assetLibrary = GetAssetLibrary();
@@ -188,6 +219,7 @@ namespace Canis
         int LoadMaterial(const std::string &_path);
         MaterialAsset* GetMaterial(const std::string &_path);
         MaterialAsset* GetMaterial(i32 _materialID);
+        bool ReloadMaterial(const std::string &_path);
 
         int LoadSkybox(const std::string &_path);
         SkyboxAsset* GetSkybox(const std::string &_path);

@@ -148,6 +148,9 @@ namespace Canis
         void DrawProjectSettings();
         void DrawSystemPanel();
         void DrawEditorPanel();
+        std::string ResolveRememberedShaderGraphPath() const;
+        void RememberLastShaderGraphAssetPath(const std::string &_path);
+        void ClearRememberedShaderGraphAssetPathIfMatches(const std::string &_path);
         void ApplyEditorTheme(int _theme);
         void RefreshEditorFontOptions();
         void ApplyEditorFont(const std::string &_fontPath);

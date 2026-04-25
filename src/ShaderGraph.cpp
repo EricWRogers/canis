@@ -53,6 +53,62 @@ namespace Canis
             ShaderGraphBuildStage stage = ShaderGraphBuildStage::Fragment;
         };
 
+        void WriteValueNoiseHelpers(std::ostringstream &_shader)
+        {
+            _shader
+                << "float sgHash12(vec2 p)\n"
+                << "{\n"
+                << "    vec3 p3 = fract(vec3(p.xyx) * 0.1031);\n"
+                << "    p3 += dot(p3, p3.yzx + 33.33);\n"
+                << "    return fract((p3.x + p3.y) * p3.z);\n"
+                << "}\n\n"
+                << "float sgValueNoise(vec2 uv)\n"
+                << "{\n"
+                << "    vec2 cell = floor(uv);\n"
+                << "    vec2 local = fract(uv);\n"
+                << "    vec2 smoothLocal = local * local * (3.0 - 2.0 * local);\n"
+                << "    float a = sgHash12(cell);\n"
+                << "    float b = sgHash12(cell + vec2(1.0, 0.0));\n"
+                << "    float c = sgHash12(cell + vec2(0.0, 1.0));\n"
+                << "    float d = sgHash12(cell + vec2(1.0, 1.0));\n"
+                << "    return mix(mix(a, b, smoothLocal.x), mix(c, d, smoothLocal.x), smoothLocal.y);\n"
+                << "}\n\n"
+                << "vec2 sgHash22(vec2 p)\n"
+                << "{\n"
+                << "    return vec2(\n"
+                << "        sgHash12(p + vec2(17.17, 91.73)),\n"
+                << "        sgHash12(p + vec2(53.31, 11.27)));\n"
+                << "}\n\n"
+                << "float sgVoronoiNoise(vec2 uv)\n"
+                << "{\n"
+                << "    vec2 cell = floor(uv);\n"
+                << "    vec2 local = fract(uv);\n"
+                << "    float nearest = 8.0;\n"
+                << "    float secondNearest = 8.0;\n"
+                << "    for (int y = -1; y <= 1; ++y)\n"
+                << "    {\n"
+                << "        for (int x = -1; x <= 1; ++x)\n"
+                << "        {\n"
+                << "            vec2 offset = vec2(float(x), float(y));\n"
+                << "            vec2 point = sgHash22(cell + offset);\n"
+                << "            vec2 delta = offset + point - local;\n"
+                << "            float distanceSquared = dot(delta, delta);\n"
+                << "            if (distanceSquared < nearest)\n"
+                << "            {\n"
+                << "                secondNearest = nearest;\n"
+                << "                nearest = distanceSquared;\n"
+                << "            }\n"
+                << "            else if (distanceSquared < secondNearest)\n"
+                << "            {\n"
+                << "                secondNearest = distanceSquared;\n"
+                << "            }\n"
+                << "        }\n"
+                << "    }\n"
+                << "    float edge = sqrt(max(secondNearest, 0.0)) - sqrt(max(nearest, 0.0));\n"
+                << "    return clamp(1.0 - edge * 3.5, 0.0, 1.0);\n"
+                << "}\n";
+        }
+
         std::string FormatFloatLiteral(float _value)
         {
             std::ostringstream stream;
@@ -408,6 +464,10 @@ namespace Canis
             for (const PropertyUniformInfo &uniform : context.propertyUniforms)
                 WritePropertyUniformDeclaration(shader, uniform);
 
+            shader << "\n";
+
+            WriteValueNoiseHelpers(shader);
+
             shader
                 << "\n"
                 << "out vec3 fragmentNormal;\n"
@@ -612,6 +672,22 @@ namespace Canis
                     "(" + ConvertExpression(a, resultType) + " * " + ConvertExpression(b, resultType) + ")"
                 };
             }
+            else if (_node.type == "Subtract")
+            {
+                ExpressionResult a = BuildLinkExpression(_context, _node.inputA, { ShaderGraphValueType::UNKNOWN, "" });
+                ExpressionResult b = BuildLinkExpression(_context, _node.inputB, { ShaderGraphValueType::UNKNOWN, "" });
+                ShaderGraphValueType resultType = ResolveArithmeticType(a, b);
+                if (a.type == ShaderGraphValueType::UNKNOWN)
+                    a = MakeZeroValue(resultType);
+                if (b.type == ShaderGraphValueType::UNKNOWN)
+                    b = MakeZeroValue(resultType);
+
+                result =
+                {
+                    resultType,
+                    "(" + ConvertExpression(a, resultType) + " - " + ConvertExpression(b, resultType) + ")"
+                };
+            }
             else if (_node.type == "Sine")
             {
                 ExpressionResult input = BuildLinkExpression(_context, _node.inputA, { ShaderGraphValueType::FLOAT, "TIME" });
@@ -641,6 +717,59 @@ namespace Canis
                     resultType,
                     "mix(" + ConvertExpression(a, resultType) + ", " + ConvertExpression(b, resultType) + ", " +
                         ConvertExpression(t, ShaderGraphValueType::FLOAT) + ")"
+                };
+            }
+            else if (_node.type == "Difference")
+            {
+                ExpressionResult a = BuildLinkExpression(_context, _node.inputA, { ShaderGraphValueType::UNKNOWN, "" });
+                ExpressionResult b = BuildLinkExpression(_context, _node.inputB, { ShaderGraphValueType::UNKNOWN, "" });
+                ShaderGraphValueType resultType = ResolveArithmeticType(a, b);
+                if (a.type == ShaderGraphValueType::UNKNOWN)
+                    a = MakeZeroValue(resultType);
+                if (b.type == ShaderGraphValueType::UNKNOWN)
+                    b = MakeZeroValue(resultType);
+
+                result =
+                {
+                    resultType,
+                    "abs(" + ConvertExpression(a, resultType) + " - " + ConvertExpression(b, resultType) + ")"
+                };
+            }
+            else if (_node.type == "ValueNoise")
+            {
+                const ExpressionResult uvExpression = BuildLinkExpression(
+                    _context,
+                    _node.inputUV,
+                    { ShaderGraphValueType::VEC2, GetStageUvExpression(_context.stage) });
+
+                result =
+                {
+                    ShaderGraphValueType::FLOAT,
+                    "sgValueNoise(" + ConvertExpression(uvExpression, ShaderGraphValueType::VEC2) + ")"
+                };
+            }
+            else if (_node.type == "VoronoiNoise")
+            {
+                const ExpressionResult uvExpression = BuildLinkExpression(
+                    _context,
+                    _node.inputUV,
+                    { ShaderGraphValueType::VEC2, GetStageUvExpression(_context.stage) });
+
+                result =
+                {
+                    ShaderGraphValueType::FLOAT,
+                    "sgVoronoiNoise(" + ConvertExpression(uvExpression, ShaderGraphValueType::VEC2) + ")"
+                };
+            }
+            else if (_node.type == "Grayscale")
+            {
+                const ExpressionResult input = BuildLinkExpression(_context, _node.inputA, { ShaderGraphValueType::FLOAT, "0.0" });
+                const std::string scalar = "clamp(" + ConvertExpression(input, ShaderGraphValueType::FLOAT, true) + ", 0.0, 1.0)";
+
+                result =
+                {
+                    ShaderGraphValueType::VEC4,
+                    "vec4(vec3(" + scalar + "), 1.0)"
                 };
             }
             else if (_node.type == "Panner")
@@ -714,6 +843,11 @@ namespace Canis
                 << "{\n"
                 << "    return pow(max(value, vec3(0.0)), vec3(2.2));\n"
                 << "}\n"
+                << "\n";
+
+            WriteValueNoiseHelpers(shader);
+
+            shader
                 << "\n"
                 << "out vec4 color;\n\n"
                 << "void main()\n"
@@ -862,6 +996,7 @@ namespace Canis
         else if (_type == "Preview")
         {
             node.title = "Preview";
+            node.previewMesh = "sphere";
         }
         else if (_type == "Position")
         {
@@ -958,6 +1093,8 @@ namespace Canis
                 node.propertyType = StringToPropertyType(nodeEntry["propertyType"].as<std::string>("float"));
                 node.title = nodeEntry["title"].as<std::string>("");
                 node.text = nodeEntry["text"].as<std::string>("");
+                node.previewMesh = nodeEntry["previewMesh"].as<std::string>("sphere");
+                node.previewModelPath = nodeEntry["previewModelPath"].as<std::string>("");
                 node.inputA = DecodeLink(nodeEntry["inputA"]);
                 node.inputB = DecodeLink(nodeEntry["inputB"]);
                 node.inputT = DecodeLink(nodeEntry["inputT"]);
@@ -1019,6 +1156,8 @@ namespace Canis
             nodeEntry["propertyType"] = PropertyTypeToString(node.propertyType);
             nodeEntry["title"] = node.title;
             nodeEntry["text"] = node.text;
+            nodeEntry["previewMesh"] = node.previewMesh;
+            nodeEntry["previewModelPath"] = node.previewModelPath;
             nodeEntry["inputA"] = EncodeLink(node.inputA);
             nodeEntry["inputB"] = EncodeLink(node.inputB);
             nodeEntry["inputT"] = EncodeLink(node.inputT);
@@ -1169,8 +1308,13 @@ namespace Canis
         if (_type == "Texture2D") return "Texture2D";
         if (_type == "Add") return "Add";
         if (_type == "Multiply") return "Multiply";
+        if (_type == "Subtract") return "Subtract";
         if (_type == "Sine") return "Sine";
         if (_type == "Lerp") return "Lerp";
+        if (_type == "Difference") return "Difference";
+        if (_type == "ValueNoise") return "Value Noise";
+        if (_type == "VoronoiNoise") return "Voronoi Noise";
+        if (_type == "Grayscale") return "Grayscale";
         if (_type == "Panner") return "Panner";
         if (_type == "Property") return "Property";
         if (_type == "StickyNote") return "Sticky Note";
@@ -1223,9 +1367,15 @@ namespace Canis
             return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };
         if (_node.type == "Texture2D")
             return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };
-        if (_node.type == "Add" || _node.type == "Multiply")
+        if (_node.type == "Add" || _node.type == "Multiply" || _node.type == "Subtract" || _node.type == "Difference")
             return { ShaderGraphPinInfo{ .name = "a", .type = ShaderGraphValueType::UNKNOWN }, ShaderGraphPinInfo{ .name = "b", .type = ShaderGraphValueType::UNKNOWN } };
         if (_node.type == "Sine")
+            return { ShaderGraphPinInfo{ .name = "input", .type = ShaderGraphValueType::UNKNOWN } };
+        if (_node.type == "ValueNoise")
+            return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };
+        if (_node.type == "VoronoiNoise")
+            return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };
+        if (_node.type == "Grayscale")
             return { ShaderGraphPinInfo{ .name = "input", .type = ShaderGraphValueType::UNKNOWN } };
         if (_node.type == "Lerp")
             return {
@@ -1272,6 +1422,12 @@ namespace Canis
         if (_node.type == "AmbientLight")
             return { ShaderGraphPinInfo{ .name = "ambient", .type = ShaderGraphValueType::VEC3 } };
         if (_node.type == "Texture2D")
+            return { ShaderGraphPinInfo{ .name = "color", .type = ShaderGraphValueType::VEC4 } };
+        if (_node.type == "ValueNoise")
+            return { ShaderGraphPinInfo{ .name = "value", .type = ShaderGraphValueType::FLOAT } };
+        if (_node.type == "VoronoiNoise")
+            return { ShaderGraphPinInfo{ .name = "value", .type = ShaderGraphValueType::FLOAT } };
+        if (_node.type == "Grayscale")
             return { ShaderGraphPinInfo{ .name = "color", .type = ShaderGraphValueType::VEC4 } };
         if (_node.type == "Panner")
             return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };

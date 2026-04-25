@@ -3,7 +3,9 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
+#include <Canis/OpenGL.hpp>
 #include <Canis/ShaderGraph.hpp>
+#include <Canis/Time.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -13,7 +15,9 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <filesystem>
 #include <iomanip>
+#include <limits>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -49,6 +53,19 @@ namespace Canis
 
         std::unordered_map<std::string, ShaderGraphEditorViewState> g_shaderGraphEditorViewStates = {};
 
+        struct ShaderGraphRenderedPreviewCacheEntry
+        {
+            RenderTarget renderTarget = {};
+            std::filesystem::file_time_type graphTimestamp = std::filesystem::file_time_type::min();
+        };
+
+        std::unordered_map<std::string, ShaderGraphRenderedPreviewCacheEntry> g_shaderGraphRenderedPreviewCache = {};
+
+        constexpr const char *kShaderGraphPreviewMeshSphere = "sphere";
+        constexpr const char *kShaderGraphPreviewMeshCube = "cube";
+        constexpr const char *kShaderGraphPreviewMeshPlane = "plane";
+        constexpr const char *kShaderGraphPreviewMeshCustom = "custom";
+
         enum ShaderGraphTemplateIndex : size_t
         {
             ShaderGraphTemplate_Float = 0,
@@ -70,8 +87,13 @@ namespace Canis
             ShaderGraphTemplate_Texture2D,
             ShaderGraphTemplate_Add,
             ShaderGraphTemplate_Multiply,
+            ShaderGraphTemplate_Subtract,
             ShaderGraphTemplate_Sine,
             ShaderGraphTemplate_Lerp,
+            ShaderGraphTemplate_Difference,
+            ShaderGraphTemplate_ValueNoise,
+            ShaderGraphTemplate_VoronoiNoise,
+            ShaderGraphTemplate_Grayscale,
             ShaderGraphTemplate_Panner,
             ShaderGraphTemplate_StickyNote,
             ShaderGraphTemplate_Preview,
@@ -88,6 +110,8 @@ namespace Canis
         const char *kSingleOutputName[] = { "Value" };
         const char *kLerpInputNames[] = { "A", "B", "T" };
         const char *kPannerInputNames[] = { "UV", "Speed" };
+        const char *kValueNoiseInputNames[] = { "UV" };
+        const char *kVoronoiNoiseInputNames[] = { "UV" };
         const char *kPreviewInputNames[] = { "In" };
         const char *kUvOutputNames[] = { "UV" };
         const char *kTimeOutputNames[] = { "Time" };
@@ -96,6 +120,7 @@ namespace Canis
         const char *kAmbientLightOutputNames[] = { "Ambient" };
         const char *kVertexOutputInputNames[] = { "Position", "Normal" };
         const char *kOutputInputNames[] = { "Color", "Alpha" };
+        const char *kColorOutputNames[] = { "Color" };
 
         ImU32 kTextureInputColors[] = { IM_COL32(96, 156, 255, 255) };
         ImU32 kTextureOutputColors[] = { IM_COL32(255, 214, 64, 255) };
@@ -189,6 +214,336 @@ namespace Canis
             _drawList->AddText(ImGui::GetFont(), fontSize, _cursor, _color, _text.c_str(), nullptr, wrapWidth, &clipRect);
             _cursor.y += textSize.y + ScaleShaderGraphUi(6.0f, _zoom, 3.0f);
             return textSize.y;
+        }
+
+        const char *GetShaderGraphPreviewMeshDisplayName(const std::string &_mesh)
+        {
+            if (_mesh == kShaderGraphPreviewMeshCube)
+                return "Cube";
+            if (_mesh == kShaderGraphPreviewMeshPlane)
+                return "Plane";
+            if (_mesh == kShaderGraphPreviewMeshCustom)
+                return "Custom";
+            return "Sphere";
+        }
+
+        int GetShaderGraphPreviewMeshComboIndex(const std::string &_mesh)
+        {
+            if (_mesh == kShaderGraphPreviewMeshCube)
+                return 1;
+            if (_mesh == kShaderGraphPreviewMeshPlane)
+                return 2;
+            if (_mesh == kShaderGraphPreviewMeshCustom)
+                return 3;
+            return 0;
+        }
+
+        std::string GetShaderGraphPreviewMeshFromComboIndex(int _index)
+        {
+            switch (_index)
+            {
+                case 1: return kShaderGraphPreviewMeshCube;
+                case 2: return kShaderGraphPreviewMeshPlane;
+                case 3: return kShaderGraphPreviewMeshCustom;
+                default: return kShaderGraphPreviewMeshSphere;
+            }
+        }
+
+        ShaderGraphValueType ResolveShaderGraphLinkOutputType(const ShaderGraphDocument &_document, const ShaderGraphLink &_link)
+        {
+            if (!_link.IsValid())
+                return ShaderGraphValueType::UNKNOWN;
+
+            const ShaderGraphNode *node = FindShaderGraphNode(_document, _link.nodeId);
+            if (node == nullptr)
+                return ShaderGraphValueType::UNKNOWN;
+
+            for (const ShaderGraphPinInfo &pin : GetShaderGraphNodeOutputPins(*node))
+            {
+                if (pin.name == _link.slot)
+                    return pin.type;
+            }
+
+            return ShaderGraphValueType::UNKNOWN;
+        }
+
+        ShaderGraphDocument BuildShaderGraphPreviewDocument(const ShaderGraphDocument &_document, const ShaderGraphNode &_previewNode)
+        {
+            ShaderGraphDocument previewDocument = _document;
+            const ShaderGraphLink previewLink = GetShaderGraphNodeInputLink(_previewNode, "input");
+            const ShaderGraphValueType previewType = ResolveShaderGraphLinkOutputType(_document, previewLink);
+
+            ShaderGraphLink colorLink = previewLink;
+            if (previewType == ShaderGraphValueType::FLOAT)
+            {
+                ShaderGraphNode grayscaleNode = CreateShaderGraphNode("Grayscale", previewDocument.nextNodeId++, _previewNode.position + Vector2(220.0f, 0.0f));
+                grayscaleNode.inputA = previewLink;
+                colorLink = ShaderGraphLink{ .nodeId = grayscaleNode.id, .slot = "color" };
+                previewDocument.nodes.push_back(grayscaleNode);
+            }
+
+            ShaderGraphNode alphaNode = CreateShaderGraphNode("Float", previewDocument.nextNodeId++, _previewNode.position + Vector2(220.0f, 90.0f));
+            alphaNode.floatValue = 1.0f;
+            previewDocument.nodes.push_back(alphaNode);
+
+            previewDocument.outputColor = colorLink;
+            previewDocument.outputAlpha = ShaderGraphLink{ .nodeId = alphaNode.id, .slot = "value" };
+            return previewDocument;
+        }
+
+        std::string GetShaderGraphPreviewTempGraphPath(const std::string &_graphPath, const int _nodeId)
+        {
+            namespace fs = std::filesystem;
+
+            std::ostringstream name;
+            name << "preview_" << std::hex << std::hash<std::string>{}(_graphPath) << "_" << std::dec << _nodeId << ".shadergraph";
+            return (fs::temp_directory_path() / "canis_shadergraph_previews" / name.str()).string();
+        }
+
+        ModelAsset &GetShaderGraphPreviewPlaneModel()
+        {
+            static ModelAsset planeModel = {};
+            static bool initialized = false;
+
+            if (initialized)
+                return planeModel;
+
+            ModelAsset::PrimitiveBuild3D primitive = {};
+            primitive.vertices =
+            {
+                { Vector3(-0.5f, -0.5f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), Vector2(0.0f, 0.0f) },
+                { Vector3( 0.5f, -0.5f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), Vector2(1.0f, 0.0f) },
+                { Vector3( 0.5f,  0.5f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), Vector2(1.0f, 1.0f) },
+                { Vector3(-0.5f,  0.5f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), Vector2(0.0f, 1.0f) },
+            };
+            primitive.indices = { 0, 1, 2, 0, 2, 3 };
+            (void)planeModel.SetRuntimePrimitives({ primitive });
+            initialized = true;
+            return planeModel;
+        }
+
+        ModelAsset *ResolveShaderGraphPreviewModel(const ShaderGraphNode &_node)
+        {
+            if (_node.previewMesh == kShaderGraphPreviewMeshCube)
+                return AssetManager::GetModel("assets/defaults/models/cube.glb");
+            if (_node.previewMesh == kShaderGraphPreviewMeshPlane)
+                return &GetShaderGraphPreviewPlaneModel();
+            if (_node.previewMesh == kShaderGraphPreviewMeshCustom)
+            {
+                if (!_node.previewModelPath.empty())
+                {
+                    if (ModelAsset *customModel = AssetManager::GetModel(_node.previewModelPath))
+                        return customModel;
+                }
+            }
+
+            return AssetManager::GetModel("assets/defaults/models/sphere.glb");
+        }
+
+        Matrix4 BuildShaderGraphPreviewModelMatrix(ModelAsset &_model, const ShaderGraphNode &_node)
+        {
+            Vector3 minBounds(-0.5f);
+            Vector3 maxBounds(0.5f);
+            (void)_model.GetLocalBounds(minBounds, maxBounds);
+
+            const Vector3 center = (minBounds + maxBounds) * 0.5f;
+            const Vector3 size = glm::max(maxBounds - minBounds, Vector3(0.001f));
+            const float maxDimension = std::max(size.x, std::max(size.y, size.z));
+            const float fitScale = (maxDimension > 0.0001f) ? (1.6f / maxDimension) : 1.0f;
+
+            Matrix4 modelMatrix(1.0f);
+            if (_node.previewMesh != kShaderGraphPreviewMeshPlane)
+            {
+                modelMatrix = glm::rotate(modelMatrix, DEG2RAD * -18.0f, Vector3(1.0f, 0.0f, 0.0f));
+                modelMatrix = glm::rotate(modelMatrix, DEG2RAD * 32.0f, Vector3(0.0f, 1.0f, 0.0f));
+            }
+
+            modelMatrix = glm::translate(modelMatrix, -center);
+            modelMatrix = glm::scale(modelMatrix, Vector3(fitScale));
+            return modelMatrix;
+        }
+
+        bool EnsureShaderGraphPreviewAssetsCurrent(
+            const std::string &_graphPath,
+            const ShaderGraphDocument &_document,
+            const ShaderGraphNode &_previewNode)
+        {
+            if (_previewNode.type != "Preview")
+                return false;
+
+            const ShaderGraphLink previewLink = GetShaderGraphNodeInputLink(_previewNode, "input");
+            if (!previewLink.IsValid())
+                return false;
+
+            std::error_code timeError = {};
+            const std::filesystem::file_time_type graphTimestamp =
+                std::filesystem::exists(_graphPath)
+                    ? std::filesystem::last_write_time(_graphPath, timeError)
+                    : std::filesystem::file_time_type::min();
+            const std::string previewGraphPath = GetShaderGraphPreviewTempGraphPath(_graphPath, _previewNode.id);
+            ShaderGraphRenderedPreviewCacheEntry &cacheEntry = g_shaderGraphRenderedPreviewCache[previewGraphPath];
+
+            if (cacheEntry.graphTimestamp == graphTimestamp &&
+                std::filesystem::exists(GetShaderGraphGeneratedMaterialPath(previewGraphPath)))
+            {
+                return true;
+            }
+
+            std::string errorMessage = {};
+            if (!GenerateShaderGraphAssets(previewGraphPath, BuildShaderGraphPreviewDocument(_document, _previewNode), &errorMessage))
+            {
+                if (!errorMessage.empty())
+                    Debug::Warning("%s", errorMessage.c_str());
+                return false;
+            }
+
+            const std::string vertexPath = GetShaderGraphGeneratedVertexPath(previewGraphPath);
+            std::filesystem::path shaderBasePath(vertexPath);
+            shaderBasePath.replace_extension("");
+
+            if (const int shaderId = AssetManager::GetID(shaderBasePath.string()); shaderId >= 0)
+            {
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(shaderId))
+                {
+                    shaderAsset->Load(shaderBasePath.string());
+                    if (!shaderAsset->GetShader()->IsLinked())
+                        shaderAsset->GetShader()->Link();
+                }
+            }
+            else
+            {
+                const int loadedShaderId = AssetManager::LoadShader(shaderBasePath.string());
+                if (loadedShaderId >= 0)
+                {
+                    if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(loadedShaderId))
+                    {
+                        if (!shaderAsset->GetShader()->IsLinked())
+                            shaderAsset->GetShader()->Link();
+                    }
+                }
+            }
+
+            (void)AssetManager::ReloadMaterial(GetShaderGraphGeneratedMaterialPath(previewGraphPath));
+            cacheEntry.graphTimestamp = graphTimestamp;
+            return true;
+        }
+
+        bool RenderShaderGraphPreviewToTexture(
+            const std::string &_graphPath,
+            const ShaderGraphDocument &_document,
+            const ShaderGraphNode &_previewNode,
+            const int _width,
+            const int _height,
+            unsigned int &_outTextureId)
+        {
+            _outTextureId = 0;
+            if (_previewNode.type != "Preview" || _width <= 0 || _height <= 0)
+                return false;
+
+            if (!EnsureShaderGraphPreviewAssetsCurrent(_graphPath, _document, _previewNode))
+                return false;
+
+            ModelAsset *model = ResolveShaderGraphPreviewModel(_previewNode);
+            if (model == nullptr)
+                return false;
+
+            const std::string previewGraphPath = GetShaderGraphPreviewTempGraphPath(_graphPath, _previewNode.id);
+            MaterialAsset *materialAsset = AssetManager::GetMaterial(GetShaderGraphGeneratedMaterialPath(previewGraphPath));
+            if (materialAsset == nullptr || materialAsset->shaderId < 0)
+                return false;
+
+            ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId);
+            if (shaderAsset == nullptr || shaderAsset->GetShader() == nullptr)
+                return false;
+
+            Shader *shader = shaderAsset->GetShader();
+            if (!shader->IsLinked())
+                shader->Link();
+            if (!shader->IsLinked())
+                return false;
+
+            ShaderGraphRenderedPreviewCacheEntry &cacheEntry = g_shaderGraphRenderedPreviewCache[previewGraphPath];
+            EnsureRenderTarget(cacheEntry.renderTarget, _width, _height);
+            if (cacheEntry.renderTarget.framebuffer == 0)
+                return false;
+
+            GLint previousFramebuffer = 0;
+            GLint previousViewport[4] = { 0, 0, 0, 0 };
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
+            glGetIntegerv(GL_VIEWPORT, previousViewport);
+
+            glBindFramebuffer(GL_FRAMEBUFFER, cacheEntry.renderTarget.framebuffer);
+            glViewport(0, 0, cacheEntry.renderTarget.width, cacheEntry.renderTarget.height);
+            glEnable(GL_DEPTH_TEST);
+            glDepthMask(GL_TRUE);
+            glDepthFunc(GL_LESS);
+            glDisable(GL_BLEND);
+            glClearColor(0.0f, 0.0f, 0.0f, 0.0f);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+            if ((materialAsset->info & MATERIAL_BACK_FACE_CULLING) != 0u)
+            {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_BACK);
+            }
+            else if ((materialAsset->info & MATERIAL_FRONT_FACE_CULLING) != 0u)
+            {
+                glEnable(GL_CULL_FACE);
+                glCullFace(GL_FRONT);
+            }
+            else
+            {
+                glDisable(GL_CULL_FACE);
+            }
+
+            const float aspect = static_cast<float>(cacheEntry.renderTarget.width) / static_cast<float>(cacheEntry.renderTarget.height);
+            const Matrix4 projection = glm::perspective(DEG2RAD * 36.0f, std::max(aspect, 0.01f), 0.05f, 32.0f);
+            const Vector3 cameraPosition = (_previewNode.previewMesh == kShaderGraphPreviewMeshPlane)
+                ? Vector3(0.0f, 0.0f, 2.1f)
+                : Vector3(0.0f, 0.15f, 2.7f);
+            const Matrix4 view = glm::lookAt(cameraPosition, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f));
+            const Matrix4 modelMatrix = BuildShaderGraphPreviewModelMatrix(*model, _previewNode);
+
+            shader->Use();
+            shader->SetMat4("P", projection);
+            shader->SetMat4("V", view);
+            shader->SetVec3("ambientLightColor", 0.24f, 0.26f, 0.32f);
+            shader->SetFloat("ambientLightIntensity", 1.0f);
+            shader->SetFloat("TIME", static_cast<float>(Time::TimeSinceLaunch()) / 1000.0f);
+            (void)materialAsset->materialFields.Use(*shader, 5);
+            model->Draw(*shader, modelMatrix, nullptr, materialAsset->albedoId, Color(1.0f), nullptr);
+            shader->UnUse();
+
+            glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+            glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+            glDisable(GL_CULL_FACE);
+            glDisable(GL_DEPTH_TEST);
+
+            _outTextureId = cacheEntry.renderTarget.colorTexture;
+            return _outTextureId != 0;
+        }
+
+        bool DrawShaderGraphRenderedPreview(
+            ImDrawList *_drawList,
+            const ImRect &_previewRect,
+            const std::string &_graphPath,
+            const ShaderGraphDocument &_document,
+            const ShaderGraphNode &_previewNode)
+        {
+            const int previewWidth = std::max(32, static_cast<int>(std::round(_previewRect.GetWidth())));
+            const int previewHeight = std::max(32, static_cast<int>(std::round(_previewRect.GetHeight())));
+            unsigned int textureId = 0;
+            if (!RenderShaderGraphPreviewToTexture(_graphPath, _document, _previewNode, previewWidth, previewHeight, textureId))
+                return false;
+
+            _drawList->AddImage(
+                (ImTextureID)(intptr_t)textureId,
+                _previewRect.Min,
+                _previewRect.Max,
+                ImVec2(0.0f, 1.0f),
+                ImVec2(1.0f, 0.0f),
+                IM_COL32(255, 255, 255, 255));
+            return true;
         }
 
         enum class ShaderGraphPreviewKind
@@ -309,6 +664,66 @@ namespace Canis
                 std::clamp(_value.y, 0.0f, 1.0f),
                 std::clamp(_value.z, 0.0f, 1.0f),
                 std::clamp(_value.w, 0.0f, 1.0f));
+        }
+
+        float HashShaderGraphPreviewNoise(int _x, int _y)
+        {
+            const float value = std::sin(static_cast<float>(_x) * 127.1f + static_cast<float>(_y) * 311.7f) * 43758.5453f;
+            return value - std::floor(value);
+        }
+
+        float SampleShaderGraphValueNoisePreview(const Vector2 &_uv)
+        {
+            const int cellX = static_cast<int>(std::floor(_uv.x));
+            const int cellY = static_cast<int>(std::floor(_uv.y));
+            const float localX = _uv.x - std::floor(_uv.x);
+            const float localY = _uv.y - std::floor(_uv.y);
+            const float smoothX = localX * localX * (3.0f - 2.0f * localX);
+            const float smoothY = localY * localY * (3.0f - 2.0f * localY);
+            const float a = HashShaderGraphPreviewNoise(cellX, cellY);
+            const float b = HashShaderGraphPreviewNoise(cellX + 1, cellY);
+            const float c = HashShaderGraphPreviewNoise(cellX, cellY + 1);
+            const float d = HashShaderGraphPreviewNoise(cellX + 1, cellY + 1);
+            const float ab = a + (b - a) * smoothX;
+            const float cd = c + (d - c) * smoothX;
+            return ab + (cd - ab) * smoothY;
+        }
+
+        float SampleShaderGraphVoronoiNoisePreview(const Vector2 &_uv)
+        {
+            const int cellX = static_cast<int>(std::floor(_uv.x));
+            const int cellY = static_cast<int>(std::floor(_uv.y));
+            const float localX = _uv.x - std::floor(_uv.x);
+            const float localY = _uv.y - std::floor(_uv.y);
+            float nearest = 8.0f;
+            float secondNearest = 8.0f;
+
+            for (int y = -1; y <= 1; ++y)
+            {
+                for (int x = -1; x <= 1; ++x)
+                {
+                    const int baseX = cellX + x;
+                    const int baseY = cellY + y;
+                    const float pointX = HashShaderGraphPreviewNoise(baseX + 17, baseY + 91);
+                    const float pointY = HashShaderGraphPreviewNoise(baseX + 53, baseY + 11);
+                    const float deltaX = static_cast<float>(x) + pointX - localX;
+                    const float deltaY = static_cast<float>(y) + pointY - localY;
+                    const float distanceSquared = deltaX * deltaX + deltaY * deltaY;
+
+                    if (distanceSquared < nearest)
+                    {
+                        secondNearest = nearest;
+                        nearest = distanceSquared;
+                    }
+                    else if (distanceSquared < secondNearest)
+                    {
+                        secondNearest = distanceSquared;
+                    }
+                }
+            }
+
+            const float edge = std::sqrt(std::max(secondNearest, 0.0f)) - std::sqrt(std::max(nearest, 0.0f));
+            return std::clamp(1.0f - edge * 3.5f, 0.0f, 1.0f);
         }
 
         ImVec4 GetShaderGraphPreviewTint(const ShaderGraphPreviewValue &_preview)
@@ -456,7 +871,35 @@ namespace Canis
                 }
             }
 
-            if (_node.type == "Add" || _node.type == "Multiply")
+            if (_node.type == "ValueNoise")
+            {
+                Vector2 sampleUv = Vector2(0.37f, 0.61f);
+                const ShaderGraphPreviewValue uv = ResolveShaderGraphPreviewValue(_document, _node.inputUV, _depth + 1);
+                if (HasShaderGraphNumericPreview(uv))
+                {
+                    const Vector4 uvValue = ConvertShaderGraphPreviewNumeric(uv.numericValue, uv.numericType, ShaderGraphValueType::VEC2);
+                    sampleUv = Vector2(uvValue.x, uvValue.y);
+                }
+
+                const float noise = SampleShaderGraphValueNoisePreview(sampleUv);
+                return MakeShaderGraphNumericPreview(ShaderGraphValueType::FLOAT, Vector4(noise, 0.0f, 0.0f, 1.0f));
+            }
+
+            if (_node.type == "VoronoiNoise")
+            {
+                Vector2 sampleUv = Vector2(0.37f, 0.61f);
+                const ShaderGraphPreviewValue uv = ResolveShaderGraphPreviewValue(_document, _node.inputUV, _depth + 1);
+                if (HasShaderGraphNumericPreview(uv))
+                {
+                    const Vector4 uvValue = ConvertShaderGraphPreviewNumeric(uv.numericValue, uv.numericType, ShaderGraphValueType::VEC2);
+                    sampleUv = Vector2(uvValue.x, uvValue.y);
+                }
+
+                const float noise = SampleShaderGraphVoronoiNoisePreview(sampleUv);
+                return MakeShaderGraphNumericPreview(ShaderGraphValueType::FLOAT, Vector4(noise, 0.0f, 0.0f, 1.0f));
+            }
+
+            if (_node.type == "Add" || _node.type == "Multiply" || _node.type == "Subtract" || _node.type == "Difference")
             {
                 const ShaderGraphPreviewValue a = ResolveShaderGraphPreviewValue(_document, _node.inputA, _depth + 1);
                 const ShaderGraphPreviewValue b = ResolveShaderGraphPreviewValue(_document, _node.inputB, _depth + 1);
@@ -489,6 +932,18 @@ namespace Canis
                     {
                         resultValue = Vector4(aValue.x + bValue.x, aValue.y + bValue.y, aValue.z + bValue.z, aValue.w + bValue.w);
                     }
+                    else if (_node.type == "Subtract")
+                    {
+                        resultValue = Vector4(aValue.x - bValue.x, aValue.y - bValue.y, aValue.z - bValue.z, aValue.w - bValue.w);
+                    }
+                    else if (_node.type == "Difference")
+                    {
+                        resultValue = Vector4(
+                            std::abs(aValue.x - bValue.x),
+                            std::abs(aValue.y - bValue.y),
+                            std::abs(aValue.z - bValue.z),
+                            std::abs(aValue.w - bValue.w));
+                    }
                     else
                     {
                         resultValue = Vector4(aValue.x * bValue.x, aValue.y * bValue.y, aValue.z * bValue.z, aValue.w * bValue.w);
@@ -499,6 +954,16 @@ namespace Canis
                 }
 
                 return (a.kind != ShaderGraphPreviewKind::NONE) ? a : b;
+            }
+
+            if (_node.type == "Grayscale")
+            {
+                const ShaderGraphPreviewValue input = ResolveShaderGraphPreviewValue(_document, _node.inputA, _depth + 1);
+                if (HasShaderGraphNumericPreview(input))
+                {
+                    const float scalar = std::clamp(ConvertShaderGraphPreviewNumeric(input.numericValue, input.numericType, ShaderGraphValueType::FLOAT).x, 0.0f, 1.0f);
+                    return MakeShaderGraphNumericPreview(ShaderGraphValueType::VEC4, Vector4(scalar, scalar, scalar, 1.0f), true);
+                }
             }
 
             if (_node.type == "Lerp")
@@ -603,7 +1068,10 @@ namespace Canis
             const ImRect &_rect,
             const ShaderGraphPreviewValue &_preview,
             const std::string &_sourceLabel,
-            float _zoom)
+            float _zoom,
+            const std::string *_graphPath = nullptr,
+            const ShaderGraphDocument *_document = nullptr,
+            const ShaderGraphNode *_previewNode = nullptr)
         {
             const float rounding = ScaleShaderGraphUi(8.0f, _zoom, 4.0f);
             const ImRect contentRect(
@@ -619,6 +1087,13 @@ namespace Canis
 
             _drawList->AddRectFilled(previewRect.Min, previewRect.Max, IM_COL32(28, 33, 40, 255), rounding);
             _drawList->AddRect(previewRect.Min, previewRect.Max, IM_COL32(84, 96, 112, 255), rounding, 0, 1.0f);
+
+            if (_graphPath != nullptr && _document != nullptr && _previewNode != nullptr)
+            {
+                DrawShaderGraphCheckerboard(_drawList, previewRect, ScaleShaderGraphUi(12.0f, _zoom, 6.0f), IM_COL32(84, 88, 96, 255), IM_COL32(54, 58, 66, 255), rounding);
+                if (DrawShaderGraphRenderedPreview(_drawList, previewRect, *_graphPath, *_document, *_previewNode))
+                    goto shader_graph_preview_footer;
+            }
 
             if (_preview.kind == ShaderGraphPreviewKind::TEXTURE && !_preview.texturePath.empty())
             {
@@ -685,6 +1160,7 @@ namespace Canis
                 DrawShaderGraphNodeText(_drawList, previewRect, cursor, "Connect a node output to preview it here.", IM_COL32(210, 216, 226, 255), _zoom);
             }
 
+shader_graph_preview_footer:
             _drawList->AddRectFilled(footerRect.Min, footerRect.Max, IM_COL32(20, 24, 30, 220), rounding);
             _drawList->AddRect(footerRect.Min, footerRect.Max, IM_COL32(74, 82, 94, 255), rounding, 0, 1.0f);
 
@@ -735,10 +1211,20 @@ namespace Canis
                     return MakeTemplate(IM_COL32(142, 78, 62, 255), IM_COL32(84, 44, 34, 255), IM_COL32(100, 52, 40, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
                 case ShaderGraphTemplate_Multiply:
                     return MakeTemplate(IM_COL32(112, 72, 148, 255), IM_COL32(66, 40, 88, 255), IM_COL32(82, 50, 106, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_Subtract:
+                    return MakeTemplate(IM_COL32(84, 146, 132, 255), IM_COL32(40, 84, 76, 255), IM_COL32(50, 98, 88, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
                 case ShaderGraphTemplate_Sine:
                     return MakeTemplate(IM_COL32(64, 126, 118, 255), IM_COL32(38, 74, 70, 255), IM_COL32(46, 88, 84, 255), 1, kSingleInputName, kSingleInputColors, 1, kSingleOutputName, kMathOutputColors);
                 case ShaderGraphTemplate_Lerp:
                     return MakeTemplate(IM_COL32(148, 94, 56, 255), IM_COL32(86, 54, 32, 255), IM_COL32(100, 64, 38, 255), 3, kLerpInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_Difference:
+                    return MakeTemplate(IM_COL32(176, 96, 74, 255), IM_COL32(92, 50, 38, 255), IM_COL32(110, 60, 46, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_ValueNoise:
+                    return MakeTemplate(IM_COL32(84, 132, 174, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kValueNoiseInputNames, kTextureInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_VoronoiNoise:
+                    return MakeTemplate(IM_COL32(106, 142, 188, 255), IM_COL32(44, 66, 94, 255), IM_COL32(56, 82, 112, 255), 1, kVoronoiNoiseInputNames, kTextureInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_Grayscale:
+                    return MakeTemplate(IM_COL32(122, 132, 146, 255), IM_COL32(56, 62, 72, 255), IM_COL32(68, 76, 88, 255), 1, kSingleInputName, kSingleInputColors, 1, kColorOutputNames, kSingleOutputVec4Colors);
                 case ShaderGraphTemplate_Panner:
                     return MakeTemplate(IM_COL32(58, 116, 164, 255), IM_COL32(36, 68, 96, 255), IM_COL32(42, 82, 110, 255), 2, kPannerInputNames, kPannerInputColors, 1, kUvOutputNames, kSingleOutputVec2Colors);
                 case ShaderGraphTemplate_StickyNote:
@@ -781,8 +1267,13 @@ namespace Canis
             if (_node.type == "Texture2D") return ShaderGraphTemplate_Texture2D;
             if (_node.type == "Add") return ShaderGraphTemplate_Add;
             if (_node.type == "Multiply") return ShaderGraphTemplate_Multiply;
+            if (_node.type == "Subtract") return ShaderGraphTemplate_Subtract;
             if (_node.type == "Sine") return ShaderGraphTemplate_Sine;
             if (_node.type == "Lerp") return ShaderGraphTemplate_Lerp;
+            if (_node.type == "Difference") return ShaderGraphTemplate_Difference;
+            if (_node.type == "ValueNoise") return ShaderGraphTemplate_ValueNoise;
+            if (_node.type == "VoronoiNoise") return ShaderGraphTemplate_VoronoiNoise;
+            if (_node.type == "Grayscale") return ShaderGraphTemplate_Grayscale;
             if (_node.type == "Panner") return ShaderGraphTemplate_Panner;
             if (_node.type == "StickyNote") return ShaderGraphTemplate_StickyNote;
             if (_node.type == "Preview") return ShaderGraphTemplate_Preview;
@@ -800,6 +1291,10 @@ namespace Canis
                 return ImVec2(baseWidth + 38.0f, baseHeight + 34.0f);
             if (_node.type == "Lerp")
                 return ImVec2(baseWidth + 18.0f, baseHeight + 26.0f);
+            if (_node.type == "ValueNoise")
+                return ImVec2(baseWidth + 18.0f, baseHeight + 18.0f);
+            if (_node.type == "VoronoiNoise")
+                return ImVec2(baseWidth + 18.0f, baseHeight + 18.0f);
             if (_node.type == "Panner")
                 return ImVec2(baseWidth + 28.0f, baseHeight + 18.0f);
             if (_node.type == "Color")
@@ -848,12 +1343,22 @@ namespace Canis
                 return "Samples a texture using the UV input. If no UV is connected, it uses the mesh UVs.";
             if (_node.type == "Property")
                 return "References a blackboard property so the material can override this value per asset or per instance.";
+            if (_node.type == "ValueNoise")
+                return "Generates smooth procedural 2D value noise from UV coordinates.";
+            if (_node.type == "VoronoiNoise")
+                return "Generates Voronoi-style cell edges from UV coordinates.";
+            if (_node.type == "Difference")
+                return "Computes the absolute difference between A and B. Useful for ridge and foam masks.";
+            if (_node.type == "Subtract")
+                return "Subtracts B from A. Useful for centering texture data like flow maps around zero.";
+            if (_node.type == "Grayscale")
+                return "Turns a scalar input into a grayscale color while keeping alpha at 1.";
             if (_node.type == "Panner")
                 return "Adds time-based motion to UVs so textures can scroll without changing the graph.";
             if (_node.type == "StickyNote")
                 return "A documentation note for organizing and explaining the graph. It does not affect the shader.";
             if (_node.type == "Preview")
-                return "Shows a quick visual approximation of the connected value so you can inspect the graph while editing.";
+                return "Renders the connected value on a preview mesh so you can inspect it like a material sample while editing.";
             if (_node.type == "VertexOutput")
                 return "Final vertex-stage outputs. Connect world-space position and normal here to deform the mesh before rasterization.";
             if (_node.type == "Output")
@@ -888,11 +1393,13 @@ namespace Canis
         {
         public:
             ShaderGraphGraphDelegate(
+                const std::string &_graphPath,
                 ShaderGraphDocument &_document,
                 int &_selectedNodeId,
                 bool &_documentChanged,
                 bool &_semanticChanged)
-                : m_document(_document)
+                : m_graphPath(_graphPath)
+                , m_document(_document)
                 , m_selectedNodeId(_selectedNodeId)
                 , m_documentChanged(_documentChanged)
                 , m_semanticChanged(_semanticChanged)
@@ -1146,6 +1653,28 @@ namespace Canis
                 {
                     drawLine("Texture: " + GetTexturePathLabel(node->texturePath), IM_COL32(255, 239, 188, 255));
                 }
+                else if (node->type == "ValueNoise")
+                {
+                    drawLine("Procedural 2D noise", IM_COL32(214, 226, 255, 255));
+                    drawLine("Input: UV", IM_COL32(176, 194, 216, 255));
+                }
+                else if (node->type == "VoronoiNoise")
+                {
+                    drawLine("Voronoi cell noise", IM_COL32(214, 226, 255, 255));
+                    drawLine("Input: UV", IM_COL32(176, 194, 216, 255));
+                }
+                else if (node->type == "Difference")
+                {
+                    drawLine("Absolute A-B", IM_COL32(255, 224, 206, 255));
+                }
+                else if (node->type == "Subtract")
+                {
+                    drawLine("A-B", IM_COL32(210, 242, 232, 255));
+                }
+                else if (node->type == "Grayscale")
+                {
+                    drawLine("Scalar -> grayscale color", IM_COL32(224, 230, 236, 255));
+                }
                 else if (node->type == "Panner")
                 {
                     drawLine("Speed: " + FormatShaderGraphVector2(node->speedValue), IM_COL32(206, 228, 255, 255));
@@ -1171,7 +1700,7 @@ namespace Canis
                 {
                     const ShaderGraphLink previewLink = GetShaderGraphNodeInputLink(*node, "input");
                     const ShaderGraphPreviewValue previewValue = ResolveShaderGraphPreviewValue(m_document, previewLink);
-                    DrawShaderGraphPreviewNode(_drawList, _rectangle, previewValue, DescribeShaderGraphLink(m_document, previewLink), _zoom);
+                    DrawShaderGraphPreviewNode(_drawList, _rectangle, previewValue, DescribeShaderGraphLink(m_document, previewLink), _zoom, &m_graphPath, &m_document, node);
                 }
                 else if (node->type == "UV")
                 {
@@ -1555,6 +2084,7 @@ namespace Canis
                 return links;
             }
 
+            const std::string &m_graphPath;
             ShaderGraphDocument &m_document;
             int &m_selectedNodeId;
             bool &m_documentChanged;
@@ -1915,6 +2445,7 @@ namespace Canis
 
         void RefreshGeneratedShaderGraphAssets(const std::string &_graphPath)
         {
+            const std::string shaderBasePath = GetGeneratedShaderBasePath(_graphPath);
             const std::string vertexPath = GetShaderGraphGeneratedVertexPath(_graphPath);
             const std::string fragmentPath = GetShaderGraphGeneratedFragmentPath(_graphPath);
             const std::string materialPath = GetShaderGraphGeneratedMaterialPath(_graphPath);
@@ -1923,8 +2454,29 @@ namespace Canis
             (void)AssetManager::GetMetaFile(fragmentPath);
             (void)AssetManager::GetMetaFile(materialPath);
 
-            AssetManager::Free<ShaderAsset>(GetGeneratedShaderBasePath(_graphPath));
-            AssetManager::ReloadLoadedShaders();
+            if (const int shaderId = AssetManager::GetID(shaderBasePath); shaderId >= 0)
+            {
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(shaderId))
+                {
+                    shaderAsset->Load(shaderBasePath);
+                    if (!shaderAsset->GetShader()->IsLinked())
+                        shaderAsset->GetShader()->Link();
+                }
+            }
+            else
+            {
+                const int loadedShaderId = AssetManager::LoadShader(shaderBasePath);
+                if (loadedShaderId >= 0)
+                {
+                    if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(loadedShaderId))
+                    {
+                        if (!shaderAsset->GetShader()->IsLinked())
+                            shaderAsset->GetShader()->Link();
+                    }
+                }
+            }
+
+            (void)AssetManager::ReloadMaterial(materialPath);
         }
 
         bool IsShaderGraphAssetPath(const std::string &_path, MetaFileAsset **_outMeta = nullptr)
@@ -1985,6 +2537,7 @@ namespace Canis
         }
 
         void DrawShaderGraphNodeProperties(
+            const std::string &_graphPath,
             ShaderGraphDocument &_document,
             int &_selectedNodeId,
             bool &_documentChanged,
@@ -2190,6 +2743,26 @@ namespace Canis
                         _semanticChanged = true;
                     }
                 }
+                else if (selectedNode->type == "ValueNoise")
+                {
+                    ImGui::TextDisabled("Uses the UV input or mesh UVs if nothing is connected.");
+                }
+                else if (selectedNode->type == "VoronoiNoise")
+                {
+                    ImGui::TextDisabled("Uses the UV input or mesh UVs if nothing is connected.");
+                }
+                else if (selectedNode->type == "Difference")
+                {
+                    ImGui::TextDisabled("Outputs abs(A - B).");
+                }
+                else if (selectedNode->type == "Subtract")
+                {
+                    ImGui::TextDisabled("Outputs A - B.");
+                }
+                else if (selectedNode->type == "Grayscale")
+                {
+                    ImGui::TextDisabled("Converts the input into a grayscale color with alpha fixed to 1.");
+                }
                 else if (selectedNode->type == "Position")
                 {
                     ImGui::TextDisabled("Built-in world position input.");
@@ -2220,7 +2793,84 @@ namespace Canis
                 }
                 else if (selectedNode->type == "Preview")
                 {
-                    ImGui::TextDisabled("Connect any output to preview the shape of that value.");
+                    static const char *kPreviewMeshOptions[] = { "Sphere", "Cube", "Plane", "Custom" };
+                    int previewMeshIndex = GetShaderGraphPreviewMeshComboIndex(selectedNode->previewMesh);
+                    if (ImGui::Combo("mesh", &previewMeshIndex, kPreviewMeshOptions, IM_ARRAYSIZE(kPreviewMeshOptions)))
+                    {
+                        selectedNode->previewMesh = GetShaderGraphPreviewMeshFromComboIndex(previewMeshIndex);
+                        _documentChanged = true;
+                    }
+
+                    if (selectedNode->previewMesh == kShaderGraphPreviewMeshCustom)
+                    {
+                        std::string customModelLabel = "None";
+                        if (!selectedNode->previewModelPath.empty())
+                        {
+                            if (MetaFileAsset *modelMeta = AssetManager::GetMetaFile(selectedNode->previewModelPath))
+                                customModelLabel = modelMeta->name;
+                            else
+                                customModelLabel = std::filesystem::path(selectedNode->previewModelPath).stem().string();
+                        }
+
+                        ImGui::Button(customModelLabel.c_str(), ImVec2(220.0f, 0.0f));
+                        if (ImGui::BeginDragDropTarget())
+                        {
+                            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                            {
+                                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                                std::string droppedPath = AssetManager::GetPath(dropped.uuid);
+                                if (droppedPath.rfind("Path was not found", 0) == 0)
+                                    droppedPath = std::string(dropped.path);
+
+                                if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(droppedPath))
+                                {
+                                    if (droppedMeta->type == MetaFileAsset::FileType::MODEL)
+                                    {
+                                        selectedNode->previewModelPath = droppedPath;
+                                        _documentChanged = true;
+                                    }
+                                }
+                            }
+                            ImGui::EndDragDropTarget();
+                        }
+
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Clear Model"))
+                        {
+                            selectedNode->previewModelPath.clear();
+                            _documentChanged = true;
+                        }
+                    }
+
+                    ImGui::TextDisabled("Connect any output to render it on the selected preview mesh.");
+
+                    const ShaderGraphLink previewLink = GetShaderGraphNodeInputLink(*selectedNode, "input");
+                    if (previewLink.IsValid())
+                    {
+                        ImGui::Separator();
+                        ImGui::TextUnformatted("Live Preview");
+
+                        const float previewWidth = std::min(std::max(ImGui::GetContentRegionAvail().x, 220.0f), 340.0f);
+                        const float previewHeight = previewWidth * 0.62f;
+                        const ImVec2 previewMin = ImGui::GetCursorScreenPos();
+                        const ImRect previewRect(previewMin, ImVec2(previewMin.x + previewWidth, previewMin.y + previewHeight));
+                        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+                        drawList->AddRectFilled(previewRect.Min, previewRect.Max, IM_COL32(28, 33, 40, 255), 8.0f);
+                        DrawShaderGraphCheckerboard(drawList, previewRect, 12.0f, IM_COL32(84, 88, 96, 255), IM_COL32(54, 58, 66, 255), 8.0f);
+                        if (!DrawShaderGraphRenderedPreview(drawList, previewRect, _graphPath, _document, *selectedNode))
+                        {
+                            ImVec2 previewCursor(previewRect.Min.x + 12.0f, previewRect.Min.y + 12.0f);
+                            DrawShaderGraphNodeText(drawList, previewRect, previewCursor, "Preview shader is building.", IM_COL32(210, 216, 226, 255), 1.0f);
+                        }
+
+                        drawList->AddRect(previewRect.Min, previewRect.Max, IM_COL32(84, 96, 112, 255), 8.0f, 0, 1.0f);
+                        ImGui::Dummy(ImVec2(previewWidth, previewHeight));
+                    }
+                    else
+                    {
+                        ImGui::TextDisabled("Connect an input to see the live mesh preview.");
+                    }
                 }
 
                 const std::vector<ShaderGraphPinInfo> inputPins = GetShaderGraphNodeInputPins(*selectedNode);
@@ -2264,8 +2914,12 @@ namespace Canis
             return;
         }
 
+        std::string activeShaderGraphPath = m_selectedAssetPath;
         MetaFileAsset *meta = nullptr;
-        if (!IsShaderGraphAssetPath(m_selectedAssetPath, &meta))
+        if (!IsShaderGraphAssetPath(activeShaderGraphPath, &meta))
+            activeShaderGraphPath = ResolveRememberedShaderGraphPath();
+
+        if (!IsShaderGraphAssetPath(activeShaderGraphPath, &meta))
         {
             ImGui::TextUnformatted("Select a .shadergraph asset in Assets to edit it here.");
             ImGui::TextDisabled("The Inspector will show node properties for the active shader graph.");
@@ -2273,10 +2927,12 @@ namespace Canis
             return;
         }
 
-        ShaderGraphDocument document = {};
-        PrepareShaderGraphDocument(m_selectedAssetPath, m_shaderGraphStatePath, m_shaderGraphSelectedNodeId, document);
+        RememberLastShaderGraphAssetPath(activeShaderGraphPath);
 
-        ShaderGraphEditorViewState &viewState = g_shaderGraphEditorViewStates[m_selectedAssetPath];
+        ShaderGraphDocument document = {};
+        PrepareShaderGraphDocument(activeShaderGraphPath, m_shaderGraphStatePath, m_shaderGraphSelectedNodeId, document);
+
+        ShaderGraphEditorViewState &viewState = g_shaderGraphEditorViewStates[activeShaderGraphPath];
         viewState.options.mDrawIONameOnHover = false;
         viewState.options.mDrawIONameInsideNode = true;
         viewState.options.mNodeSlotRadius = 7.0f;
@@ -2315,7 +2971,7 @@ namespace Canis
         const ImVec2 canvasScreenPos = ImGui::GetCursorScreenPos();
         const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
         const ImRect canvasRect(canvasScreenPos, ImVec2(canvasScreenPos.x + canvasSize.x, canvasScreenPos.y + canvasSize.y));
-        ShaderGraphGraphDelegate delegate(document, m_shaderGraphSelectedNodeId, documentChanged, semanticChanged);
+        ShaderGraphGraphDelegate delegate(activeShaderGraphPath, document, m_shaderGraphSelectedNodeId, documentChanged, semanticChanged);
         GraphEditor::Show(delegate, viewState.options, viewState.viewState, true, &fitRequest);
 
         bool openContextMenu = false;
@@ -2477,6 +3133,8 @@ namespace Canis
             {
                 addNodeMenuItem("Add", "Add");
                 addNodeMenuItem("Multiply", "Multiply");
+                addNodeMenuItem("Subtract", "Subtract");
+                addNodeMenuItem("Difference", "Difference");
                 addNodeMenuItem("Sine", "Sine");
                 addNodeMenuItem("Lerp", "Lerp");
                 ImGui::EndMenu();
@@ -2485,11 +3143,14 @@ namespace Canis
             if (ImGui::BeginMenu("UV"))
             {
                 addNodeMenuItem("Panner", "Panner");
+                addNodeMenuItem("Value Noise", "ValueNoise");
+                addNodeMenuItem("Voronoi Noise", "VoronoiNoise");
                 ImGui::EndMenu();
             }
 
             if (ImGui::BeginMenu("Visual"))
             {
+                addNodeMenuItem("Grayscale", "Grayscale");
                 addNodeMenuItem("Sticky Note", "StickyNote");
                 addNodeMenuItem("Preview", "Preview");
                 ImGui::EndMenu();
@@ -2504,7 +3165,7 @@ namespace Canis
 
         ImGui::EndGroup();
 
-        CommitShaderGraphDocument(m_selectedAssetPath, document, documentChanged, semanticChanged, manualGenerate);
+        CommitShaderGraphDocument(activeShaderGraphPath, document, documentChanged, semanticChanged, manualGenerate);
         ImGui::End();
     }
 
@@ -2535,7 +3196,7 @@ namespace Canis
         ImGui::Separator();
         ImGui::TextUnformatted("Node Properties");
 
-        DrawShaderGraphNodeProperties(document, m_shaderGraphSelectedNodeId, documentChanged, semanticChanged);
+        DrawShaderGraphNodeProperties(_shaderGraphPath, document, m_shaderGraphSelectedNodeId, documentChanged, semanticChanged);
         CommitShaderGraphDocument(_shaderGraphPath, document, documentChanged, semanticChanged, manualGenerate);
         return true;
     }

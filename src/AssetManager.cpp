@@ -300,6 +300,109 @@ namespace Canis
                     }
                 }
             }
+
+            void PopulateMaterialAssetFromRoot(MaterialAsset &_material, const YAML::Node &_root)
+            {
+                _material = MaterialAsset();
+
+                if (YAML::Node shaderNode = _root["shader"])
+                {
+                    std::string shaderPath = ResolveShaderPath(shaderNode);
+                    if (!shaderPath.empty())
+                    {
+                        _material.shaderId = LoadShader(shaderPath);
+                        if (_material.shaderId >= 0)
+                        {
+                            if (ShaderAsset *shaderAsset = Get<ShaderAsset>(_material.shaderId))
+                            {
+                                shaderAsset->Load(shaderPath);
+                                if (!shaderAsset->GetShader()->IsLinked())
+                                    shaderAsset->GetShader()->Link();
+                            }
+                            _material.info |= MATERIAL_HAS_SHADER;
+                        }
+                    }
+                }
+
+                if (YAML::Node albedoNode = _root["albedo"])
+                {
+                    std::string albedoPath = ResolveAssetPath(albedoNode);
+                    if (!albedoPath.empty())
+                    {
+                        _material.albedoId = LoadTexture(albedoPath);
+                        if (_material.albedoId >= 0)
+                            _material.info |= MATERIAL_HAS_ALBEDO;
+                    }
+                }
+
+                if (YAML::Node specularNode = _root["specular"])
+                {
+                    std::string specularPath = ResolveAssetPath(specularNode);
+                    if (!specularPath.empty())
+                    {
+                        _material.specularId = LoadTexture(specularPath);
+                        if (_material.specularId >= 0)
+                            _material.info |= MATERIAL_HAS_SPECULAR;
+                    }
+                }
+
+                if (YAML::Node roughnessNode = _root["roughness"])
+                {
+                    std::string roughnessPath = ResolveAssetPath(roughnessNode);
+                    if (!roughnessPath.empty())
+                    {
+                        _material.roughnessId = LoadTexture(roughnessPath);
+                        if (_material.roughnessId >= 0)
+                            _material.info |= MATERIAL_HAS_ROUGHNESS;
+                    }
+                }
+
+                if (YAML::Node metallicNode = _root["metallic"])
+                {
+                    std::string metallicPath = ResolveAssetPath(metallicNode);
+                    if (!metallicPath.empty())
+                    {
+                        _material.metallicId = LoadTexture(metallicPath);
+                        if (_material.metallicId >= 0)
+                            _material.info |= MATERIAL_HAS_METALLIC;
+                    }
+                }
+
+                if (YAML::Node emissionNode = _root["emission"])
+                {
+                    std::string emissionPath = ResolveAssetPath(emissionNode);
+                    if (!emissionPath.empty())
+                    {
+                        _material.emissionId = LoadTexture(emissionPath);
+                        if (_material.emissionId >= 0)
+                            _material.info |= MATERIAL_HAS_EMISSION;
+                    }
+                }
+
+                if (YAML::Node colorNode = _root["color"])
+                {
+                    _material.color = colorNode.as<Color>(Color(1.0f));
+                    _material.info |= MATERIAL_HAS_COLOR;
+                }
+
+                _material.specularValue = _root["specularValue"].as<float>(0.5f);
+                _material.roughnessValue = _root["roughnessValue"].as<float>(0.5f);
+                _material.metallicValue = _root["metallicValue"].as<float>(0.0f);
+
+                if (YAML::Node cullNode = _root["backFaceCulling"])
+                {
+                    if (cullNode.as<bool>(false))
+                        _material.info |= MATERIAL_BACK_FACE_CULLING;
+                }
+
+                if (YAML::Node cullNode = _root["frontFaceCulling"])
+                {
+                    if (cullNode.as<bool>(false))
+                        _material.info |= MATERIAL_FRONT_FACE_CULLING;
+                }
+
+                LoadMaterialUniforms(_root, _material.materialFields);
+            }
         } // namespace
 
         AssetLibrary &GetAssetLibrary()
@@ -920,103 +1023,7 @@ namespace Canis
 
             MaterialAsset *material = new MaterialAsset();
             YAML::Node root = YAML::LoadFile(_path);
-
-            if (YAML::Node shaderNode = root["shader"])
-            {
-                std::string shaderPath = ResolveShaderPath(shaderNode);
-                if (!shaderPath.empty())
-                {
-                    material->shaderId = LoadShader(shaderPath);
-                    if (material->shaderId >= 0)
-                    {
-                        if (ShaderAsset *shaderAsset = Get<ShaderAsset>(material->shaderId))
-                        {
-                            if (!shaderAsset->GetShader()->IsLinked())
-                                shaderAsset->GetShader()->Link();
-                        }
-                        material->info |= MATERIAL_HAS_SHADER;
-                    }
-                }
-            }
-
-            if (YAML::Node albedoNode = root["albedo"])
-            {
-                std::string albedoPath = ResolveAssetPath(albedoNode);
-                if (!albedoPath.empty())
-                {
-                    material->albedoId = LoadTexture(albedoPath);
-                    if (material->albedoId >= 0)
-                        material->info |= MATERIAL_HAS_ALBEDO;
-                }
-            }
-
-            if (YAML::Node specularNode = root["specular"])
-            {
-                std::string specularPath = ResolveAssetPath(specularNode);
-                if (!specularPath.empty())
-                {
-                    material->specularId = LoadTexture(specularPath);
-                    if (material->specularId >= 0)
-                        material->info |= MATERIAL_HAS_SPECULAR;
-                }
-            }
-
-            if (YAML::Node roughnessNode = root["roughness"])
-            {
-                std::string roughnessPath = ResolveAssetPath(roughnessNode);
-                if (!roughnessPath.empty())
-                {
-                    material->roughnessId = LoadTexture(roughnessPath);
-                    if (material->roughnessId >= 0)
-                        material->info |= MATERIAL_HAS_ROUGHNESS;
-                }
-            }
-
-            if (YAML::Node metallicNode = root["metallic"])
-            {
-                std::string metallicPath = ResolveAssetPath(metallicNode);
-                if (!metallicPath.empty())
-                {
-                    material->metallicId = LoadTexture(metallicPath);
-                    if (material->metallicId >= 0)
-                        material->info |= MATERIAL_HAS_METALLIC;
-                }
-            }
-
-            if (YAML::Node emissionNode = root["emission"])
-            {
-                std::string emissionPath = ResolveAssetPath(emissionNode);
-                if (!emissionPath.empty())
-                {
-                    material->emissionId = LoadTexture(emissionPath);
-                    if (material->emissionId >= 0)
-                        material->info |= MATERIAL_HAS_EMISSION;
-                }
-            }
-
-            if (YAML::Node colorNode = root["color"])
-            {
-                material->color = colorNode.as<Color>(Color(1.0f));
-                material->info |= MATERIAL_HAS_COLOR;
-            }
-
-            material->specularValue = root["specularValue"].as<float>(0.5f);
-            material->roughnessValue = root["roughnessValue"].as<float>(0.5f);
-            material->metallicValue = root["metallicValue"].as<float>(0.0f);
-
-            if (YAML::Node cullNode = root["backFaceCulling"])
-            {
-                if (cullNode.as<bool>(false))
-                    material->info |= MATERIAL_BACK_FACE_CULLING;
-            }
-
-            if (YAML::Node cullNode = root["frontFaceCulling"])
-            {
-                if (cullNode.as<bool>(false))
-                    material->info |= MATERIAL_FRONT_FACE_CULLING;
-            }
-
-            LoadMaterialUniforms(root, material->materialFields);
+            PopulateMaterialAssetFromRoot(*material, root);
 
             const int id = assetLibrary.nextId;
             assetLibrary.assets[id] = material;
@@ -1041,6 +1048,31 @@ namespace Canis
                 return (MaterialAsset *)GetAssetLibrary().assets[_materialID];
 
             return nullptr;
+        }
+
+        bool ReloadMaterial(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            auto it = assetLibrary.assetPath.find(_path);
+            if (it == assetLibrary.assetPath.end())
+                return LoadMaterial(_path) >= 0;
+
+            if (!assetLibrary.assets.contains(it->second))
+                return false;
+
+            if (!FileExists(_path.c_str()))
+            {
+                Debug::Warning("Material file not found: %s", _path.c_str());
+                return false;
+            }
+
+            MaterialAsset *material = static_cast<MaterialAsset *>(assetLibrary.assets[it->second]);
+            if (material == nullptr)
+                return false;
+
+            YAML::Node root = YAML::LoadFile(_path);
+            PopulateMaterialAssetFromRoot(*material, root);
+            return true;
         }
 
         int LoadSkybox(const std::string &_path)

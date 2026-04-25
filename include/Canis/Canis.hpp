@@ -52,6 +52,7 @@ namespace Canis
     struct EditorConfig
     {
         SceneAssetHandle lastEditorScene = {};
+        ShaderGraphAssetHandle lastShaderGraph = {};
         int theme = EDITOR_THEME_DARK;
         std::string fontPath = "";
         float fontScale = 1.0f;

@@ -468,6 +468,7 @@ namespace Canis
 
         std::string GetPath() const { return m_path; }
         u64 GetGeometryRevision() const { return m_geometryRevision; }
+        bool GetLocalBounds(Vector3 &_min, Vector3 &_max) const;
         bool BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices) const;
 
     private:

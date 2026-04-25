@@ -150,6 +150,7 @@ namespace Canis
 
         YAML::Node node;
         node["lastEditorScene"] = editorConfig.lastEditorScene;
+        node["lastShaderGraph"] = editorConfig.lastShaderGraph;
         node["theme"] = NormalizeEditorThemeMode(editorConfig.theme);
         node["fontPath"] = editorConfig.fontPath;
         node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
@@ -225,6 +226,9 @@ namespace Canis
         editorConfig.lastEditorScene = editorNode["lastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
         if (!editorNode["lastEditorScene"] && editorNode["LastEditorScene"])
             editorConfig.lastEditorScene = editorNode["LastEditorScene"].as<SceneAssetHandle>(editorConfig.lastEditorScene);
+        editorConfig.lastShaderGraph = editorNode["lastShaderGraph"].as<ShaderGraphAssetHandle>(editorConfig.lastShaderGraph);
+        if (!editorNode["lastShaderGraph"] && editorNode["LastShaderGraph"])
+            editorConfig.lastShaderGraph = editorNode["LastShaderGraph"].as<ShaderGraphAssetHandle>(editorConfig.lastShaderGraph);
         editorConfig.theme = NormalizeEditorThemeMode(editorNode["theme"].as<int>(editorConfig.theme));
         editorConfig.fontPath = editorNode["fontPath"].as<std::string>(editorConfig.fontPath);
         editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));

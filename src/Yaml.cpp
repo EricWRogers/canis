@@ -49,6 +49,27 @@ YAML::Node YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAsset
     return node;
 }
 
+YAML::Node YAMLEncodeShaderGraphAssetHandle(const Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle)
+{
+    YAML::Node node(YAML::NodeType::Map);
+
+    if (_shaderGraphAssetHandle.uuid != Canis::UUID(0))
+        node["uuid"] = static_cast<uint64_t>(_shaderGraphAssetHandle.uuid);
+
+    std::string path = _shaderGraphAssetHandle.path;
+    if (path.empty() && _shaderGraphAssetHandle.uuid != Canis::UUID(0))
+    {
+        path = Canis::AssetManager::GetPath(_shaderGraphAssetHandle.uuid);
+        if (path == "Path was not found in AssetLibrary")
+            path.clear();
+    }
+
+    if (!path.empty())
+        node["path"] = path;
+
+    return node;
+}
+
 Canis::TextureHandle YAMLDecodeTexture(std::string &_path)
 {
     return Canis::AssetManager::GetTextureHandle(_path);
@@ -126,6 +147,64 @@ Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const YAML::Node &_node)
     };
 
     auto syncUUIDFromPath = [](Canis::SceneAssetHandle &_handle) -> void
+    {
+        if (_handle.uuid != Canis::UUID(0) || _handle.path.empty())
+            return;
+
+        if (Canis::MetaFileAsset *meta = Canis::AssetManager::GetMetaFile(_handle.path))
+            _handle.uuid = meta->uuid;
+    };
+
+    if (!_node)
+        return handle;
+
+    if (_node.IsMap())
+    {
+        handle.uuid = _node["uuid"].as<uint64_t>(0);
+        handle.path = resolvePathFromUUID(handle.uuid);
+
+        if (handle.path.empty())
+            handle.path = _node["path"].as<std::string>("");
+
+        syncUUIDFromPath(handle);
+        return handle;
+    }
+
+    if (_node.IsScalar())
+    {
+        const std::string raw = _node.as<std::string>("");
+        const bool isNumeric = !raw.empty() &&
+            std::all_of(raw.begin(), raw.end(), [](unsigned char _c) { return std::isdigit(_c) != 0; });
+
+        if (isNumeric)
+        {
+            handle.uuid = static_cast<Canis::UUID>(std::stoull(raw));
+            handle.path = resolvePathFromUUID(handle.uuid);
+        }
+        else
+        {
+            handle.path = raw;
+            syncUUIDFromPath(handle);
+        }
+    }
+
+    return handle;
+}
+
+Canis::ShaderGraphAssetHandle YAMLDecodeShaderGraphAssetHandle(const YAML::Node &_node)
+{
+    Canis::ShaderGraphAssetHandle handle = {};
+
+    auto resolvePathFromUUID = [](const Canis::UUID _uuid) -> std::string
+    {
+        if (_uuid == Canis::UUID(0))
+            return "";
+
+        const std::string resolvedPath = Canis::AssetManager::GetPath(_uuid);
+        return resolvedPath == "Path was not found in AssetLibrary" ? "" : resolvedPath;
+    };
+
+    auto syncUUIDFromPath = [](Canis::ShaderGraphAssetHandle &_handle) -> void
     {
         if (_handle.uuid != Canis::UUID(0) || _handle.path.empty())
             return;

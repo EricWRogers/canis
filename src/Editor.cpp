@@ -1445,7 +1445,30 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return handle;
         }
 
+        ShaderGraphAssetHandle MakeShaderGraphAssetHandleFromPath(const std::string& _path)
+        {
+            ShaderGraphAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                {
+                    handle.path = meta->path;
+                    handle.uuid = meta->uuid;
+                }
+            }
+
+            return handle;
+        }
+
         bool SceneAssetHandleChanged(const SceneAssetHandle& _left, const SceneAssetHandle& _right)
+        {
+            return _left.uuid != _right.uuid || _left.path != _right.path;
+        }
+
+        bool ShaderGraphAssetHandleChanged(const ShaderGraphAssetHandle& _left, const ShaderGraphAssetHandle& _right)
         {
             return _left.uuid != _right.uuid || _left.path != _right.path;
         }
@@ -6146,6 +6169,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedMaterialPath(targetPath.string()));
 
                             m_selectedAssetPath = targetPath.string();
+                            RememberLastShaderGraphAssetPath(m_selectedAssetPath);
                             m_shaderGraphStatePath.clear();
                             m_shaderGraphSelectedNodeId = -1;
                         }
@@ -6287,6 +6311,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                             {
                                 m_selectedAssetPath = fullPath;
+                                if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                    RememberLastShaderGraphAssetPath(m_selectedAssetPath);
                             }
                         }
                     }
@@ -6299,7 +6325,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                            {
                                 m_selectedAssetPath = fullPath;
+                                if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                    RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                            }
                         }
                     }
 
@@ -6358,6 +6388,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                     duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                 {
                                     m_selectedAssetPath = duplicatePath.string();
+                                    if (duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                        RememberLastShaderGraphAssetPath(m_selectedAssetPath);
                                 }
                             }
                         }
@@ -6369,6 +6401,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     {
                         if (AssetManager::DeleteAsset(fullPath))
                         {
+                            ClearRememberedShaderGraphAssetPathIfMatches(fullPath);
                             if (m_selectedAssetPath == fullPath)
                                 m_selectedAssetPath.clear();
                             if (m_shaderGraphStatePath == fullPath)
@@ -6426,6 +6459,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                  meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                         {
                             m_selectedAssetPath = fullPath;
+                            if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                RememberLastShaderGraphAssetPath(m_selectedAssetPath);
                         }
                         else if ((meta->type == MetaFileAsset::FileType::FRAGMENT ||
                                   meta->type == MetaFileAsset::FileType::VERTEX) &&
@@ -6750,6 +6785,63 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::Text("Frame System Total: %.3f ms", totalUpdateMs + totalRenderMs);
 
         ImGui::End();
+    }
+
+    std::string Editor::ResolveRememberedShaderGraphPath() const
+    {
+        const ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
+        if (remembered.Empty())
+            return {};
+
+        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        if (resolvedPath.empty())
+            return {};
+
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+        {
+            if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                return meta->path;
+        }
+
+        return {};
+    }
+
+    void Editor::RememberLastShaderGraphAssetPath(const std::string &_path)
+    {
+        const ShaderGraphAssetHandle handle = MakeShaderGraphAssetHandleFromPath(_path);
+        if (handle.Empty())
+            return;
+
+        ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
+        if (!ShaderGraphAssetHandleChanged(remembered, handle))
+            return;
+
+        remembered = handle;
+        Canis::SaveEditorConfig();
+    }
+
+    void Editor::ClearRememberedShaderGraphAssetPathIfMatches(const std::string &_path)
+    {
+        ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
+        if (remembered.Empty() || _path.empty())
+            return;
+
+        bool matches = false;
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(_path))
+        {
+            matches = meta->type == MetaFileAsset::FileType::SHADERGRAPH &&
+                remembered.uuid != UUID(0) &&
+                meta->uuid == remembered.uuid;
+        }
+
+        if (!matches)
+            matches = ResolveRememberedShaderGraphPath() == _path;
+
+        if (!matches)
+            return;
+
+        remembered = {};
+        Canis::SaveEditorConfig();
     }
 
     void Editor::ApplyEditorTheme(int _theme)
