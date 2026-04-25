@@ -78,6 +78,50 @@ namespace Canis
             float range = 12.0f;
         };
 
+        struct TransparentModelEntry
+        {
+            entt::entity entityHandle = entt::null;
+            float distanceSquared = 0.0f;
+        };
+
+        bool UsesTransparentColor(const Color &_color)
+        {
+            return _color.a < 0.999f;
+        }
+
+        bool MaterialAssetUsesTransparency(MaterialAsset *_materialAsset)
+        {
+            return _materialAsset != nullptr &&
+                (((
+                    _materialAsset->info & MATERIAL_HAS_COLOR) != 0u) &&
+                    UsesTransparentColor(_materialAsset->color));
+        }
+
+        bool EntityUsesTransparency(entt::registry &_registry, entt::entity _entityHandle)
+        {
+            Model *model = _registry.try_get<Model>(_entityHandle);
+            if (model != nullptr && UsesTransparentColor(model->color))
+                return true;
+
+            Material *material = _registry.try_get<Material>(_entityHandle);
+            if (material == nullptr)
+                return false;
+
+            if (UsesTransparentColor(material->color))
+                return true;
+
+            if (material->materialId >= 0 && MaterialAssetUsesTransparency(AssetManager::GetMaterial(material->materialId)))
+                return true;
+
+            for (const i32 slotMaterialId : material->materialIds)
+            {
+                if (slotMaterialId >= 0 && MaterialAssetUsesTransparency(AssetManager::GetMaterial(slotMaterialId)))
+                    return true;
+            }
+
+            return false;
+        }
+
         DirectionalLightState GatherDirectionalLight(entt::registry &_registry)
         {
             DirectionalLightState state = {};
@@ -551,6 +595,11 @@ namespace Canis
         Shader *currentShader = nullptr;
 
         auto modelView = _registry.view<Transform, Model>();
+        std::vector<entt::entity> opaqueEntities = {};
+        std::vector<TransparentModelEntry> transparentEntities = {};
+        opaqueEntities.reserve(modelView.size_hint());
+        transparentEntities.reserve(modelView.size_hint());
+
         for (const entt::entity entityHandle : modelView)
         {
             Transform &transform = modelView.get<Transform>(entityHandle);
@@ -565,6 +614,43 @@ namespace Canis
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
             if (model == nullptr)
                 continue;
+
+            if (EntityUsesTransparency(_registry, entityHandle))
+            {
+                const Vector3 offset = transform.GetGlobalPosition() - cameraPosition;
+                transparentEntities.push_back(TransparentModelEntry{
+                    .entityHandle = entityHandle,
+                    .distanceSquared = glm::dot(offset, offset)
+                });
+            }
+            else
+            {
+                opaqueEntities.push_back(entityHandle);
+            }
+        }
+
+        std::sort(
+            transparentEntities.begin(),
+            transparentEntities.end(),
+            [](const TransparentModelEntry &_a, const TransparentModelEntry &_b)
+            {
+                return _a.distanceSquared > _b.distanceSquared;
+            });
+
+        auto drawEntity = [&](const entt::entity entityHandle) -> void
+        {
+            Transform &transform = modelView.get<Transform>(entityHandle);
+            Model &modelRenderer = modelView.get<Model>(entityHandle);
+            Entity *entity = modelRenderer.entity;
+            if (entity == nullptr)
+                entity = transform.entity;
+
+            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+                return;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                return;
 
             MaterialAsset *materialAsset = nullptr;
             Material *material = _registry.try_get<Material>(entityHandle);
@@ -757,7 +843,16 @@ namespace Canis
                 overrideTextureId,
                 baseColor,
                 slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides);
-        }
+        };
+
+        glDepthMask(GL_TRUE);
+        for (const entt::entity entityHandle : opaqueEntities)
+            drawEntity(entityHandle);
+
+        glDepthMask(GL_FALSE);
+        for (const TransparentModelEntry &entry : transparentEntities)
+            drawEntity(entry.entityHandle);
+        glDepthMask(GL_TRUE);
 
         if (currentShader != nullptr)
         {
