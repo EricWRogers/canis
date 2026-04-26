@@ -47,6 +47,22 @@ namespace Canis
         (void)_entity;
     }
 
+    void Editor::NotifyAnimationPropertyEdited(
+        Canis::Entity& _entity,
+        const std::string& _componentName,
+        const std::string& _propertyName,
+        AnimationValueType _type,
+        AnimationInterpolation _interpolation,
+        const AnimationValue& _value)
+    {
+        (void)_entity;
+        (void)_componentName;
+        (void)_propertyName;
+        (void)_type;
+        (void)_interpolation;
+        (void)_value;
+    }
+
     void Editor::InputEntity(const std::string& _name, Canis::Entity*& _variable)
     {
         (void)_name;
@@ -67,6 +83,19 @@ namespace Canis
     }
 
     void Editor::InputAnimationClip(const std::string& _name, const char* _idSuffix, Canis::AnimationClip2DID& _variable)
+    {
+        (void)_name;
+        (void)_idSuffix;
+        (void)_variable;
+    }
+
+    void Editor::InputAnimationClipAsset(const std::string& _name, Canis::AnimationClipAssetHandle& _variable)
+    {
+        (void)_name;
+        (void)_variable;
+    }
+
+    void Editor::InputAnimationClipAsset(const std::string& _name, const char* _idSuffix, Canis::AnimationClipAssetHandle& _variable)
     {
         (void)_name;
         (void)_idSuffix;

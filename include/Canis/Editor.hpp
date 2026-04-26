@@ -74,6 +74,13 @@ namespace Canis
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
         void ApplyPrefabInstanceOverrides(Canis::Entity* _entity);
+        void NotifyAnimationPropertyEdited(
+            Canis::Entity& _entity,
+            const std::string &_componentName,
+            const std::string &_propertyName,
+            AnimationValueType _type,
+            AnimationInterpolation _interpolation,
+            const AnimationValue &_value);
 
         // inspector variables
         void InputEntity(const std::string& _name, Canis::Entity* &_variable);
@@ -82,6 +89,10 @@ namespace Canis
         void InputAudioAsset(const std::string& _name, const char* _idSuffix, Canis::AudioAssetHandle &_variable);
         void InputAnimationClip(const std::string& _name, Canis::AnimationClip2DID &_variable);
         void InputAnimationClip(const std::string& _name, const char* _idSuffix, Canis::AnimationClip2DID &_variable);
+        void InputAnimationClipAsset(const std::string& _name, Canis::AnimationClipAssetHandle &_variable);
+        void InputAnimationClipAsset(const std::string& _name, const char* _idSuffix, Canis::AnimationClipAssetHandle &_variable);
+        void InputAnimatorControllerAsset(const std::string& _name, Canis::AnimatorControllerAssetHandle &_variable);
+        void InputAnimatorControllerAsset(const std::string& _name, const char* _idSuffix, Canis::AnimatorControllerAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, Canis::SceneAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, const char* _idSuffix, Canis::SceneAssetHandle &_variable);
         //void InputScriptableEntity(const std::string& _name, const std::string& _script, );
@@ -117,6 +128,14 @@ namespace Canis
     private:
         using InspectorFieldDrawer = std::function<void(Editor&, const char*, const char*, void*)>;
 
+        struct AnimationRestoreBinding
+        {
+            std::string path = "";
+            std::string component = "";
+            std::string property = "";
+            AnimationValue value = {};
+        };
+
         void DrawMainDockspace();
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
@@ -144,7 +163,14 @@ namespace Canis
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
         bool DrawPostProcessAssetInspector(const std::string &_postProcessPath);
+        bool DrawAnimationClipAssetInspector(const std::string &_animationClipPath);
+        bool DrawAnimatorControllerAssetInspector(const std::string &_animatorControllerPath);
         bool DrawShaderGraphAssetInspector(const std::string &_shaderGraphPath);
+        void DrawAnimationWindow(float _deltaTime);
+        void DrawAnimatorWindow();
+        std::string ResolveRememberedAnimationClipPath() const;
+        void RememberLastAnimationClipAssetPath(const std::string &_path);
+        void ClearRememberedAnimationClipAssetPathIfMatches(const std::string &_path);
         void DrawShaderGraphWindow();
         void DrawProjectSettings();
         void DrawSystemPanel();
@@ -214,6 +240,23 @@ namespace Canis
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
         std::string m_selectedScriptPath = {};
+        std::string m_animationClipStatePath = {};
+        std::string m_animatorStatePath = {};
+        int m_animationSelectedTrack = -1;
+        int m_animationSelectedEvent = -1;
+        int m_animatorSelectedState = -1;
+        int m_animatorSelectedTransition = -1;
+        int m_animationFirstFrame = 0;
+        bool m_animationExpanded = true;
+        bool m_animationPreviewEnabled = true;
+        bool m_animationRecordEnabled = false;
+        bool m_animationPlaying = false;
+        float m_animationTime = 0.0f;
+        UUID m_animationTargetUUID = UUID(0);
+        UUID m_animationPreviewTargetUUID = UUID(0);
+        std::string m_animationPreviewClipPath = {};
+        std::vector<AnimationRestoreBinding> m_animationRestoreBindings = {};
+        std::string m_animationAddPropertySearch = {};
         std::string m_shaderGraphStatePath = {};
         int m_shaderGraphSelectedNodeId = -1;
         bool m_openScriptCreatePopup = false;

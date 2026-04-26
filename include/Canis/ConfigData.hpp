@@ -6,6 +6,7 @@
 #include <functional>
 #include <yaml-cpp/yaml.h>
 #include <Canis/Math.hpp>
+#include <Canis/AnimationTypes.hpp>
 
 namespace Canis
 {
@@ -38,14 +39,33 @@ struct UIActionContext
 
 using UIActionInvoker = std::function<void(ScriptableEntity&, const UIActionContext&)>;
 
+struct AnimationEventContext
+{
+    Entity* sourceEntity = nullptr;
+    Entity* targetEntity = nullptr;
+    std::string clipPath = "";
+    std::string eventName = "";
+    std::string stringPayload = "";
+    float floatPayload = 0.0f;
+    int intPayload = 0;
+};
+
+using AnimationEventInvoker = std::function<void(ScriptableEntity&, const AnimationEventContext&)>;
+
 using PropertySetter = std::function<void(YAML::Node&, void*)>;
 using PropertyGetter = std::function<YAML::Node(void*)>;
 using PropertyDrawer = std::function<void(Editor&, const std::string&, void*, const std::string&)>;
+using AnimationPropertySetter = std::function<void(void*, const AnimationValue&)>;
+using AnimationPropertyGetter = std::function<AnimationValue(void*)>;
 
 struct PropertyRegistry {
     std::map<std::string, PropertySetter> setters;
     std::map<std::string, PropertyGetter> getters;
     std::map<std::string, PropertyDrawer> drawers;
+    std::map<std::string, AnimationPropertySetter> animationSetters;
+    std::map<std::string, AnimationPropertyGetter> animationGetters;
+    std::map<std::string, AnimationValueType> animationTypes;
+    std::map<std::string, AnimationInterpolation> animationInterpolations;
     std::vector<std::string> propertyOrder;
 };
 
@@ -63,6 +83,7 @@ struct ScriptConf {
     std::function<void(YAML::Node &_node, Entity &_entity, bool _callCreate)> Decode = nullptr;
     std::function<void(Editor&, Entity&, const ScriptConf&)> DrawInspector = nullptr;
     std::unordered_map<std::string, UIActionInvoker> uiActions = {};
+    std::unordered_map<std::string, AnimationEventInvoker> animationEvents = {};
 };
 
 using ComponentConf = ScriptConf;

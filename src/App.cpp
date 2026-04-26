@@ -1206,6 +1206,16 @@ namespace Canis
             _editor.InputSceneAsset(_label, _idSuffix, _value);
         });
 
+        _editor.RegisterInspectorFieldDrawer<Canis::AnimationClipAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::AnimationClipAssetHandle& _value)
+        {
+            _editor.InputAnimationClipAsset(_label, _idSuffix, _value);
+        });
+
+        _editor.RegisterInspectorFieldDrawer<Canis::AnimatorControllerAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::AnimatorControllerAssetHandle& _value)
+        {
+            _editor.InputAnimatorControllerAsset(_label, _idSuffix, _value);
+        });
+
         ScriptConf prefabInstanceConf = {
             .name = "Canis::PrefabInstance",
             .Construct = nullptr,
@@ -1445,6 +1455,18 @@ namespace Canis
                 RectTransform* transform = nullptr;
                 if (_entity.HasComponent<RectTransform>() && ((transform = &_entity.GetComponent<RectTransform>()), true))
                 {
+                    const bool beforeActive = transform->active;
+                    const Vector2 beforePosition = transform->position;
+                    const Vector2 beforeSize = transform->size;
+                    const Vector2 beforeScale = transform->scale;
+                    const Vector2 beforeAnchorMin = transform->anchorMin;
+                    const Vector2 beforeAnchorMax = transform->anchorMax;
+                    const Vector2 beforePivot = transform->pivot;
+                    const Vector2 beforeOriginOffset = transform->originOffset;
+                    const Vector2 beforeRotationOriginOffset = transform->rotationOriginOffset;
+                    const float beforeDepth = transform->depth;
+                    const float beforeRotation = transform->rotation;
+
                     ImGui::Checkbox("active", &transform->active);
                     ImGui::InputFloat2("position", &transform->position.x, "%.3f");
                     ImGui::InputFloat2("size", &transform->size.x, "%.3f");
@@ -1482,9 +1504,44 @@ namespace Canis
                     transform->anchorMax.y = std::clamp(transform->anchorMax.y, transform->anchorMin.y, 1.0f);
                     transform->pivot.x = clamp01(transform->pivot.x);
                     transform->pivot.y = clamp01(transform->pivot.y);
+
+                    if (beforeActive != transform->active)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "active", AnimationValueType::BOOL, AnimationInterpolation::STEP, AnimationValue::Bool(transform->active));
+                    if (beforePosition != transform->position)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "position", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->position));
+                    if (beforeSize != transform->size)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "size", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->size));
+                    if (beforeScale != transform->scale)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "scale", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->scale));
+                    if (beforeAnchorMin != transform->anchorMin)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "anchorMin", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->anchorMin));
+                    if (beforeAnchorMax != transform->anchorMax)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "anchorMax", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->anchorMax));
+                    if (beforePivot != transform->pivot)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "pivot", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->pivot));
+                    if (beforeOriginOffset != transform->originOffset)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "originOffset", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->originOffset));
+                    if (beforeRotationOriginOffset != transform->rotationOriginOffset)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotationOriginOffset", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->rotationOriginOffset));
+                    if (std::fabs(beforeDepth - transform->depth) > 0.00001f)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "depth", AnimationValueType::FLOAT, AnimationInterpolation::LINEAR, AnimationValue::Float(transform->depth));
+                    if (std::fabs(beforeRotation - transform->rotation) > 0.00001f)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotation", AnimationValueType::FLOAT, AnimationInterpolation::LINEAR, AnimationValue::Float(transform->rotation));
                 }
             },
         };
+
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, active);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, position);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, size);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, scale);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, anchorMin);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, anchorMax);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, pivot);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, originOffset);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, depth);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, rotation);
+        REGISTER_PROPERTY(rectTransformConf, RectTransform, rotationOriginOffset);
 
         RegisterScript(rectTransformConf);
 
@@ -2153,6 +2210,12 @@ namespace Canis
                 Transform* transform = nullptr;
                 if (_entity.HasComponent<Transform>() && ((transform = &_entity.GetComponent<Transform>()), true))
                 {
+                    const bool beforeActive = transform->active;
+                    const Vector3 beforePosition = transform->position;
+                    const Vector3 beforeRotation = transform->rotation;
+                    const Vector3 beforeScale = transform->scale;
+
+                    ImGui::Checkbox("active", &transform->active);
                     ImGui::InputFloat3("position", &transform->position.x, "%.3f");
 
                     Vector3 degrees = transform->rotation * RAD2DEG;
@@ -2173,9 +2236,23 @@ namespace Canis
                     {
                         ImGui::Text("parent: [none]");
                     }
+
+                    if (beforeActive != transform->active)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "active", AnimationValueType::BOOL, AnimationInterpolation::STEP, AnimationValue::Bool(transform->active));
+                    if (beforePosition != transform->position)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "position", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->position));
+                    if (beforeRotation != transform->rotation)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotation", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->rotation));
+                    if (beforeScale != transform->scale)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "scale", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->scale));
                 }
             },
         };
+
+        REGISTER_PROPERTY(transformConf, Transform, active);
+        REGISTER_PROPERTY(transformConf, Transform, position);
+        REGISTER_PROPERTY(transformConf, Transform, rotation);
+        REGISTER_PROPERTY(transformConf, Transform, scale);
 
         RegisterScript(transformConf);
 
@@ -3512,6 +3589,177 @@ namespace Canis
 
         RegisterScript(modelAnimationConf);
 
+        ScriptConf animatorConf = {};
+        animatorConf.name = "Canis::Animator";
+        animatorConf.Construct = nullptr;
+        animatorConf.Add = [this](Entity &_entity) -> void {
+            _entity.AddComponent<Animator>();
+        };
+        animatorConf.Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<Animator>(); };
+        animatorConf.Remove = [this](Entity &_entity) -> void { _entity.RemoveComponent<Animator>(); };
+        animatorConf.Get = [this](Entity &_entity) -> void* { return _entity.HasComponent<Animator>() ? static_cast<void*>(&_entity.GetComponent<Animator>()) : nullptr; };
+        REGISTER_PROPERTY(animatorConf, Animator, controller);
+        REGISTER_PROPERTY(animatorConf, Animator, playing);
+        animatorConf.Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+            if (!_entity.HasComponent<Animator>())
+                return;
+
+            Animator &animator = _entity.GetComponent<Animator>();
+            YAML::Node comp;
+            comp["controller"] = animator.controller;
+            comp["playing"] = animator.playing;
+            _node["Canis::Animator"] = comp;
+        };
+        animatorConf.Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+            if (YAML::Node comp = _node["Canis::Animator"])
+            {
+                Animator &animator = *_entity.AddComponent<Animator>();
+                animator.controller = comp["controller"].as<AnimatorControllerAssetHandle>(animator.controller);
+                animator.playing = comp["playing"].as<bool>(animator.playing);
+                if (_callCreate)
+                    animator.Create();
+            }
+        };
+        animatorConf.DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+            if (!_entity.HasComponent<Animator>())
+                return;
+
+            Animator &animator = _entity.GetComponent<Animator>();
+            DrawRegisteredProperties(_editor, _conf.registry, &animator, _conf.name);
+
+            ImGui::Text("currentState: %s", animator.currentState.empty() ? "[ none ]" : animator.currentState.c_str());
+            ImGui::Text("time: %.3f", animator.time);
+
+            const std::string controllerPath = AssetManager::ResolvePath(animator.controller);
+            AnimatorControllerAsset *controller = controllerPath.empty() ? nullptr : AssetManager::GetAnimatorController(controllerPath);
+            if (controller == nullptr)
+                return;
+
+            for (const AnimatorParameterDefinition &definition : controller->parameters)
+            {
+                if (animator.GetParameter(definition.name) != nullptr)
+                    continue;
+
+                AnimatorParameterRuntime parameter = {};
+                parameter.name = definition.name;
+                switch (definition.type)
+                {
+                    case AnimatorParameterType::INT:
+                        parameter.value = AnimationValue::Int(0);
+                        break;
+                    case AnimatorParameterType::BOOL:
+                    case AnimatorParameterType::TRIGGER:
+                        parameter.value = AnimationValue::Bool(false);
+                        break;
+                    case AnimatorParameterType::FLOAT:
+                    default:
+                        parameter.value = AnimationValue::Float(0.0f);
+                        break;
+                }
+
+                if (definition.defaultValue.type != AnimationValueType::NONE)
+                    parameter.value = definition.defaultValue;
+                animator.parameters.push_back(parameter);
+            }
+
+            if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                for (const AnimatorParameterDefinition &definition : controller->parameters)
+                {
+                    AnimatorParameterRuntime *runtimeParameter = animator.GetParameter(definition.name);
+                    if (runtimeParameter == nullptr)
+                        continue;
+
+                    ImGui::PushID(definition.name.c_str());
+                    switch (definition.type)
+                    {
+                        case AnimatorParameterType::FLOAT:
+                        {
+                            float value = runtimeParameter->value.AsFloat();
+                            if (ImGui::InputFloat(definition.name.c_str(), &value, 0.0f, 0.0f, "%.3f"))
+                                runtimeParameter->value = AnimationValue::Float(value);
+                            break;
+                        }
+                        case AnimatorParameterType::INT:
+                        {
+                            int value = runtimeParameter->value.AsInt();
+                            if (ImGui::InputInt(definition.name.c_str(), &value))
+                                runtimeParameter->value = AnimationValue::Int(value);
+                            break;
+                        }
+                        case AnimatorParameterType::BOOL:
+                        {
+                            bool value = runtimeParameter->value.AsBool();
+                            if (ImGui::Checkbox(definition.name.c_str(), &value))
+                                runtimeParameter->value = AnimationValue::Bool(value);
+                            break;
+                        }
+                        case AnimatorParameterType::TRIGGER:
+                        {
+                            if (ImGui::Button(definition.name.c_str()))
+                            {
+                                runtimeParameter->triggerActive = true;
+                                runtimeParameter->value = AnimationValue::Bool(true);
+                            }
+                            ImGui::SameLine();
+                            ImGui::TextUnformatted(runtimeParameter->triggerActive ? "[ armed ]" : "[ idle ]");
+                            break;
+                        }
+                    }
+                    ImGui::PopID();
+                }
+            }
+        };
+
+        RegisterScript(animatorConf);
+
+        ScriptConf animationPlayerConf = {};
+        animationPlayerConf.name = "Canis::AnimationPlayer";
+        animationPlayerConf.Construct = nullptr;
+        animationPlayerConf.Add = [this](Entity &_entity) -> void {
+            _entity.AddComponent<AnimationPlayer>();
+        };
+        animationPlayerConf.Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<AnimationPlayer>(); };
+        animationPlayerConf.Remove = [this](Entity &_entity) -> void { _entity.RemoveComponent<AnimationPlayer>(); };
+        animationPlayerConf.Get = [this](Entity &_entity) -> void* { return _entity.HasComponent<AnimationPlayer>() ? static_cast<void*>(&_entity.GetComponent<AnimationPlayer>()) : nullptr; };
+        REGISTER_PROPERTY(animationPlayerConf, AnimationPlayer, clip);
+        REGISTER_PROPERTY(animationPlayerConf, AnimationPlayer, playing);
+        REGISTER_PROPERTY(animationPlayerConf, AnimationPlayer, loop);
+        REGISTER_PROPERTY(animationPlayerConf, AnimationPlayer, speed);
+        REGISTER_PROPERTY(animationPlayerConf, AnimationPlayer, time);
+        animationPlayerConf.Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+            if (!_entity.HasComponent<AnimationPlayer>())
+                return;
+
+            AnimationPlayer &player = _entity.GetComponent<AnimationPlayer>();
+            YAML::Node comp;
+            comp["clip"] = player.clip;
+            comp["playing"] = player.playing;
+            comp["loop"] = player.loop;
+            comp["speed"] = player.speed;
+            comp["time"] = player.time;
+            _node["Canis::AnimationPlayer"] = comp;
+        };
+        animationPlayerConf.Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+            if (YAML::Node comp = _node["Canis::AnimationPlayer"])
+            {
+                AnimationPlayer &player = *_entity.AddComponent<AnimationPlayer>();
+                player.clip = comp["clip"].as<AnimationClipAssetHandle>(player.clip);
+                player.playing = comp["playing"].as<bool>(player.playing);
+                player.loop = comp["loop"].as<bool>(player.loop);
+                player.speed = comp["speed"].as<float>(player.speed);
+                player.time = comp["time"].as<float>(player.time);
+                if (_callCreate)
+                    player.Create();
+            }
+        };
+        animationPlayerConf.DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+            if (AnimationPlayer *component = (_entity.HasComponent<AnimationPlayer>() ? &_entity.GetComponent<AnimationPlayer>() : nullptr))
+                DrawRegisteredProperties(_editor, _conf.registry, component, _conf.name);
+        };
+
+        RegisterScript(animationPlayerConf);
+
         ScriptConf spriteAnimationConf = {
             .name = "Canis::SpriteAnimation",
             .Construct = nullptr,
@@ -3741,6 +3989,44 @@ namespace Canis
         bool handled = false;
         for (ScriptConf& conf : m_scriptRegistry)
             handled = invokeAction(conf) || handled;
+
+        return handled;
+    }
+
+    bool App::DispatchAnimationEvent(Entity& _targetEntity, const std::string& _scriptName, const std::string& _eventName, const AnimationEventContext& _context)
+    {
+        if (_eventName.empty())
+            return false;
+
+        auto invokeEvent = [&](ScriptConf& _conf) -> bool
+        {
+            if (_conf.kind != RegistryEntryKind::Script)
+                return false;
+
+            auto eventIt = _conf.animationEvents.find(_eventName);
+            if (eventIt == _conf.animationEvents.end() || _conf.Get == nullptr)
+                return false;
+
+            if (ScriptableEntity* script = static_cast<ScriptableEntity*>(_conf.Get(_targetEntity)))
+            {
+                eventIt->second(*script, _context);
+                return true;
+            }
+
+            return false;
+        };
+
+        if (!_scriptName.empty())
+        {
+            if (ScriptConf* conf = GetScriptConf(_scriptName))
+                return invokeEvent(*conf);
+
+            return false;
+        }
+
+        bool handled = false;
+        for (ScriptConf& conf : m_scriptRegistry)
+            handled = invokeEvent(conf) || handled;
 
         return handled;
     }

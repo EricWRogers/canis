@@ -8,6 +8,8 @@
 
 #include <Canis/UUID.hpp>
 #include <Canis/Data/Types.hpp>
+#include <Canis/AnimationTypes.hpp>
+#include <Canis/AssetHandle.hpp>
 
 namespace Canis
 {
@@ -159,6 +161,8 @@ namespace Canis
             AUDIO,
             SCENE,
             ANIMATIONCLIP2D,
+            ANIMATIONCLIP,
+            ANIMATORCONTROLLER,
             MODEL,
             MATERIAL,
             SKYBOX,
@@ -207,6 +211,118 @@ namespace Canis
         bool Free() override;
 
         std::vector<SpriteFrame> frames = {};
+    };
+
+    struct AnimationKeyframe
+    {
+        float time = 0.0f;
+        AnimationValue value = {};
+    };
+
+    struct AnimationTrack
+    {
+        std::string path = "";
+        std::string component = "";
+        std::string property = "";
+        AnimationValueType type = AnimationValueType::NONE;
+        AnimationInterpolation interpolation = AnimationInterpolation::LINEAR;
+        std::vector<AnimationKeyframe> keys = {};
+    };
+
+    struct AnimationEvent
+    {
+        float time = 0.0f;
+        std::string path = "";
+        std::string script = "";
+        std::string name = "";
+        std::string stringPayload = "";
+        float floatPayload = 0.0f;
+        int intPayload = 0;
+    };
+
+    class AnimationClipAsset : public Asset
+    {
+    private:
+        std::string m_path = "";
+
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+        bool Save(const std::string &_path = "") const;
+
+        const std::string& GetPath() const { return m_path; }
+
+        float length = 1.0f;
+        std::vector<AnimationTrack> tracks = {};
+        std::vector<AnimationEvent> events = {};
+    };
+
+    enum class AnimatorParameterType
+    {
+        FLOAT = 0,
+        INT,
+        BOOL,
+        TRIGGER,
+    };
+
+    enum class AnimatorConditionMode
+    {
+        GREATER = 0,
+        LESS,
+        EQUAL,
+        NOT_EQUAL,
+        IF_TRUE,
+        IF_FALSE,
+        TRIGGERED,
+    };
+
+    struct AnimatorParameterDefinition
+    {
+        std::string name = "";
+        AnimatorParameterType type = AnimatorParameterType::FLOAT;
+        AnimationValue defaultValue = AnimationValue::Float(0.0f);
+    };
+
+    struct AnimatorTransitionCondition
+    {
+        std::string parameter = "";
+        AnimatorConditionMode mode = AnimatorConditionMode::GREATER;
+        AnimationValue value = AnimationValue::Float(0.0f);
+    };
+
+    struct AnimatorTransition
+    {
+        std::string toState = "";
+        bool hasExitTime = false;
+        float exitTimeNormalized = 1.0f;
+        std::vector<AnimatorTransitionCondition> conditions = {};
+    };
+
+    struct AnimatorState
+    {
+        std::string name = "State";
+        AnimationClipAssetHandle clip = {};
+        bool loop = true;
+        float speed = 1.0f;
+        Vector2 editorPosition = Vector2(0.0f);
+        std::vector<AnimatorTransition> transitions = {};
+    };
+
+    class AnimatorControllerAsset : public Asset
+    {
+    private:
+        std::string m_path = "";
+
+    public:
+        bool Load(std::string _path) override;
+        bool Free() override;
+        bool Save(const std::string &_path = "") const;
+
+        const std::string& GetPath() const { return m_path; }
+
+        std::string entryState = "";
+        std::vector<AnimatorParameterDefinition> parameters = {};
+        std::vector<AnimatorState> states = {};
     };
 
     enum MaterialInfo : u32

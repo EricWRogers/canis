@@ -933,6 +933,72 @@ namespace Canis
             return (SpriteAnimationAsset *)GetAssetLibrary().assets[_animationID];
         }
 
+        int LoadAnimationClip(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            if (std::map<std::string, int>::iterator it = assetLibrary.assetPath.find(_path); it != assetLibrary.assetPath.end())
+                return it->second;
+
+            Asset *clip = new AnimationClipAsset();
+            if (!clip->Load(_path))
+            {
+                delete clip;
+                return -1;
+            }
+
+            const int id = assetLibrary.nextId++;
+            assetLibrary.assets[id] = clip;
+            assetLibrary.assetPath[_path] = id;
+            return id;
+        }
+
+        AnimationClipAsset* GetAnimationClip(const std::string &_path)
+        {
+            const int id = LoadAnimationClip(_path);
+            return id >= 0 ? GetAnimationClip(id) : nullptr;
+        }
+
+        AnimationClipAsset* GetAnimationClip(i32 _animationID)
+        {
+            if (!GetAssetLibrary().assets.contains(_animationID))
+                return nullptr;
+
+            return static_cast<AnimationClipAsset *>(GetAssetLibrary().assets[_animationID]);
+        }
+
+        int LoadAnimatorController(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            if (std::map<std::string, int>::iterator it = assetLibrary.assetPath.find(_path); it != assetLibrary.assetPath.end())
+                return it->second;
+
+            Asset *controller = new AnimatorControllerAsset();
+            if (!controller->Load(_path))
+            {
+                delete controller;
+                return -1;
+            }
+
+            const int id = assetLibrary.nextId++;
+            assetLibrary.assets[id] = controller;
+            assetLibrary.assetPath[_path] = id;
+            return id;
+        }
+
+        AnimatorControllerAsset* GetAnimatorController(const std::string &_path)
+        {
+            const int id = LoadAnimatorController(_path);
+            return id >= 0 ? GetAnimatorController(id) : nullptr;
+        }
+
+        AnimatorControllerAsset* GetAnimatorController(i32 _animatorControllerID)
+        {
+            if (!GetAssetLibrary().assets.contains(_animatorControllerID))
+                return nullptr;
+
+            return static_cast<AnimatorControllerAsset *>(GetAssetLibrary().assets[_animatorControllerID]);
+        }
+
         int LoadModel(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();

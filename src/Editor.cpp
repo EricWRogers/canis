@@ -14,7 +14,9 @@
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/AnimationRuntime.hpp>
 #include <Canis/ShaderGraph.hpp>
+#include <Canis/ShaderGraphGraphEditor.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 
@@ -28,6 +30,8 @@
 #include <imgui_internal.h>
 
 #include <ImGuizmo.h>
+#include <ImSequencer.h>
+#include <ImCurveEdit.h>
 
 #define GLM_ENABLE_EXPERIMENTAL
 #include <glm/gtc/type_ptr.hpp>
@@ -42,7 +46,9 @@
 #include <cstdio>
 #include <fstream>
 #include <cctype>
+#include <limits>
 #include <sstream>
+#include <unordered_map>
 #include <unordered_set>
 
 namespace Canis
@@ -1472,6 +1478,42 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return handle;
         }
 
+        AnimationClipAssetHandle MakeAnimationClipAssetHandleFromPath(const std::string& _path)
+        {
+            AnimationClipAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                {
+                    handle.path = meta->path;
+                    handle.uuid = meta->uuid;
+                }
+            }
+
+            return handle;
+        }
+
+        AnimatorControllerAssetHandle MakeAnimatorControllerAssetHandleFromPath(const std::string& _path)
+        {
+            AnimatorControllerAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER)
+                {
+                    handle.path = meta->path;
+                    handle.uuid = meta->uuid;
+                }
+            }
+
+            return handle;
+        }
+
         bool SceneAssetHandleChanged(const SceneAssetHandle& _left, const SceneAssetHandle& _right)
         {
             return _left.uuid != _right.uuid || _left.path != _right.path;
@@ -1480,6 +1522,897 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         bool ShaderGraphAssetHandleChanged(const ShaderGraphAssetHandle& _left, const ShaderGraphAssetHandle& _right)
         {
             return _left.uuid != _right.uuid || _left.path != _right.path;
+        }
+
+        bool AnimationClipAssetHandleChanged(const AnimationClipAssetHandle& _left, const AnimationClipAssetHandle& _right)
+        {
+            return _left.uuid != _right.uuid || _left.path != _right.path;
+        }
+
+        bool AnimatorControllerAssetHandleChanged(const AnimatorControllerAssetHandle& _left, const AnimatorControllerAssetHandle& _right)
+        {
+            return _left.uuid != _right.uuid || _left.path != _right.path;
+        }
+
+        constexpr float kAnimationEditorFramesPerSecond = 60.0f;
+        constexpr float kAnimationEditorKeyTimeEpsilon = 0.0001f;
+
+        int AnimationFrameFromTime(float _time)
+        {
+            return std::max(0, static_cast<int>(std::round(std::max(_time, 0.0f) * kAnimationEditorFramesPerSecond)));
+        }
+
+        float AnimationTimeFromFrame(int _frame)
+        {
+            return std::max(_frame, 0) / kAnimationEditorFramesPerSecond;
+        }
+
+        float NormalizeAnimationSampleTime(float _time, float _length, bool _loop)
+        {
+            if (_length <= 0.0f)
+                return 0.0f;
+
+            float time = _time;
+            if (_loop)
+            {
+                while (time < 0.0f)
+                    time += _length;
+                while (time >= _length)
+                    time -= _length;
+                return time;
+            }
+
+            return std::clamp(time, 0.0f, _length);
+        }
+
+        AnimationValue MakeDefaultAnimationValue(AnimationValueType _type)
+        {
+            switch (_type)
+            {
+                case AnimationValueType::FLOAT: return AnimationValue::Float(0.0f);
+                case AnimationValueType::INT: return AnimationValue::Int(0);
+                case AnimationValueType::BOOL: return AnimationValue::Bool(false);
+                case AnimationValueType::VEC2: return AnimationValue::Vec2(Vector2(0.0f));
+                case AnimationValueType::VEC3: return AnimationValue::Vec3(Vector3(0.0f));
+                case AnimationValueType::VEC4: return AnimationValue::Vec4(Vector4(0.0f));
+                case AnimationValueType::NONE:
+                default:
+                    return {};
+            }
+        }
+
+        AnimationValue MakeDefaultAnimatorParameterValue(AnimatorParameterType _type)
+        {
+            switch (_type)
+            {
+                case AnimatorParameterType::INT: return AnimationValue::Int(0);
+                case AnimatorParameterType::BOOL:
+                case AnimatorParameterType::TRIGGER: return AnimationValue::Bool(false);
+                case AnimatorParameterType::FLOAT:
+                default: return AnimationValue::Float(0.0f);
+            }
+        }
+
+        float GetAnimationValueComponent(const AnimationValue& _value, int _componentIndex)
+        {
+            switch (_value.type)
+            {
+                case AnimationValueType::FLOAT:
+                    return _value.AsFloat();
+                case AnimationValueType::INT:
+                    return static_cast<float>(_value.AsInt());
+                case AnimationValueType::BOOL:
+                    return _value.AsBool() ? 1.0f : 0.0f;
+                case AnimationValueType::VEC2:
+                case AnimationValueType::VEC3:
+                case AnimationValueType::VEC4:
+                {
+                    const int index = std::clamp(_componentIndex, 0, 3);
+                    return _value.vector[index];
+                }
+                case AnimationValueType::NONE:
+                default:
+                    return 0.0f;
+            }
+        }
+
+        void SetAnimationValueComponent(AnimationValue& _value, int _componentIndex, float _componentValue)
+        {
+            switch (_value.type)
+            {
+                case AnimationValueType::FLOAT:
+                    _value = AnimationValue::Float(_componentValue);
+                    break;
+                case AnimationValueType::INT:
+                    _value = AnimationValue::Int(static_cast<int>(std::round(_componentValue)));
+                    break;
+                case AnimationValueType::BOOL:
+                    _value = AnimationValue::Bool(_componentValue >= 0.5f);
+                    break;
+                case AnimationValueType::VEC2:
+                case AnimationValueType::VEC3:
+                case AnimationValueType::VEC4:
+                {
+                    const int index = std::clamp(_componentIndex, 0, 3);
+                    _value.vector[index] = _componentValue;
+                    break;
+                }
+                case AnimationValueType::NONE:
+                default:
+                    break;
+            }
+        }
+
+        const char* GetAnimationValueComponentName(AnimationValueType _type, int _componentIndex)
+        {
+            static const char* scalarComponent = "value";
+            static const char* xyzwComponents[] = {"x", "y", "z", "w"};
+
+            if (_type == AnimationValueType::FLOAT || _type == AnimationValueType::INT || _type == AnimationValueType::BOOL)
+                return scalarComponent;
+
+            if (_componentIndex >= 0 && _componentIndex < 4)
+                return xyzwComponents[_componentIndex];
+
+            return scalarComponent;
+        }
+
+        ImU32 GetAnimationCurveColor(int _componentIndex)
+        {
+            static constexpr ImU32 colors[] = {
+                IM_COL32(255, 96, 96, 255),
+                IM_COL32(96, 220, 96, 255),
+                IM_COL32(96, 160, 255, 255),
+                IM_COL32(240, 210, 96, 255),
+            };
+
+            return colors[std::clamp(_componentIndex, 0, 3)];
+        }
+
+        void SortAnimationTrackKeys(AnimationTrack &_track)
+        {
+            std::sort(_track.keys.begin(), _track.keys.end(), [](const AnimationKeyframe &_left, const AnimationKeyframe &_right)
+            {
+                return _left.time < _right.time;
+            });
+        }
+
+        void RefreshAnimationClipLength(AnimationClipAsset &_clip)
+        {
+            float maxTrackTime = 0.0f;
+            for (const AnimationTrack &track : _clip.tracks)
+            {
+                if (!track.keys.empty())
+                    maxTrackTime = std::max(maxTrackTime, track.keys.back().time);
+            }
+
+            float maxEventTime = 0.0f;
+            for (const AnimationEvent &event : _clip.events)
+                maxEventTime = std::max(maxEventTime, event.time);
+
+            _clip.length = std::max({_clip.length, maxTrackTime, maxEventTime, 0.0f});
+        }
+
+        AnimationTrack* FindAnimationTrack(
+            AnimationClipAsset &_clip,
+            const std::string &_path,
+            const std::string &_component,
+            const std::string &_property)
+        {
+            for (AnimationTrack &track : _clip.tracks)
+            {
+                if (track.path == _path &&
+                    track.component == _component &&
+                    track.property == _property)
+                {
+                    return &track;
+                }
+            }
+
+            return nullptr;
+        }
+
+        AnimationTrack* FindOrCreateAnimationTrack(
+            AnimationClipAsset &_clip,
+            const std::string &_path,
+            const std::string &_component,
+            const std::string &_property,
+            AnimationValueType _type,
+            AnimationInterpolation _interpolation)
+        {
+            if (AnimationTrack *track = FindAnimationTrack(_clip, _path, _component, _property))
+            {
+                track->type = _type;
+                track->interpolation = _interpolation;
+                return track;
+            }
+
+            AnimationTrack track = {};
+            track.path = _path;
+            track.component = _component;
+            track.property = _property;
+            track.type = _type;
+            track.interpolation = _interpolation;
+            _clip.tracks.push_back(track);
+            return &_clip.tracks.back();
+        }
+
+        std::string BuildAnimationTrackLabel(const AnimationTrack &_track)
+        {
+            std::string label = _track.component + "." + _track.property;
+            if (!_track.path.empty())
+                label += "  [" + _track.path + "]";
+            return label;
+        }
+
+        struct AnimationPropertyCandidate
+        {
+            Entity* entity = nullptr;
+            std::string path = "";
+            std::string component = "";
+            std::string property = "";
+            AnimationValueType type = AnimationValueType::NONE;
+            AnimationInterpolation interpolation = AnimationInterpolation::LINEAR;
+            std::string label = "";
+        };
+
+        void CollectAnimationPropertyCandidatesRecursive(
+            App &_app,
+            Entity &_root,
+            Entity &_current,
+            std::vector<AnimationPropertyCandidate> &_outCandidates)
+        {
+            std::string relativePath = {};
+            if (&_root != &_current && !BuildAnimationRelativePath(_root, _current, relativePath))
+                return;
+
+            const std::string entityLabel = relativePath.empty() ? _current.name : relativePath;
+            for (ScriptConf &conf : _app.GetScriptRegistry())
+            {
+                if (conf.Has == nullptr || conf.Get == nullptr || conf.registry.animationGetters.empty())
+                    continue;
+
+                if (!conf.Has(_current))
+                    continue;
+
+                for (const std::string &propertyName : conf.registry.propertyOrder)
+                {
+                    auto typeIt = conf.registry.animationTypes.find(propertyName);
+                    auto interpolationIt = conf.registry.animationInterpolations.find(propertyName);
+                    if (typeIt == conf.registry.animationTypes.end() ||
+                        interpolationIt == conf.registry.animationInterpolations.end())
+                    {
+                        continue;
+                    }
+
+                    AnimationPropertyCandidate candidate = {};
+                    candidate.entity = &_current;
+                    candidate.path = relativePath;
+                    candidate.component = conf.name;
+                    candidate.property = propertyName;
+                    candidate.type = typeIt->second;
+                    candidate.interpolation = interpolationIt->second;
+                    candidate.label = entityLabel + " / " + conf.name + "." + propertyName;
+                    _outCandidates.push_back(candidate);
+                }
+            }
+
+            for (Entity *child : GetAnimationChildren(_current))
+            {
+                if (child != nullptr)
+                    CollectAnimationPropertyCandidatesRecursive(_app, _root, *child, _outCandidates);
+            }
+        }
+
+        namespace GraphEditor = CanisGraphEditor;
+
+        constexpr GraphEditor::NodeIndex kInvalidAnimatorGraphNodeIndex = static_cast<GraphEditor::NodeIndex>(-1);
+        constexpr float kAnimatorGraphNodeWidth = 260.0f;
+        constexpr float kAnimatorGraphNodeHeight = 126.0f;
+
+        enum AnimatorGraphTemplateIndex : GraphEditor::TemplateIndex
+        {
+            AnimatorGraphTemplate_State = 0,
+            AnimatorGraphTemplate_EntryState,
+            AnimatorGraphTemplate_ActiveState,
+            AnimatorGraphTemplate_ActiveEntryState,
+            AnimatorGraphTemplate_Count
+        };
+
+        struct AnimatorGraphLinkInfo
+        {
+            GraphEditor::Link graphLink = {};
+            int fromStateIndex = -1;
+            int transitionIndex = -1;
+        };
+
+        struct AnimatorGraphViewState
+        {
+            GraphEditor::Options options = {};
+            GraphEditor::ViewState viewState = {};
+            ImVec2 contextMousePos = ImVec2(0.0f, 0.0f);
+        };
+
+        std::unordered_map<std::string, AnimatorGraphViewState> g_animatorGraphViewStates = {};
+
+        bool IsAnimatorControllerAssetPath(const std::string &_path, MetaFileAsset **_outMeta = nullptr)
+        {
+            MetaFileAsset *meta = AssetManager::GetMetaFile(_path);
+            if (meta == nullptr || meta->type != MetaFileAsset::FileType::ANIMATORCONTROLLER)
+                return false;
+
+            if (_outMeta != nullptr)
+                *_outMeta = meta;
+            return true;
+        }
+
+        int FindAnimatorStateIndex(const AnimatorControllerAsset &_controller, const std::string &_stateName)
+        {
+            for (std::size_t i = 0; i < _controller.states.size(); ++i)
+            {
+                if (_controller.states[i].name == _stateName)
+                    return static_cast<int>(i);
+            }
+
+            return -1;
+        }
+
+        std::string MakeUniqueAnimatorStateName(const AnimatorControllerAsset &_controller, const std::string &_baseName)
+        {
+            std::string baseName = _baseName.empty() ? "State" : _baseName;
+            std::string candidate = baseName;
+            int suffix = 1;
+            while (FindAnimatorStateIndex(_controller, candidate) >= 0)
+            {
+                candidate = baseName + " " + std::to_string(suffix);
+                ++suffix;
+            }
+
+            return candidate;
+        }
+
+        Vector2 GetDefaultAnimatorStatePosition(std::size_t _index)
+        {
+            const float column = static_cast<float>(_index % 3);
+            const float row = static_cast<float>(_index / 3);
+            return Vector2(70.0f + (column * 320.0f), 90.0f + (row * 190.0f));
+        }
+
+        Vector2 GetNextAnimatorStatePosition(const AnimatorControllerAsset &_controller)
+        {
+            if (_controller.states.empty())
+                return GetDefaultAnimatorStatePosition(0);
+
+            float maxX = _controller.states.front().editorPosition.x;
+            float minY = _controller.states.front().editorPosition.y;
+            for (const AnimatorState &state : _controller.states)
+            {
+                maxX = std::max(maxX, state.editorPosition.x);
+                minY = std::min(minY, state.editorPosition.y);
+            }
+
+            return Vector2(maxX + 320.0f, minY);
+        }
+
+        bool EnsureAnimatorStateLayout(AnimatorControllerAsset &_controller)
+        {
+            if (_controller.states.empty())
+                return false;
+
+            bool hasMeaningfulPosition = false;
+            for (const AnimatorState &state : _controller.states)
+            {
+                if (std::fabs(state.editorPosition.x) > 0.001f || std::fabs(state.editorPosition.y) > 0.001f)
+                {
+                    hasMeaningfulPosition = true;
+                    break;
+                }
+            }
+
+            if (hasMeaningfulPosition)
+                return false;
+
+            for (std::size_t i = 0; i < _controller.states.size(); ++i)
+                _controller.states[i].editorPosition = GetDefaultAnimatorStatePosition(i);
+
+            return true;
+        }
+
+        void RenameAnimatorParameterReferences(
+            AnimatorControllerAsset &_controller,
+            const std::string &_oldName,
+            const std::string &_newName)
+        {
+            if (_oldName.empty() || _oldName == _newName)
+                return;
+
+            for (AnimatorState &state : _controller.states)
+            {
+                for (AnimatorTransition &transition : state.transitions)
+                {
+                    for (AnimatorTransitionCondition &condition : transition.conditions)
+                    {
+                        if (condition.parameter == _oldName)
+                            condition.parameter = _newName;
+                    }
+                }
+            }
+        }
+
+        void ResetAnimatorParameterReferenceValues(
+            AnimatorControllerAsset &_controller,
+            const std::string &_parameterName,
+            AnimatorParameterType _parameterType)
+        {
+            for (AnimatorState &state : _controller.states)
+            {
+                for (AnimatorTransition &transition : state.transitions)
+                {
+                    for (AnimatorTransitionCondition &condition : transition.conditions)
+                    {
+                        if (condition.parameter == _parameterName)
+                            condition.value = MakeDefaultAnimatorParameterValue(_parameterType);
+                    }
+                }
+            }
+        }
+
+        void RemoveAnimatorParameterReferences(
+            AnimatorControllerAsset &_controller,
+            const std::string &_parameterName)
+        {
+            for (AnimatorState &state : _controller.states)
+            {
+                for (AnimatorTransition &transition : state.transitions)
+                {
+                    transition.conditions.erase(
+                        std::remove_if(
+                            transition.conditions.begin(),
+                            transition.conditions.end(),
+                            [&](const AnimatorTransitionCondition &_condition)
+                            {
+                                return _condition.parameter == _parameterName;
+                            }),
+                        transition.conditions.end());
+                }
+            }
+        }
+
+        void RenameAnimatorStateReferences(
+            AnimatorControllerAsset &_controller,
+            const std::string &_oldName,
+            const std::string &_newName)
+        {
+            if (_oldName.empty() || _oldName == _newName)
+                return;
+
+            if (_controller.entryState == _oldName)
+                _controller.entryState = _newName;
+
+            for (AnimatorState &state : _controller.states)
+            {
+                for (AnimatorTransition &transition : state.transitions)
+                {
+                    if (transition.toState == _oldName)
+                        transition.toState = _newName;
+                }
+            }
+        }
+
+        void RemoveAnimatorStateReferences(
+            AnimatorControllerAsset &_controller,
+            const std::string &_removedStateName)
+        {
+            if (_controller.entryState == _removedStateName)
+                _controller.entryState.clear();
+
+            for (AnimatorState &state : _controller.states)
+            {
+                state.transitions.erase(
+                    std::remove_if(
+                        state.transitions.begin(),
+                        state.transitions.end(),
+                        [&](const AnimatorTransition &_transition)
+                        {
+                            return _transition.toState == _removedStateName;
+                        }),
+                    state.transitions.end());
+            }
+        }
+
+        AnimatorParameterType FindAnimatorParameterType(
+            const AnimatorControllerAsset &_controller,
+            const std::string &_parameterName)
+        {
+            for (const AnimatorParameterDefinition &parameter : _controller.parameters)
+            {
+                if (parameter.name == _parameterName)
+                    return parameter.type;
+            }
+
+            return AnimatorParameterType::FLOAT;
+        }
+
+        GraphEditor::Template GetAnimatorGraphTemplate(GraphEditor::TemplateIndex _index)
+        {
+            static const char *inputNames[] = {"In"};
+            static const char *outputNames[] = {"Out"};
+            static ImU32 inputColors[] = {IM_COL32(188, 194, 204, 255)};
+            static ImU32 outputColors[] = {IM_COL32(188, 194, 204, 255)};
+
+            GraphEditor::Template graphTemplate{};
+            graphTemplate.mInputCount = 1u;
+            graphTemplate.mInputNames = inputNames;
+            graphTemplate.mInputColors = inputColors;
+            graphTemplate.mOutputCount = 1u;
+            graphTemplate.mOutputNames = outputNames;
+            graphTemplate.mOutputColors = outputColors;
+
+            switch (static_cast<AnimatorGraphTemplateIndex>(_index))
+            {
+                case AnimatorGraphTemplate_EntryState:
+                    graphTemplate.mHeaderColor = IM_COL32(114, 190, 145, 255);
+                    graphTemplate.mBackgroundColor = IM_COL32(46, 67, 58, 235);
+                    graphTemplate.mBackgroundColorOver = IM_COL32(56, 79, 68, 245);
+                    return graphTemplate;
+                case AnimatorGraphTemplate_ActiveState:
+                    graphTemplate.mHeaderColor = IM_COL32(255, 198, 92, 255);
+                    graphTemplate.mBackgroundColor = IM_COL32(76, 62, 38, 235);
+                    graphTemplate.mBackgroundColorOver = IM_COL32(90, 72, 43, 245);
+                    return graphTemplate;
+                case AnimatorGraphTemplate_ActiveEntryState:
+                    graphTemplate.mHeaderColor = IM_COL32(120, 214, 176, 255);
+                    graphTemplate.mBackgroundColor = IM_COL32(54, 76, 66, 235);
+                    graphTemplate.mBackgroundColorOver = IM_COL32(64, 90, 77, 245);
+                    return graphTemplate;
+                case AnimatorGraphTemplate_State:
+                default:
+                    graphTemplate.mHeaderColor = IM_COL32(126, 167, 222, 255);
+                    graphTemplate.mBackgroundColor = IM_COL32(48, 56, 70, 235);
+                    graphTemplate.mBackgroundColorOver = IM_COL32(58, 67, 84, 245);
+                    return graphTemplate;
+            }
+        }
+
+        Vector2 ScreenToAnimatorGraphPosition(
+            const ImVec2 &_screenPos,
+            const ImVec2 &_canvasScreenPos,
+            const GraphEditor::ViewState &_viewState)
+        {
+            const float localX = (_screenPos.x - _canvasScreenPos.x) / _viewState.mFactor;
+            const float localY = (_screenPos.y - _canvasScreenPos.y) / _viewState.mFactor;
+            return Vector2(localX - _viewState.mPosition.x, localY - _viewState.mPosition.y);
+        }
+
+        class AnimatorGraphDelegate final : public GraphEditor::Delegate
+        {
+        public:
+            AnimatorGraphDelegate(
+                AnimatorControllerAsset &_controller,
+                int &_selectedStateIndex,
+                bool &_controllerChanged,
+                const std::string &_activeStateName)
+                : m_controller(_controller)
+                , m_selectedStateIndex(_selectedStateIndex)
+                , m_controllerChanged(_controllerChanged)
+                , m_activeStateName(_activeStateName)
+            {
+            }
+
+            bool AllowedLink(GraphEditor::NodeIndex _from, GraphEditor::NodeIndex _to) override
+            {
+                return _from != _to;
+            }
+
+            void SelectNode(GraphEditor::NodeIndex _nodeIndex, bool _selected) override
+            {
+                if (_selected)
+                {
+                    m_selectedStateIndex = static_cast<int>(_nodeIndex);
+                }
+                else if (m_selectedStateIndex == static_cast<int>(_nodeIndex))
+                {
+                    m_selectedStateIndex = -1;
+                }
+            }
+
+            void MoveSelectedNodes(const ImVec2 _delta) override
+            {
+                if (m_selectedStateIndex < 0 || m_selectedStateIndex >= static_cast<int>(m_controller.states.size()))
+                    return;
+
+                AnimatorState &state = m_controller.states[static_cast<std::size_t>(m_selectedStateIndex)];
+                state.editorPosition.x += _delta.x;
+                state.editorPosition.y += _delta.y;
+                m_controllerChanged = true;
+            }
+
+            void AddLink(
+                GraphEditor::NodeIndex _sourceNodeIndex,
+                GraphEditor::SlotIndex,
+                GraphEditor::NodeIndex _targetNodeIndex,
+                GraphEditor::SlotIndex) override
+            {
+                if (_sourceNodeIndex >= m_controller.states.size() ||
+                    _targetNodeIndex >= m_controller.states.size() ||
+                    _sourceNodeIndex == _targetNodeIndex)
+                {
+                    return;
+                }
+
+                AnimatorState &sourceState = m_controller.states[_sourceNodeIndex];
+                const std::string targetStateName = m_controller.states[_targetNodeIndex].name;
+                for (const AnimatorTransition &transition : sourceState.transitions)
+                {
+                    if (transition.toState == targetStateName)
+                        return;
+                }
+
+                AnimatorTransition transition = {};
+                transition.toState = targetStateName;
+                sourceState.transitions.push_back(transition);
+                m_selectedStateIndex = static_cast<int>(_sourceNodeIndex);
+                m_controllerChanged = true;
+            }
+
+            void DelLink(GraphEditor::LinkIndex _linkIndex) override
+            {
+                const std::vector<AnimatorGraphLinkInfo> links = BuildLinks();
+                if (_linkIndex >= links.size())
+                    return;
+
+                const AnimatorGraphLinkInfo &linkInfo = links[_linkIndex];
+                if (linkInfo.fromStateIndex < 0 || linkInfo.transitionIndex < 0)
+                    return;
+
+                if (linkInfo.fromStateIndex >= static_cast<int>(m_controller.states.size()))
+                    return;
+
+                AnimatorState &state = m_controller.states[static_cast<std::size_t>(linkInfo.fromStateIndex)];
+                if (linkInfo.transitionIndex >= static_cast<int>(state.transitions.size()))
+                    return;
+
+                state.transitions.erase(state.transitions.begin() + linkInfo.transitionIndex);
+                m_controllerChanged = true;
+            }
+
+            void CustomDraw(ImDrawList *_drawList, ImRect _rectangle, GraphEditor::NodeIndex _nodeIndex, float) override
+            {
+                if (_nodeIndex >= m_controller.states.size())
+                    return;
+
+                const AnimatorState &state = m_controller.states[_nodeIndex];
+                const std::string clipPath = AssetManager::ResolvePath(state.clip);
+                std::string clipLabel = clipPath.empty()
+                    ? "[ no clip ]"
+                    : std::filesystem::path(clipPath).stem().string();
+                if (!clipPath.empty())
+                {
+                    if (MetaFileAsset *meta = AssetManager::GetMetaFile(clipPath))
+                        clipLabel = meta->name;
+                }
+
+                const bool isEntryState = m_controller.entryState == state.name;
+                const bool isActiveState = !m_activeStateName.empty() && m_activeStateName == state.name;
+
+                ImVec2 cursor(_rectangle.Min.x + 10.0f, _rectangle.Min.y + 8.0f);
+                const ImVec4 clipRect(_rectangle.Min.x, _rectangle.Min.y, _rectangle.Max.x, _rectangle.Max.y);
+                auto drawLine = [&](const std::string &_text, ImU32 _color) -> void
+                {
+                    const ImVec2 shadowPos(cursor.x + 1.0f, cursor.y + 1.0f);
+                    _drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), shadowPos, IM_COL32(0, 0, 0, 180), _text.c_str(), nullptr, 0.0f, &clipRect);
+                    _drawList->AddText(ImGui::GetFont(), ImGui::GetFontSize(), cursor, _color, _text.c_str(), nullptr, 0.0f, &clipRect);
+                    cursor.y += ImGui::GetFontSize() + 4.0f;
+                };
+
+                drawLine(clipLabel, IM_COL32(236, 238, 244, 255));
+                drawLine(std::string("Speed ") + std::to_string(state.speed).substr(0, 4) + (state.loop ? "  Loop" : "  Once"), IM_COL32(186, 198, 215, 255));
+                if (isEntryState)
+                    drawLine("Entry State", IM_COL32(186, 255, 208, 255));
+                if (isActiveState)
+                    drawLine("Live State", IM_COL32(255, 230, 174, 255));
+                drawLine(std::to_string(state.transitions.size()) + " transition(s)", IM_COL32(166, 174, 188, 255));
+            }
+
+            const char *GetNodeTitleTooltip(GraphEditor::NodeIndex _nodeIndex) override
+            {
+                if (_nodeIndex >= m_controller.states.size())
+                    return nullptr;
+
+                const AnimatorState &state = m_controller.states[_nodeIndex];
+                const std::string clipPath = AssetManager::ResolvePath(state.clip);
+                m_tooltipCache = state.name;
+                if (!clipPath.empty())
+                    m_tooltipCache += "\nClip: " + clipPath;
+                if (!state.transitions.empty())
+                    m_tooltipCache += "\nTransitions: " + std::to_string(state.transitions.size());
+                return m_tooltipCache.c_str();
+            }
+
+            void RightClick(
+                GraphEditor::NodeIndex _nodeIndex,
+                GraphEditor::SlotIndex,
+                GraphEditor::SlotIndex) override
+            {
+                m_contextNodeIndex = _nodeIndex;
+                m_contextMenuRequested = true;
+                m_contextMenuScreenPos = ImGui::GetMousePos();
+            }
+
+            const size_t GetTemplateCount() override
+            {
+                return AnimatorGraphTemplate_Count;
+            }
+
+            const GraphEditor::Template GetTemplate(GraphEditor::TemplateIndex _index) override
+            {
+                return GetAnimatorGraphTemplate(_index);
+            }
+
+            const size_t GetNodeCount() override
+            {
+                return m_controller.states.size();
+            }
+
+            const GraphEditor::Node GetNode(GraphEditor::NodeIndex _index) override
+            {
+                if (_index >= m_controller.states.size())
+                    return GraphEditor::Node{"Invalid", AnimatorGraphTemplate_State, ImRect(ImVec2(0.0f, 0.0f), ImVec2(kAnimatorGraphNodeWidth, kAnimatorGraphNodeHeight)), false};
+
+                const AnimatorState &state = m_controller.states[_index];
+                const bool isEntryState = m_controller.entryState == state.name;
+                const bool isActiveState = !m_activeStateName.empty() && m_activeStateName == state.name;
+
+                GraphEditor::TemplateIndex templateIndex = AnimatorGraphTemplate_State;
+                if (isEntryState && isActiveState)
+                    templateIndex = AnimatorGraphTemplate_ActiveEntryState;
+                else if (isEntryState)
+                    templateIndex = AnimatorGraphTemplate_EntryState;
+                else if (isActiveState)
+                    templateIndex = AnimatorGraphTemplate_ActiveState;
+
+                return GraphEditor::Node{
+                    state.name.c_str(),
+                    templateIndex,
+                    ImRect(
+                        ImVec2(state.editorPosition.x, state.editorPosition.y),
+                        ImVec2(state.editorPosition.x + kAnimatorGraphNodeWidth, state.editorPosition.y + kAnimatorGraphNodeHeight)),
+                    m_selectedStateIndex == static_cast<int>(_index)};
+            }
+
+            const size_t GetLinkCount() override
+            {
+                return BuildLinks().size();
+            }
+
+            const GraphEditor::Link GetLink(GraphEditor::LinkIndex _index) override
+            {
+                return BuildLinks()[_index].graphLink;
+            }
+
+            bool ConsumeContextMenuRequest(ImVec2 &_screenPos)
+            {
+                if (!m_contextMenuRequested)
+                    return false;
+
+                _screenPos = m_contextMenuScreenPos;
+                m_contextMenuRequested = false;
+                return true;
+            }
+
+            GraphEditor::NodeIndex GetContextNodeIndex() const
+            {
+                return m_contextNodeIndex;
+            }
+
+        private:
+            std::vector<AnimatorGraphLinkInfo> BuildLinks() const
+            {
+                std::vector<AnimatorGraphLinkInfo> links = {};
+                for (std::size_t stateIndex = 0; stateIndex < m_controller.states.size(); ++stateIndex)
+                {
+                    const AnimatorState &state = m_controller.states[stateIndex];
+                    for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
+                    {
+                        const AnimatorTransition &transition = state.transitions[transitionIndex];
+                        const int targetStateIndex = FindAnimatorStateIndex(m_controller, transition.toState);
+                        if (targetStateIndex < 0)
+                            continue;
+
+                        AnimatorGraphLinkInfo linkInfo = {};
+                        linkInfo.graphLink = GraphEditor::Link{
+                            stateIndex,
+                            0u,
+                            static_cast<GraphEditor::NodeIndex>(targetStateIndex),
+                            0u};
+                        linkInfo.fromStateIndex = static_cast<int>(stateIndex);
+                        linkInfo.transitionIndex = static_cast<int>(transitionIndex);
+                        links.push_back(linkInfo);
+                    }
+                }
+
+                return links;
+            }
+
+            AnimatorControllerAsset &m_controller;
+            int &m_selectedStateIndex;
+            bool &m_controllerChanged;
+            const std::string &m_activeStateName;
+            GraphEditor::NodeIndex m_contextNodeIndex = kInvalidAnimatorGraphNodeIndex;
+            bool m_contextMenuRequested = false;
+            ImVec2 m_contextMenuScreenPos = ImVec2(0.0f, 0.0f);
+            mutable std::string m_tooltipCache = {};
+        };
+
+        bool DrawAnimationValueEditor(const char *_label, AnimationValue &_value)
+        {
+            switch (_value.type)
+            {
+                case AnimationValueType::FLOAT:
+                {
+                    float floatValue = _value.AsFloat();
+                    if (ImGui::InputFloat(_label, &floatValue, 0.0f, 0.0f, "%.3f"))
+                    {
+                        _value = AnimationValue::Float(floatValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::INT:
+                {
+                    int intValue = _value.AsInt();
+                    if (ImGui::InputInt(_label, &intValue))
+                    {
+                        _value = AnimationValue::Int(intValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::BOOL:
+                {
+                    bool boolValue = _value.AsBool();
+                    if (ImGui::Checkbox(_label, &boolValue))
+                    {
+                        _value = AnimationValue::Bool(boolValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::VEC2:
+                {
+                    Vector2 vecValue = _value.AsVec2();
+                    if (ImGui::InputFloat2(_label, &vecValue.x, "%.3f"))
+                    {
+                        _value = AnimationValue::Vec2(vecValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::VEC3:
+                {
+                    Vector3 vecValue = _value.AsVec3();
+                    if (ImGui::InputFloat3(_label, &vecValue.x, "%.3f"))
+                    {
+                        _value = AnimationValue::Vec3(vecValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::VEC4:
+                {
+                    Vector4 vecValue = _value.AsVec4();
+                    if (ImGui::InputFloat4(_label, &vecValue.x, "%.3f"))
+                    {
+                        _value = AnimationValue::Vec4(vecValue);
+                        return true;
+                    }
+                    return false;
+                }
+                case AnimationValueType::NONE:
+                default:
+                    ImGui::TextDisabled("%s", _label);
+                    return false;
+            }
         }
 
         enum class HierarchyCreateType
@@ -2497,6 +3430,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         {
             Debug::Log("new scene");
             m_hierarchyRootOrder.clear();
+            m_animationRestoreBindings.clear();
+            m_animationPreviewTargetUUID = UUID(0);
+            m_animationPreviewClipPath.clear();
         }
         m_app = _app;
         m_scene = _scene;
@@ -2544,6 +3480,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         DrawMainDockspace();
 
         bool refresh = DrawHierarchyPanel();
+        DrawAnimationWindow(_deltaTime);
+        DrawAnimatorWindow();
         DrawInspectorPanel(refresh);
         DrawEnvironment();
         DrawSystemPanel();
@@ -3418,6 +4356,78 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
+    void Editor::NotifyAnimationPropertyEdited(
+        Canis::Entity &_entity,
+        const std::string &_componentName,
+        const std::string &_propertyName,
+        AnimationValueType _type,
+        AnimationInterpolation _interpolation,
+        const AnimationValue &_value)
+    {
+        if (!m_animationRecordEnabled || m_scene == nullptr || m_app == nullptr)
+            return;
+
+        if (_componentName.empty() || _propertyName.empty() || _type == AnimationValueType::NONE)
+            return;
+
+        if (m_animationClipStatePath.empty())
+            m_animationClipStatePath = ResolveRememberedAnimationClipPath();
+
+        if (m_animationClipStatePath.empty())
+            return;
+
+        AnimationClipAsset *clip = AssetManager::GetAnimationClip(m_animationClipStatePath);
+        if (clip == nullptr)
+            return;
+
+        Entity *root = (m_animationTargetUUID != UUID(0)) ? m_scene->GetEntityWithUUID(m_animationTargetUUID) : nullptr;
+        if (root == nullptr)
+        {
+            if (m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()))
+                root = m_scene->GetEntities()[m_index];
+
+            if (root != nullptr)
+                m_animationTargetUUID = root->uuid;
+        }
+
+        if (root == nullptr)
+            return;
+
+        std::string relativePath = {};
+        if (root != &_entity && !BuildAnimationRelativePath(*root, _entity, relativePath))
+            return;
+
+        AnimationTrack *track = FindOrCreateAnimationTrack(
+            *clip,
+            relativePath,
+            _componentName,
+            _propertyName,
+            _type,
+            _interpolation);
+        if (track == nullptr)
+            return;
+
+        const float keyTime = std::max(m_animationTime, 0.0f);
+        bool updatedExisting = false;
+        for (AnimationKeyframe &key : track->keys)
+        {
+            if (std::fabs(key.time - keyTime) <= kAnimationEditorKeyTimeEpsilon)
+            {
+                key.value = _value;
+                updatedExisting = true;
+                break;
+            }
+        }
+
+        if (!updatedExisting)
+            track->keys.push_back(AnimationKeyframe{ keyTime, _value });
+
+        SortAnimationTrackKeys(*track);
+        RefreshAnimationClipLength(*clip);
+        (void)clip->Save();
+        RememberLastAnimationClipAssetPath(m_animationClipStatePath);
+    }
+
     void Editor::RebuildPrefabInstance(Canis::Entity *_entity)
     {
         if (_entity == nullptr || !_entity->HasComponent<PrefabInstance>())
@@ -3798,6 +4808,16 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         InputAnimationClip(_name, nullptr, _variable);
     }
 
+    void Editor::InputAnimationClipAsset(const std::string &_name, Canis::AnimationClipAssetHandle &_variable)
+    {
+        InputAnimationClipAsset(_name, nullptr, _variable);
+    }
+
+    void Editor::InputAnimatorControllerAsset(const std::string &_name, Canis::AnimatorControllerAssetHandle &_variable)
+    {
+        InputAnimatorControllerAsset(_name, nullptr, _variable);
+    }
+
     void Editor::InputAudioAsset(const std::string &_name, Canis::AudioAssetHandle &_variable)
     {
         InputAudioAsset(_name, nullptr, _variable);
@@ -3899,6 +4919,134 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 }
             }
             ImGui::EndDragDropTarget();
+        }
+
+        PopInspectorFieldID(_idSuffix);
+    }
+
+    void Editor::InputAnimationClipAsset(const std::string &_name, const char *_idSuffix, Canis::AnimationClipAssetHandle &_variable)
+    {
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        ImGui::Text("%s", _name.c_str());
+        ImGui::SameLine();
+
+        std::string resolvedPath = AssetManager::ResolvePath(_variable);
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(170, 0));
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                        RememberLastAnimationClipAssetPath(path);
+                        m_animationClipStatePath = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("animation_clip_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            if (!resolvedPath.empty() && ImGui::MenuItem("Open In Animation"))
+            {
+                m_animationClipStatePath = resolvedPath;
+                RememberLastAnimationClipAssetPath(resolvedPath);
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_animation_clip_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
+        }
+
+        PopInspectorFieldID(_idSuffix);
+    }
+
+    void Editor::InputAnimatorControllerAsset(const std::string &_name, const char *_idSuffix, Canis::AnimatorControllerAssetHandle &_variable)
+    {
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        ImGui::Text("%s", _name.c_str());
+        ImGui::SameLine();
+
+        std::string resolvedPath = AssetManager::ResolvePath(_variable);
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(170, 0));
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("animator_controller_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_animator_controller_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
         }
 
         PopInspectorFieldID(_idSuffix);
@@ -4972,15 +6120,17 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     bool Editor::DrawHierarchyPanel()
     {
-        std::string hierarchyWindowTitle = "Hierarchy";
-        if (m_scene != nullptr && !m_scene->m_path.empty())
-            hierarchyWindowTitle += " - " + Canis::GetFileName(m_scene->m_path);
-
-        hierarchyWindowTitle += "###Hierarchy";
-        ImGui::Begin(hierarchyWindowTitle.c_str());
+        ImGui::Begin("Hierarchy###Hierarchy");
         bool refresh = false;
 
         std::vector<Canis::Entity *> &entities = m_scene->GetEntities();
+
+        if (m_scene != nullptr && !m_scene->m_path.empty())
+        {
+            const std::string sceneName = Canis::GetFileName(m_scene->m_path);
+            ImGui::TextDisabled("Scene: %s", sceneName.c_str());
+            ImGui::Separator();
+        }
 
         auto findEntityByUUID = [&](Canis::UUID _uuid) -> Canis::Entity*
         {
@@ -5222,6 +6372,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             }
 
             if (DrawPostProcessAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
+
+            if (DrawAnimationClipAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
+
+            if (DrawAnimatorControllerAssetInspector(m_selectedAssetPath))
             {
                 ImGui::End();
                 return;
@@ -6078,6 +7240,1750 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         return true;
     }
 
+    bool Editor::DrawAnimationClipAssetInspector(const std::string &_animationClipPath)
+    {
+        MetaFileAsset *meta = AssetManager::GetMetaFile(_animationClipPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::ANIMATIONCLIP)
+            return false;
+
+        const std::string clipPath = meta->path.empty() ? _animationClipPath : meta->path;
+        AnimationClipAsset *clip = AssetManager::GetAnimationClip(clipPath);
+        if (clip == nullptr)
+            return false;
+
+        m_animationClipStatePath = clipPath;
+        RememberLastAnimationClipAssetPath(clipPath);
+
+        ImGui::Text("Asset: %s", meta->name.c_str());
+        ImGui::Text("Path: %s", clipPath.c_str());
+        ImGui::Separator();
+        ImGui::Text("Length: %.3fs", clip->length);
+        ImGui::Text("Tracks: %d", static_cast<int>(clip->tracks.size()));
+        ImGui::Text("Events: %d", static_cast<int>(clip->events.size()));
+
+        if (ImGui::Button("Open In Animation Window"))
+        {
+            m_animationClipStatePath = clipPath;
+            RememberLastAnimationClipAssetPath(clipPath);
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Create Animator Controller"))
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path clipFsPath = fs::path(clipPath);
+            const fs::path controllerPath = clipFsPath.parent_path() / (clipFsPath.stem().string() + ".animator");
+
+            AnimatorControllerAsset controller = {};
+            controller.entryState = "Default";
+            AnimatorState state = {};
+            state.name = "Default";
+            state.clip = MakeAnimationClipAssetHandleFromPath(clipPath);
+            controller.states.push_back(state);
+            if (controller.Save(controllerPath.generic_string()))
+            {
+                (void)AssetManager::GetMetaFile(controllerPath.generic_string());
+                m_selectedAssetPath = controllerPath.generic_string();
+            }
+        }
+
+        return true;
+    }
+
+    bool Editor::DrawAnimatorControllerAssetInspector(const std::string &_animatorControllerPath)
+    {
+        MetaFileAsset *meta = AssetManager::GetMetaFile(_animatorControllerPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::ANIMATORCONTROLLER)
+            return false;
+
+        const std::string controllerPath = meta->path.empty() ? _animatorControllerPath : meta->path;
+        AnimatorControllerAsset *controller = AssetManager::GetAnimatorController(controllerPath);
+        if (controller == nullptr)
+            return false;
+
+        ImGui::Text("Asset: %s", meta->name.c_str());
+        ImGui::Text("Path: %s", controllerPath.c_str());
+        ImGui::Separator();
+
+        if (ImGui::Button("Open In Animator Window"))
+            m_animatorStatePath = controllerPath;
+
+        bool dirty = false;
+        dirty = EnsureAnimatorStateLayout(*controller) || dirty;
+
+        char entryStateBuffer[128] = {};
+        std::snprintf(entryStateBuffer, sizeof(entryStateBuffer), "%s", controller->entryState.c_str());
+        if (ImGui::InputText("entryState", entryStateBuffer, sizeof(entryStateBuffer)))
+        {
+            controller->entryState = entryStateBuffer;
+            dirty = true;
+        }
+
+        if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            for (std::size_t parameterIndex = 0; parameterIndex < controller->parameters.size(); ++parameterIndex)
+            {
+                AnimatorParameterDefinition &parameter = controller->parameters[parameterIndex];
+                ImGui::PushID(static_cast<int>(parameterIndex));
+                if (ImGui::TreeNode(parameter.name.empty() ? "Parameter" : parameter.name.c_str()))
+                {
+                    char nameBuffer[128] = {};
+                    std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
+                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    {
+                        const std::string previousName = parameter.name;
+                        parameter.name = nameBuffer;
+                        RenameAnimatorParameterReferences(*controller, previousName, parameter.name);
+                        dirty = true;
+                    }
+
+                    int typeIndex = static_cast<int>(parameter.type);
+                    const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
+                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    {
+                        parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
+                        parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
+                        ResetAnimatorParameterReferenceValues(*controller, parameter.name, parameter.type);
+                        dirty = true;
+                    }
+
+                    if (parameter.type != AnimatorParameterType::TRIGGER)
+                        dirty = DrawAnimationValueEditor("defaultValue", parameter.defaultValue) || dirty;
+
+                    if (ImGui::SmallButton("Delete Parameter"))
+                    {
+                        RemoveAnimatorParameterReferences(*controller, parameter.name);
+                        controller->parameters.erase(controller->parameters.begin() + static_cast<long>(parameterIndex));
+                        dirty = true;
+                        ImGui::TreePop();
+                        ImGui::PopID();
+                        break;
+                    }
+
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            if (ImGui::Button("Add Parameter"))
+            {
+                AnimatorParameterDefinition parameter = {};
+                parameter.name = "Parameter";
+                parameter.type = AnimatorParameterType::FLOAT;
+                parameter.defaultValue = AnimationValue::Float(0.0f);
+                controller->parameters.push_back(parameter);
+                dirty = true;
+            }
+        }
+
+        if (ImGui::CollapsingHeader("States", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            for (std::size_t stateIndex = 0; stateIndex < controller->states.size(); ++stateIndex)
+            {
+                AnimatorState &state = controller->states[stateIndex];
+                ImGui::PushID(static_cast<int>(stateIndex));
+                if (ImGui::TreeNode(state.name.empty() ? "State" : state.name.c_str()))
+                {
+                    char nameBuffer[128] = {};
+                    std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", state.name.c_str());
+                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    {
+                        std::string renamedState = nameBuffer;
+                        if (renamedState.empty())
+                            renamedState = "State";
+                        if (renamedState != state.name)
+                        {
+                            const std::string previousName = state.name;
+                            renamedState = MakeUniqueAnimatorStateName(*controller, renamedState);
+                            state.name = renamedState;
+                            RenameAnimatorStateReferences(*controller, previousName, state.name);
+                            dirty = true;
+                        }
+                    }
+
+                    AnimationClipAssetHandle previousClip = state.clip;
+                    InputAnimationClipAsset("clip", "animator_state_clip", state.clip);
+                    if (AnimationClipAssetHandleChanged(previousClip, state.clip))
+                        dirty = true;
+                    if (ImGui::Checkbox("loop", &state.loop))
+                        dirty = true;
+                    if (ImGui::InputFloat("speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+                        dirty = true;
+
+                    if (ImGui::CollapsingHeader("Transitions", ImGuiTreeNodeFlags_DefaultOpen))
+                    {
+                        for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
+                        {
+                            AnimatorTransition &transition = state.transitions[transitionIndex];
+                            ImGui::PushID(static_cast<int>(transitionIndex));
+                            if (ImGui::TreeNode(("To " + transition.toState).c_str()))
+                            {
+                                char toStateBuffer[128] = {};
+                                std::snprintf(toStateBuffer, sizeof(toStateBuffer), "%s", transition.toState.c_str());
+                                if (ImGui::InputText("toState", toStateBuffer, sizeof(toStateBuffer)))
+                                {
+                                    transition.toState = toStateBuffer;
+                                    dirty = true;
+                                }
+
+                                if (ImGui::Checkbox("hasExitTime", &transition.hasExitTime))
+                                    dirty = true;
+                                if (transition.hasExitTime && ImGui::InputFloat("exitTimeNormalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                                {
+                                    transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
+                                    dirty = true;
+                                }
+
+                                for (std::size_t conditionIndex = 0; conditionIndex < transition.conditions.size(); ++conditionIndex)
+                                {
+                                    AnimatorTransitionCondition &condition = transition.conditions[conditionIndex];
+                                    ImGui::PushID(static_cast<int>(conditionIndex));
+                                    if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
+                                    {
+                                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                                        {
+                                            for (const AnimatorParameterDefinition &parameter : controller->parameters)
+                                            {
+                                                const bool selected = parameter.name == condition.parameter;
+                                                if (ImGui::Selectable(parameter.name.c_str(), selected))
+                                                {
+                                                    condition.parameter = parameter.name;
+                                                    condition.value = parameter.defaultValue.type == AnimationValueType::NONE
+                                                        ? MakeDefaultAnimatorParameterValue(parameter.type)
+                                                        : parameter.defaultValue;
+                                                    dirty = true;
+                                                }
+                                            }
+                                            ImGui::EndCombo();
+                                        }
+
+                                        int modeIndex = static_cast<int>(condition.mode);
+                                        const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
+                                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                                        {
+                                            condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
+                                            dirty = true;
+                                        }
+
+                                        bool allowValue = true;
+                                        AnimatorParameterType parameterType = AnimatorParameterType::FLOAT;
+                                        for (const AnimatorParameterDefinition &parameter : controller->parameters)
+                                        {
+                                            if (parameter.name == condition.parameter)
+                                            {
+                                                parameterType = parameter.type;
+                                                break;
+                                            }
+                                        }
+
+                                        if (condition.mode == AnimatorConditionMode::IF_TRUE ||
+                                            condition.mode == AnimatorConditionMode::IF_FALSE ||
+                                            condition.mode == AnimatorConditionMode::TRIGGERED)
+                                        {
+                                            allowValue = false;
+                                        }
+
+                                        if (allowValue)
+                                        {
+                                            if (condition.value.type == AnimationValueType::NONE)
+                                                condition.value = MakeDefaultAnimatorParameterValue(parameterType);
+                                            dirty = DrawAnimationValueEditor("value", condition.value) || dirty;
+                                        }
+
+                                        if (ImGui::SmallButton("Delete Condition"))
+                                        {
+                                            transition.conditions.erase(transition.conditions.begin() + static_cast<long>(conditionIndex));
+                                            dirty = true;
+                                            ImGui::TreePop();
+                                            ImGui::PopID();
+                                            break;
+                                        }
+
+                                        ImGui::TreePop();
+                                    }
+                                    ImGui::PopID();
+                                }
+
+                                if (ImGui::Button("Add Condition"))
+                                {
+                                    AnimatorTransitionCondition condition = {};
+                                    if (!controller->parameters.empty())
+                                    {
+                                        condition.parameter = controller->parameters.front().name;
+                                        condition.value = controller->parameters.front().defaultValue.type == AnimationValueType::NONE
+                                            ? MakeDefaultAnimatorParameterValue(controller->parameters.front().type)
+                                            : controller->parameters.front().defaultValue;
+                                    }
+                                    transition.conditions.push_back(condition);
+                                    dirty = true;
+                                }
+
+                                if (ImGui::SmallButton("Delete Transition"))
+                                {
+                                    state.transitions.erase(state.transitions.begin() + static_cast<long>(transitionIndex));
+                                    dirty = true;
+                                    ImGui::TreePop();
+                                    ImGui::PopID();
+                                    break;
+                                }
+
+                                ImGui::TreePop();
+                            }
+                            ImGui::PopID();
+                        }
+
+                        if (ImGui::Button("Add Transition"))
+                        {
+                            AnimatorTransition transition = {};
+                            if (!controller->states.empty())
+                                transition.toState = controller->states.front().name;
+                            state.transitions.push_back(transition);
+                            dirty = true;
+                        }
+                    }
+
+                    if (ImGui::SmallButton("Delete State"))
+                    {
+                        const std::string removedStateName = state.name;
+                        RemoveAnimatorStateReferences(*controller, removedStateName);
+                        controller->states.erase(controller->states.begin() + static_cast<long>(stateIndex));
+                        if (controller->entryState.empty() && !controller->states.empty())
+                            controller->entryState = controller->states.front().name;
+                        dirty = true;
+                        ImGui::TreePop();
+                        ImGui::PopID();
+                        break;
+                    }
+
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            if (ImGui::Button("Add State"))
+            {
+                AnimatorState state = {};
+                state.name = MakeUniqueAnimatorStateName(*controller, "State");
+                state.editorPosition = GetNextAnimatorStatePosition(*controller);
+                controller->states.push_back(state);
+                if (controller->entryState.empty())
+                    controller->entryState = state.name;
+                dirty = true;
+            }
+        }
+
+        if (dirty)
+            (void)controller->Save();
+
+        return true;
+    }
+
+    void Editor::DrawAnimatorWindow()
+    {
+        namespace fs = std::filesystem;
+
+        Entity *selectedEntity = nullptr;
+        if (m_scene != nullptr && m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()))
+            selectedEntity = m_scene->GetEntities()[m_index];
+
+        const std::string previousAnimatorPath = m_animatorStatePath;
+
+        MetaFileAsset *selectedAssetMeta = nullptr;
+        if (IsAnimatorControllerAssetPath(m_selectedAssetPath, &selectedAssetMeta))
+        {
+            m_animatorStatePath = selectedAssetMeta->path.empty() ? m_selectedAssetPath : selectedAssetMeta->path;
+        }
+        else if (selectedEntity != nullptr && selectedEntity->HasComponent<Animator>())
+        {
+            const std::string selectedAnimatorPath = AssetManager::ResolvePath(selectedEntity->GetComponent<Animator>().controller);
+            if (!selectedAnimatorPath.empty())
+                m_animatorStatePath = selectedAnimatorPath;
+        }
+
+        if (previousAnimatorPath != m_animatorStatePath)
+        {
+            m_animatorSelectedState = -1;
+            m_animatorSelectedTransition = -1;
+        }
+
+        ImGui::Begin("Animator");
+
+        MetaFileAsset *meta = nullptr;
+        if (!IsAnimatorControllerAssetPath(m_animatorStatePath, &meta))
+        {
+            ImGui::TextUnformatted("Select a .animator asset in Assets or select an entity with Canis::Animator.");
+            ImGui::TextDisabled("The graph here is for state machines and transitions, while clips stay in the Animation window.");
+            ImGui::End();
+            return;
+        }
+
+        const std::string controllerPath = meta->path.empty() ? m_animatorStatePath : meta->path;
+        if (m_animatorStatePath != controllerPath)
+            m_animatorStatePath = controllerPath;
+
+        AnimatorControllerAsset *controller = AssetManager::GetAnimatorController(controllerPath);
+        if (controller == nullptr)
+        {
+            ImGui::TextDisabled("Unable to load %s", controllerPath.c_str());
+            ImGui::End();
+            return;
+        }
+
+        bool dirty = EnsureAnimatorStateLayout(*controller);
+
+        Animator *boundAnimator = nullptr;
+        if (selectedEntity != nullptr && selectedEntity->HasComponent<Animator>())
+        {
+            Animator &candidateAnimator = selectedEntity->GetComponent<Animator>();
+            const std::string selectedAnimatorPath = AssetManager::ResolvePath(candidateAnimator.controller);
+            if (selectedAnimatorPath == controllerPath)
+                boundAnimator = &candidateAnimator;
+        }
+
+        if (m_animatorSelectedState < 0 || m_animatorSelectedState >= static_cast<int>(controller->states.size()))
+        {
+            if (boundAnimator != nullptr && !boundAnimator->currentState.empty())
+                m_animatorSelectedState = FindAnimatorStateIndex(*controller, boundAnimator->currentState);
+
+            if ((m_animatorSelectedState < 0 || m_animatorSelectedState >= static_cast<int>(controller->states.size())) &&
+                !controller->entryState.empty())
+            {
+                m_animatorSelectedState = FindAnimatorStateIndex(*controller, controller->entryState);
+            }
+
+            if ((m_animatorSelectedState < 0 || m_animatorSelectedState >= static_cast<int>(controller->states.size())) &&
+                !controller->states.empty())
+            {
+                m_animatorSelectedState = 0;
+            }
+
+            m_animatorSelectedTransition = -1;
+        }
+
+        std::string controllerLabel = meta->name;
+        if (controllerLabel.empty())
+            controllerLabel = fs::path(controllerPath).stem().string();
+
+        ImGui::Text("Controller: %s", controllerLabel.c_str());
+        if (boundAnimator != nullptr)
+        {
+            ImGui::SameLine();
+            ImGui::TextDisabled("| Bound to %s", selectedEntity->name.c_str());
+        }
+
+        ImGui::TextDisabled("%s", controllerPath.c_str());
+        if (boundAnimator != nullptr)
+        {
+            ImGui::Text(
+                "Runtime: %s @ %.3fs",
+                boundAnimator->currentState.empty() ? "[ none ]" : boundAnimator->currentState.c_str(),
+                boundAnimator->time);
+        }
+
+        if (selectedEntity != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Assign To Selected Entity"))
+            {
+                if (!selectedEntity->HasComponent<Animator>())
+                    selectedEntity->AddComponent<Animator>();
+
+                Animator &animator = selectedEntity->GetComponent<Animator>();
+                animator.controller = MakeAnimatorControllerAssetHandleFromPath(controllerPath);
+                animator.playing = true;
+                boundAnimator = &animator;
+            }
+        }
+
+        ImGui::SameLine();
+        bool fitGraphRequested = ImGui::SmallButton("Fit Graph");
+        ImGui::Separator();
+
+        const ImGuiStyle &style = ImGui::GetStyle();
+        const float sidebarWidth = std::max(360.0f, ImGui::GetFontSize() * 18.0f);
+        ImVec2 availableSize = ImGui::GetContentRegionAvail();
+        ImVec2 graphAreaSize(
+            std::max(340.0f, availableSize.x - sidebarWidth - style.ItemSpacing.x),
+            availableSize.y);
+
+        AnimatorGraphViewState &viewState = g_animatorGraphViewStates[controllerPath];
+        viewState.options.mDrawIONameOnHover = false;
+        viewState.options.mDrawIONameInsideNode = true;
+        viewState.options.mNodeSlotRadius = 7.0f;
+        viewState.options.mLineThickness = 4.0f;
+        GraphEditor::FitOnScreen fitRequest = fitGraphRequested ? GraphEditor::Fit_AllNodes : GraphEditor::Fit_None;
+
+        ImGui::BeginChild("##animator_graph", graphAreaSize, true);
+
+        const ImVec2 canvasScreenPos = ImGui::GetCursorScreenPos();
+        const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
+        const ImRect canvasRect(canvasScreenPos, ImVec2(canvasScreenPos.x + canvasSize.x, canvasScreenPos.y + canvasSize.y));
+        const int stateSelectionBeforeGraph = m_animatorSelectedState;
+
+        AnimatorGraphDelegate delegate(
+            *controller,
+            m_animatorSelectedState,
+            dirty,
+            (boundAnimator != nullptr) ? boundAnimator->currentState : std::string{});
+        GraphEditor::Show(delegate, viewState.options, viewState.viewState, true, &fitRequest);
+        if (m_animatorSelectedState != stateSelectionBeforeGraph)
+            m_animatorSelectedTransition = -1;
+
+        if (ImGui::BeginDragDropTargetCustom(canvasRect, ImGui::GetID("AnimatorGraphDropTarget")))
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string droppedPath = AssetManager::GetPath(dropped.uuid);
+                MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(droppedPath);
+                if (droppedMeta != nullptr && droppedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                {
+                    AnimatorState state = {};
+                    const std::string baseName = droppedMeta->name.empty() ? fs::path(droppedPath).stem().string() : droppedMeta->name;
+                    state.name = MakeUniqueAnimatorStateName(*controller, baseName);
+                    state.clip = MakeAnimationClipAssetHandleFromPath(droppedPath);
+                    state.editorPosition = ScreenToAnimatorGraphPosition(ImGui::GetMousePos(), canvasScreenPos, viewState.viewState);
+                    controller->states.push_back(state);
+                    if (controller->entryState.empty())
+                        controller->entryState = state.name;
+                    m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        bool openContextMenu = false;
+        ImVec2 popupScreenPos = viewState.contextMousePos;
+        ImVec2 delegatePopupScreenPos = ImVec2(0.0f, 0.0f);
+        if (delegate.ConsumeContextMenuRequest(delegatePopupScreenPos))
+        {
+            popupScreenPos = delegatePopupScreenPos;
+            openContextMenu = true;
+        }
+
+        if (!openContextMenu && canvasRect.Contains(ImGui::GetMousePos()) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+        {
+            popupScreenPos = ImGui::GetMousePos();
+            openContextMenu = true;
+        }
+
+        if (openContextMenu)
+        {
+            viewState.contextMousePos = popupScreenPos;
+            ImGui::SetNextWindowPos(viewState.contextMousePos, ImGuiCond_Appearing);
+            ImGui::OpenPopup("AnimatorContextMenu");
+        }
+
+        if (ImGui::BeginPopup("AnimatorContextMenu"))
+        {
+            const GraphEditor::NodeIndex contextNodeIndex = delegate.GetContextNodeIndex();
+            const int contextStateIndex =
+                (contextNodeIndex != kInvalidAnimatorGraphNodeIndex && contextNodeIndex < controller->states.size())
+                ? static_cast<int>(contextNodeIndex)
+                : -1;
+            const Vector2 popupGraphPos = ScreenToAnimatorGraphPosition(
+                viewState.contextMousePos,
+                canvasScreenPos,
+                viewState.viewState);
+
+            if (contextStateIndex >= 0)
+            {
+                AnimatorState &state = controller->states[static_cast<std::size_t>(contextStateIndex)];
+
+                if (ImGui::MenuItem("Set As Entry"))
+                {
+                    controller->entryState = state.name;
+                    dirty = true;
+                }
+
+                if (ImGui::MenuItem("Duplicate State"))
+                {
+                    AnimatorState duplicateState = state;
+                    duplicateState.name = MakeUniqueAnimatorStateName(*controller, state.name);
+                    duplicateState.editorPosition = state.editorPosition + Vector2(42.0f, 36.0f);
+                    controller->states.push_back(duplicateState);
+                    m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+
+                if (ImGui::MenuItem("Delete State"))
+                {
+                    const std::string removedStateName = state.name;
+                    RemoveAnimatorStateReferences(*controller, removedStateName);
+                    controller->states.erase(controller->states.begin() + contextStateIndex);
+                    if (controller->entryState.empty() && !controller->states.empty())
+                        controller->entryState = controller->states.front().name;
+                    if (m_animatorSelectedState >= static_cast<int>(controller->states.size()))
+                        m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+            }
+            else
+            {
+                if (ImGui::MenuItem("Add State"))
+                {
+                    AnimatorState state = {};
+                    state.name = MakeUniqueAnimatorStateName(*controller, "State");
+                    state.editorPosition = popupGraphPos;
+                    controller->states.push_back(state);
+                    if (controller->entryState.empty())
+                        controller->entryState = state.name;
+                    m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+
+                MetaFileAsset *selectedClipMeta = nullptr;
+                const bool selectedAnimationClip = (AssetManager::GetMetaFile(m_selectedAssetPath) != nullptr) &&
+                    ((selectedClipMeta = AssetManager::GetMetaFile(m_selectedAssetPath))->type == MetaFileAsset::FileType::ANIMATIONCLIP);
+                if (selectedAnimationClip && ImGui::MenuItem("Add State From Selected Clip"))
+                {
+                    AnimatorState state = {};
+                    const std::string baseName = selectedClipMeta->name.empty()
+                        ? fs::path(m_selectedAssetPath).stem().string()
+                        : selectedClipMeta->name;
+                    state.name = MakeUniqueAnimatorStateName(*controller, baseName);
+                    state.clip = MakeAnimationClipAssetHandleFromPath(selectedClipMeta->path.empty() ? m_selectedAssetPath : selectedClipMeta->path);
+                    state.editorPosition = popupGraphPos;
+                    controller->states.push_back(state);
+                    if (controller->entryState.empty())
+                        controller->entryState = state.name;
+                    m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::EndChild();
+
+        ImGui::SameLine();
+        ImGui::BeginChild("##animator_sidebar", ImVec2(0.0f, 0.0f), true);
+
+        if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            for (std::size_t parameterIndex = 0; parameterIndex < controller->parameters.size(); ++parameterIndex)
+            {
+                AnimatorParameterDefinition &parameter = controller->parameters[parameterIndex];
+                ImGui::PushID(static_cast<int>(parameterIndex));
+                if (ImGui::TreeNode(parameter.name.empty() ? "Parameter" : parameter.name.c_str()))
+                {
+                    char nameBuffer[128] = {};
+                    std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
+                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    {
+                        const std::string previousName = parameter.name;
+                        parameter.name = nameBuffer;
+                        RenameAnimatorParameterReferences(*controller, previousName, parameter.name);
+                        dirty = true;
+                    }
+
+                    int typeIndex = static_cast<int>(parameter.type);
+                    const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
+                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    {
+                        parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
+                        parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
+                        ResetAnimatorParameterReferenceValues(*controller, parameter.name, parameter.type);
+                        dirty = true;
+                    }
+
+                    if (parameter.type != AnimatorParameterType::TRIGGER)
+                        dirty = DrawAnimationValueEditor("defaultValue", parameter.defaultValue) || dirty;
+
+                    if (ImGui::SmallButton("Delete Parameter"))
+                    {
+                        RemoveAnimatorParameterReferences(*controller, parameter.name);
+                        controller->parameters.erase(controller->parameters.begin() + static_cast<long>(parameterIndex));
+                        dirty = true;
+                        ImGui::TreePop();
+                        ImGui::PopID();
+                        break;
+                    }
+
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+
+            if (ImGui::Button("Add Parameter"))
+            {
+                AnimatorParameterDefinition parameter = {};
+                parameter.name = "Parameter";
+                parameter.type = AnimatorParameterType::FLOAT;
+                parameter.defaultValue = AnimationValue::Float(0.0f);
+                controller->parameters.push_back(parameter);
+                dirty = true;
+            }
+        }
+
+        ImGui::Separator();
+        ImGui::TextUnformatted("Selected State");
+        if (m_animatorSelectedState < 0 || m_animatorSelectedState >= static_cast<int>(controller->states.size()))
+        {
+            ImGui::TextDisabled("Click a node in the graph to edit it.");
+        }
+        else
+        {
+            AnimatorState &state = controller->states[static_cast<std::size_t>(m_animatorSelectedState)];
+
+            char stateNameBuffer[128] = {};
+            std::snprintf(stateNameBuffer, sizeof(stateNameBuffer), "%s", state.name.c_str());
+            if (ImGui::InputText("State Name", stateNameBuffer, sizeof(stateNameBuffer)))
+            {
+                std::string renamedState = stateNameBuffer;
+                if (renamedState.empty())
+                    renamedState = "State";
+                if (renamedState != state.name)
+                {
+                    const std::string previousName = state.name;
+                    renamedState = MakeUniqueAnimatorStateName(*controller, renamedState);
+                    state.name = renamedState;
+                    RenameAnimatorStateReferences(*controller, previousName, state.name);
+                    dirty = true;
+                }
+            }
+
+            AnimationClipAssetHandle previousClip = state.clip;
+            InputAnimationClipAsset("Clip", "animator_window_state_clip", state.clip);
+            if (AnimationClipAssetHandleChanged(previousClip, state.clip))
+                dirty = true;
+
+            const std::string stateClipPath = AssetManager::ResolvePath(state.clip);
+            if (!stateClipPath.empty())
+            {
+                if (ImGui::SmallButton("Open Clip In Animation Window"))
+                {
+                    m_animationClipStatePath = stateClipPath;
+                    RememberLastAnimationClipAssetPath(stateClipPath);
+                }
+            }
+
+            if (ImGui::Checkbox("Loop", &state.loop))
+                dirty = true;
+            if (ImGui::InputFloat("Speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+                dirty = true;
+
+            bool isEntryState = controller->entryState == state.name;
+            if (ImGui::Checkbox("Entry State", &isEntryState))
+            {
+                if (isEntryState)
+                    controller->entryState = state.name;
+                else if (controller->entryState == state.name)
+                    controller->entryState.clear();
+                dirty = true;
+            }
+
+            ImGui::Text("Graph Position: %.1f, %.1f", state.editorPosition.x, state.editorPosition.y);
+
+            ImGui::Separator();
+            ImGui::TextUnformatted("Transitions");
+            for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
+            {
+                const AnimatorTransition &transition = state.transitions[transitionIndex];
+                std::string label = std::to_string(transitionIndex) + ": " +
+                    (transition.toState.empty() ? std::string("[ none ]") : transition.toState);
+                if (ImGui::Selectable(label.c_str(), m_animatorSelectedTransition == static_cast<int>(transitionIndex)))
+                    m_animatorSelectedTransition = static_cast<int>(transitionIndex);
+            }
+
+            if (m_animatorSelectedTransition >= static_cast<int>(state.transitions.size()))
+                m_animatorSelectedTransition = static_cast<int>(state.transitions.size()) - 1;
+
+            if (ImGui::Button("Add Transition"))
+            {
+                AnimatorTransition transition = {};
+                for (const AnimatorState &candidateState : controller->states)
+                {
+                    if (candidateState.name != state.name)
+                    {
+                        transition.toState = candidateState.name;
+                        break;
+                    }
+                }
+                state.transitions.push_back(transition);
+                m_animatorSelectedTransition = static_cast<int>(state.transitions.size()) - 1;
+                dirty = true;
+            }
+
+            if (m_animatorSelectedTransition >= 0 && m_animatorSelectedTransition < static_cast<int>(state.transitions.size()))
+            {
+                AnimatorTransition &transition = state.transitions[static_cast<std::size_t>(m_animatorSelectedTransition)];
+                ImGui::Separator();
+
+                if (ImGui::BeginCombo("To State", transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
+                {
+                    for (const AnimatorState &candidateState : controller->states)
+                    {
+                        if (candidateState.name == state.name)
+                            continue;
+
+                        const bool selected = candidateState.name == transition.toState;
+                        if (ImGui::Selectable(candidateState.name.c_str(), selected))
+                        {
+                            transition.toState = candidateState.name;
+                            dirty = true;
+                        }
+                    }
+                    ImGui::EndCombo();
+                }
+
+                if (ImGui::Checkbox("Has Exit Time", &transition.hasExitTime))
+                    dirty = true;
+                if (transition.hasExitTime && ImGui::InputFloat("Exit Time Normalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                {
+                    transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
+                    dirty = true;
+                }
+
+                ImGui::TextUnformatted("Conditions");
+                for (std::size_t conditionIndex = 0; conditionIndex < transition.conditions.size(); ++conditionIndex)
+                {
+                    AnimatorTransitionCondition &condition = transition.conditions[conditionIndex];
+                    ImGui::PushID(static_cast<int>(conditionIndex));
+                    if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
+                    {
+                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                        {
+                            for (const AnimatorParameterDefinition &parameter : controller->parameters)
+                            {
+                                const bool selected = parameter.name == condition.parameter;
+                                if (ImGui::Selectable(parameter.name.c_str(), selected))
+                                {
+                                    condition.parameter = parameter.name;
+                                    condition.value = parameter.defaultValue.type == AnimationValueType::NONE
+                                        ? MakeDefaultAnimatorParameterValue(parameter.type)
+                                        : parameter.defaultValue;
+                                    dirty = true;
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+
+                        int modeIndex = static_cast<int>(condition.mode);
+                        const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
+                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                        {
+                            condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
+                            dirty = true;
+                        }
+
+                        const bool allowValue =
+                            condition.mode != AnimatorConditionMode::IF_TRUE &&
+                            condition.mode != AnimatorConditionMode::IF_FALSE &&
+                            condition.mode != AnimatorConditionMode::TRIGGERED;
+                        if (allowValue)
+                        {
+                            const AnimatorParameterType parameterType = FindAnimatorParameterType(*controller, condition.parameter);
+                            if (condition.value.type == AnimationValueType::NONE)
+                                condition.value = MakeDefaultAnimatorParameterValue(parameterType);
+                            dirty = DrawAnimationValueEditor("value", condition.value) || dirty;
+                        }
+
+                        if (ImGui::SmallButton("Delete Condition"))
+                        {
+                            transition.conditions.erase(transition.conditions.begin() + static_cast<long>(conditionIndex));
+                            dirty = true;
+                            ImGui::TreePop();
+                            ImGui::PopID();
+                            break;
+                        }
+
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+
+                if (ImGui::Button("Add Condition"))
+                {
+                    AnimatorTransitionCondition condition = {};
+                    if (!controller->parameters.empty())
+                    {
+                        condition.parameter = controller->parameters.front().name;
+                        condition.value = controller->parameters.front().defaultValue.type == AnimationValueType::NONE
+                            ? MakeDefaultAnimatorParameterValue(controller->parameters.front().type)
+                            : controller->parameters.front().defaultValue;
+                    }
+                    transition.conditions.push_back(condition);
+                    dirty = true;
+                }
+
+                if (ImGui::SmallButton("Delete Transition"))
+                {
+                    state.transitions.erase(state.transitions.begin() + m_animatorSelectedTransition);
+                    if (m_animatorSelectedTransition >= static_cast<int>(state.transitions.size()))
+                        m_animatorSelectedTransition = static_cast<int>(state.transitions.size()) - 1;
+                    dirty = true;
+                }
+            }
+        }
+
+        ImGui::EndChild();
+        ImGui::End();
+
+        if (dirty)
+            (void)controller->Save();
+    }
+
+    void Editor::DrawAnimationWindow(float _deltaTime)
+    {
+        namespace fs = std::filesystem;
+
+        if (m_animationClipStatePath.empty())
+            m_animationClipStatePath = ResolveRememberedAnimationClipPath();
+
+        Entity *selectedEntity = nullptr;
+        if (m_scene != nullptr && m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()))
+            selectedEntity = m_scene->GetEntities()[m_index];
+
+        Entity *rootEntity = nullptr;
+        if (m_scene != nullptr && m_animationTargetUUID != UUID(0))
+            rootEntity = m_scene->GetEntityWithUUID(m_animationTargetUUID);
+
+        if (rootEntity == nullptr && selectedEntity != nullptr && m_animationTargetUUID == UUID(0))
+            rootEntity = selectedEntity;
+
+        if (m_animationClipStatePath.empty() && rootEntity != nullptr && rootEntity->HasComponent<AnimationPlayer>())
+        {
+            const std::string playerClipPath = AssetManager::ResolvePath(rootEntity->GetComponent<AnimationPlayer>().clip);
+            if (!playerClipPath.empty())
+            {
+                m_animationClipStatePath = playerClipPath;
+                RememberLastAnimationClipAssetPath(playerClipPath);
+            }
+        }
+
+        if (m_animationClipStatePath.empty() && rootEntity != nullptr && rootEntity->HasComponent<Animator>())
+        {
+            Animator &animator = rootEntity->GetComponent<Animator>();
+            const std::string controllerPath = AssetManager::ResolvePath(animator.controller);
+            if (!controllerPath.empty())
+            {
+                if (AnimatorControllerAsset *controller = AssetManager::GetAnimatorController(controllerPath))
+                {
+                    const std::string desiredState = animator.currentState.empty()
+                        ? (controller->entryState.empty() ? (controller->states.empty() ? std::string{} : controller->states.front().name) : controller->entryState)
+                        : animator.currentState;
+                    for (const AnimatorState &state : controller->states)
+                    {
+                        if (state.name != desiredState)
+                            continue;
+
+                        const std::string stateClipPath = AssetManager::ResolvePath(state.clip);
+                        if (!stateClipPath.empty())
+                        {
+                            m_animationClipStatePath = stateClipPath;
+                            RememberLastAnimationClipAssetPath(stateClipPath);
+                        }
+                        break;
+                    }
+                }
+            }
+        }
+
+        AnimationClipAsset *clip = nullptr;
+        MetaFileAsset *clipMeta = nullptr;
+        if (!m_animationClipStatePath.empty())
+        {
+            clipMeta = AssetManager::GetMetaFile(m_animationClipStatePath);
+            if (clipMeta != nullptr && clipMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                clip = AssetManager::GetAnimationClip(clipMeta->path.empty() ? m_animationClipStatePath : clipMeta->path);
+        }
+
+        auto restorePreviewState = [&]() -> void
+        {
+            if (m_scene == nullptr || m_app == nullptr || m_animationRestoreBindings.empty())
+            {
+                m_animationRestoreBindings.clear();
+                m_animationPreviewTargetUUID = UUID(0);
+                m_animationPreviewClipPath.clear();
+                return;
+            }
+
+            Entity *restoreRoot = (m_animationPreviewTargetUUID != UUID(0)) ? m_scene->GetEntityWithUUID(m_animationPreviewTargetUUID) : nullptr;
+            if (restoreRoot != nullptr)
+            {
+                for (const AnimationRestoreBinding &binding : m_animationRestoreBindings)
+                {
+                    AnimationTrack bindingTrack = {};
+                    bindingTrack.path = binding.path;
+                    bindingTrack.component = binding.component;
+                    bindingTrack.property = binding.property;
+                    bindingTrack.type = binding.value.type;
+
+                    AnimationBindingTarget target = {};
+                    if (!ResolveAnimationTrackTarget(*m_app, *restoreRoot, bindingTrack, target))
+                        continue;
+
+                    auto setterIt = target.conf->registry.animationSetters.find(binding.property);
+                    if (setterIt == target.conf->registry.animationSetters.end())
+                        continue;
+
+                    setterIt->second(target.component, binding.value);
+                }
+            }
+
+            m_animationRestoreBindings.clear();
+            m_animationPreviewTargetUUID = UUID(0);
+            m_animationPreviewClipPath.clear();
+        };
+
+        auto capturePreviewState = [&](AnimationClipAsset &_clip, Entity &_root) -> void
+        {
+            restorePreviewState();
+
+            std::unordered_set<std::string> seenBindings = {};
+            for (const AnimationTrack &track : _clip.tracks)
+            {
+                const std::string bindingKey = track.path + "\n" + track.component + "\n" + track.property;
+                if (!seenBindings.insert(bindingKey).second)
+                    continue;
+
+                AnimationValue capturedValue = {};
+                if (!CaptureAnimationTrackValue(*m_app, _root, track, capturedValue))
+                    continue;
+
+                AnimationRestoreBinding binding = {};
+                binding.path = track.path;
+                binding.component = track.component;
+                binding.property = track.property;
+                binding.value = capturedValue;
+                m_animationRestoreBindings.push_back(binding);
+            }
+
+            m_animationPreviewTargetUUID = _root.uuid;
+            m_animationPreviewClipPath = m_animationClipStatePath;
+        };
+
+        auto createNewClip = [&](const std::string &_nameHint) -> void
+        {
+            std::string baseName = _nameHint.empty() ? "new_animation" : _nameHint;
+            for (char &c : baseName)
+            {
+                if (!(std::isalnum(static_cast<unsigned char>(c)) || c == '_'))
+                    c = '_';
+            }
+            if (baseName.empty())
+                baseName = "new_animation";
+
+            std::error_code ec;
+            fs::create_directories("assets/animations", ec);
+
+            fs::path targetPath = fs::path("assets/animations") / (baseName + ".animclip");
+            int suffix = 1;
+            while (fs::exists(targetPath, ec))
+            {
+                targetPath = fs::path("assets/animations") / (baseName + "_" + std::to_string(suffix) + ".animclip");
+                ++suffix;
+            }
+
+            AnimationClipAsset newClip = {};
+            newClip.length = 1.0f;
+            if (!newClip.Save(targetPath.generic_string()))
+                return;
+
+            (void)AssetManager::GetMetaFile(targetPath.generic_string());
+            m_selectedAssetPath = targetPath.generic_string();
+            m_animationClipStatePath = targetPath.generic_string();
+            m_animationSelectedTrack = -1;
+            m_animationSelectedEvent = -1;
+            m_animationFirstFrame = 0;
+            m_animationTime = 0.0f;
+            RememberLastAnimationClipAssetPath(m_animationClipStatePath);
+        };
+
+        ImGui::Begin("Animation");
+
+        std::string clipLabel = "[ none ]";
+        if (clipMeta != nullptr)
+            clipLabel = clipMeta->name;
+        else if (!m_animationClipStatePath.empty())
+            clipLabel = m_animationClipStatePath;
+
+        ImGui::TextUnformatted("Clip");
+        ImGui::SameLine();
+        ImGui::Button(clipLabel.c_str(), ImVec2(180, 0));
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                    {
+                        m_animationClipStatePath = path;
+                        RememberLastAnimationClipAssetPath(path);
+                        m_animationSelectedTrack = -1;
+                        m_animationSelectedEvent = -1;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("New##animation_clip"))
+            createNewClip((selectedEntity != nullptr) ? selectedEntity->name : std::string("new_animation"));
+
+        if (!m_animationClipStatePath.empty())
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Clear##animation_clip"))
+            {
+                ClearRememberedAnimationClipAssetPathIfMatches(m_animationClipStatePath);
+                m_animationClipStatePath.clear();
+                m_animationSelectedTrack = -1;
+                m_animationSelectedEvent = -1;
+            }
+        }
+
+        const char *rootName = (rootEntity != nullptr) ? rootEntity->name.c_str() : "[ none ]";
+        ImGui::Text("Root: %s", rootName);
+        if (selectedEntity != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Use Selected As Root"))
+                m_animationTargetUUID = selectedEntity->uuid;
+        }
+
+        if (rootEntity != nullptr && clip != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Assign To AnimationPlayer"))
+            {
+                if (!rootEntity->HasComponent<AnimationPlayer>())
+                    rootEntity->AddComponent<AnimationPlayer>();
+
+                AnimationPlayer &player = rootEntity->GetComponent<AnimationPlayer>();
+                player.clip = MakeAnimationClipAssetHandleFromPath(m_animationClipStatePath);
+            }
+        }
+
+        ImGui::Separator();
+
+        bool clipDirty = false;
+        if (clip != nullptr)
+        {
+            clip->length = std::max(clip->length, 0.0f);
+            if (m_animationPlaying)
+                m_animationTime += _deltaTime;
+
+            const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, true);
+            if (clip->length > 0.0f)
+                m_animationTime = sampleTime;
+            else
+                m_animationTime = std::max(m_animationTime, 0.0f);
+
+            auto selectTrackByBinding = [&](const std::string &_path, const std::string &_component, const std::string &_property) -> void
+            {
+                m_animationSelectedTrack = -1;
+                for (std::size_t i = 0; i < clip->tracks.size(); ++i)
+                {
+                    const AnimationTrack &track = clip->tracks[i];
+                    if (track.path == _path && track.component == _component && track.property == _property)
+                    {
+                        m_animationSelectedTrack = static_cast<int>(i);
+                        break;
+                    }
+                }
+            };
+
+            auto addPropertyTrack = [&](const AnimationPropertyCandidate &_candidate) -> void
+            {
+                if (rootEntity == nullptr)
+                    return;
+
+                AnimationTrack *track = FindOrCreateAnimationTrack(
+                    *clip,
+                    _candidate.path,
+                    _candidate.component,
+                    _candidate.property,
+                    _candidate.type,
+                    _candidate.interpolation);
+                if (track == nullptr)
+                    return;
+
+                if (track->keys.empty())
+                {
+                    AnimationValue capturedValue = MakeDefaultAnimationValue(_candidate.type);
+                    if (!CaptureAnimationTrackValue(*m_app, *rootEntity, *track, capturedValue))
+                        capturedValue = MakeDefaultAnimationValue(_candidate.type);
+
+                    track->keys.push_back(AnimationKeyframe{std::max(m_animationTime, 0.0f), capturedValue});
+                    SortAnimationTrackKeys(*track);
+                }
+
+                RefreshAnimationClipLength(*clip);
+                (void)clip->Save();
+                clipDirty = true;
+                selectTrackByBinding(_candidate.path, _candidate.component, _candidate.property);
+            };
+
+            ImGui::Checkbox("Preview", &m_animationPreviewEnabled);
+            ImGui::SameLine();
+            ImGui::Checkbox("Record", &m_animationRecordEnabled);
+            ImGui::SameLine();
+            if (ImGui::Button(m_animationPlaying ? "Pause" : "Play"))
+                m_animationPlaying = !m_animationPlaying;
+
+            ImGui::SameLine();
+            if (ImGui::Button("Stop"))
+            {
+                m_animationPlaying = false;
+                m_animationTime = 0.0f;
+            }
+
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(110.0f);
+            if (ImGui::InputFloat("Length", &clip->length, 0.0f, 0.0f, "%.3f"))
+            {
+                clip->length = std::max(clip->length, 0.0f);
+                clipDirty = true;
+            }
+
+            if (rootEntity != nullptr)
+            {
+                ImGui::SameLine();
+                if (ImGui::Button("Add Property"))
+                    ImGui::OpenPopup("AnimationAddPropertyPopup");
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Add Event At Current Time"))
+            {
+                AnimationEvent event = {};
+                event.time = std::max(m_animationTime, 0.0f);
+                event.name = "OnAnimationEvent";
+                if (rootEntity != nullptr && selectedEntity != nullptr && selectedEntity != rootEntity)
+                {
+                    std::string relativePath = {};
+                    if (BuildAnimationRelativePath(*rootEntity, *selectedEntity, relativePath))
+                        event.path = relativePath;
+                }
+
+                clip->events.push_back(event);
+                std::sort(clip->events.begin(), clip->events.end(), [](const AnimationEvent &_left, const AnimationEvent &_right)
+                {
+                    return _left.time < _right.time;
+                });
+
+                m_animationSelectedEvent = static_cast<int>(clip->events.size()) - 1;
+                RefreshAnimationClipLength(*clip);
+                clipDirty = true;
+            }
+
+            if (ImGui::BeginPopup("AnimationAddPropertyPopup"))
+            {
+                ImGui::SetNextItemWidth(320.0f);
+                ImGui::InputTextWithHint("##animation_property_search", "Search property", &m_animationAddPropertySearch);
+                ImGui::Separator();
+
+                std::vector<AnimationPropertyCandidate> candidates = {};
+                if (rootEntity != nullptr)
+                    CollectAnimationPropertyCandidatesRecursive(*m_app, *rootEntity, *rootEntity, candidates);
+
+                std::sort(candidates.begin(), candidates.end(), [](const AnimationPropertyCandidate &_left, const AnimationPropertyCandidate &_right)
+                {
+                    return _left.label < _right.label;
+                });
+
+                for (const AnimationPropertyCandidate &candidate : candidates)
+                {
+                    if (!m_animationAddPropertySearch.empty())
+                    {
+                        std::string haystack = candidate.label;
+                        std::string needle = m_animationAddPropertySearch;
+                        std::transform(haystack.begin(), haystack.end(), haystack.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        std::transform(needle.begin(), needle.end(), needle.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+                        if (haystack.find(needle) == std::string::npos)
+                            continue;
+                    }
+
+                    const bool alreadyExists = FindAnimationTrack(*clip, candidate.path, candidate.component, candidate.property) != nullptr;
+                    const std::string buttonLabel = alreadyExists ? (candidate.label + "  [select]") : candidate.label;
+                    if (ImGui::Selectable(buttonLabel.c_str()))
+                    {
+                        addPropertyTrack(candidate);
+                        ImGui::CloseCurrentPopup();
+                    }
+                }
+
+                ImGui::EndPopup();
+            }
+
+            ImGui::Text("Time: %.3fs  Frame: %d", m_animationTime, AnimationFrameFromTime(m_animationTime));
+
+            struct AnimationClipSequencer : ImSequencer::SequenceInterface
+            {
+                AnimationClipAsset &clip;
+                std::vector<int> startFrames = {};
+                std::vector<int> endFrames = {};
+                std::vector<std::string> labels = {};
+                int frameMax = 1;
+                bool deletedTrack = false;
+
+                explicit AnimationClipSequencer(AnimationClipAsset &_clip) : clip(_clip)
+                {
+                    Rebuild();
+                }
+
+                void Rebuild()
+                {
+                    startFrames.clear();
+                    endFrames.clear();
+                    labels.clear();
+                    frameMax = std::max(1, AnimationFrameFromTime(std::max(clip.length, 0.0f)));
+
+                    for (const AnimationTrack &track : clip.tracks)
+                    {
+                        int start = 0;
+                        int end = 0;
+                        if (!track.keys.empty())
+                        {
+                            start = AnimationFrameFromTime(track.keys.front().time);
+                            end = AnimationFrameFromTime(track.keys.back().time);
+                            frameMax = std::max(frameMax, end + 1);
+                        }
+
+                        startFrames.push_back(start);
+                        endFrames.push_back(std::max(end, start));
+                        labels.push_back(BuildAnimationTrackLabel(track));
+                    }
+                }
+
+                int GetFrameMin() const override { return 0; }
+                int GetFrameMax() const override { return frameMax; }
+                int GetItemCount() const override { return static_cast<int>(clip.tracks.size()); }
+                const char *GetItemLabel(int index) const override
+                {
+                    if (index < 0 || index >= static_cast<int>(labels.size()))
+                        return "";
+                    return labels[index].c_str();
+                }
+
+                void Get(int index, int **start, int **end, int *type, unsigned int *color) override
+                {
+                    if (start)
+                        *start = &startFrames[index];
+                    if (end)
+                        *end = &endFrames[index];
+                    if (type)
+                        *type = 0;
+                    if (color)
+                        *color = 0xFF80C0FF;
+                }
+
+                void Del(int index) override
+                {
+                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
+                        return;
+
+                    clip.tracks.erase(clip.tracks.begin() + index);
+                    deletedTrack = true;
+                    Rebuild();
+                }
+
+                void CustomDrawCompact(int index, ImDrawList *draw_list, const ImRect &rc, const ImRect &clippingRect) override
+                {
+                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
+                        return;
+
+                    const AnimationTrack &track = clip.tracks[index];
+                    const float frameSpan = static_cast<float>(std::max(frameMax, 1));
+
+                    draw_list->PushClipRect(clippingRect.Min, clippingRect.Max, true);
+                    for (const AnimationKeyframe &key : track.keys)
+                    {
+                        const float normalized = static_cast<float>(AnimationFrameFromTime(key.time)) / frameSpan;
+                        const float x = ImLerp(rc.Min.x, rc.Max.x, normalized);
+                        draw_list->AddLine(ImVec2(x, rc.Min.y + 4.0f), ImVec2(x, rc.Max.y - 4.0f), 0xFFFFFFFF, 2.0f);
+                    }
+                    draw_list->PopClipRect();
+                }
+            };
+
+            int currentFrame = AnimationFrameFromTime(m_animationTime);
+            AnimationClipSequencer sequencer(*clip);
+            m_animationExpanded = m_animationExpanded || !clip->tracks.empty();
+            const int sequenceFlags = ImSequencer::SEQUENCER_CHANGE_FRAME | ImSequencer::SEQUENCER_DEL;
+            (void)ImSequencer::Sequencer(&sequencer, &currentFrame, &m_animationExpanded, &m_animationSelectedTrack, &m_animationFirstFrame, sequenceFlags);
+            if (sequencer.deletedTrack)
+            {
+                if (m_animationSelectedTrack >= static_cast<int>(clip->tracks.size()))
+                    m_animationSelectedTrack = static_cast<int>(clip->tracks.size()) - 1;
+                clipDirty = true;
+            }
+
+            m_animationTime = AnimationTimeFromFrame(currentFrame);
+            if (m_animationSelectedTrack >= 0 && m_animationSelectedTrack < static_cast<int>(clip->tracks.size()))
+            {
+                AnimationTrack &track = clip->tracks[m_animationSelectedTrack];
+                ImGui::Separator();
+                ImGui::Text("%s", BuildAnimationTrackLabel(track).c_str());
+
+                int interpolationIndex = (track.interpolation == AnimationInterpolation::STEP) ? 1 : 0;
+                const char *interpolationLabels[] = {"Linear", "Step"};
+                if (ImGui::Combo("Interpolation", &interpolationIndex, interpolationLabels, IM_ARRAYSIZE(interpolationLabels)))
+                {
+                    track.interpolation = (interpolationIndex == 1) ? AnimationInterpolation::STEP : AnimationInterpolation::LINEAR;
+                    clipDirty = true;
+                }
+
+                if (rootEntity != nullptr && ImGui::Button("Capture Key At Current Time"))
+                {
+                    AnimationValue capturedValue = {};
+                    if (CaptureAnimationTrackValue(*m_app, *rootEntity, track, capturedValue))
+                    {
+                        bool updatedExisting = false;
+                        for (AnimationKeyframe &key : track.keys)
+                        {
+                            if (std::fabs(key.time - m_animationTime) <= kAnimationEditorKeyTimeEpsilon)
+                            {
+                                key.value = capturedValue;
+                                updatedExisting = true;
+                                break;
+                            }
+                        }
+
+                        if (!updatedExisting)
+                            track.keys.push_back(AnimationKeyframe{m_animationTime, capturedValue});
+
+                        SortAnimationTrackKeys(track);
+                        clipDirty = true;
+                    }
+                }
+
+                ImGui::SameLine();
+                if (ImGui::Button("Add Empty Key"))
+                {
+                    AnimationValue value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, std::max(m_animationTime, 0.0f));
+                    track.keys.push_back(AnimationKeyframe{std::max(m_animationTime, 0.0f), value});
+                    SortAnimationTrackKeys(track);
+                    clipDirty = true;
+                }
+
+                for (std::size_t keyIndex = 0; keyIndex < track.keys.size(); ++keyIndex)
+                {
+                    AnimationKeyframe &key = track.keys[keyIndex];
+                    ImGui::PushID(static_cast<int>(keyIndex));
+                    bool keyDirty = false;
+
+                    if (ImGui::InputFloat("time", &key.time, 0.0f, 0.0f, "%.3f"))
+                    {
+                        key.time = std::max(key.time, 0.0f);
+                        keyDirty = true;
+                    }
+
+                    keyDirty = DrawAnimationValueEditor("value", key.value) || keyDirty;
+
+                    if (ImGui::SmallButton("Set Current Time"))
+                        m_animationTime = key.time;
+
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Delete Key"))
+                    {
+                        track.keys.erase(track.keys.begin() + static_cast<long>(keyIndex));
+                        clipDirty = true;
+                        ImGui::PopID();
+                        break;
+                    }
+
+                    if (keyDirty)
+                    {
+                        SortAnimationTrackKeys(track);
+                        clipDirty = true;
+                    }
+
+                    ImGui::Separator();
+                    ImGui::PopID();
+                }
+
+                if (!track.keys.empty())
+                {
+                    struct AnimationTrackCurveDelegate : ImCurveEdit::Delegate
+                    {
+                        AnimationTrack &track;
+                        float clipLength = 1.0f;
+                        ImVec2 min = ImVec2(0.0f, -1.0f);
+                        ImVec2 max = ImVec2(1.0f, 1.0f);
+                        std::vector<std::vector<ImVec2>> points = {};
+
+                        AnimationTrackCurveDelegate(AnimationTrack &_track, float _clipLength)
+                            : track(_track), clipLength(std::max(_clipLength, 1.0f))
+                        {
+                            Rebuild();
+                        }
+
+                        void Rebuild()
+                        {
+                            const int componentCount = std::max(1, GetAnimationValueComponentCount(track.type));
+                            points.assign(static_cast<std::size_t>(componentCount), {});
+
+                            float minValue = std::numeric_limits<float>::max();
+                            float maxValue = std::numeric_limits<float>::lowest();
+                            for (const AnimationKeyframe &key : track.keys)
+                            {
+                                for (int componentIndex = 0; componentIndex < componentCount; ++componentIndex)
+                                {
+                                    const float value = GetAnimationValueComponent(key.value, componentIndex);
+                                    points[static_cast<std::size_t>(componentIndex)].push_back(ImVec2(key.time, value));
+                                    minValue = std::min(minValue, value);
+                                    maxValue = std::max(maxValue, value);
+                                }
+                            }
+
+                            if (track.type == AnimationValueType::BOOL)
+                            {
+                                minValue = -0.1f;
+                                maxValue = 1.1f;
+                            }
+                            else if (track.type == AnimationValueType::INT && minValue <= maxValue)
+                            {
+                                minValue -= 1.0f;
+                                maxValue += 1.0f;
+                            }
+                            else if (!(minValue <= maxValue))
+                            {
+                                minValue = -1.0f;
+                                maxValue = 1.0f;
+                            }
+                            else if (std::fabs(maxValue - minValue) < 0.01f)
+                            {
+                                minValue -= 1.0f;
+                                maxValue += 1.0f;
+                            }
+
+                            min = ImVec2(0.0f, minValue);
+                            max = ImVec2(std::max(clipLength, 0.1f), maxValue);
+                        }
+
+                        size_t GetCurveCount() override
+                        {
+                            return static_cast<size_t>(std::max(1, GetAnimationValueComponentCount(track.type)));
+                        }
+
+                        ImCurveEdit::CurveType GetCurveType(size_t) const override
+                        {
+                            return AnimationValueIsDiscrete(track.type) ? ImCurveEdit::CurveDiscrete : ImCurveEdit::CurveLinear;
+                        }
+
+                        ImVec2& GetMin() override { return min; }
+                        ImVec2& GetMax() override { return max; }
+
+                        size_t GetPointCount(size_t) override
+                        {
+                            return track.keys.size();
+                        }
+
+                        uint32_t GetCurveColor(size_t curveIndex) override
+                        {
+                            return GetAnimationCurveColor(static_cast<int>(curveIndex));
+                        }
+
+                        ImVec2* GetPoints(size_t curveIndex) override
+                        {
+                            Rebuild();
+                            return points[curveIndex].data();
+                        }
+
+                        int EditPoint(size_t curveIndex, int pointIndex, ImVec2 value) override
+                        {
+                            if (pointIndex < 0 || pointIndex >= static_cast<int>(track.keys.size()))
+                                return pointIndex;
+
+                            AnimationKeyframe editedKey = track.keys[pointIndex];
+                            editedKey.time = std::max(value.x, 0.0f);
+                            SetAnimationValueComponent(editedKey.value, static_cast<int>(curveIndex), value.y);
+                            track.keys[pointIndex] = editedKey;
+                            SortAnimationTrackKeys(track);
+                            Rebuild();
+
+                            int bestIndex = 0;
+                            float bestDistance = std::numeric_limits<float>::max();
+                            for (std::size_t i = 0; i < track.keys.size(); ++i)
+                            {
+                                const float dx = std::fabs(track.keys[i].time - editedKey.time);
+                                const float dy = std::fabs(GetAnimationValueComponent(track.keys[i].value, static_cast<int>(curveIndex)) - GetAnimationValueComponent(editedKey.value, static_cast<int>(curveIndex)));
+                                const float distance = dx + dy;
+                                if (distance < bestDistance)
+                                {
+                                    bestDistance = distance;
+                                    bestIndex = static_cast<int>(i);
+                                }
+                            }
+
+                            return bestIndex;
+                        }
+
+                        void AddPoint(size_t curveIndex, ImVec2 value) override
+                        {
+                            AnimationKeyframe key = {};
+                            key.time = std::max(value.x, 0.0f);
+                            key.value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, key.time);
+                            SetAnimationValueComponent(key.value, static_cast<int>(curveIndex), value.y);
+                            track.keys.push_back(key);
+                            SortAnimationTrackKeys(track);
+                            Rebuild();
+                        }
+                    };
+
+                    ImGui::TextUnformatted("Curves");
+                    for (int componentIndex = 0; componentIndex < std::max(1, GetAnimationValueComponentCount(track.type)); ++componentIndex)
+                    {
+                        ImGui::SameLine(componentIndex == 0 ? 0.0f : 0.0f);
+                        ImGui::TextColored(ImGui::ColorConvertU32ToFloat4(GetAnimationCurveColor(componentIndex)), "%s", GetAnimationValueComponentName(track.type, componentIndex));
+                    }
+
+                    static ImVector<ImCurveEdit::EditPoint> selectedCurvePoints;
+                    AnimationTrackCurveDelegate curveDelegate(track, clip->length);
+                    if (ImCurveEdit::Edit(curveDelegate, ImVec2(-1.0f, 220.0f), ImGui::GetID("AnimationCurves"), nullptr, &selectedCurvePoints))
+                        clipDirty = true;
+                }
+            }
+
+            ImGui::Separator();
+            if (ImGui::CollapsingHeader("Events", ImGuiTreeNodeFlags_DefaultOpen))
+            {
+                for (std::size_t eventIndex = 0; eventIndex < clip->events.size(); ++eventIndex)
+                {
+                    const AnimationEvent &event = clip->events[eventIndex];
+                    std::string label = std::to_string(eventIndex) + ": " + event.name + " @ " + std::to_string(event.time);
+                    if (ImGui::Selectable(label.c_str(), m_animationSelectedEvent == static_cast<int>(eventIndex)))
+                        m_animationSelectedEvent = static_cast<int>(eventIndex);
+                }
+
+                if (m_animationSelectedEvent >= static_cast<int>(clip->events.size()))
+                    m_animationSelectedEvent = static_cast<int>(clip->events.size()) - 1;
+
+                if (m_animationSelectedEvent >= 0 && m_animationSelectedEvent < static_cast<int>(clip->events.size()))
+                {
+                    AnimationEvent &event = clip->events[m_animationSelectedEvent];
+                    ImGui::Separator();
+                    if (ImGui::InputFloat("event time", &event.time, 0.0f, 0.0f, "%.3f"))
+                    {
+                        event.time = std::max(event.time, 0.0f);
+                        std::sort(clip->events.begin(), clip->events.end(), [](const AnimationEvent &_left, const AnimationEvent &_right)
+                        {
+                            return _left.time < _right.time;
+                        });
+                        clipDirty = true;
+                    }
+
+                    char eventPathBuffer[256] = {};
+                    std::snprintf(eventPathBuffer, sizeof(eventPathBuffer), "%s", event.path.c_str());
+                    if (ImGui::InputText("target path", eventPathBuffer, sizeof(eventPathBuffer)))
+                    {
+                        event.path = eventPathBuffer;
+                        clipDirty = true;
+                    }
+
+                    if (rootEntity != nullptr && selectedEntity != nullptr)
+                    {
+                        ImGui::SameLine();
+                        if (ImGui::SmallButton("Use Selected Entity"))
+                        {
+                            if (selectedEntity == rootEntity)
+                            {
+                                event.path.clear();
+                                clipDirty = true;
+                            }
+                            else
+                            {
+                                std::string relativePath = {};
+                                if (BuildAnimationRelativePath(*rootEntity, *selectedEntity, relativePath))
+                                {
+                                    event.path = relativePath;
+                                    clipDirty = true;
+                                }
+                            }
+                        }
+                    }
+
+                    char eventScriptBuffer[256] = {};
+                    std::snprintf(eventScriptBuffer, sizeof(eventScriptBuffer), "%s", event.script.c_str());
+                    if (ImGui::InputText("script", eventScriptBuffer, sizeof(eventScriptBuffer)))
+                    {
+                        event.script = eventScriptBuffer;
+                        clipDirty = true;
+                    }
+
+                    char eventNameBuffer[256] = {};
+                    std::snprintf(eventNameBuffer, sizeof(eventNameBuffer), "%s", event.name.c_str());
+                    if (ImGui::InputText("event name", eventNameBuffer, sizeof(eventNameBuffer)))
+                    {
+                        event.name = eventNameBuffer;
+                        clipDirty = true;
+                    }
+
+                    char stringPayloadBuffer[256] = {};
+                    std::snprintf(stringPayloadBuffer, sizeof(stringPayloadBuffer), "%s", event.stringPayload.c_str());
+                    if (ImGui::InputText("string payload", stringPayloadBuffer, sizeof(stringPayloadBuffer)))
+                    {
+                        event.stringPayload = stringPayloadBuffer;
+                        clipDirty = true;
+                    }
+
+                    clipDirty = ImGui::InputFloat("float payload", &event.floatPayload, 0.0f, 0.0f, "%.3f") || clipDirty;
+                    clipDirty = ImGui::InputInt("int payload", &event.intPayload) || clipDirty;
+
+                    if (ImGui::SmallButton("Delete Event"))
+                    {
+                        clip->events.erase(clip->events.begin() + m_animationSelectedEvent);
+                        if (m_animationSelectedEvent >= static_cast<int>(clip->events.size()))
+                            m_animationSelectedEvent = static_cast<int>(clip->events.size()) - 1;
+                        clipDirty = true;
+                    }
+                }
+            }
+
+            if (clipDirty)
+            {
+                RefreshAnimationClipLength(*clip);
+                (void)clip->Save();
+            }
+        }
+        else
+        {
+            ImGui::TextDisabled("Drop an .animclip here or create a new one.");
+        }
+
+        ImGui::End();
+
+        if (clip != nullptr && m_animationTargetUUID == UUID(0) && rootEntity != nullptr)
+            m_animationTargetUUID = rootEntity->uuid;
+
+        const bool previewActive =
+            (m_mode == EditorMode::EDIT) &&
+            (clip != nullptr) &&
+            (rootEntity != nullptr) &&
+            (m_animationPreviewEnabled || m_animationRecordEnabled);
+
+        const bool previewTargetChanged =
+            m_animationPreviewTargetUUID != ((rootEntity != nullptr) ? rootEntity->uuid : UUID(0)) ||
+            m_animationPreviewClipPath != m_animationClipStatePath;
+
+        if (!previewActive)
+        {
+            restorePreviewState();
+            return;
+        }
+
+        if (previewTargetChanged || m_animationRestoreBindings.empty())
+            capturePreviewState(*clip, *rootEntity);
+
+        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, true);
+        (void)ApplyAnimationClip(*m_app, *rootEntity, *clip, sampleTime);
+    }
+
     void Editor::DrawAddComponentDropDown(bool _refresh)
     {
         if (m_index < 0 || m_index >= (int)m_scene->GetEntities().size())
@@ -6386,6 +9292,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         {
             if (m_selectedAssetPath == oldPath.string())
                 m_selectedAssetPath = newPath.string();
+            if (m_animationClipStatePath == oldPath.string())
+                m_animationClipStatePath = newPath.string();
             if (m_shaderGraphStatePath == oldPath.string())
                 m_shaderGraphStatePath = newPath.string();
         }
@@ -6449,6 +9357,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             if (m_selectedAssetPath == src.string())
                                 m_selectedAssetPath = targetPath;
+                            if (m_animationClipStatePath == src.string())
+                                m_animationClipStatePath = targetPath;
                             if (m_shaderGraphStatePath == src.string())
                                 m_shaderGraphStatePath = targetPath;
                         }
@@ -6581,6 +9491,50 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             RememberLastShaderGraphAssetPath(m_selectedAssetPath);
                             m_shaderGraphStatePath.clear();
                             m_shaderGraphSelectedNodeId = -1;
+                        }
+                    }
+
+                    if (ImGui::MenuItem("Create Animation Clip"))
+                    {
+                        const fs::path folderPath = entry.path();
+                        fs::path targetPath = folderPath / "new_animation.animclip";
+                        int index = 1;
+                        while (fs::exists(targetPath))
+                        {
+                            targetPath = folderPath / ("new_animation_" + std::to_string(index) + ".animclip");
+                            ++index;
+                        }
+
+                        AnimationClipAsset clip = {};
+                        clip.length = 1.0f;
+                        if (clip.Save(targetPath.string()))
+                        {
+                            (void)AssetManager::GetMetaFile(targetPath.string());
+                            m_selectedAssetPath = targetPath.string();
+                            m_animationClipStatePath = targetPath.string();
+                            RememberLastAnimationClipAssetPath(targetPath.string());
+                        }
+                    }
+
+                    if (ImGui::MenuItem("Create Animator Controller"))
+                    {
+                        const fs::path folderPath = entry.path();
+                        fs::path targetPath = folderPath / "new_animator.animator";
+                        int index = 1;
+                        while (fs::exists(targetPath))
+                        {
+                            targetPath = folderPath / ("new_animator_" + std::to_string(index) + ".animator");
+                            ++index;
+                        }
+
+                        AnimatorControllerAsset controller = {};
+                        controller.entryState = "Default";
+                        controller.states.push_back(AnimatorState{});
+                        controller.states.back().name = "Default";
+                        if (controller.Save(targetPath.string()))
+                        {
+                            (void)AssetManager::GetMetaFile(targetPath.string());
+                            m_selectedAssetPath = targetPath.string();
                         }
                     }
 
@@ -6717,11 +9671,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
-                                meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
+                                meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
+                                meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                             {
                                 m_selectedAssetPath = fullPath;
                                 if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                     RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                                {
+                                    m_animationClipStatePath = fullPath;
+                                    RememberLastAnimationClipAssetPath(fullPath);
+                                }
                             }
                         }
                     }
@@ -6733,11 +9694,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
-                                meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
+                                meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
+                                meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                             {
                                 m_selectedAssetPath = fullPath;
                                 if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                     RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                                {
+                                    m_animationClipStatePath = fullPath;
+                                    RememberLastAnimationClipAssetPath(fullPath);
+                                }
                             }
                         }
                     }
@@ -6794,11 +9762,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                 if (duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SKYBOX ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS ||
-                                    duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                    duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                                 {
                                     m_selectedAssetPath = duplicatePath.string();
                                     if (duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                         RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                    if (duplicatedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                                    {
+                                        m_animationClipStatePath = duplicatePath.string();
+                                        RememberLastAnimationClipAssetPath(duplicatePath.string());
+                                    }
                                 }
                             }
                         }
@@ -6810,9 +9785,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     {
                         if (AssetManager::DeleteAsset(fullPath))
                         {
+                            ClearRememberedAnimationClipAssetPathIfMatches(fullPath);
                             ClearRememberedShaderGraphAssetPathIfMatches(fullPath);
                             if (m_selectedAssetPath == fullPath)
                                 m_selectedAssetPath.clear();
+                            if (m_animationClipStatePath == fullPath)
+                                m_animationClipStatePath.clear();
                             if (m_shaderGraphStatePath == fullPath)
                             {
                                 m_shaderGraphStatePath.clear();
@@ -6865,11 +9843,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         else if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                  meta->type == MetaFileAsset::FileType::SKYBOX ||
                                  meta->type == MetaFileAsset::FileType::POSTPROCESS ||
-                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH)
+                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
+                                 meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
+                                 meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                         {
                             m_selectedAssetPath = fullPath;
                             if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
                                 RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                            if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                            {
+                                m_animationClipStatePath = fullPath;
+                                RememberLastAnimationClipAssetPath(fullPath);
+                            }
                         }
                         else if ((meta->type == MetaFileAsset::FileType::FRAGMENT ||
                                   meta->type == MetaFileAsset::FileType::VERTEX) &&
@@ -7213,6 +10198,63 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         return {};
+    }
+
+    std::string Editor::ResolveRememberedAnimationClipPath() const
+    {
+        const AnimationClipAssetHandle &remembered = Canis::GetEditorConfig().lastAnimationClip;
+        if (remembered.Empty())
+            return {};
+
+        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+            {
+                if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                    return meta->path;
+            }
+        }
+
+        return {};
+    }
+
+    void Editor::RememberLastAnimationClipAssetPath(const std::string &_path)
+    {
+        const AnimationClipAssetHandle handle = MakeAnimationClipAssetHandleFromPath(_path);
+        if (handle.Empty())
+            return;
+
+        AnimationClipAssetHandle &remembered = Canis::GetEditorConfig().lastAnimationClip;
+        if (!AnimationClipAssetHandleChanged(remembered, handle))
+            return;
+
+        remembered = handle;
+        Canis::SaveEditorConfig();
+    }
+
+    void Editor::ClearRememberedAnimationClipAssetPathIfMatches(const std::string &_path)
+    {
+        AnimationClipAssetHandle &remembered = Canis::GetEditorConfig().lastAnimationClip;
+        if (remembered.Empty() || _path.empty())
+            return;
+
+        bool matches = false;
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(_path))
+        {
+            matches = meta->type == MetaFileAsset::FileType::ANIMATIONCLIP &&
+                remembered.uuid != UUID(0) &&
+                meta->uuid == remembered.uuid;
+        }
+
+        if (!matches)
+            matches = ResolveRememberedAnimationClipPath() == _path;
+
+        if (!matches)
+            return;
+
+        remembered = {};
+        Canis::SaveEditorConfig();
     }
 
     void Editor::RememberLastShaderGraphAssetPath(const std::string &_path)

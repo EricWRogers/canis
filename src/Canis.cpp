@@ -151,6 +151,7 @@ namespace Canis
         YAML::Node node;
         node["lastEditorScene"] = editorConfig.lastEditorScene;
         node["lastShaderGraph"] = editorConfig.lastShaderGraph;
+        node["lastAnimationClip"] = editorConfig.lastAnimationClip;
         node["theme"] = NormalizeEditorThemeMode(editorConfig.theme);
         node["fontPath"] = editorConfig.fontPath;
         node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
@@ -229,6 +230,9 @@ namespace Canis
         editorConfig.lastShaderGraph = editorNode["lastShaderGraph"].as<ShaderGraphAssetHandle>(editorConfig.lastShaderGraph);
         if (!editorNode["lastShaderGraph"] && editorNode["LastShaderGraph"])
             editorConfig.lastShaderGraph = editorNode["LastShaderGraph"].as<ShaderGraphAssetHandle>(editorConfig.lastShaderGraph);
+        editorConfig.lastAnimationClip = editorNode["lastAnimationClip"].as<AnimationClipAssetHandle>(editorConfig.lastAnimationClip);
+        if (!editorNode["lastAnimationClip"] && editorNode["LastAnimationClip"])
+            editorConfig.lastAnimationClip = editorNode["LastAnimationClip"].as<AnimationClipAssetHandle>(editorConfig.lastAnimationClip);
         editorConfig.theme = NormalizeEditorThemeMode(editorNode["theme"].as<int>(editorConfig.theme));
         editorConfig.fontPath = editorNode["fontPath"].as<std::string>(editorConfig.fontPath);
         editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));

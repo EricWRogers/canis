@@ -10,6 +10,7 @@
 #include <cstdio>
 #include <type_traits>
 #include <utility>
+#include <cmath>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -51,6 +52,16 @@ template <typename ScriptType>
 inline void RegisterUIAction(ScriptConf& _conf, const std::string& _name, void (ScriptType::*_func)(const UIActionContext&))
 {
     _conf.uiActions[_name] = [_func](ScriptableEntity& _script, const UIActionContext& _context) -> void
+    {
+        if (ScriptType* typedScript = dynamic_cast<ScriptType*>(&_script))
+            (typedScript->*_func)(_context);
+    };
+}
+
+template <typename ScriptType>
+inline void RegisterAnimationEvent(ScriptConf& _conf, const std::string& _name, void (ScriptType::*_func)(const AnimationEventContext&))
+{
+    _conf.animationEvents[_name] = [_func](ScriptableEntity& _script, const AnimationEventContext& _context) -> void
     {
         if (ScriptType* typedScript = dynamic_cast<ScriptType*>(&_script))
             (typedScript->*_func)(_context);
@@ -102,6 +113,109 @@ template <typename Component>
 inline YAML::Node GetRegisteredProperty(Component& _component, Canis::Entity* const& _value)
 {
     return YAML::Node(GetRegisteredPropertyOwnerEntity(_component).scene.GetLiveEntityUUID(_value));
+}
+
+template <typename PropertyType>
+inline constexpr AnimationValueType GetRegisteredAnimationValueType()
+{
+    using ValueType = std::remove_cvref_t<PropertyType>;
+
+    if constexpr (std::is_same_v<ValueType, float> || std::is_same_v<ValueType, double>)
+        return AnimationValueType::FLOAT;
+    else if constexpr (std::is_same_v<ValueType, int> || std::is_same_v<ValueType, unsigned int> ||
+                       std::is_same_v<ValueType, short> || std::is_same_v<ValueType, unsigned short> ||
+                       std::is_same_v<ValueType, long> || std::is_same_v<ValueType, unsigned long>)
+        return AnimationValueType::INT;
+    else if constexpr (std::is_same_v<ValueType, bool>)
+        return AnimationValueType::BOOL;
+    else if constexpr (std::is_same_v<ValueType, Vector2>)
+        return AnimationValueType::VEC2;
+    else if constexpr (std::is_same_v<ValueType, Vector3>)
+        return AnimationValueType::VEC3;
+    else if constexpr (std::is_same_v<ValueType, Vector4>)
+        return AnimationValueType::VEC4;
+    else
+        return AnimationValueType::NONE;
+}
+
+template <typename PropertyType>
+inline constexpr bool CanAnimateRegisteredProperty()
+{
+    return GetRegisteredAnimationValueType<PropertyType>() != AnimationValueType::NONE;
+}
+
+template <typename PropertyType>
+inline AnimationValue GetRegisteredAnimationValue(const PropertyType &_value)
+{
+    using ValueType = std::remove_cvref_t<PropertyType>;
+
+    if constexpr (std::is_same_v<ValueType, float>)
+        return AnimationValue::Float(_value);
+    else if constexpr (std::is_same_v<ValueType, double>)
+        return AnimationValue::Float(static_cast<float>(_value));
+    else if constexpr (std::is_same_v<ValueType, bool>)
+        return AnimationValue::Bool(_value);
+    else if constexpr (std::is_integral_v<ValueType>)
+        return AnimationValue::Int(static_cast<int>(_value));
+    else if constexpr (std::is_same_v<ValueType, Vector2>)
+        return AnimationValue::Vec2(_value);
+    else if constexpr (std::is_same_v<ValueType, Vector3>)
+        return AnimationValue::Vec3(_value);
+    else if constexpr (std::is_same_v<ValueType, Vector4>)
+        return AnimationValue::Vec4(_value);
+    else
+        return {};
+}
+
+template <typename PropertyType>
+inline void SetRegisteredAnimationValue(PropertyType &_property, const AnimationValue &_value)
+{
+    using ValueType = std::remove_cvref_t<PropertyType>;
+
+    if constexpr (std::is_same_v<ValueType, float>)
+        _property = _value.AsFloat(_property);
+    else if constexpr (std::is_same_v<ValueType, double>)
+        _property = static_cast<double>(_value.AsFloat(static_cast<float>(_property)));
+    else if constexpr (std::is_same_v<ValueType, bool>)
+        _property = _value.AsBool(_property);
+    else if constexpr (std::is_integral_v<ValueType>)
+        _property = static_cast<ValueType>(_value.AsInt(static_cast<int>(_property)));
+    else if constexpr (std::is_same_v<ValueType, Vector2>)
+        _property = _value.AsVec2(_property);
+    else if constexpr (std::is_same_v<ValueType, Vector3>)
+        _property = _value.AsVec3(_property);
+    else if constexpr (std::is_same_v<ValueType, Vector4>)
+        _property = _value.AsVec4(_property);
+}
+
+template <typename PropertyType>
+inline constexpr AnimationInterpolation GetRegisteredAnimationInterpolation()
+{
+    return GetDefaultAnimationInterpolation(GetRegisteredAnimationValueType<PropertyType>());
+}
+
+template <typename PropertyType>
+inline bool RegisteredAnimationValuesDiffer(const PropertyType &_left, const PropertyType &_right)
+{
+    using ValueType = std::remove_cvref_t<PropertyType>;
+
+    if constexpr (std::is_same_v<ValueType, float> || std::is_same_v<ValueType, double>)
+        return std::fabs(static_cast<double>(_left) - static_cast<double>(_right)) > 0.00001;
+    else if constexpr (std::is_same_v<ValueType, bool> || std::is_integral_v<ValueType>)
+        return _left != _right;
+    else if constexpr (std::is_same_v<ValueType, Vector2>)
+        return std::fabs(_left.x - _right.x) > 0.00001f || std::fabs(_left.y - _right.y) > 0.00001f;
+    else if constexpr (std::is_same_v<ValueType, Vector3>)
+        return std::fabs(_left.x - _right.x) > 0.00001f ||
+               std::fabs(_left.y - _right.y) > 0.00001f ||
+               std::fabs(_left.z - _right.z) > 0.00001f;
+    else if constexpr (std::is_same_v<ValueType, Vector4>)
+        return std::fabs(_left.x - _right.x) > 0.00001f ||
+               std::fabs(_left.y - _right.y) > 0.00001f ||
+               std::fabs(_left.z - _right.z) > 0.00001f ||
+               std::fabs(_left.w - _right.w) > 0.00001f;
+    else
+        return false;
 }
 
 inline std::string BuildInspectorFieldLabel(const char *_label, const char *_idSuffix)
@@ -413,9 +527,36 @@ void UnRegister##type##System(Canis::App& _app)       \
                                                                                                     \
     config.registry.drawers[#property] = [](Editor &_editor, const std::string &propertyName, void *componentPtr, const std::string &idSuffix) { \
         auto *typedComponent = static_cast<component *>(componentPtr);                              \
+        const PropertyType beforeValue = typedComponent->property;                                  \
         DrawInspectorField<PropertyType>(_editor, propertyName.c_str(), idSuffix.c_str(), typedComponent->property); \
+        if constexpr (CanAnimateRegisteredProperty<PropertyType>())                                 \
+        {                                                                                           \
+            if (RegisteredAnimationValuesDiffer(beforeValue, typedComponent->property))             \
+            {                                                                                       \
+                _editor.NotifyAnimationPropertyEdited(                                              \
+                    GetRegisteredPropertyOwnerEntity(*typedComponent),                              \
+                    idSuffix,                                                                       \
+                    propertyName,                                                                   \
+                    GetRegisteredAnimationValueType<PropertyType>(),                                \
+                    GetRegisteredAnimationInterpolation<PropertyType>(),                            \
+                    GetRegisteredAnimationValue(typedComponent->property));                         \
+            }                                                                                       \
+        }                                                                                           \
     };                                                                                               \
-                                                                                               		\
+    if constexpr (CanAnimateRegisteredProperty<PropertyType>())                                     \
+    {                                                                                               \
+        config.registry.animationTypes[#property] = GetRegisteredAnimationValueType<PropertyType>();\
+        config.registry.animationInterpolations[#property] = GetRegisteredAnimationInterpolation<PropertyType>(); \
+        config.registry.animationGetters[#property] = [](void *componentPtr) -> AnimationValue {    \
+            auto *typedComponent = static_cast<component *>(componentPtr);                          \
+            return GetRegisteredAnimationValue(typedComponent->property);                           \
+        };                                                                                          \
+        config.registry.animationSetters[#property] = [](void *componentPtr, const AnimationValue &value) { \
+            auto *typedComponent = static_cast<component *>(componentPtr);                          \
+            SetRegisteredAnimationValue(typedComponent->property, value);                           \
+        };                                                                                          \
+    }                                                                                               \
+	                                                                                               		\
     config.registry.propertyOrder.push_back(#property);                                             		\
 }
 
@@ -449,9 +590,43 @@ inline void RegisterAccessorPropertyImpl(ScriptConf& _config, const char* _prope
         [accessor](Editor& _editor, const std::string& _propertyNameValue, void* _componentPtr, const std::string& _idSuffix)
         {
             auto* typedComponent = static_cast<Component*>(_componentPtr);
+            const PropertyType beforeValue = accessor(*typedComponent);
             auto& value = accessor(*typedComponent);
             DrawInspectorField<PropertyType>(_editor, _propertyNameValue.c_str(), _idSuffix.c_str(), value);
+            if constexpr (CanAnimateRegisteredProperty<PropertyType>())
+            {
+                if (RegisteredAnimationValuesDiffer(beforeValue, value))
+                {
+                    _editor.NotifyAnimationPropertyEdited(
+                        GetRegisteredPropertyOwnerEntity(*typedComponent),
+                        _idSuffix,
+                        _propertyNameValue,
+                        GetRegisteredAnimationValueType<PropertyType>(),
+                        GetRegisteredAnimationInterpolation<PropertyType>(),
+                        GetRegisteredAnimationValue(value));
+                }
+            }
         };
+
+    if constexpr (CanAnimateRegisteredProperty<PropertyType>())
+    {
+        _config.registry.animationTypes[_propertyName] = GetRegisteredAnimationValueType<PropertyType>();
+        _config.registry.animationInterpolations[_propertyName] = GetRegisteredAnimationInterpolation<PropertyType>();
+        _config.registry.animationGetters[_propertyName] =
+            [accessor](void* _componentPtr) -> AnimationValue
+            {
+                auto* typedComponent = static_cast<Component*>(_componentPtr);
+                auto& value = accessor(*typedComponent);
+                return GetRegisteredAnimationValue(value);
+            };
+        _config.registry.animationSetters[_propertyName] =
+            [accessor](void* _componentPtr, const AnimationValue& _value)
+            {
+                auto* typedComponent = static_cast<Component*>(_componentPtr);
+                auto& value = accessor(*typedComponent);
+                SetRegisteredAnimationValue(value, _value);
+            };
+    }
 
     _config.registry.propertyOrder.push_back(_propertyName);
 }
@@ -470,6 +645,10 @@ inline void RegisterAccessorPropertyImpl(ScriptConf& _config, const char* _prope
     registry.setters.erase(#property);                                              \
     registry.getters.erase(#property);                                              \
     registry.drawers.erase(#property);                                              \
+    registry.animationSetters.erase(#property);                                     \
+    registry.animationGetters.erase(#property);                                     \
+    registry.animationTypes.erase(#property);                                       \
+    registry.animationInterpolations.erase(#property);                              \
                                                                                     \
     auto &order = registry.propertyOrder;                                           \
     order.erase(std::remove(order.begin(), order.end(), std::string(#property)),    \

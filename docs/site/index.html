@@ -1,0 +1,64 @@
+<!doctype html>
+<html lang="en">
+<head>
+    <meta charset="utf-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Canis Manual</title>
+    <meta name="description" content="Canis engine documentation in a handbook-style docs site.">
+    <link rel="icon" type="image/png" href="./assets/engine_icon.png">
+    <link rel="stylesheet" href="./styles.css">
+</head>
+<body>
+    <div class="site-shell">
+        <aside class="sidebar" id="sidebar">
+            <div class="sidebar__brand">
+                <div class="sidebar__crest">
+                    <img src="./assets/engine_icon.png" alt="Canis engine icon">
+                </div>
+                <div>
+                    <p class="eyebrow">Reference Manual</p>
+                    <h1>Canis</h1>
+                </div>
+            </div>
+
+            <div class="sidebar__intro">
+                <p>A starter docs site for the engine, editor, and gameplay workflow in this repo.</p>
+                <div class="version-chip">Beta handbook</div>
+            </div>
+
+            <label class="search-field" for="docs-search">
+                <span>Search pages</span>
+                <input id="docs-search" type="search" placeholder="Animation, Prefabs, Web Export">
+            </label>
+
+            <nav class="sidebar__nav" id="docs-nav" aria-label="Documentation"></nav>
+
+            <div class="sidebar__footer">
+                <p>Static site, no build step.</p>
+                <code>python3 -m http.server --directory canis/docs/site</code>
+            </div>
+        </aside>
+
+        <main class="main-panel">
+            <header class="topbar">
+                <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
+                <div class="topbar__copy">
+                    <p class="eyebrow">Godot-style starter</p>
+                    <h2 id="page-kicker">Engine docs, editor docs, workflow docs</h2>
+                </div>
+                <a class="topbar__link" href="../engine-guide.md" target="_blank" rel="noreferrer">Read source markdown</a>
+            </header>
+
+            <div class="content-grid">
+                <article class="doc-page" id="doc-page"></article>
+                <aside class="toc-panel" id="toc-panel">
+                    <p class="eyebrow">On this page</p>
+                    <nav id="toc"></nav>
+                </aside>
+            </div>
+        </main>
+    </div>
+
+    <script src="./app.js"></script>
+</body>
+</html>

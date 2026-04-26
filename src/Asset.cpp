@@ -941,6 +941,10 @@ namespace Canis
                 return "SCENE";
             case MetaFileAsset::FileType::ANIMATIONCLIP2D:
                 return "ANIMATIONCLIP2D";
+            case MetaFileAsset::FileType::ANIMATIONCLIP:
+                return "ANIMATIONCLIP";
+            case MetaFileAsset::FileType::ANIMATORCONTROLLER:
+                return "ANIMATORCONTROLLER";
             case MetaFileAsset::FileType::MODEL:
                 return "MODEL";
             case MetaFileAsset::FileType::MATERIAL:
@@ -970,6 +974,10 @@ namespace Canis
             return MetaFileAsset::FileType::SCENE;
         else if (_type == "ANIMATIONCLIP2D")
             return MetaFileAsset::FileType::ANIMATIONCLIP2D;
+        else if (_type == "ANIMATIONCLIP")
+            return MetaFileAsset::FileType::ANIMATIONCLIP;
+        else if (_type == "ANIMATORCONTROLLER")
+            return MetaFileAsset::FileType::ANIMATORCONTROLLER;
         else if (_type == "MODEL")
             return MetaFileAsset::FileType::MODEL;
         else if (_type == "MATERIAL")
@@ -1006,6 +1014,10 @@ namespace Canis
                 type = FileType::VERTEX;
             else if (extension == "ac2d")
                 type = FileType::ANIMATIONCLIP2D;
+            else if (extension == "animclip")
+                type = FileType::ANIMATIONCLIP;
+            else if (extension == "animator")
+                type = FileType::ANIMATORCONTROLLER;
             else if (extension == "gltf" || extension == "glb" || extension == "obj")
                 type = FileType::MODEL;
             else if (extension == "material")
@@ -2486,6 +2498,453 @@ namespace Canis
 
     bool SpriteAnimationAsset::Free()
     {
+        return true;
+    }
+
+    namespace
+    {
+        const char *AnimationValueTypeToString(AnimationValueType _type)
+        {
+            switch (_type)
+            {
+                case AnimationValueType::FLOAT: return "float";
+                case AnimationValueType::INT: return "int";
+                case AnimationValueType::BOOL: return "bool";
+                case AnimationValueType::VEC2: return "vec2";
+                case AnimationValueType::VEC3: return "vec3";
+                case AnimationValueType::VEC4: return "vec4";
+                default: return "none";
+            }
+        }
+
+        AnimationValueType AnimationValueTypeFromString(const std::string &_type)
+        {
+            if (_type == "float") return AnimationValueType::FLOAT;
+            if (_type == "int" || _type == "integer") return AnimationValueType::INT;
+            if (_type == "bool" || _type == "boolean") return AnimationValueType::BOOL;
+            if (_type == "vec2" || _type == "vector2") return AnimationValueType::VEC2;
+            if (_type == "vec3" || _type == "vector3") return AnimationValueType::VEC3;
+            if (_type == "vec4" || _type == "vector4" || _type == "color") return AnimationValueType::VEC4;
+            return AnimationValueType::NONE;
+        }
+
+        const char *AnimationInterpolationToString(AnimationInterpolation _interpolation)
+        {
+            switch (_interpolation)
+            {
+                case AnimationInterpolation::STEP: return "step";
+                case AnimationInterpolation::LINEAR:
+                default:
+                    return "linear";
+            }
+        }
+
+        AnimationInterpolation AnimationInterpolationFromString(const std::string &_value)
+        {
+            return _value == "step" ? AnimationInterpolation::STEP : AnimationInterpolation::LINEAR;
+        }
+
+        const char *AnimatorParameterTypeToString(AnimatorParameterType _type)
+        {
+            switch (_type)
+            {
+                case AnimatorParameterType::INT: return "int";
+                case AnimatorParameterType::BOOL: return "bool";
+                case AnimatorParameterType::TRIGGER: return "trigger";
+                case AnimatorParameterType::FLOAT:
+                default:
+                    return "float";
+            }
+        }
+
+        AnimatorParameterType AnimatorParameterTypeFromString(const std::string &_type)
+        {
+            if (_type == "int" || _type == "integer") return AnimatorParameterType::INT;
+            if (_type == "bool" || _type == "boolean") return AnimatorParameterType::BOOL;
+            if (_type == "trigger") return AnimatorParameterType::TRIGGER;
+            return AnimatorParameterType::FLOAT;
+        }
+
+        AnimationValueType AnimatorParameterValueType(AnimatorParameterType _type)
+        {
+            switch (_type)
+            {
+                case AnimatorParameterType::INT: return AnimationValueType::INT;
+                case AnimatorParameterType::BOOL:
+                case AnimatorParameterType::TRIGGER:
+                    return AnimationValueType::BOOL;
+                case AnimatorParameterType::FLOAT:
+                default:
+                    return AnimationValueType::FLOAT;
+            }
+        }
+
+        const char *AnimatorConditionModeToString(AnimatorConditionMode _mode)
+        {
+            switch (_mode)
+            {
+                case AnimatorConditionMode::LESS: return "less";
+                case AnimatorConditionMode::EQUAL: return "equal";
+                case AnimatorConditionMode::NOT_EQUAL: return "not_equal";
+                case AnimatorConditionMode::IF_TRUE: return "if_true";
+                case AnimatorConditionMode::IF_FALSE: return "if_false";
+                case AnimatorConditionMode::TRIGGERED: return "triggered";
+                case AnimatorConditionMode::GREATER:
+                default:
+                    return "greater";
+            }
+        }
+
+        AnimatorConditionMode AnimatorConditionModeFromString(const std::string &_mode)
+        {
+            if (_mode == "less") return AnimatorConditionMode::LESS;
+            if (_mode == "equal") return AnimatorConditionMode::EQUAL;
+            if (_mode == "not_equal") return AnimatorConditionMode::NOT_EQUAL;
+            if (_mode == "if_true") return AnimatorConditionMode::IF_TRUE;
+            if (_mode == "if_false") return AnimatorConditionMode::IF_FALSE;
+            if (_mode == "triggered") return AnimatorConditionMode::TRIGGERED;
+            return AnimatorConditionMode::GREATER;
+        }
+
+        YAML::Node EncodeAnimationValue(const AnimationValue &_value)
+        {
+            switch (_value.type)
+            {
+                case AnimationValueType::FLOAT: return YAML::Node(_value.AsFloat());
+                case AnimationValueType::INT: return YAML::Node(_value.AsInt());
+                case AnimationValueType::BOOL: return YAML::Node(_value.AsBool());
+                case AnimationValueType::VEC2: return YAML::Node(_value.AsVec2());
+                case AnimationValueType::VEC3: return YAML::Node(_value.AsVec3());
+                case AnimationValueType::VEC4: return YAML::Node(_value.AsVec4());
+                case AnimationValueType::NONE:
+                default:
+                    return YAML::Node();
+            }
+        }
+
+        AnimationValue DecodeAnimationValue(AnimationValueType _type, const YAML::Node &_node)
+        {
+            switch (_type)
+            {
+                case AnimationValueType::FLOAT: return AnimationValue::Float(_node.as<float>(0.0f));
+                case AnimationValueType::INT: return AnimationValue::Int(_node.as<int>(0));
+                case AnimationValueType::BOOL: return AnimationValue::Bool(_node.as<bool>(false));
+                case AnimationValueType::VEC2: return AnimationValue::Vec2(_node.as<Vector2>(Vector2(0.0f)));
+                case AnimationValueType::VEC3: return AnimationValue::Vec3(_node.as<Vector3>(Vector3(0.0f)));
+                case AnimationValueType::VEC4: return AnimationValue::Vec4(_node.as<Vector4>(Vector4(0.0f)));
+                case AnimationValueType::NONE:
+                default:
+                    return {};
+            }
+        }
+    }
+
+    bool AnimationClipAsset::Load(std::string _path)
+    {
+        Free();
+
+        YAML::Node root;
+        try
+        {
+            root = YAML::LoadFile(_path);
+        }
+        catch (const YAML::Exception &)
+        {
+            return false;
+        }
+
+        m_path = _path;
+        length = root["length"].as<float>(1.0f);
+        tracks.clear();
+        events.clear();
+
+        if (YAML::Node tracksNode = root["tracks"]; tracksNode && tracksNode.IsSequence())
+        {
+            for (const YAML::Node &trackNode : tracksNode)
+            {
+                AnimationTrack track = {};
+                track.path = trackNode["path"].as<std::string>("");
+                track.component = trackNode["component"].as<std::string>("");
+                track.property = trackNode["property"].as<std::string>("");
+                track.type = AnimationValueTypeFromString(trackNode["type"].as<std::string>("none"));
+                track.interpolation = AnimationInterpolationFromString(trackNode["interpolation"].as<std::string>("linear"));
+
+                if (YAML::Node keysNode = trackNode["keys"]; keysNode && keysNode.IsSequence())
+                {
+                    for (const YAML::Node &keyNode : keysNode)
+                    {
+                        AnimationKeyframe keyframe = {};
+                        keyframe.time = keyNode["time"].as<float>(0.0f);
+                        keyframe.value = DecodeAnimationValue(track.type, keyNode["value"]);
+                        track.keys.push_back(keyframe);
+                    }
+                }
+
+                std::sort(track.keys.begin(), track.keys.end(), [](const AnimationKeyframe &_left, const AnimationKeyframe &_right)
+                {
+                    return _left.time < _right.time;
+                });
+
+                tracks.push_back(track);
+            }
+        }
+
+        if (YAML::Node eventsNode = root["events"]; eventsNode && eventsNode.IsSequence())
+        {
+            for (const YAML::Node &eventNode : eventsNode)
+            {
+                AnimationEvent event = {};
+                event.time = eventNode["time"].as<float>(0.0f);
+                event.path = eventNode["path"].as<std::string>("");
+                event.script = eventNode["script"].as<std::string>("");
+                event.name = eventNode["name"].as<std::string>("");
+                event.stringPayload = eventNode["stringPayload"].as<std::string>("");
+                event.floatPayload = eventNode["floatPayload"].as<float>(0.0f);
+                event.intPayload = eventNode["intPayload"].as<int>(0);
+                events.push_back(event);
+            }
+        }
+
+        std::sort(events.begin(), events.end(), [](const AnimationEvent &_left, const AnimationEvent &_right)
+        {
+            return _left.time < _right.time;
+        });
+
+        return true;
+    }
+
+    bool AnimationClipAsset::Free()
+    {
+        m_path.clear();
+        length = 1.0f;
+        tracks.clear();
+        events.clear();
+        return true;
+    }
+
+    bool AnimationClipAsset::Save(const std::string &_path) const
+    {
+        const std::string targetPath = _path.empty() ? m_path : _path;
+        if (targetPath.empty())
+            return false;
+
+        YAML::Node root(YAML::NodeType::Map);
+        root["length"] = length;
+
+        YAML::Node tracksNode(YAML::NodeType::Sequence);
+        for (const AnimationTrack &track : tracks)
+        {
+            YAML::Node trackNode(YAML::NodeType::Map);
+            trackNode["path"] = track.path;
+            trackNode["component"] = track.component;
+            trackNode["property"] = track.property;
+            trackNode["type"] = AnimationValueTypeToString(track.type);
+            trackNode["interpolation"] = AnimationInterpolationToString(track.interpolation);
+
+            YAML::Node keysNode(YAML::NodeType::Sequence);
+            for (const AnimationKeyframe &key : track.keys)
+            {
+                YAML::Node keyNode(YAML::NodeType::Map);
+                keyNode["time"] = key.time;
+                keyNode["value"] = EncodeAnimationValue(key.value);
+                keysNode.push_back(keyNode);
+            }
+
+            trackNode["keys"] = keysNode;
+            tracksNode.push_back(trackNode);
+        }
+
+        root["tracks"] = tracksNode;
+
+        YAML::Node eventsNode(YAML::NodeType::Sequence);
+        for (const AnimationEvent &event : events)
+        {
+            YAML::Node eventNode(YAML::NodeType::Map);
+            eventNode["time"] = event.time;
+            eventNode["path"] = event.path;
+            eventNode["script"] = event.script;
+            eventNode["name"] = event.name;
+            eventNode["stringPayload"] = event.stringPayload;
+            eventNode["floatPayload"] = event.floatPayload;
+            eventNode["intPayload"] = event.intPayload;
+            eventsNode.push_back(eventNode);
+        }
+
+        root["events"] = eventsNode;
+
+        std::ofstream out(targetPath);
+        if (!out.is_open())
+            return false;
+
+        out << root;
+        return true;
+    }
+
+    bool AnimatorControllerAsset::Load(std::string _path)
+    {
+        Free();
+
+        YAML::Node root;
+        try
+        {
+            root = YAML::LoadFile(_path);
+        }
+        catch (const YAML::Exception &)
+        {
+            return false;
+        }
+
+        m_path = _path;
+        entryState = root["entryState"].as<std::string>("");
+        parameters.clear();
+        states.clear();
+
+        if (YAML::Node parametersNode = root["parameters"]; parametersNode && parametersNode.IsSequence())
+        {
+            for (const YAML::Node &parameterNode : parametersNode)
+            {
+                AnimatorParameterDefinition parameter = {};
+                parameter.name = parameterNode["name"].as<std::string>("");
+                parameter.type = AnimatorParameterTypeFromString(parameterNode["type"].as<std::string>("float"));
+                parameter.defaultValue = DecodeAnimationValue(
+                    AnimatorParameterValueType(parameter.type),
+                    parameterNode["defaultValue"]);
+                parameters.push_back(parameter);
+            }
+        }
+
+        if (YAML::Node statesNode = root["states"]; statesNode && statesNode.IsSequence())
+        {
+            for (const YAML::Node &stateNode : statesNode)
+            {
+                AnimatorState state = {};
+                state.name = stateNode["name"].as<std::string>(state.name);
+                state.clip = stateNode["clip"].as<AnimationClipAssetHandle>(state.clip);
+                state.loop = stateNode["loop"].as<bool>(true);
+                state.speed = stateNode["speed"].as<float>(1.0f);
+                if (YAML::Node editorPositionNode = stateNode["editorPosition"])
+                    state.editorPosition = editorPositionNode.as<Vector2>(state.editorPosition);
+
+                if (YAML::Node transitionsNode = stateNode["transitions"]; transitionsNode && transitionsNode.IsSequence())
+                {
+                    for (const YAML::Node &transitionNode : transitionsNode)
+                    {
+                        AnimatorTransition transition = {};
+                        transition.toState = transitionNode["toState"].as<std::string>("");
+                        transition.hasExitTime = transitionNode["hasExitTime"].as<bool>(false);
+                        transition.exitTimeNormalized = transitionNode["exitTimeNormalized"].as<float>(1.0f);
+
+                        if (YAML::Node conditionsNode = transitionNode["conditions"]; conditionsNode && conditionsNode.IsSequence())
+                        {
+                            for (const YAML::Node &conditionNode : conditionsNode)
+                            {
+                                AnimatorTransitionCondition condition = {};
+                                condition.parameter = conditionNode["parameter"].as<std::string>("");
+                                condition.mode = AnimatorConditionModeFromString(conditionNode["mode"].as<std::string>("greater"));
+
+                                AnimatorParameterType parameterType = AnimatorParameterType::FLOAT;
+                                for (const AnimatorParameterDefinition &parameter : parameters)
+                                {
+                                    if (parameter.name == condition.parameter)
+                                    {
+                                        parameterType = parameter.type;
+                                        break;
+                                    }
+                                }
+
+                                condition.value = DecodeAnimationValue(
+                                    AnimatorParameterValueType(parameterType),
+                                    conditionNode["value"]);
+                                transition.conditions.push_back(condition);
+                            }
+                        }
+
+                        state.transitions.push_back(transition);
+                    }
+                }
+
+                states.push_back(state);
+            }
+        }
+
+        if (entryState.empty() && !states.empty())
+            entryState = states.front().name;
+
+        return true;
+    }
+
+    bool AnimatorControllerAsset::Free()
+    {
+        m_path.clear();
+        entryState.clear();
+        parameters.clear();
+        states.clear();
+        return true;
+    }
+
+    bool AnimatorControllerAsset::Save(const std::string &_path) const
+    {
+        const std::string targetPath = _path.empty() ? m_path : _path;
+        if (targetPath.empty())
+            return false;
+
+        YAML::Node root(YAML::NodeType::Map);
+        root["entryState"] = entryState;
+
+        YAML::Node parametersNode(YAML::NodeType::Sequence);
+        for (const AnimatorParameterDefinition &parameter : parameters)
+        {
+            YAML::Node parameterNode(YAML::NodeType::Map);
+            parameterNode["name"] = parameter.name;
+            parameterNode["type"] = AnimatorParameterTypeToString(parameter.type);
+            parameterNode["defaultValue"] = EncodeAnimationValue(parameter.defaultValue);
+            parametersNode.push_back(parameterNode);
+        }
+        root["parameters"] = parametersNode;
+
+        YAML::Node statesNode(YAML::NodeType::Sequence);
+        for (const AnimatorState &state : states)
+        {
+            YAML::Node stateNode(YAML::NodeType::Map);
+            stateNode["name"] = state.name;
+            stateNode["clip"] = state.clip;
+            stateNode["loop"] = state.loop;
+            stateNode["speed"] = state.speed;
+            stateNode["editorPosition"] = state.editorPosition;
+
+            YAML::Node transitionsNode(YAML::NodeType::Sequence);
+            for (const AnimatorTransition &transition : state.transitions)
+            {
+                YAML::Node transitionNode(YAML::NodeType::Map);
+                transitionNode["toState"] = transition.toState;
+                transitionNode["hasExitTime"] = transition.hasExitTime;
+                transitionNode["exitTimeNormalized"] = transition.exitTimeNormalized;
+
+                YAML::Node conditionsNode(YAML::NodeType::Sequence);
+                for (const AnimatorTransitionCondition &condition : transition.conditions)
+                {
+                    YAML::Node conditionNode(YAML::NodeType::Map);
+                    conditionNode["parameter"] = condition.parameter;
+                    conditionNode["mode"] = AnimatorConditionModeToString(condition.mode);
+                    conditionNode["value"] = EncodeAnimationValue(condition.value);
+                    conditionsNode.push_back(conditionNode);
+                }
+
+                transitionNode["conditions"] = conditionsNode;
+                transitionsNode.push_back(transitionNode);
+            }
+
+            stateNode["transitions"] = transitionsNode;
+            statesNode.push_back(stateNode);
+        }
+
+        root["states"] = statesNode;
+
+        std::ofstream out(targetPath);
+        if (!out.is_open())
+            return false;
+
+        out << root;
         return true;
     }
 

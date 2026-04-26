@@ -21,6 +21,10 @@ extern YAML::Node YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sce
 extern Canis::SceneAssetHandle YAMLDecodeSceneAssetHandle(const YAML::Node &_node);
 extern YAML::Node YAMLEncodeShaderGraphAssetHandle(const Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle);
 extern Canis::ShaderGraphAssetHandle YAMLDecodeShaderGraphAssetHandle(const YAML::Node &_node);
+extern YAML::Node YAMLEncodeAnimationClipAssetHandle(const Canis::AnimationClipAssetHandle &_animationClipAssetHandle);
+extern Canis::AnimationClipAssetHandle YAMLDecodeAnimationClipAssetHandle(const YAML::Node &_node);
+extern YAML::Node YAMLEncodeAnimatorControllerAssetHandle(const Canis::AnimatorControllerAssetHandle &_animatorControllerAssetHandle);
+extern Canis::AnimatorControllerAssetHandle YAMLDecodeAnimatorControllerAssetHandle(const YAML::Node &_node);
 
 namespace YAML
 {
@@ -121,6 +125,21 @@ namespace YAML
     };
 
     template <>
+    struct convert<Canis::AnimatorControllerAssetHandle>
+    {
+        static Node encode(const Canis::AnimatorControllerAssetHandle &_animatorControllerAssetHandle)
+        {
+            return YAMLEncodeAnimatorControllerAssetHandle(_animatorControllerAssetHandle);
+        }
+
+        static bool decode(const Node &_node, Canis::AnimatorControllerAssetHandle &_animatorControllerAssetHandle)
+        {
+            _animatorControllerAssetHandle = YAMLDecodeAnimatorControllerAssetHandle(_node);
+            return true;
+        }
+    };
+
+    template <>
     struct convert<Canis::SceneAssetHandle>
     {
         static Node encode(const Canis::SceneAssetHandle &_sceneAssetHandle)
@@ -146,6 +165,21 @@ namespace YAML
         static bool decode(const Node &_node, Canis::ShaderGraphAssetHandle &_shaderGraphAssetHandle)
         {
             _shaderGraphAssetHandle = YAMLDecodeShaderGraphAssetHandle(_node);
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::AnimationClipAssetHandle>
+    {
+        static Node encode(const Canis::AnimationClipAssetHandle &_animationClipAssetHandle)
+        {
+            return YAMLEncodeAnimationClipAssetHandle(_animationClipAssetHandle);
+        }
+
+        static bool decode(const Node &_node, Canis::AnimationClipAssetHandle &_animationClipAssetHandle)
+        {
+            _animationClipAssetHandle = YAMLDecodeAnimationClipAssetHandle(_node);
             return true;
         }
     };

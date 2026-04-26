@@ -53,6 +53,7 @@ namespace Canis
     {
         SceneAssetHandle lastEditorScene = {};
         ShaderGraphAssetHandle lastShaderGraph = {};
+        AnimationClipAssetHandle lastAnimationClip = {};
         int theme = EDITOR_THEME_DARK;
         std::string fontPath = "";
         float fontScale = 1.0f;

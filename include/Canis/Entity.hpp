@@ -1203,6 +1203,129 @@ namespace Canis
         float lastEvaluatedAnimationTime = 0.0f;
     };
 
+    struct AnimationPlayer
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::AnimationPlayer";
+
+        AnimationPlayer() = default;
+        explicit AnimationPlayer(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+        void Create() {}
+
+        AnimationClipAssetHandle clip = {};
+        bool playing = true;
+        bool loop = true;
+        float speed = 1.0f;
+        float time = 0.0f;
+
+        float lastEventSampleTime = 0.0f;
+        bool lastEventSampleValid = false;
+        std::string lastEventClipPath = "";
+    };
+
+    struct AnimatorParameterRuntime
+    {
+        std::string name = "";
+        AnimationValue value = AnimationValue::Float(0.0f);
+        bool triggerActive = false;
+    };
+
+    struct Animator
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::Animator";
+
+        Animator() = default;
+        explicit Animator(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+        void Create() {}
+
+        AnimatorParameterRuntime* GetParameter(const std::string& _name)
+        {
+            for (AnimatorParameterRuntime& parameter : parameters)
+            {
+                if (parameter.name == _name)
+                    return &parameter;
+            }
+
+            return nullptr;
+        }
+
+        const AnimatorParameterRuntime* GetParameter(const std::string& _name) const
+        {
+            for (const AnimatorParameterRuntime& parameter : parameters)
+            {
+                if (parameter.name == _name)
+                    return &parameter;
+            }
+
+            return nullptr;
+        }
+
+        void SetFloat(const std::string& _name, float _value)
+        {
+            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
+                parameter->value = AnimationValue::Float(_value);
+        }
+
+        void SetInt(const std::string& _name, int _value)
+        {
+            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
+                parameter->value = AnimationValue::Int(_value);
+        }
+
+        void SetBool(const std::string& _name, bool _value)
+        {
+            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
+                parameter->value = AnimationValue::Bool(_value);
+        }
+
+        void SetTrigger(const std::string& _name)
+        {
+            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
+            {
+                parameter->triggerActive = true;
+                parameter->value = AnimationValue::Bool(true);
+            }
+        }
+
+        float GetFloat(const std::string& _name, float _default = 0.0f) const
+        {
+            if (const AnimatorParameterRuntime* parameter = GetParameter(_name))
+                return parameter->value.AsFloat(_default);
+
+            return _default;
+        }
+
+        int GetInt(const std::string& _name, int _default = 0) const
+        {
+            if (const AnimatorParameterRuntime* parameter = GetParameter(_name))
+                return parameter->value.AsInt(_default);
+
+            return _default;
+        }
+
+        bool GetBool(const std::string& _name, bool _default = false) const
+        {
+            if (const AnimatorParameterRuntime* parameter = GetParameter(_name))
+                return parameter->value.AsBool(_default);
+
+            return _default;
+        }
+
+        AnimatorControllerAssetHandle controller = {};
+        bool playing = true;
+        std::string currentState = "";
+        float time = 0.0f;
+        std::vector<AnimatorParameterRuntime> parameters = {};
+
+        bool parametersInitialized = false;
+        float lastEventSampleTime = 0.0f;
+        bool lastEventSampleValid = false;
+        std::string lastEventClipPath = "";
+    };
+
     struct Sprite2D
     {
     public:

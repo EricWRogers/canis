@@ -39,6 +39,28 @@ namespace Canis
         }
     };
 
+    struct AnimationClipAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path = "";
+
+        bool Empty() const
+        {
+            return uuid == UUID(0) && path.empty();
+        }
+    };
+
+    struct AnimatorControllerAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path = "";
+
+        bool Empty() const
+        {
+            return uuid == UUID(0) && path.empty();
+        }
+    };
+
     struct TextureHandle
     {
         int id = -1;

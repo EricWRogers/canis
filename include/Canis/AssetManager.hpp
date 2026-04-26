@@ -121,6 +121,68 @@ namespace Canis
             return _shaderGraphAssetHandle.path;
         }
 
+        inline std::string ResolvePath(const AnimationClipAssetHandle &_animationClipAssetHandle)
+        {
+            if (_animationClipAssetHandle.uuid != UUID(0))
+            {
+                const std::string resolvedPath = GetPath(_animationClipAssetHandle.uuid);
+                if (resolvedPath != "Path was not found in AssetLibrary")
+                    return resolvedPath;
+
+                std::error_code ec;
+                if (std::filesystem::exists("assets", ec) && std::filesystem::is_directory("assets", ec))
+                {
+                    for (const auto &entry : std::filesystem::recursive_directory_iterator("assets", ec))
+                    {
+                        if (ec || !entry.is_regular_file())
+                            continue;
+
+                        if (entry.path().extension() == ".meta")
+                            continue;
+
+                        if (MetaFileAsset *meta = GetMetaFile(entry.path().generic_string()))
+                        {
+                            if (meta->uuid == _animationClipAssetHandle.uuid)
+                                return entry.path().generic_string();
+                        }
+                    }
+                }
+            }
+
+            return _animationClipAssetHandle.path;
+        }
+
+        inline std::string ResolvePath(const AnimatorControllerAssetHandle &_animatorControllerAssetHandle)
+        {
+            if (_animatorControllerAssetHandle.uuid != UUID(0))
+            {
+                const std::string resolvedPath = GetPath(_animatorControllerAssetHandle.uuid);
+                if (resolvedPath != "Path was not found in AssetLibrary")
+                    return resolvedPath;
+
+                std::error_code ec;
+                if (std::filesystem::exists("assets", ec) && std::filesystem::is_directory("assets", ec))
+                {
+                    for (const auto &entry : std::filesystem::recursive_directory_iterator("assets", ec))
+                    {
+                        if (ec || !entry.is_regular_file())
+                            continue;
+
+                        if (entry.path().extension() == ".meta")
+                            continue;
+
+                        if (MetaFileAsset *meta = GetMetaFile(entry.path().generic_string()))
+                        {
+                            if (meta->uuid == _animatorControllerAssetHandle.uuid)
+                                return entry.path().generic_string();
+                        }
+                    }
+                }
+            }
+
+            return _animatorControllerAssetHandle.path;
+        }
+
         inline int GetID(UUID _uuid)
         {
             auto &assetLibrary = GetAssetLibrary();
@@ -209,6 +271,14 @@ namespace Canis
         int LoadSpriteAnimation(const std::string &_path);
         SpriteAnimationAsset* GetSpriteAnimation(const std::string &_path);
         SpriteAnimationAsset* GetSpriteAnimation(i32 _animationID);
+
+        int LoadAnimationClip(const std::string &_path);
+        AnimationClipAsset* GetAnimationClip(const std::string &_path);
+        AnimationClipAsset* GetAnimationClip(i32 _animationID);
+
+        int LoadAnimatorController(const std::string &_path);
+        AnimatorControllerAsset* GetAnimatorController(const std::string &_path);
+        AnimatorControllerAsset* GetAnimatorController(i32 _animatorControllerID);
 
         int LoadModel(const std::string &_path);
         int CreateModel();
