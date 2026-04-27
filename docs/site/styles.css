@@ -54,8 +54,7 @@ a {
 }
 
 code,
-pre,
-.sidebar__footer code {
+pre {
     font-family: "Cascadia Mono", "CaskaydiaMono Nerd Font", "Source Code Pro", "SFMono-Regular", monospace;
 }
 
@@ -123,7 +122,6 @@ pre,
 }
 
 .sidebar__intro,
-.sidebar__footer,
 .doc-callout {
     background: rgba(255, 253, 248, 0.75);
     border: 1px solid rgba(78, 105, 148, 0.16);
@@ -131,8 +129,7 @@ pre,
     padding: 0.95rem 1rem;
 }
 
-.sidebar__intro p,
-.sidebar__footer p {
+.sidebar__intro p {
     margin: 0;
     line-height: 1.5;
     color: var(--muted);
@@ -236,21 +233,6 @@ pre,
     font-size: 0.88rem;
     color: var(--muted);
     line-height: 1.35;
-}
-
-.sidebar__footer {
-    margin-top: 1.1rem;
-}
-
-.sidebar__footer code {
-    display: block;
-    margin-top: 0.7rem;
-    padding: 0.75rem 0.82rem;
-    background: var(--code-bg);
-    color: var(--code-ink);
-    border-radius: 12px;
-    overflow-x: auto;
-    font-size: 0.85rem;
 }
 
 .main-panel {

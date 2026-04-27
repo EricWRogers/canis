@@ -3,41 +3,39 @@ const PAGES = [
         slug: "welcome",
         section: "Start Here",
         title: "Welcome",
-        summary: "A handbook-style entry point for the Canis engine, editor, and gameplay code living in this repository.",
+        summary: "A contributor-friendly entry point for learning how Canis is organized and how to make your first safe, productive change.",
         kicker: "Start Here",
-        chips: ["CanisEngine", "GameCode", "Editor", "Static docs"],
-        keywords: ["welcome", "overview", "manual", "engine", "editor", "docs"],
+        chips: ["Onboarding", "Workflow", "Reference", "Static docs"],
+        keywords: ["welcome", "overview", "manual", "engine", "editor", "docs", "onboarding", "new contributor", "getting started"],
         content: `
             <section>
                 <h2 id="what-this-site-is">What this site is</h2>
-                <p>This is a starter docs website for the engine in this repo. The goal is to make the project feel less like a pile of source files and more like a handbook: browseable, searchable, and easy to hand to someone new.</p>
+                <p>This site is meant to shorten the gap between “I cloned the repo” and “I can confidently change things in Canis.” It is part handbook, part workflow guide, and part reference.</p>
                 <div class="doc-grid">
                     <article class="doc-card">
-                        <h3>Engine</h3>
-                        <p>Core runtime, ECS, rendering, physics, asset loading, editor integration, and serialization live under <code>canis/</code>.</p>
+                        <h3>Build it</h3>
+                        <p>Learn the few commands and folders that matter so you can get to a clean first run without reading the whole codebase.</p>
                     </article>
                     <article class="doc-card">
-                        <h3>Gameplay</h3>
-                        <p>Game-specific scripts and samples live under <code>game/</code>, including the current Bath Battle and Quake slices.</p>
+                        <h3>Understand it</h3>
+                        <p>Get a simple mental model for <code>App</code>, <code>Scene</code>, <code>Entity</code>, components, scripts, assets, and the editor.</p>
                     </article>
                     <article class="doc-card">
-                        <h3>Project</h3>
-                        <p>Runtime assets, scenes, prefabs, materials, and user-facing content live under <code>project/assets/</code>.</p>
+                        <h3>Change it</h3>
+                        <p>Follow practical contributor flows for adding a script, wiring a property into the inspector, editing scenes, and shipping a web build.</p>
                     </article>
                 </div>
             </section>
 
             <section>
-                <h2 id="where-to-go-next">Where to go next</h2>
-                <ul>
-                    <li>Read <a href="#engine-guide">Engine Guide</a> for the repo layout, startup flow, ECS model, and registration pipeline.</li>
-                    <li>Read <a href="#component-reference">Component Reference</a> for built-in components, common stacks, and copyable setup examples.</li>
-                    <li>Read <a href="#component-api">Component API</a> for public variables, public methods, and gameplay-side C++ examples.</li>
-                    <li>Read <a href="#editor-workflow">Editor Workflow</a> for the Hierarchy, Inspector, ShaderGraph, Animation, and play-mode loop.</li>
-                    <li>Read <a href="#scenes-and-prefabs">Scenes &amp; Prefabs</a> for how scene YAML, prefab instances, and overrides work today.</li>
-                    <li>Read <a href="#animation">Animation</a> for clip authoring, Add Property, curves, events, and animator controllers.</li>
-                    <li>Read <a href="#web-export">Web Export</a> for the Emscripten build path.</li>
-                </ul>
+                <h2 id="suggested-learning-path">Suggested learning path</h2>
+                <ol>
+                    <li>Start with <a href="#first-30-minutes">First 30 Minutes</a> to get a successful build and know what “working” looks like.</li>
+                    <li>Read <a href="#canis-mental-model">Canis Mental Model</a> to understand the core runtime concepts before you chase implementation details.</li>
+                    <li>Use <a href="#first-feature">Build Your First Feature</a> when you are ready to edit a script, register a property, and see the change in-engine.</li>
+                    <li>Keep <a href="#common-workflows">Common Workflows</a> nearby as a task map for scenes, prefabs, UI, animation, and export.</li>
+                    <li>Dive into <a href="#engine-guide">Engine Guide</a>, <a href="#component-reference">Component Reference</a>, and <a href="#component-api">Component API</a> as needed.</li>
+                </ol>
             </section>
 
             <section>
@@ -45,11 +43,295 @@ const PAGES = [
                 <pre><code>cmake -S . -B build
 cmake --build build -j4
 ./project/c-engine</code></pre>
-                <p>The editor and runtime expect to find <code>project/assets/</code> and <code>project/project_settings/</code>, so running from the repo root is the normal flow.</p>
+                <p>The runtime expects to find <code>project/assets/</code> and <code>project/project_settings/</code>, so running from the repo root is the normal flow.</p>
                 <div class="doc-callout">
-                    <h3>Why a docs website?</h3>
-                    <p>The markdown guides are still useful source material, but a handbook layout is better for onboarding, browsing systems, and growing the engine docs into something closer to Godot’s “manual plus reference” feel.</p>
+                    <h3>Best way to use this site</h3>
+                    <p>Do not try to read everything front to back. Use the onboarding pages to build confidence first, then jump into the deeper reference pages when you hit a real task.</p>
                 </div>
+            </section>
+        `
+    },
+    {
+        slug: "first-30-minutes",
+        section: "Start Here",
+        title: "First 30 Minutes",
+        summary: "Get the repo building, understand the important folders, and leave with a clear picture of what your first successful Canis workflow looks like.",
+        kicker: "Start Here",
+        chips: ["Build", "Repo Tour", "First Run"],
+        keywords: ["first 30 minutes", "first run", "build", "repo layout", "new contributor", "quick start"],
+        content: `
+            <section>
+                <h2 id="your-goal">Your goal</h2>
+                <p>In your first half hour, you do not need to understand every system in Canis. You only need a stable foundation: build succeeds, the runtime launches, and the folder layout starts to make sense.</p>
+            </section>
+
+            <section>
+                <h2 id="build-and-run">Build and run</h2>
+                <pre><code>git submodule update --init --recursive
+cmake -S . -B build
+cmake --build build -j4
+./project/c-engine</code></pre>
+                <p>If this works, you already have the two most important facts confirmed: the toolchain is healthy and the project can find its runtime content.</p>
+            </section>
+
+            <section>
+                <h2 id="know-where-things-live">Know where things live</h2>
+                <div class="doc-grid">
+                    <article class="doc-card">
+                        <h3><code>canis/</code></h3>
+                        <p>Engine runtime code: ECS, rendering, physics, serialization, editor integration, and platform behavior.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3><code>game/</code></h3>
+                        <p>Project-side gameplay code and scripts. This is the usual place to start when adding new behavior.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3><code>project/assets/</code></h3>
+                        <p>Scenes, prefabs, materials, animations, textures, models, and the content the runtime loads.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3><code>scripts/</code></h3>
+                        <p>Build helpers and repo utility scripts, including web export bootstrapping and content tooling.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section>
+                <h2 id="leave-with-these-checkpoints">Leave with these checkpoints</h2>
+                <ul>
+                    <li>You can build and launch the project from the repo root.</li>
+                    <li>You know that engine code usually lives in <code>canis/</code> and project behavior usually lives in <code>game/</code>.</li>
+                    <li>You know that scenes and prefabs are content under <code>project/assets/</code>, not hardcoded in the executable.</li>
+                    <li>You know which pages to read next: <a href="#canis-mental-model">Canis Mental Model</a>, <a href="#first-feature">Build Your First Feature</a>, and <a href="#editor-workflow">Editor Workflow</a>.</li>
+                </ul>
+                <div class="doc-callout">
+                    <h3>A good first milestone</h3>
+                    <p>If you can rebuild after a tiny code edit and still launch successfully, you are ready to start learning by doing instead of only reading.</p>
+                </div>
+            </section>
+        `
+    },
+    {
+        slug: "canis-mental-model",
+        section: "Start Here",
+        title: "Canis Mental Model",
+        summary: "A lightweight model for how the runtime, content, and editor fit together so new contributors can reason about Canis without memorizing every file.",
+        kicker: "Start Here",
+        chips: ["App", "Scene", "Entity", "Assets"],
+        keywords: ["mental model", "app", "scene", "entity", "component", "script", "asset", "editor"],
+        content: `
+            <section>
+                <h2 id="one-picture">One picture</h2>
+                <div class="doc-grid">
+                    <article class="doc-card">
+                        <h3>1. App</h3>
+                        <p><code>Canis::App</code> boots the engine, owns the main scene, manages registration, and runs the frame loop.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>2. Scene</h3>
+                        <p>A <code>Scene</code> is the loaded world. It owns entities, systems, serialization, and much of the runtime orchestration.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>3. Entity</h3>
+                        <p>An <code>Entity</code> is the thing you place in a scene. It is the handle you use to attach components and scripts.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>4. Components and scripts</h3>
+                        <p>Components hold data. Scripts hold project behavior. Together they make an entity do something useful.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>5. Assets</h3>
+                        <p>Scenes, prefabs, textures, materials, animations, and models are assets the runtime loads from <code>project/assets/</code>.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>6. Editor and inspector</h3>
+                        <p>The editor helps you place entities, edit properties, wire references, and save that content back to scene and prefab assets.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section>
+                <h2 id="how-a-change-usually-flows">How a change usually flows</h2>
+                <ol>
+                    <li>You add or edit a script in <code>game/</code>.</li>
+                    <li>You register the properties that should be editable and serializable.</li>
+                    <li>You attach that script to an entity in a scene or prefab.</li>
+                    <li>The engine loads the scene, constructs the entity, and runs the script inside the frame loop.</li>
+                    <li>The scene saves those values back into content assets so the behavior is repeatable.</li>
+                </ol>
+            </section>
+
+            <section>
+                <h2 id="rules-of-thumb">Rules of thumb</h2>
+                <ul>
+                    <li>If you are changing reusable engine behavior, start in <code>canis/</code>. If you are changing project behavior, start in <code>game/</code>.</li>
+                    <li>If something should survive saving and loading, think about registration and serialization early.</li>
+                    <li>If a change is mostly content, prefer scenes, prefabs, and inspector wiring over hardcoding values.</li>
+                    <li>If you are lost, trace the path from <code>App</code> to <code>Scene</code> to <code>Entity</code> before diving into low-level details.</li>
+                </ul>
+            </section>
+        `
+    },
+    {
+        slug: "first-feature",
+        section: "Start Here",
+        title: "Build Your First Feature",
+        summary: "A safe, repeatable workflow for editing a script, exposing a property, attaching it to content, and verifying the change in Canis.",
+        kicker: "Start Here",
+        chips: ["Scripts", "Inspector", "Scene", "Iteration"],
+        keywords: ["first feature", "script", "register property", "inspector", "scene", "iteration"],
+        content: `
+            <section>
+                <h2 id="choose-a-small-change">Choose a small change</h2>
+                <p>Your first feature should be boring on purpose: one new property, one behavior tweak, or one extra bit of scene wiring. The goal is to learn the loop, not to win a refactor contest.</p>
+            </section>
+
+            <section>
+                <h2 id="feature-loop">Feature loop</h2>
+                <ol>
+                    <li>Create or edit a script under <code>game/include/</code> and <code>game/src/</code>.</li>
+                    <li>Register any field that should appear in the inspector or be saved into a scene.</li>
+                    <li>Attach the script to an entity in a scene or prefab.</li>
+                    <li>Rebuild, launch, and verify the behavior.</li>
+                    <li>Adjust the value in the inspector until the result feels right, then save the content.</li>
+                </ol>
+            </section>
+
+            <section>
+                <h2 id="minimum-script-registration">Minimum script registration</h2>
+                <pre><code>REGISTER_PROPERTY(conf, MyGame::MyScript, moveSpeed);
+REGISTER_PROPERTY(conf, MyGame::MyScript, turnRate);
+
+DEFAULT_CONFIG_AND_REQUIRED(conf, MyGame::MyScript, Canis::Transform);
+conf.DEFAULT_DRAW_INSPECTOR(MyGame::MyScript);
+</code></pre>
+                <p>This is the key bridge between code and tooling. A registered property can be edited in the inspector, serialized into scene data, and used by animation tooling when appropriate.</p>
+            </section>
+
+            <section>
+                <h2 id="what-success-looks-like">What success looks like</h2>
+                <ul>
+                    <li>You can point to the code file that owns the behavior.</li>
+                    <li>You can point to the scene or prefab that uses the behavior.</li>
+                    <li>You can change a value in the inspector and see the result in-engine.</li>
+                    <li>You can save the scene and get the same behavior after the next run.</li>
+                </ul>
+                <div class="doc-callout">
+                    <h3>If the property never shows up</h3>
+                    <p>That usually means the field was not registered, the script was not registered with the app, or you rebuilt a different target than the one the runtime is loading.</p>
+                </div>
+            </section>
+        `
+    },
+    {
+        slug: "common-workflows",
+        section: "Start Here",
+        title: "Common Workflows",
+        summary: "Use the docs by task, not by chapter: here is where to go when you need to add content, behavior, UI, animation, or a web build.",
+        kicker: "Start Here",
+        chips: ["Task Map", "UI", "Scenes", "Export"],
+        keywords: ["common workflows", "task map", "scene", "prefab", "ui", "animation", "web export"],
+        content: `
+            <section>
+                <h2 id="use-the-manual-by-task">Use the manual by task</h2>
+                <div class="doc-grid">
+                    <article class="doc-card">
+                        <h3>Add or modify behavior</h3>
+                        <p>Start with <a href="#first-feature">Build Your First Feature</a>, then use <a href="#engine-guide">Engine Guide</a> and <a href="#component-api">Component API</a> for specifics.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>Pick the right components</h3>
+                        <p>Use <a href="#component-reference">Component Reference</a> to understand typical bundles and when to reach for each built-in component.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>Edit scenes and prefabs</h3>
+                        <p>Jump to <a href="#scenes-and-prefabs">Scenes &amp; Prefabs</a> for serialization, prefab instances, overrides, and editor-side content flow.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>Work in the editor</h3>
+                        <p>Read <a href="#editor-workflow">Editor Workflow</a> for hierarchy, inspector, assets, play mode, and the general layout of the tools.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>Animate properties</h3>
+                        <p>Go to <a href="#animation">Animation</a> for clips, curves, events, and registered-property animation.</p>
+                    </article>
+                    <article class="doc-card">
+                        <h3>Ship to the browser</h3>
+                        <p>Use <a href="#web-export">Web Export</a> once the native workflow is stable and you are ready to build an HTML5 bundle.</p>
+                    </article>
+                </div>
+            </section>
+
+            <section>
+                <h2 id="three-typical-loops">Three typical contributor loops</h2>
+                <h3 id="behavior-loop">Behavior loop</h3>
+                <p>Edit script code, register properties, attach to content, rebuild, verify, and save.</p>
+
+                <h3 id="content-loop">Content loop</h3>
+                <p>Open or create a scene or prefab, wire components and references, test in play mode, and save the asset.</p>
+
+                <h3 id="shipping-loop">Shipping loop</h3>
+                <p>Get the native flow working first, then switch to the web export path only after the behavior is stable.</p>
+            </section>
+        `
+    },
+    {
+        slug: "troubleshooting",
+        section: "Start Here",
+        title: "Troubleshooting",
+        summary: "The first problems most newcomers hit in Canis, plus the fastest checks to make before you assume something deep is broken.",
+        kicker: "Start Here",
+        chips: ["Build", "Runtime", "Inspector", "Web"],
+        keywords: ["troubleshooting", "build issue", "runtime issue", "inspector", "web", "debug"],
+        content: `
+            <section>
+                <h2 id="build-starts-failing">Build starts failing</h2>
+                <article class="component-entry">
+                    <h3 id="build-checks">Fast checks</h3>
+                    <ul class="component-meta">
+                        <li><strong>Submodules:</strong> make sure dependencies are initialized with <code>git submodule update --init --recursive</code>.</li>
+                        <li><strong>Target:</strong> confirm you rebuilt the actual project target and are running the updated executable under <code>project/</code>.</li>
+                        <li><strong>Header/source mismatch:</strong> if a new script compiles oddly, double-check the declaration in <code>game/include/</code> matches the implementation in <code>game/src/</code>.</li>
+                    </ul>
+                </article>
+            </section>
+
+            <section>
+                <h2 id="runtime-launches-but-looks-wrong">Runtime launches but looks wrong</h2>
+                <article class="component-entry">
+                    <h3 id="runtime-checks">Fast checks</h3>
+                    <ul class="component-meta">
+                        <li><strong>Working directory:</strong> launch from the repo root so the runtime can find <code>project/assets/</code> and <code>project/project_settings/</code>.</li>
+                        <li><strong>Content vs code:</strong> ask whether the bug lives in scene data, prefab wiring, or script logic before changing engine internals.</li>
+                        <li><strong>Saved content:</strong> if a fix disappears after restart, the value may never have been serialized back into the scene or prefab.</li>
+                    </ul>
+                </article>
+            </section>
+
+            <section>
+                <h2 id="property-is-missing-in-the-inspector">Property is missing in the inspector</h2>
+                <article class="component-entry">
+                    <h3 id="inspector-checks">Fast checks</h3>
+                    <ul class="component-meta">
+                        <li><strong>Registration:</strong> confirm the field is included in <code>REGISTER_PROPERTY(...)</code>.</li>
+                        <li><strong>Script config:</strong> confirm the script registration function still runs during app startup.</li>
+                        <li><strong>Rebuild:</strong> after changing registration or script code, rebuild before expecting the editor/runtime to reflect it.</li>
+                    </ul>
+                </article>
+            </section>
+
+            <section>
+                <h2 id="web-build-behaves-differently">Web build behaves differently</h2>
+                <article class="component-entry">
+                    <h3 id="web-checks">Fast checks</h3>
+                    <ul class="component-meta">
+                        <li><strong>Serve it:</strong> do not open the export with <code>file://</code>; serve the folder through a local web server.</li>
+                        <li><strong>Native first:</strong> if a feature is already unstable natively, fix that before chasing browser-specific behavior.</li>
+                        <li><strong>Runtime model:</strong> remember the web target disables the editor runtime and links gameplay code statically.</li>
+                    </ul>
+                    <pre><code>./scripts/build-web.sh web-release
+python3 -m http.server 8000 --directory build-web-release/web</code></pre>
+                </article>
             </section>
         `
     },
@@ -61,6 +343,8 @@ cmake --build build -j4
         kicker: "Core Manual",
         chips: ["App", "Scene", "Entity", "Registration"],
         keywords: ["engine", "scene", "entity", "app", "serialization", "ecs", "assetmanager"],
+        sourceHref: "../engine-guide.md",
+        sourceLabel: "Read source markdown",
         content: `
             <section>
                 <h2 id="what-the-repo-builds">What the repository builds</h2>
@@ -1739,6 +2023,8 @@ if (justHitSomething)
         kicker: "Build & Ship",
         chips: ["Emscripten", "HTML5", "Itch.io"],
         keywords: ["web", "emscripten", "html5", "itch", "browser", "wasm"],
+        sourceHref: "../web-build.md",
+        sourceLabel: "Read source markdown",
         content: `
             <section>
                 <h2 id="quick-start">Quick start</h2>
@@ -1775,6 +2061,22 @@ if (justHitSomething)
     }
 ];
 
+function extractSearchText(html) {
+    return String(html)
+        .replace(/<[^>]+>/g, " ")
+        .replace(/&nbsp;/g, " ")
+        .replace(/&amp;/g, "&")
+        .replace(/&lt;/g, "<")
+        .replace(/&gt;/g, ">")
+        .replace(/&#039;/g, "'")
+        .replace(/\s+/g, " ")
+        .trim();
+}
+
+for (const page of PAGES) {
+    page.searchText = extractSearchText(page.content);
+}
+
 const state = {
     search: "",
     slug: window.location.hash ? window.location.hash.slice(1) : "welcome"
@@ -1784,6 +2086,7 @@ const navRoot = document.getElementById("docs-nav");
 const pageRoot = document.getElementById("doc-page");
 const tocRoot = document.getElementById("toc");
 const kickerRoot = document.getElementById("page-kicker");
+const sourceLink = document.getElementById("page-source-link");
 const searchField = document.getElementById("docs-search");
 const menuToggle = document.getElementById("menu-toggle");
 const sidebar = document.getElementById("sidebar");
@@ -1810,7 +2113,8 @@ function getFilteredPages() {
             page.section,
             page.summary,
             page.kicker,
-            ...(page.keywords || [])
+            ...(page.keywords || []),
+            page.searchText || ""
         ].join(" ").toLowerCase();
         return haystack.includes(query);
     });
@@ -1847,6 +2151,16 @@ function renderPage() {
     const nextPage = pageIndex < PAGES.length - 1 ? PAGES[pageIndex + 1] : null;
 
     kickerRoot.textContent = `${page.title} · ${page.section}`;
+
+    if (page.sourceHref) {
+        sourceLink.hidden = false;
+        sourceLink.href = page.sourceHref;
+        sourceLink.textContent = page.sourceLabel || "Read source file";
+    } else {
+        sourceLink.hidden = true;
+        sourceLink.removeAttribute("href");
+        sourceLink.textContent = "";
+    }
 
     pageRoot.innerHTML = `
         <header class="doc-hero">
@@ -1893,6 +2207,8 @@ function syncHash() {
     const raw = window.location.hash.slice(1);
     if (!raw) {
         state.slug = "welcome";
+        renderNav();
+        renderPage();
         return;
     }
 

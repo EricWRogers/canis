@@ -3,8 +3,8 @@
 <head>
     <meta charset="utf-8">
     <meta name="viewport" content="width=device-width, initial-scale=1">
-    <title>Canis Manual</title>
-    <meta name="description" content="Canis engine documentation in a handbook-style docs site.">
+    <title>Canis Handbook</title>
+    <meta name="description" content="Canis contributor handbook for onboarding, workflows, and engine reference.">
     <link rel="icon" type="image/png" href="./assets/engine_icon.png">
     <link rel="stylesheet" href="./styles.css">
 </head>
@@ -16,37 +16,32 @@
                     <img src="./assets/engine_icon.png" alt="Canis engine icon">
                 </div>
                 <div>
-                    <p class="eyebrow">Reference Manual</p>
+                    <p class="eyebrow">Contributor Handbook</p>
                     <h1>Canis</h1>
                 </div>
             </div>
 
             <div class="sidebar__intro">
-                <p>A starter docs site for the engine, editor, and gameplay workflow in this repo.</p>
-                <div class="version-chip">Beta handbook</div>
+                <p>A practical guide for new people learning how to build, navigate, and extend Canis.</p>
+                <div class="version-chip">Getting started</div>
             </div>
 
             <label class="search-field" for="docs-search">
                 <span>Search pages</span>
-                <input id="docs-search" type="search" placeholder="Animation, Prefabs, Web Export">
+                <input id="docs-search" type="search" placeholder="Build, Inspector, Prefabs">
             </label>
 
             <nav class="sidebar__nav" id="docs-nav" aria-label="Documentation"></nav>
-
-            <div class="sidebar__footer">
-                <p>Static site, no build step.</p>
-                <code>python3 -m http.server --directory canis/docs/site</code>
-            </div>
         </aside>
 
         <main class="main-panel">
             <header class="topbar">
                 <button class="menu-toggle" id="menu-toggle" aria-expanded="false" aria-controls="sidebar">Menu</button>
                 <div class="topbar__copy">
-                    <p class="eyebrow">Godot-style starter</p>
-                    <h2 id="page-kicker">Engine docs, editor docs, workflow docs</h2>
+                    <p class="eyebrow">Onboarding and reference</p>
+                    <h2 id="page-kicker">Build, learn, and extend Canis</h2>
                 </div>
-                <a class="topbar__link" href="../engine-guide.md" target="_blank" rel="noreferrer">Read source markdown</a>
+                <a class="topbar__link" id="page-source-link" href="../engine-guide.md" target="_blank" rel="noreferrer" hidden>Read source markdown</a>
             </header>
 
             <div class="content-grid">
