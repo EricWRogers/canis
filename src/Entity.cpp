@@ -43,6 +43,7 @@ ScriptableEntity* Entity::AddScriptDirect(const ScriptConf& _conf, ScriptableEnt
         return existing;
     }
 
+    _scriptableEntity->m_registeredScriptName = _conf.name;
     m_scriptComponents.push_back(_scriptableEntity);
 
     if (_callCreate)
@@ -103,16 +104,51 @@ ScriptableEntity* Entity::AttachScript(const std::string& _scriptName, Scriptabl
     return AddScriptDirect(*conf, _scriptableEntity, _callCreate);
 }
 
+ScriptableEntity* Entity::GetScriptByName(const std::string& _scriptName)
+{
+    for (ScriptableEntity* script : m_scriptComponents)
+    {
+        if (script != nullptr && script->GetRegisteredScriptName() == _scriptName)
+            return script;
+    }
+
+    return nullptr;
+}
+
+const ScriptableEntity* Entity::GetScriptByName(const std::string& _scriptName) const
+{
+    for (const ScriptableEntity* script : m_scriptComponents)
+    {
+        if (script != nullptr && script->GetRegisteredScriptName() == _scriptName)
+            return script;
+    }
+
+    return nullptr;
+}
+
+bool Entity::HasScriptByName(const std::string& _scriptName) const
+{
+    return GetScriptByName(_scriptName) != nullptr;
+}
+
+void Entity::RemoveScriptByName(const std::string& _scriptName)
+{
+    for (size_t i = 0; i < m_scriptComponents.size(); ++i)
+    {
+        ScriptableEntity* script = m_scriptComponents[i];
+        if (script == nullptr || script->GetRegisteredScriptName() != _scriptName)
+            continue;
+
+        script->Destroy();
+        delete script;
+        m_scriptComponents.erase(m_scriptComponents.begin() + static_cast<std::ptrdiff_t>(i));
+        return;
+    }
+}
+
 void Entity::RemoveScript(const std::string& _scriptName)
 {
-    if (scene.app == nullptr)
-        return;
-
-    ScriptConf* conf = scene.app->GetScriptConf(_scriptName);
-    if (conf == nullptr)
-        return;
-
-    RemoveScriptDirect(*conf);
+    RemoveScriptByName(_scriptName);
 }
 
 void Entity::RemoveAllScripts()

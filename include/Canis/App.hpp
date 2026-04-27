@@ -8,6 +8,7 @@
 namespace Canis
 {
 class Editor;
+class ManagedScriptRuntime;
 
 class App
 {
@@ -51,6 +52,8 @@ public:
     bool AddRequiredScript(Entity& _entity, const std::string& _name);
     bool DispatchUIAction(Entity& _targetEntity, const std::string& _scriptName, const std::string& _actionName, const UIActionContext& _context);
     bool DispatchAnimationEvent(Entity& _targetEntity, const std::string& _scriptName, const std::string& _eventName, const AnimationEventContext& _context);
+    ManagedScriptRuntime* TryGetManagedScriptRuntime() { return m_managedScriptRuntime; }
+    const ManagedScriptRuntime* TryGetManagedScriptRuntime() const { return m_managedScriptRuntime; }
 
     Editor& GetEditor() { return *m_editor; }
 
@@ -75,6 +78,7 @@ private:
     Editor* m_editor;
     mutable std::unique_ptr<NetworkSession> m_network = nullptr;
     RuntimeContext* m_runtime = nullptr;
+    ManagedScriptRuntime* m_managedScriptRuntime = nullptr;
     float m_updateTimeMs = 0.0f;
     float m_sceneUpdateTimeMs = 0.0f;
     float m_gameCodeUpdateTimeMs = 0.0f;

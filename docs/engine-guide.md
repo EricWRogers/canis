@@ -45,6 +45,14 @@ Notes:
 - Shared libraries are written next to it in `project/`
 - The engine expects to find `assets/` at runtime and already contains logic to normalize the working directory so running from the repo root works
 
+Managed scripting has its own build step:
+
+```bash
+./scripts/build-managed.sh
+```
+
+That compiles the C# host and game-side script assemblies from `project/csharp/` and copies the runtime files into `project/csharp/managed/`.
+
 ## Runtime Flow
 
 The startup path currently looks like this:
@@ -168,6 +176,19 @@ Lifecycle hooks:
 - `Destroy()`
 
 Scripts live on `Entity` objects rather than as `entt` components. They are attached, stored, and updated through the engine's script registry.
+
+### Managed Scripts
+
+The engine also supports a manifest-driven managed scripting path.
+
+Current layout:
+
+- `project/csharp/Canis.ManagedApi/`: small C# API used by game scripts
+- `project/csharp/Canis.ManagedHost/`: bridge assembly loaded by the native host
+- `project/csharp/CanisGameScripts/`: project/game-side managed scripts
+- `project/csharp/managed/*.managed.yml`: script registration manifests
+
+At startup the engine scans `csharp/managed/` for `.managed.yml` files, registers those scripts into the same inspector/serialization system as native scripts, and then tries to bootstrap the managed runtime. If the managed assemblies are missing, scene values and inspector fields still work, but runtime execution is disabled until `build-managed.sh` copies the DLLs into place.
 
 ## Registering Scripts And Inspector Properties
 

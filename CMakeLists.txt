@@ -8,6 +8,7 @@ file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
 file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ManagedScripting.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/PostProcessPipeline.cpp"
 )
 

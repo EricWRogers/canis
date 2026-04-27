@@ -19,6 +19,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ConfigHelper.hpp>
+#include <Canis/ManagedScripting.hpp>
 #include <Canis/Network.hpp>
 #include <Canis/VFX/Particles.hpp>
 
@@ -905,6 +906,9 @@ namespace Canis
 
         RegisterDefaults(*runtime.editor);
 
+        m_managedScriptRuntime = new ManagedScriptRuntime();
+        m_managedScriptRuntime->Initialize(*this);
+
         runtime.inputManager = std::make_unique<InputManager>();
         runtime.inputManager->SetGameInputWindowID(SDL_GetWindowID((SDL_Window*)runtime.window->GetSDLWindow()));
 
@@ -1143,6 +1147,12 @@ namespace Canis
         }
 
         scene.Unload();
+        if (m_managedScriptRuntime != nullptr)
+        {
+            m_managedScriptRuntime->Shutdown();
+            delete m_managedScriptRuntime;
+            m_managedScriptRuntime = nullptr;
+        }
         Time::Quit();
         GameCodeObjectShutdownFunction(&runtime->gameCodeObject, this);
         m_network.reset();
@@ -1686,6 +1696,11 @@ namespace Canis
                 }
             },
         };
+
+        REGISTER_PROPERTY(sprite2DConf, Sprite2D, color);
+        REGISTER_PROPERTY(sprite2DConf, Sprite2D, uv);
+        REGISTER_PROPERTY(sprite2DConf, Sprite2D, flipX);
+        REGISTER_PROPERTY(sprite2DConf, Sprite2D, flipY);
 
         RegisterScript(sprite2DConf);
 
@@ -2421,6 +2436,23 @@ namespace Canis
             },
         };
 
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, active);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, motionType);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, mass);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, friction);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, restitution);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, linearDamping);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, angularDamping);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, useGravity);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, gravityFactor);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, isSensor);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, allowSleeping);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, lockRotationX);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, lockRotationY);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, lockRotationZ);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, linearVelocity);
+        REGISTER_PROPERTY(rigidbodyConf, Rigidbody, angularVelocity);
+
         RegisterScript(rigidbodyConf);
 
         ScriptConf boxColliderConf = {
@@ -2469,6 +2501,9 @@ namespace Canis
                 ImGui::InputFloat3(("size##" + _conf.name).c_str(), &boxCollider->size.x, "%.3f");
             },
         };
+
+        REGISTER_PROPERTY(boxColliderConf, BoxCollider, active);
+        REGISTER_PROPERTY(boxColliderConf, BoxCollider, size);
 
         RegisterScript(boxColliderConf);
 
@@ -2519,6 +2554,9 @@ namespace Canis
                 ImGui::InputFloat(("radius##" + _conf.name).c_str(), &sphereCollider->radius);
             },
         };
+
+        REGISTER_PROPERTY(sphereColliderConf, SphereCollider, active);
+        REGISTER_PROPERTY(sphereColliderConf, SphereCollider, radius);
 
         RegisterScript(sphereColliderConf);
 
@@ -2572,6 +2610,10 @@ namespace Canis
                 ImGui::InputFloat(("radius##" + _conf.name).c_str(), &capsuleCollider->radius);
             },
         };
+
+        REGISTER_PROPERTY(capsuleColliderConf, CapsuleCollider, active);
+        REGISTER_PROPERTY(capsuleColliderConf, CapsuleCollider, halfHeight);
+        REGISTER_PROPERTY(capsuleColliderConf, CapsuleCollider, radius);
 
         RegisterScript(capsuleColliderConf);
 
@@ -2652,6 +2694,10 @@ namespace Canis
             },
         };
 
+        REGISTER_PROPERTY(meshColliderConf, MeshCollider, active);
+        REGISTER_PROPERTY(meshColliderConf, MeshCollider, useAttachedModel);
+        REGISTER_PROPERTY(meshColliderConf, MeshCollider, modelPath);
+
         RegisterScript(meshColliderConf);
 
         ScriptConf cameraConf = {
@@ -2706,6 +2752,11 @@ namespace Canis
             },
         };
 
+        REGISTER_PROPERTY(cameraConf, Camera, primary);
+        REGISTER_PROPERTY(cameraConf, Camera, fovDegrees);
+        REGISTER_PROPERTY(cameraConf, Camera, nearClip);
+        REGISTER_PROPERTY(cameraConf, Camera, farClip);
+
         RegisterScript(cameraConf);
 
         ScriptConf directionalLightConf = {
@@ -2752,6 +2803,11 @@ namespace Canis
                 }
             },
         };
+
+        REGISTER_PROPERTY(directionalLightConf, DirectionalLight, enabled);
+        REGISTER_PROPERTY(directionalLightConf, DirectionalLight, color);
+        REGISTER_PROPERTY(directionalLightConf, DirectionalLight, intensity);
+        REGISTER_PROPERTY(directionalLightConf, DirectionalLight, direction);
 
         RegisterScript(directionalLightConf);
 
@@ -2802,6 +2858,11 @@ namespace Canis
                 }
             },
         };
+
+        REGISTER_PROPERTY(pointLightConf, PointLight, enabled);
+        REGISTER_PROPERTY(pointLightConf, PointLight, color);
+        REGISTER_PROPERTY(pointLightConf, PointLight, intensity);
+        REGISTER_PROPERTY(pointLightConf, PointLight, range);
 
         RegisterScript(pointLightConf);
 
@@ -3292,6 +3353,9 @@ namespace Canis
             },
         };
 
+        REGISTER_PROPERTY(materialConf, Material, materialId);
+        REGISTER_PROPERTY(materialConf, Material, color);
+
         RegisterScript(materialConf);
 
         ScriptConf modelConf = {
@@ -3495,6 +3559,11 @@ namespace Canis
                 }
             },
         };
+
+        REGISTER_PROPERTY(modelConf, Model, modelId);
+        REGISTER_PROPERTY(modelConf, Model, nodeIndex);
+        REGISTER_PROPERTY(modelConf, Model, applyNodeTransform);
+        REGISTER_PROPERTY(modelConf, Model, color);
 
         RegisterScript(modelConf);
 

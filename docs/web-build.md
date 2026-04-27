@@ -52,3 +52,14 @@ Then upload everything inside `build-web-release/web/`.
 - The editor runtime is disabled for web builds.
 - Gameplay code is statically linked for the browser build instead of being hot-loaded as a shared library.
 - The web target uses WebGL 2 / OpenGL ES 3 shader compilation.
+
+## Managed scripting on web
+
+The managed scripting layer now has a dedicated browser bridge surface in the native runtime. Desktop builds use `hostfxr` to load `Canis.ManagedHost.dll`, while web builds look for statically linked bridge exports with names such as:
+
+- `CanisManagedWebInitializeHost`
+- `CanisManagedWebInstantiateScript`
+- `CanisManagedWebUpdateScript`
+- `CanisManagedWebGetVec3`
+
+The current repository includes the desktop host assembly and the manifest/runtime layout in `project/csharp/managed/`, but it does not yet ship the browser-side managed runtime implementation. That means web builds can share the same manifests and scene data today, while the actual managed execution path on the browser still needs the future static-link managed backend to provide those exports.

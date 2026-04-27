@@ -15,6 +15,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
 #include <Canis/AnimationRuntime.hpp>
+#include <Canis/ManagedScripting.hpp>
 #include <Canis/ShaderGraph.hpp>
 #include <Canis/ShaderGraphGraphEditor.hpp>
 #include <Canis/Yaml.hpp>
@@ -582,6 +583,9 @@ namespace Canis
             System = 2
         };
 
+        constexpr const char* kManagedScriptsAssetsRoot = "assets/scripts";
+        constexpr const char* kManagedScriptsManifestPath = "csharp/managed/CanisGameScripts.managed.yml";
+
         constexpr const char* kGameScriptTypeLabels[] =
         {
             "ScriptableEntity",
@@ -595,6 +599,241 @@ namespace Canis
                 return GameScriptType::ScriptableEntity;
 
             return static_cast<GameScriptType>(_selection);
+        }
+
+        bool IsPathWithinDirectory(const std::filesystem::path &_path, const std::filesystem::path &_parent)
+        {
+            namespace fs = std::filesystem;
+
+            std::error_code ec;
+            const fs::path normalizedPath = fs::weakly_canonical(_path, ec);
+            ec.clear();
+            const fs::path normalizedParent = fs::weakly_canonical(_parent, ec);
+            if (ec)
+                return false;
+
+            const fs::path relative = fs::relative(normalizedPath, normalizedParent, ec);
+            if (ec || relative.empty())
+                return normalizedPath == normalizedParent;
+
+            const std::string relativeString = relative.generic_string();
+            return relativeString != ".." &&
+                relativeString.rfind("../", 0) != 0 &&
+                relativeString.rfind("..\\", 0) != 0;
+        }
+
+        std::vector<std::string> BuildManagedNamespaceParts(
+            const std::filesystem::path &_scriptsRoot,
+            const std::filesystem::path &_targetDir)
+        {
+            namespace fs = std::filesystem;
+
+            std::vector<std::string> namespaceParts = { "GameScripts" };
+            std::error_code ec;
+            const fs::path relativeDir = fs::relative(_targetDir, _scriptsRoot, ec);
+            if (ec || relativeDir.empty() || relativeDir == ".")
+                return namespaceParts;
+
+            for (const fs::path &segment : relativeDir)
+            {
+                const std::string value = segment.string();
+                if (!value.empty() && IsValidCppIdentifier(value))
+                    namespaceParts.push_back(value);
+            }
+
+            return namespaceParts;
+        }
+
+        std::string MakeManagedTypeName(
+            const std::filesystem::path &_scriptsRoot,
+            const std::filesystem::path &_targetDir,
+            const std::string &_className)
+        {
+            std::vector<std::string> namespaceParts = BuildManagedNamespaceParts(_scriptsRoot, _targetDir);
+            namespaceParts.push_back(_className);
+            return JoinStringParts(namespaceParts, ".");
+        }
+
+        std::string MakeManagedScriptRegistryName(
+            const std::filesystem::path &_scriptsRoot,
+            const std::filesystem::path &_targetDir,
+            const std::string &_className)
+        {
+            std::vector<std::string> namespaceParts = { "ManagedScripts" };
+            std::error_code ec;
+            const std::filesystem::path relativeDir = std::filesystem::relative(_targetDir, _scriptsRoot, ec);
+            if (!ec && !relativeDir.empty() && relativeDir != ".")
+            {
+                for (const std::filesystem::path &segment : relativeDir)
+                {
+                    const std::string value = segment.string();
+                    if (!value.empty() && IsValidCppIdentifier(value))
+                        namespaceParts.push_back(value);
+                }
+            }
+
+            namespaceParts.push_back(_className);
+            return JoinStringParts(namespaceParts, "::");
+        }
+
+        bool SaveYamlNodeToFile(const std::filesystem::path &_path, const YAML::Node &_node, std::string &_outError)
+        {
+            std::ofstream output(_path);
+            if (!output.is_open())
+            {
+                _outError = "Failed to write file: " + _path.string();
+                return false;
+            }
+
+            output << _node;
+            return true;
+        }
+
+        bool EnsureManagedScriptManifestEntry(
+            const std::filesystem::path &_manifestPath,
+            const std::string &_scriptName,
+            const std::string &_typeName,
+            const std::string &_sourcePath,
+            std::string &_outError)
+        {
+            std::error_code dirEc;
+            std::filesystem::create_directories(_manifestPath.parent_path(), dirEc);
+            if (dirEc)
+            {
+                _outError = "Failed to create managed manifest directory: " + dirEc.message();
+                return false;
+            }
+
+            YAML::Node root(YAML::NodeType::Map);
+            if (std::filesystem::exists(_manifestPath))
+            {
+                try
+                {
+                    root = YAML::LoadFile(_manifestPath.string());
+                }
+                catch (const YAML::Exception &exception)
+                {
+                    _outError = "Failed to parse managed manifest: " + std::string(exception.what());
+                    return false;
+                }
+            }
+
+            if (!root || !root.IsMap())
+                root = YAML::Node(YAML::NodeType::Map);
+
+            if (!root["AssemblyPath"])
+                root["AssemblyPath"] = "csharp/managed/CanisGameScripts.dll";
+
+            YAML::Node scriptsNode = root["Scripts"];
+            if (!scriptsNode || !scriptsNode.IsSequence())
+            {
+                scriptsNode = YAML::Node(YAML::NodeType::Sequence);
+                root["Scripts"] = scriptsNode;
+            }
+
+            for (const YAML::Node &scriptNode : scriptsNode)
+            {
+                if (!scriptNode || !scriptNode.IsMap())
+                    continue;
+
+                const std::string existingScriptName = scriptNode["ScriptName"].as<std::string>("");
+                const std::string existingTypeName = scriptNode["TypeName"].as<std::string>("");
+                if (existingScriptName == _scriptName || existingTypeName == _typeName)
+                {
+                    _outError = "Managed script manifest entry already exists.";
+                    return false;
+                }
+            }
+
+            YAML::Node newScript(YAML::NodeType::Map);
+            newScript["ScriptName"] = _scriptName;
+            newScript["TypeName"] = _typeName;
+            newScript["SourcePath"] = _sourcePath;
+            newScript["Properties"] = YAML::Node(YAML::NodeType::Sequence);
+            root["Scripts"].push_back(newScript);
+
+            return SaveYamlNodeToFile(_manifestPath, root, _outError);
+        }
+
+        bool CreateManagedScriptFile(
+            const std::filesystem::path &_scriptsRoot,
+            const std::filesystem::path &_targetDir,
+            const std::string &_className,
+            std::string &_outSourcePath,
+            std::string &_outScriptName,
+            std::string &_outError)
+        {
+            namespace fs = std::filesystem;
+
+            if (!IsValidCppIdentifier(_className))
+            {
+                _outError = "Script name must be a valid identifier.";
+                return false;
+            }
+
+            std::error_code ec;
+            fs::create_directories(_targetDir, ec);
+            if (ec)
+            {
+                _outError = "Failed to create target directory: " + ec.message();
+                return false;
+            }
+
+            const fs::path sourcePath = _targetDir / (_className + ".cs");
+            if (fs::exists(sourcePath))
+            {
+                _outError = "Target C# script already exists.";
+                return false;
+            }
+
+            const std::vector<std::string> namespaceParts = BuildManagedNamespaceParts(_scriptsRoot, _targetDir);
+            const std::string typeName = MakeManagedTypeName(_scriptsRoot, _targetDir, _className);
+            const std::string scriptName = MakeManagedScriptRegistryName(_scriptsRoot, _targetDir, _className);
+
+            std::ostringstream source;
+            source << "using Canis.Managed;\n\n";
+            source << "namespace " << JoinStringParts(namespaceParts, ".") << ";\n\n";
+            source << "public sealed class " << _className << " : ScriptableEntity\n";
+            source << "{\n";
+            source << "    public override void OnCreate()\n";
+            source << "    {\n";
+            source << "    }\n\n";
+            source << "    public override void OnReady()\n";
+            source << "    {\n";
+            source << "    }\n\n";
+            source << "    public override void OnDestroy()\n";
+            source << "    {\n";
+            source << "    }\n\n";
+            source << "    public override void OnUpdate(float dt)\n";
+            source << "    {\n";
+            source << "    }\n";
+            source << "}\n";
+
+            std::ofstream output(sourcePath);
+            if (!output.is_open())
+            {
+                _outError = "Failed to write C# script file.";
+                return false;
+            }
+
+            output << source.str();
+            output.close();
+
+            const fs::path manifestPath = kManagedScriptsManifestPath;
+            const fs::path relativeSourcePath = fs::path("project") / "assets" / "scripts" / fs::relative(sourcePath, _scriptsRoot, ec);
+            const std::string sourceReferencePath = (!ec && !relativeSourcePath.empty())
+                ? relativeSourcePath.generic_string()
+                : sourcePath.generic_string();
+            if (!EnsureManagedScriptManifestEntry(manifestPath, scriptName, typeName, sourceReferencePath, _outError))
+            {
+                std::error_code removeEc;
+                fs::remove(sourcePath, removeEc);
+                return false;
+            }
+
+            _outSourcePath = sourcePath.string();
+            _outScriptName = scriptName;
+            return true;
         }
 
         bool CreateGameScriptFiles(
@@ -945,6 +1184,71 @@ namespace Canis
             if (_outExitCode != 0)
             {
                 _outError = "Build command failed with exit code " + std::to_string(_outExitCode) + ".";
+                return false;
+            }
+
+            return true;
+#endif
+        }
+
+        bool BuildManagedScriptsForReload(
+            const std::filesystem::path &_repoRoot,
+            std::string &_outCommand,
+            std::string &_outError,
+            int &_outExitCode,
+            const std::function<void(const std::string&)> &_onOutput = nullptr)
+        {
+#if defined(__EMSCRIPTEN__)
+            (void)_repoRoot;
+            (void)_outCommand;
+            (void)_outError;
+            (void)_outExitCode;
+            (void)_onOutput;
+            return true;
+#else
+            const std::filesystem::path scriptPath = _repoRoot / "scripts" / "build-managed.sh";
+            if (!std::filesystem::exists(scriptPath))
+            {
+                _outError = "Managed build script was not found: " + scriptPath.string();
+                _outExitCode = -1;
+                return false;
+            }
+
+            _outCommand = "bash \"" + scriptPath.generic_string() + "\"";
+            _outExitCode = -1;
+
+            if (_onOutput != nullptr)
+            {
+                const std::string pipedCommand = _outCommand + " 2>&1";
+    #if defined(_WIN32)
+                FILE *pipe = _popen(pipedCommand.c_str(), "r");
+    #else
+                FILE *pipe = popen(pipedCommand.c_str(), "r");
+    #endif
+                if (pipe == nullptr)
+                {
+                    _outError = "Failed to start managed build command.";
+                    return false;
+                }
+
+                char buffer[1024] = {};
+                while (fgets(buffer, sizeof(buffer), pipe) != nullptr)
+                    _onOutput(std::string(buffer));
+
+    #if defined(_WIN32)
+                _outExitCode = _pclose(pipe);
+    #else
+                _outExitCode = pclose(pipe);
+    #endif
+            }
+            else
+            {
+                _outExitCode = std::system(_outCommand.c_str());
+            }
+
+            if (_outExitCode != 0)
+            {
+                _outError = "Managed build command failed with exit code " + std::to_string(_outExitCode) + ".";
                 return false;
             }
 
@@ -9369,6 +9673,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 // right click
                 if (ImGui::BeginPopupContextItem())
                 {
+                    const fs::path managedScriptsRoot = fs::path(kManagedScriptsAssetsRoot);
+                    const bool isManagedScriptsFolder = entry.path() == managedScriptsRoot || IsPathWithinDirectory(entry.path(), managedScriptsRoot);
+
                     if (ImGui::MenuItem("Create 2D Scene"))
                     {
                         // copy scene template
@@ -9597,6 +9904,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         }
 
                         MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
+                    }
+
+                    if (isManagedScriptsFolder && ImGui::MenuItem("Create C# Script"))
+                    {
+                        m_managedScriptCreateTargetDir = entry.path().string();
+                        std::snprintf(m_managedScriptCreateNameBuffer, sizeof(m_managedScriptCreateNameBuffer), "%s", "NewScript");
+                        m_managedScriptCreateError.clear();
+                        m_focusManagedScriptCreateNameInput = true;
+                        m_openManagedScriptCreatePopup = true;
                     }
 
                     ImGui::EndPopup();
@@ -9862,6 +10178,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                         {
                             OpenInVSCode(std::string(SDL_GetBasePath()) + meta->path);
                         }
+                        else if (entry.path().extension() == ".cs" && m_mode == EditorMode::EDIT)
+                        {
+                            OpenInVSCode(fullPath);
+                        }
                     }
                 }
             }
@@ -10119,7 +10439,101 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     void Editor::DrawAssetsPanel()
     {
         ImGui::Begin("Assets");
+
+        if (ImGui::BeginPopupContextWindow("assets_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            if (ImGui::MenuItem("Create C# Script"))
+            {
+                const std::filesystem::path managedScriptsRoot = std::filesystem::path(kManagedScriptsAssetsRoot);
+                std::error_code ec;
+                std::filesystem::create_directories(managedScriptsRoot, ec);
+                m_managedScriptCreateTargetDir = managedScriptsRoot.string();
+                std::snprintf(m_managedScriptCreateNameBuffer, sizeof(m_managedScriptCreateNameBuffer), "%s", "NewScript");
+                m_managedScriptCreateError.clear();
+                m_focusManagedScriptCreateNameInput = true;
+                m_openManagedScriptCreatePopup = true;
+            }
+
+            ImGui::EndPopup();
+        }
+
         DrawDirectoryRecursive("assets");
+
+        if (m_openManagedScriptCreatePopup)
+        {
+            ImGui::OpenPopup("Create C# Script");
+            m_openManagedScriptCreatePopup = false;
+        }
+
+        if (ImGui::BeginPopupModal("Create C# Script", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextUnformatted("Create a managed C# script under assets/scripts.");
+            ImGui::Separator();
+
+            if (m_focusManagedScriptCreateNameInput)
+            {
+                ImGui::SetKeyboardFocusHere();
+                m_focusManagedScriptCreateNameInput = false;
+            }
+
+            const bool submitByEnter = ImGui::InputTextWithHint(
+                "Script Name",
+                "Example: PlayerController",
+                m_managedScriptCreateNameBuffer,
+                sizeof(m_managedScriptCreateNameBuffer),
+                ImGuiInputTextFlags_EnterReturnsTrue);
+
+            if (!m_managedScriptCreateError.empty())
+                ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", m_managedScriptCreateError.c_str());
+
+            const bool clickedCreate = ImGui::Button("Create");
+            if (clickedCreate || submitByEnter)
+            {
+                const std::string scriptName = std::string(m_managedScriptCreateNameBuffer);
+                if (!IsValidCppIdentifier(scriptName))
+                {
+                    m_managedScriptCreateError = "Script name must be a valid identifier.";
+                }
+                else
+                {
+                    namespace fs = std::filesystem;
+                    fs::path scriptsRoot = fs::path(kManagedScriptsAssetsRoot);
+                    fs::path targetDir = m_managedScriptCreateTargetDir.empty() ? scriptsRoot : fs::path(m_managedScriptCreateTargetDir);
+                    std::error_code ec;
+                    if (!fs::is_directory(targetDir, ec) || !IsPathWithinDirectory(targetDir, scriptsRoot))
+                        targetDir = scriptsRoot;
+
+                    std::string createdSourcePath = {};
+                    std::string createdScriptName = {};
+                    std::string error = {};
+                    if (CreateManagedScriptFile(scriptsRoot, targetDir, scriptName, createdSourcePath, createdScriptName, error))
+                    {
+                        (void)AssetManager::GetMetaFile(createdSourcePath);
+                        (void)AssetManager::GetMetaFile(kManagedScriptsManifestPath);
+                        m_selectedAssetPath = createdSourcePath;
+                        OpenInVSCode(createdSourcePath);
+                        m_managedScriptCreateError.clear();
+                        m_managedScriptCreateTargetDir.clear();
+                        ImGui::CloseCurrentPopup();
+                    }
+                    else
+                    {
+                        m_managedScriptCreateError = error.empty() ? "Failed to create C# script." : error;
+                    }
+                }
+            }
+
+            ImGui::SameLine();
+            if (ImGui::Button("Cancel"))
+            {
+                m_managedScriptCreateError.clear();
+                m_managedScriptCreateTargetDir.clear();
+                ImGui::CloseCurrentPopup();
+            }
+
+            ImGui::EndPopup();
+        }
+
         ImGui::End();
     }
 
@@ -10682,14 +11096,20 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     {
         bool shouldFinalizeReload = false;
         bool buildSucceeded = false;
+        bool managedBuildAttempted = false;
+        bool managedBuildSucceeded = true;
         int buildExitCode = -1;
+        int managedBuildExitCode = 0;
         {
             std::scoped_lock lock(m_reloadBuildMutex);
             if (m_reloadBuildAwaitingFinalize && m_reloadBuildFinished)
             {
                 shouldFinalizeReload = true;
                 buildSucceeded = m_reloadBuildSucceeded;
+                managedBuildAttempted = m_reloadManagedBuildAttempted;
+                managedBuildSucceeded = m_reloadManagedBuildSucceeded;
                 buildExitCode = m_reloadBuildExitCode;
+                managedBuildExitCode = m_reloadManagedBuildExitCode;
                 m_reloadBuildAwaitingFinalize = false;
             }
         }
@@ -10734,6 +11154,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (!LoadGameCodeAfterReload(m_gameSharedLib, m_app, loadError))
             Debug::Warning("Failed to reload game code library after build: %s", loadError.c_str());
 
+        if (ManagedScriptRuntime *managedRuntime = m_app->TryGetManagedScriptRuntime())
+        {
+            managedRuntime->Shutdown();
+            managedRuntime->Initialize(*m_app);
+        }
+
+        if (managedBuildAttempted && !managedBuildSucceeded)
+            Debug::Warning("Managed script rebuild failed during reload (exit code: %d). Reusing existing managed assemblies.", managedBuildExitCode);
+
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
     }
 
@@ -10762,8 +11191,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         bool inProgress = false;
         bool finished = false;
         bool succeeded = false;
+        bool managedBuildAttempted = false;
+        bool managedBuildSucceeded = true;
         bool autoCloseOnSuccess = false;
         int exitCode = -1;
+        int managedBuildExitCode = 0;
         {
             std::scoped_lock lock(m_reloadBuildMutex);
             command = m_reloadBuildCommand;
@@ -10771,8 +11203,11 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             inProgress = m_reloadBuildInProgress;
             finished = m_reloadBuildFinished;
             succeeded = m_reloadBuildSucceeded;
+            managedBuildAttempted = m_reloadManagedBuildAttempted;
+            managedBuildSucceeded = m_reloadManagedBuildSucceeded;
             autoCloseOnSuccess = m_reloadBuildAutoCloseOnSuccess;
             exitCode = m_reloadBuildExitCode;
+            managedBuildExitCode = m_reloadManagedBuildExitCode;
         }
 
         const bool allowClose = finished && !inProgress;
@@ -10791,6 +11226,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 ImGui::Text("Status: Build failed (exit code: %d).", exitCode);
             else
                 ImGui::TextUnformatted("Status: Waiting...");
+
+            if (!inProgress && finished && managedBuildAttempted)
+            {
+                if (managedBuildSucceeded)
+                    ImGui::TextUnformatted("Managed scripts: Rebuilt successfully.");
+                else
+                    ImGui::Text("Managed scripts: Build failed (exit code: %d). Existing assemblies will stay loaded.", managedBuildExitCode);
+            }
 
             ImGui::Separator();
             ImGui::BeginChild("##ReloadBuildLog", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 4.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
@@ -10910,6 +11353,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 else
                 {
                 const std::filesystem::path buildDir = std::filesystem::path("..") / "build";
+                const std::filesystem::path repoRoot = buildDir.parent_path();
                 const GameCodeBuildConfigInfo buildConfigInfo = ReadGameCodeBuildConfigInfo(buildDir);
                 if (!buildConfigInfo.singleConfigType.empty())
                 {
@@ -10950,22 +11394,32 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
                     {
                         std::scoped_lock lock(m_reloadBuildMutex);
-                        m_reloadBuildCommand = "cmake --build \"" + buildDir.generic_string() + "\" --target GameCode --parallel --";
+                        m_reloadBuildCommand =
+                            "cmake --build \"" + buildDir.generic_string() + "\" --target GameCode --parallel --\n"
+                            "bash \"" + (repoRoot / "scripts" / "build-managed.sh").generic_string() + "\"";
                         m_reloadBuildOutput = "[build] " + m_reloadBuildCommand + "\n";
                         m_reloadBuildInProgress = true;
                         m_reloadBuildFinished = false;
                         m_reloadBuildSucceeded = false;
+                        m_reloadManagedBuildAttempted = false;
+                        m_reloadManagedBuildSucceeded = true;
                         m_reloadBuildAwaitingFinalize = true;
                         m_reloadBuildExitCode = -1;
+                        m_reloadManagedBuildExitCode = 0;
                         m_showReloadBuildPopup = true;
                         m_openReloadBuildPopup = true;
                     }
 
-                    m_reloadBuildThread = std::thread([this, buildDir]()
+                    m_reloadBuildThread = std::thread([this, buildDir, repoRoot]()
                     {
                         std::string buildCommand = "";
                         std::string buildError = "";
                         int buildExitCode = -1;
+                        std::string managedBuildCommand = "";
+                        std::string managedBuildError = "";
+                        int managedBuildExitCode = 0;
+                        bool managedBuildAttempted = false;
+                        bool managedBuildSucceeded = true;
 
                         const bool buildSucceeded = BuildGameCodeForReload(
                             buildDir,
@@ -10978,15 +11432,44 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                                 m_reloadBuildOutput += _line;
                             });
 
+                        if (buildSucceeded)
+                        {
+                            managedBuildAttempted = true;
+                            {
+                                std::scoped_lock lock(m_reloadBuildMutex);
+                                m_reloadBuildOutput += "[managed] Building managed scripts...\n";
+                            }
+
+                            managedBuildSucceeded = BuildManagedScriptsForReload(
+                                repoRoot,
+                                managedBuildCommand,
+                                managedBuildError,
+                                managedBuildExitCode,
+                                [this](const std::string &_line)
+                                {
+                                    std::scoped_lock lock(m_reloadBuildMutex);
+                                    m_reloadBuildOutput += _line;
+                                });
+                        }
+
                         std::scoped_lock lock(m_reloadBuildMutex);
                         if (!buildCommand.empty())
+                        {
                             m_reloadBuildCommand = buildCommand;
+                            if (!managedBuildCommand.empty())
+                                m_reloadBuildCommand += "\n" + managedBuildCommand;
+                        }
 
                         if (!buildError.empty())
                             m_reloadBuildOutput += "[build] " + buildError + "\n";
+                        if (!managedBuildError.empty())
+                            m_reloadBuildOutput += "[managed] " + managedBuildError + "\n";
 
                         m_reloadBuildExitCode = buildExitCode;
                         m_reloadBuildSucceeded = buildSucceeded;
+                        m_reloadManagedBuildAttempted = managedBuildAttempted;
+                        m_reloadManagedBuildSucceeded = managedBuildSucceeded;
+                        m_reloadManagedBuildExitCode = managedBuildExitCode;
                         m_reloadBuildInProgress = false;
                         m_reloadBuildFinished = true;
                     });

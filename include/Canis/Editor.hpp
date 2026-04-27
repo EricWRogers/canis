@@ -265,6 +265,11 @@ namespace Canis
         std::string m_scriptCreateTargetDir = {};
         std::string m_scriptCreateError = {};
         int m_scriptCreateTypeSelection = 0;
+        bool m_openManagedScriptCreatePopup = false;
+        bool m_focusManagedScriptCreateNameInput = false;
+        char m_managedScriptCreateNameBuffer[128] = {};
+        std::string m_managedScriptCreateTargetDir = {};
+        std::string m_managedScriptCreateError = {};
         int m_editorThemeSelection = 0;
         int m_editorFontSelection = 0;
         float m_editorUiScale = 1.0f;
@@ -282,11 +287,14 @@ namespace Canis
         bool m_reloadBuildInProgress = false;
         bool m_reloadBuildFinished = false;
         bool m_reloadBuildSucceeded = false;
+        bool m_reloadManagedBuildAttempted = false;
+        bool m_reloadManagedBuildSucceeded = true;
         bool m_reloadBuildAwaitingFinalize = false;
         bool m_showReloadBuildPopup = false;
         bool m_openReloadBuildPopup = false;
         bool m_reloadBuildAutoCloseOnSuccess = false;
         int m_reloadBuildExitCode = -1;
+        int m_reloadManagedBuildExitCode = 0;
         std::vector<UUID> m_hierarchyRootOrder = {};
         std::vector<UUID> m_queuedPrefabInstanceRebuilds = {};
         bool m_rebuildAllPrefabInstancesRequested = false;

@@ -138,6 +138,8 @@ namespace Canis
             }
 
             T* scriptableEntity = new T(*this);
+            if constexpr (requires { T::ScriptName; })
+                scriptableEntity->m_registeredScriptName = T::ScriptName;
             m_scriptComponents.push_back(scriptableEntity);
 
             if (_callCreate)
@@ -198,6 +200,10 @@ namespace Canis
         }
 
         ScriptableEntity* AttachScript(const std::string& _scriptName, ScriptableEntity* _scriptableEntity, bool _callCreate = true);
+        ScriptableEntity* GetScriptByName(const std::string& _scriptName);
+        const ScriptableEntity* GetScriptByName(const std::string& _scriptName) const;
+        bool HasScriptByName(const std::string& _scriptName) const;
+        void RemoveScriptByName(const std::string& _scriptName);
         void RemoveScript(const std::string& _scriptName);
         void RemoveAllScripts();
 
@@ -207,12 +213,15 @@ namespace Canis
     class ScriptableEntity
     {
     friend Scene;
+    friend Entity;
     private:
         bool m_onReadyCalled = false;
+        std::string m_registeredScriptName = "";
     public:        
         ScriptableEntity(Canis::Entity& _entity) : entity(_entity) {}
 
         Canis::Entity& entity;
+        const std::string& GetRegisteredScriptName() const { return m_registeredScriptName; }
         virtual void Create() {}
         virtual void Ready() {}
         virtual void Destroy() {}
