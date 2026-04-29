@@ -483,6 +483,7 @@ namespace Canis
             unsigned int vao = 0;
             unsigned int vbo = 0;
             unsigned int ebo = 0;
+            unsigned int instanceVbo = 0;
             std::vector<RenderVertex3D> bindVertices = {};
             std::vector<RenderVertex3D> skinnedVertices = {};
             std::vector<SkinVertex3D> skinVertices = {};
@@ -576,6 +577,13 @@ namespace Canis
             i32 _overrideTextureId = -1,
             const Color &_baseColor = Color(1.0f),
             const std::vector<MaterialAsset*> *_slotMaterialOverrides = nullptr,
+            i32 _nodeIndex = -1,
+            bool _applyNodeTransform = true);
+        void DrawInstanced(
+            Shader &_shader,
+            const std::vector<Matrix4> &_modelMatrices,
+            i32 _overrideTextureId = -1,
+            const Color &_baseColor = Color(1.0f),
             i32 _nodeIndex = -1,
             bool _applyNodeTransform = true);
 

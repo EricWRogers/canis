@@ -10,6 +10,8 @@
 #include <algorithm>
 #include <array>
 #include <cmath>
+#include <map>
+#include <tuple>
 
 namespace Canis
 {
@@ -84,6 +86,60 @@ namespace Canis
             float distanceSquared = 0.0f;
         };
 
+        struct StaticModelBatchKey
+        {
+            i32 modelId = -1;
+            i32 materialId = -1;
+            i32 nodeIndex = -1;
+            bool applyNodeTransform = true;
+            float modelColorR = 1.0f;
+            float modelColorG = 1.0f;
+            float modelColorB = 1.0f;
+            float modelColorA = 1.0f;
+            float materialColorR = 1.0f;
+            float materialColorG = 1.0f;
+            float materialColorB = 1.0f;
+            float materialColorA = 1.0f;
+
+            bool operator<(const StaticModelBatchKey &_other) const
+            {
+                return std::tie(
+                    modelId,
+                    materialId,
+                    nodeIndex,
+                    applyNodeTransform,
+                    modelColorR,
+                    modelColorG,
+                    modelColorB,
+                    modelColorA,
+                    materialColorR,
+                    materialColorG,
+                    materialColorB,
+                    materialColorA) <
+                    std::tie(
+                        _other.modelId,
+                        _other.materialId,
+                        _other.nodeIndex,
+                        _other.applyNodeTransform,
+                        _other.modelColorR,
+                        _other.modelColorG,
+                        _other.modelColorB,
+                        _other.modelColorA,
+                        _other.materialColorR,
+                        _other.materialColorG,
+                        _other.materialColorB,
+                        _other.materialColorA);
+            }
+        };
+
+        struct StaticModelBatch
+        {
+            StaticModelBatchKey key = {};
+            std::vector<Matrix4> modelMatrices = {};
+            std::vector<TransparentModelEntry> sourceEntries = {};
+            float distanceSquared = 0.0f;
+        };
+
         bool UsesTransparentColor(const Color &_color)
         {
             return _color.a < 0.999f;
@@ -120,6 +176,17 @@ namespace Canis
             }
 
             return false;
+        }
+
+        bool HasMaterialFields(const MaterialFields &_fields)
+        {
+            return !_fields.GetIntUniforms().empty() ||
+                !_fields.GetFloatUniforms().empty() ||
+                !_fields.GetVec2Uniforms().empty() ||
+                !_fields.GetVec3Uniforms().empty() ||
+                !_fields.GetVec4Uniforms().empty() ||
+                !_fields.GetColorUniforms().empty() ||
+                !_fields.GetTextureUniforms().empty();
         }
 
         DirectionalLightState GatherDirectionalLight(entt::registry &_registry)
@@ -597,7 +664,7 @@ namespace Canis
         Shader *currentShader = nullptr;
 
         auto modelView = _registry.view<Transform, Model>();
-        std::vector<entt::entity> opaqueEntities = {};
+        std::vector<TransparentModelEntry> opaqueEntities = {};
         std::vector<TransparentModelEntry> transparentEntities = {};
         opaqueEntities.reserve(modelView.size_hint());
         transparentEntities.reserve(modelView.size_hint());
@@ -617,19 +684,32 @@ namespace Canis
             if (model == nullptr)
                 continue;
 
+            const Vector3 offset = transform.GetGlobalPosition() - cameraPosition;
+            const float distanceSquared = glm::dot(offset, offset);
+
             if (EntityUsesTransparency(_registry, entityHandle))
             {
-                const Vector3 offset = transform.GetGlobalPosition() - cameraPosition;
                 transparentEntities.push_back(TransparentModelEntry{
                     .entityHandle = entityHandle,
-                    .distanceSquared = glm::dot(offset, offset)
+                    .distanceSquared = distanceSquared
                 });
             }
             else
             {
-                opaqueEntities.push_back(entityHandle);
+                opaqueEntities.push_back(TransparentModelEntry{
+                    .entityHandle = entityHandle,
+                    .distanceSquared = distanceSquared
+                });
             }
         }
+
+        std::sort(
+            opaqueEntities.begin(),
+            opaqueEntities.end(),
+            [](const TransparentModelEntry &_a, const TransparentModelEntry &_b)
+            {
+                return _a.distanceSquared < _b.distanceSquared;
+            });
 
         std::sort(
             transparentEntities.begin(),
@@ -639,30 +719,12 @@ namespace Canis
                 return _a.distanceSquared > _b.distanceSquared;
             });
 
-        auto drawEntity = [&](const entt::entity entityHandle) -> void
+        auto useShaderForMaterial = [&](MaterialAsset *_materialAsset) -> Shader*
         {
-            Transform &transform = modelView.get<Transform>(entityHandle);
-            Model &modelRenderer = modelView.get<Model>(entityHandle);
-            Entity *entity = modelRenderer.entity;
-            if (entity == nullptr)
-                entity = transform.entity;
-
-            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
-                return;
-
-            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
-            if (model == nullptr)
-                return;
-
-            MaterialAsset *materialAsset = nullptr;
-            Material *material = _registry.try_get<Material>(entityHandle);
-            if (material != nullptr && material->materialId >= 0)
-                materialAsset = AssetManager::GetMaterial(material->materialId);
-
             Shader *activeShader = m_shader;
-            if (materialAsset != nullptr && materialAsset->shaderId >= 0)
+            if (_materialAsset != nullptr && _materialAsset->shaderId >= 0)
             {
-                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId))
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(_materialAsset->shaderId))
                 {
                     if (!shaderAsset->GetShader()->IsLinked())
                         shaderAsset->GetShader()->Link();
@@ -705,6 +767,122 @@ namespace Canis
                     currentShader->SetFloat("pointLightRanges[" + indexString + "]", light.range);
                 }
             }
+
+            return currentShader;
+        };
+
+        std::map<StaticModelBatchKey, StaticModelBatch> staticBatchMap = {};
+        std::vector<TransparentModelEntry> remainingOpaqueEntities = {};
+        remainingOpaqueEntities.reserve(opaqueEntities.size());
+
+        for (const TransparentModelEntry &entry : opaqueEntities)
+        {
+            Transform &transform = modelView.get<Transform>(entry.entityHandle);
+            Model &modelRenderer = modelView.get<Model>(entry.entityHandle);
+            Material *material = _registry.try_get<Material>(entry.entityHandle);
+            MaterialAsset *materialAsset = nullptr;
+            const i32 materialId = (material != nullptr) ? material->materialId : -1;
+            if (materialId >= 0)
+                materialAsset = AssetManager::GetMaterial(materialId);
+
+            bool usesInstancedModelShader = true;
+            if (materialAsset != nullptr && materialAsset->shaderId >= 0)
+            {
+                usesInstancedModelShader = false;
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId))
+                    usesInstancedModelShader = shaderAsset->GetShader() == m_shader;
+            }
+
+            const bool canBatch = modelRenderer.staticModel &&
+                usesInstancedModelShader &&
+                _registry.try_get<ModelAnimation>(entry.entityHandle) == nullptr &&
+                (material == nullptr || (material->materialIds.empty() && !HasMaterialFields(material->materialFields))) &&
+                (materialAsset == nullptr || !HasMaterialFields(materialAsset->materialFields));
+
+            if (!canBatch)
+            {
+                remainingOpaqueEntities.push_back(entry);
+                continue;
+            }
+
+            const Color modelColor = modelRenderer.color;
+            const Color materialColor = (material != nullptr) ? material->color : Color(1.0f);
+            StaticModelBatchKey key = {};
+            key.modelId = modelRenderer.modelId;
+            key.materialId = materialId;
+            key.nodeIndex = modelRenderer.nodeIndex;
+            key.applyNodeTransform = modelRenderer.applyNodeTransform;
+            key.modelColorR = modelColor.r;
+            key.modelColorG = modelColor.g;
+            key.modelColorB = modelColor.b;
+            key.modelColorA = modelColor.a;
+            key.materialColorR = materialColor.r;
+            key.materialColorG = materialColor.g;
+            key.materialColorB = materialColor.b;
+            key.materialColorA = materialColor.a;
+
+            StaticModelBatch &batch = staticBatchMap[key];
+            batch.key = key;
+            batch.modelMatrices.push_back(transform.GetModelMatrix());
+            batch.sourceEntries.push_back(entry);
+            batch.distanceSquared = std::max(batch.distanceSquared, entry.distanceSquared);
+        }
+
+        std::vector<StaticModelBatch> staticBatches = {};
+        staticBatches.reserve(staticBatchMap.size());
+        for (auto &batchPair : staticBatchMap)
+        {
+            StaticModelBatch &batch = batchPair.second;
+            if (batch.modelMatrices.size() > 1u)
+            {
+                staticBatches.push_back(std::move(batch));
+            }
+            else
+            {
+                remainingOpaqueEntities.insert(
+                    remainingOpaqueEntities.end(),
+                    batch.sourceEntries.begin(),
+                    batch.sourceEntries.end());
+            }
+        }
+
+        std::sort(
+            remainingOpaqueEntities.begin(),
+            remainingOpaqueEntities.end(),
+            [](const TransparentModelEntry &_a, const TransparentModelEntry &_b)
+            {
+                return _a.distanceSquared < _b.distanceSquared;
+            });
+
+        std::sort(
+            staticBatches.begin(),
+            staticBatches.end(),
+            [](const StaticModelBatch &_a, const StaticModelBatch &_b)
+            {
+                return _a.distanceSquared < _b.distanceSquared;
+            });
+
+        auto drawEntity = [&](const entt::entity entityHandle) -> void
+        {
+            Transform &transform = modelView.get<Transform>(entityHandle);
+            Model &modelRenderer = modelView.get<Model>(entityHandle);
+            Entity *entity = modelRenderer.entity;
+            if (entity == nullptr)
+                entity = transform.entity;
+
+            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+                return;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                return;
+
+            MaterialAsset *materialAsset = nullptr;
+            Material *material = _registry.try_get<Material>(entityHandle);
+            if (material != nullptr && material->materialId >= 0)
+                materialAsset = AssetManager::GetMaterial(material->materialId);
+
+            useShaderForMaterial(materialAsset);
 
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
@@ -849,9 +1027,135 @@ namespace Canis
                 modelRenderer.applyNodeTransform);
         };
 
+        auto drawStaticBatch = [&](const StaticModelBatch &_batch) -> void
+        {
+            ModelAsset *model = AssetManager::GetModel(_batch.key.modelId);
+            if (model == nullptr)
+                return;
+
+            MaterialAsset *materialAsset = nullptr;
+            if (_batch.key.materialId >= 0)
+                materialAsset = AssetManager::GetMaterial(_batch.key.materialId);
+
+            useShaderForMaterial(materialAsset);
+
+            Color baseColor = Color(
+                _batch.key.modelColorR,
+                _batch.key.modelColorG,
+                _batch.key.modelColorB,
+                _batch.key.modelColorA);
+            i32 overrideTextureId = -1;
+            i32 specularTextureId = -1;
+            i32 roughnessTextureId = -1;
+            i32 metallicTextureId = -1;
+            float specularValue = 0.5f;
+            float roughnessValue = 0.5f;
+            float metallicValue = 0.0f;
+
+            glDisable(GL_CULL_FACE);
+            if (materialAsset != nullptr)
+            {
+                if ((materialAsset->info & MATERIAL_HAS_COLOR) != 0u)
+                    baseColor *= materialAsset->color;
+
+                if (materialAsset->albedoId >= 0)
+                    overrideTextureId = materialAsset->albedoId;
+                if (materialAsset->specularId >= 0)
+                    specularTextureId = materialAsset->specularId;
+                if (materialAsset->roughnessId >= 0)
+                    roughnessTextureId = materialAsset->roughnessId;
+                if (materialAsset->metallicId >= 0)
+                    metallicTextureId = materialAsset->metallicId;
+
+                specularValue = materialAsset->specularValue;
+                roughnessValue = materialAsset->roughnessValue;
+                metallicValue = materialAsset->metallicValue;
+
+                if ((materialAsset->info & MATERIAL_BACK_FACE_CULLING) != 0u)
+                {
+                    glEnable(GL_CULL_FACE);
+                    glCullFace(GL_BACK);
+                }
+                else if ((materialAsset->info & MATERIAL_FRONT_FACE_CULLING) != 0u)
+                {
+                    glEnable(GL_CULL_FACE);
+                    glCullFace(GL_FRONT);
+                }
+            }
+
+            baseColor *= Color(
+                _batch.key.materialColorR,
+                _batch.key.materialColorG,
+                _batch.key.materialColorB,
+                _batch.key.materialColorA);
+
+            currentShader->SetFloat("TIME", static_cast<float>(Time::TimeSinceLaunch()) / 1000.0f);
+            currentShader->SetFloat("specularValue", specularValue);
+            currentShader->SetFloat("roughnessValue", roughnessValue);
+            currentShader->SetFloat("metallicValue", metallicValue);
+
+            currentShader->SetBool("useSpecularMap", specularTextureId >= 0);
+            currentShader->SetBool("useRoughnessMap", roughnessTextureId >= 0);
+            currentShader->SetBool("useMetallicMap", metallicTextureId >= 0);
+            currentShader->SetInt("specularMap", 1);
+            currentShader->SetInt("roughnessMap", 2);
+            currentShader->SetInt("metallicMap", 3);
+
+            glActiveTexture(GL_TEXTURE1);
+            if (specularTextureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(specularTextureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            glActiveTexture(GL_TEXTURE2);
+            if (roughnessTextureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(roughnessTextureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            glActiveTexture(GL_TEXTURE3);
+            if (metallicTextureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(metallicTextureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            glActiveTexture(GL_TEXTURE0);
+
+            model->DrawInstanced(
+                *currentShader,
+                _batch.modelMatrices,
+                overrideTextureId,
+                baseColor,
+                _batch.key.nodeIndex,
+                _batch.key.applyNodeTransform);
+        };
+
         glDepthMask(GL_TRUE);
-        for (const entt::entity entityHandle : opaqueEntities)
-            drawEntity(entityHandle);
+        for (const StaticModelBatch &batch : staticBatches)
+            drawStaticBatch(batch);
+        for (const TransparentModelEntry &entry : remainingOpaqueEntities)
+            drawEntity(entry.entityHandle);
 
         glDepthMask(GL_FALSE);
         for (const TransparentModelEntry &entry : transparentEntities)

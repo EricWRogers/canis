@@ -3326,6 +3326,8 @@ namespace Canis
                         comp["nodeIndex"] = model.nodeIndex;
                     if (!model.applyNodeTransform)
                         comp["applyNodeTransform"] = model.applyNodeTransform;
+                    if (model.staticModel)
+                        comp["static"] = model.staticModel;
 
                     if (model.modelId > -1)
                     {
@@ -3353,6 +3355,7 @@ namespace Canis
                     model.color = comp["color"].as<Vector4>(Color(1.0f));
                     model.nodeIndex = comp["nodeIndex"].as<i32>(-1);
                     model.applyNodeTransform = comp["applyNodeTransform"].as<bool>(true);
+                    model.staticModel = comp["static"].as<bool>(false);
 
                     std::string path = "";
                     if (auto modelAsset = comp["ModelAsset"])
@@ -3405,6 +3408,7 @@ namespace Canis
                 if (_entity.HasComponent<Model>() && ((model = &_entity.GetComponent<Model>()), true))
                 {
                     ImGui::ColorEdit4("color", &model->color.r);
+                    ImGui::Checkbox("static", &model->staticModel);
 
                     std::string modelLabel = "[ empty ]";
                     ModelAsset* modelAsset = nullptr;

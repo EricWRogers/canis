@@ -1864,6 +1864,8 @@ namespace Canis
     {
         for (Primitive3D &primitive : m_primitives)
         {
+            if (primitive.instanceVbo != 0)
+                glDeleteBuffers(1, &primitive.instanceVbo);
             if (primitive.ebo != 0)
                 glDeleteBuffers(1, &primitive.ebo);
             if (primitive.vbo != 0)
@@ -1871,6 +1873,7 @@ namespace Canis
             if (primitive.vao != 0)
                 glDeleteVertexArrays(1, &primitive.vao);
 
+            primitive.instanceVbo = 0;
             primitive.ebo = 0;
             primitive.vbo = 0;
             primitive.vao = 0;
@@ -2126,6 +2129,7 @@ namespace Canis
                 textureId = _overrideTextureId;
             }
 
+            _shader.SetBool("useInstanceMatrix", false);
             _shader.SetMat4("M", model);
             _shader.SetBool("useAlbedoMap", textureId >= 0);
             _shader.SetInt("albedoMap", 0);
@@ -2166,6 +2170,94 @@ namespace Canis
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
         }
 
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+    }
+
+    void ModelAsset::DrawInstanced(
+        Shader &_shader,
+        const std::vector<Matrix4> &_modelMatrices,
+        i32 _overrideTextureId,
+        const Color &_baseColor,
+        i32 _nodeIndex,
+        bool _applyNodeTransform)
+    {
+        if (_modelMatrices.empty())
+            return;
+
+        const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
+        std::vector<Matrix4> primitiveMatrices = {};
+        primitiveMatrices.reserve(_modelMatrices.size());
+
+        for (Primitive3D &primitive : m_primitives)
+        {
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex) || primitive.hasSkinning)
+                continue;
+
+            primitiveMatrices.clear();
+            for (const Matrix4 &modelMatrix : _modelMatrices)
+            {
+                Matrix4 model = modelMatrix;
+                if (applyPrimitiveNodeTransform && primitive.nodeIndex >= 0 && primitive.nodeIndex < (i32)m_nodes.size())
+                    model = modelMatrix * m_nodes[primitive.nodeIndex].globalMatrix;
+
+                primitiveMatrices.push_back(model);
+            }
+
+            i32 textureId = (_overrideTextureId >= 0) ? _overrideTextureId : primitive.textureId;
+            _shader.SetBool("useInstanceMatrix", true);
+            _shader.SetBool("useAlbedoMap", textureId >= 0);
+            _shader.SetInt("albedoMap", 0);
+            _shader.SetVec4("albedoValue", _baseColor);
+
+            glActiveTexture(GL_TEXTURE0);
+            if (textureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(textureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            if (primitive.instanceVbo == 0)
+                glGenBuffers(1, &primitive.instanceVbo);
+
+            glBindVertexArray(primitive.vao);
+            glBindBuffer(GL_ARRAY_BUFFER, primitive.instanceVbo);
+            glBufferData(
+                GL_ARRAY_BUFFER,
+                primitiveMatrices.size() * sizeof(Matrix4),
+                primitiveMatrices.data(),
+                GL_DYNAMIC_DRAW);
+
+            const GLsizei matrixStride = static_cast<GLsizei>(sizeof(Matrix4));
+            for (unsigned int column = 0; column < 4; ++column)
+            {
+                const unsigned int attribute = 3u + column;
+                glEnableVertexAttribArray(attribute);
+                glVertexAttribPointer(
+                    attribute,
+                    4,
+                    GL_FLOAT,
+                    GL_FALSE,
+                    matrixStride,
+                    reinterpret_cast<void*>(sizeof(float) * 4u * column));
+                glVertexAttribDivisor(attribute, 1);
+            }
+
+            glDrawElementsInstanced(
+                GL_TRIANGLES,
+                static_cast<GLsizei>(primitive.indices.size()),
+                GL_UNSIGNED_INT,
+                nullptr,
+                static_cast<GLsizei>(primitiveMatrices.size()));
+        }
+
+        _shader.SetBool("useInstanceMatrix", false);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
