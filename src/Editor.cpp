@@ -3960,6 +3960,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
+    void Editor::ResetVertexSnapDrag()
+    {
+        m_vertexSnapDragActive = false;
+        m_vertexSnapAxesMask = 0;
+        m_vertexSnapDragDirection = Vector3(0.0f);
+    }
+
     bool Editor::TryApplyVertexSnap(Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta)
     {
         if (_selected == nullptr || m_scene == nullptr)
@@ -3974,21 +3981,49 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return false;
 
         const float axisThreshold = std::max(0.0005f, maxDragComponent * 0.15f);
-        const bool useX = std::abs(_dragDelta.x) >= axisThreshold;
-        const bool useY = std::abs(_dragDelta.y) >= axisThreshold;
-        const bool useZ = std::abs(_dragDelta.z) >= axisThreshold;
+        const int detectedAxesMask =
+            (std::abs(_dragDelta.x) >= axisThreshold ? 1 : 0) |
+            (std::abs(_dragDelta.y) >= axisThreshold ? 2 : 0) |
+            (std::abs(_dragDelta.z) >= axisThreshold ? 4 : 0);
+        if (detectedAxesMask == 0)
+            return false;
+
+        if (!m_vertexSnapDragActive)
+        {
+            m_vertexSnapDragActive = true;
+            m_vertexSnapAxesMask = detectedAxesMask;
+            m_vertexSnapDragDirection = Vector3(
+                (detectedAxesMask & 1) != 0 ? (_dragDelta.x < 0.0f ? -1.0f : 1.0f) : 0.0f,
+                (detectedAxesMask & 2) != 0 ? (_dragDelta.y < 0.0f ? -1.0f : 1.0f) : 0.0f,
+                (detectedAxesMask & 4) != 0 ? (_dragDelta.z < 0.0f ? -1.0f : 1.0f) : 0.0f);
+        }
+
+        const int axesMask = (m_vertexSnapAxesMask != 0) ? m_vertexSnapAxesMask : detectedAxesMask;
+        const bool useX = (axesMask & 1) != 0;
+        const bool useY = (axesMask & 2) != 0;
+        const bool useZ = (axesMask & 4) != 0;
         const int activeAxisCount = (useX ? 1 : 0) + (useY ? 1 : 0) + (useZ ? 1 : 0);
+        auto lockedDirection = [&](int _axis) -> float
+        {
+            const float direction = m_vertexSnapDragDirection[_axis];
+            if (direction != 0.0f)
+                return direction < 0.0f ? -1.0f : 1.0f;
+
+            return _dragDelta[_axis] < 0.0f ? -1.0f : 1.0f;
+        };
 
         if (activeAxisCount == 1)
         {
             const int axis = useX ? 0 : (useY ? 1 : 2);
             static constexpr float kBoundsOverlapPadding = 0.05f;
+            static constexpr float kOppositeFaceTolerance = 0.05f;
 
             Vector3 selectedMin(0.0f);
             Vector3 selectedMax(0.0f);
             if (BuildEntityModelWorldBounds(_selected, _selectedWorldMatrix, selectedMin, selectedMax))
             {
-                const bool movingNegative = _dragDelta[axis] < 0.0f;
+                const float direction = lockedDirection(axis);
+                const bool movingNegative = direction < 0.0f;
                 float bestDistance = kMaxSnapDistance;
                 float bestAxisDelta = 0.0f;
                 bool foundBoundsSnap = false;
@@ -4028,6 +4063,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     const float selectedSurface = movingNegative ? selectedMin[axis] : selectedMax[axis];
                     const float targetSurface = movingNegative ? targetMax[axis] : targetMin[axis];
                     const float axisDelta = targetSurface - selectedSurface;
+                    if (axisDelta * direction < -kOppositeFaceTolerance)
+                        continue;
+
                     const float distance = std::abs(axisDelta);
                     if (distance < bestDistance)
                     {
@@ -4711,14 +4749,23 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     void Editor::DrawSceneViewGizmo()
     {
         if (m_gameViewportWidth <= 0 || m_gameViewportHeight <= 0)
+        {
+            ResetVertexSnapDrag();
             return;
+        }
 
         if (m_index < 0 || m_index >= m_scene->GetEntities().size())
+        {
+            ResetVertexSnapDrag();
             return;
+        }
 
         Entity *selected = m_scene->GetEntities()[m_index];
         if (!selected)
+        {
+            ResetVertexSnapDrag();
             return;
+        }
 
         float rectW = (m_gameViewportDrawWidth > 0.0f) ? m_gameViewportDrawWidth : static_cast<float>(m_gameViewportWidth);
         float rectH = (m_gameViewportDrawHeight > 0.0f) ? m_gameViewportDrawHeight : static_cast<float>(m_gameViewportHeight);
@@ -4747,7 +4794,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D;
 
             if (!useEditorSceneCamera)
+            {
+                ResetVertexSnapDrag();
                 return;
+            }
 
             // Overrides are cleared before UI draw; keep using the last scene-camera matrices.
             Matrix4 projection = m_scene->GetEditorCamera3DProjection();
@@ -4791,6 +4841,10 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 {
                     const Matrix4 snapModel = ComposeTransformMatrix(worldPosition, worldRotation, worldScale);
                     (void)TryApplyVertexSnap(selected, snapModel, worldPosition, worldPosition - previousWorldPosition);
+                }
+                else
+                {
+                    ResetVertexSnapDrag();
                 }
 
                 if (transform3D->parent != nullptr)
@@ -4836,9 +4890,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     transform3D->scale = worldScale;
                 }
             }
+            else
+            {
+                ResetVertexSnapDrag();
+            }
 
             return;
         }
+
+        ResetVertexSnapDrag();
 
         RectTransform *rtc = (selected != nullptr && selected->HasComponent<RectTransform>() ? &selected->GetComponent<RectTransform>() : nullptr);
         if (!rtc)

@@ -223,6 +223,7 @@ namespace Canis
         void UpdatePlayMouseCapture();
         void PrimeAssetHotReloadState();
         void PollAssetHotReload(float _deltaTime);
+        void ResetVertexSnapDrag();
         bool TryApplyVertexSnap(Canis::Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta);
 
         void SelectSprite2D();
@@ -321,6 +322,9 @@ namespace Canis
         bool m_playMouseCaptured = false;
         bool m_sceneViewClicked = false;
         bool m_vertexSnappingEnabled = false;
+        bool m_vertexSnapDragActive = false;
+        int m_vertexSnapAxesMask = 0;
+        Vector3 m_vertexSnapDragDirection = Vector3(0.0f);
         float m_assetHotReloadPollTimer = 0.0f;
         bool m_hotReloadAssets = true;
         std::vector<std::string> m_editorFontPaths = {};
