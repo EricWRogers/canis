@@ -39,9 +39,11 @@ namespace Canis
             if (model == nullptr)
                 continue;
 
-            if (modelAnimation.poseModelId != modelRenderer.modelId)
+            if (modelAnimation.poseModelId != modelRenderer.modelId ||
+                modelAnimation.poseGeometryRevision != model->GetGeometryRevision())
             {
                 modelAnimation.poseModelId = modelRenderer.modelId;
+                modelAnimation.poseGeometryRevision = model->GetGeometryRevision();
                 modelAnimation.poseInitialized = false;
                 modelAnimation.lastEvaluatedAnimationIndex = -1;
                 modelAnimation.lastEvaluatedAnimationTime = 0.0f;

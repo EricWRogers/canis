@@ -22,6 +22,40 @@ namespace Canis
                 return std::filesystem::path(value).lexically_normal().generic_string();
             }
 
+            int FindAssetIdForPath(const std::string &_path)
+            {
+                auto &assetLibrary = GetAssetLibrary();
+
+                auto it = assetLibrary.assetPath.find(_path);
+                if (it != assetLibrary.assetPath.end())
+                    return it->second;
+
+                const std::string normalizedPath = NormalizeAssetLibraryPath(_path);
+                it = assetLibrary.assetPath.find(normalizedPath);
+                if (it != assetLibrary.assetPath.end())
+                    return it->second;
+
+                return -1;
+            }
+
+            template <typename T>
+            bool ReloadLoadedAssetInPlace(const std::string &_path)
+            {
+                auto &assetLibrary = GetAssetLibrary();
+                const int id = FindAssetIdForPath(_path);
+                if (id < 0)
+                    return true;
+
+                if (!assetLibrary.assets.contains(id))
+                    return false;
+
+                T *asset = static_cast<T *>(assetLibrary.assets[id]);
+                if (asset == nullptr)
+                    return false;
+
+                return asset->Load(_path);
+            }
+
             std::string Trim(const std::string &value)
             {
                 const auto first = value.find_first_not_of(" \t\n\r");
@@ -619,6 +653,23 @@ namespace Canis
             return id;
         }
 
+        bool ReloadTexture(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            const int id = FindAssetIdForPath(_path);
+            if (id < 0)
+                return true;
+
+            if (!assetLibrary.assets.contains(id))
+                return false;
+
+            TextureAsset *texture = static_cast<TextureAsset *>(assetLibrary.assets[id]);
+            if (texture == nullptr)
+                return false;
+
+            return texture->Reload(_path);
+        }
+
         TextureAsset *GetTexture(const int _textureID)
         {
             return (TextureAsset *)GetAssetLibrary().assets[_textureID];
@@ -1024,6 +1075,23 @@ namespace Canis
             return id;
         }
 
+        bool ReloadModel(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            const int id = FindAssetIdForPath(_path);
+            if (id < 0)
+                return true;
+
+            if (!assetLibrary.assets.contains(id))
+                return false;
+
+            ModelAsset *model = static_cast<ModelAsset *>(assetLibrary.assets[id]);
+            if (model == nullptr)
+                return false;
+
+            return model->Load(_path);
+        }
+
         int CreateModel()
         {
             auto &assetLibrary = GetAssetLibrary();
@@ -1139,6 +1207,47 @@ namespace Canis
             YAML::Node root = YAML::LoadFile(_path);
             PopulateMaterialAssetFromRoot(*material, root);
             return true;
+        }
+
+        bool ReloadAsset(const std::string &_path)
+        {
+            const std::string path = NormalizeAssetLibraryPath(_path);
+            if (path.empty())
+                return false;
+
+            MetaFileAsset *meta = GetMetaFile(path);
+            if (meta == nullptr)
+                return false;
+
+            switch (meta->type)
+            {
+                case MetaFileAsset::FileType::TEXTURE:
+                    return ReloadTexture(path);
+                case MetaFileAsset::FileType::MODEL:
+                    return ReloadModel(path);
+                case MetaFileAsset::FileType::MATERIAL:
+                    return FindAssetIdForPath(path) < 0 ? true : ReloadMaterial(path);
+                case MetaFileAsset::FileType::AUDIO:
+                    return ReloadLoadedAssetInPlace<AudioClipAsset>(path);
+                case MetaFileAsset::FileType::ANIMATIONCLIP:
+                    return ReloadLoadedAssetInPlace<AnimationClipAsset>(path);
+                case MetaFileAsset::FileType::ANIMATORCONTROLLER:
+                    return ReloadLoadedAssetInPlace<AnimatorControllerAsset>(path);
+                case MetaFileAsset::FileType::SKYBOX:
+                    return ReloadLoadedAssetInPlace<SkyboxAsset>(path);
+                case MetaFileAsset::FileType::POSTPROCESS:
+                    return ReloadLoadedAssetInPlace<PostProcessAsset>(path);
+                case MetaFileAsset::FileType::VERTEX:
+                case MetaFileAsset::FileType::FRAGMENT:
+                {
+                    const std::string shaderBasePath = std::filesystem::path(path).replace_extension("").generic_string();
+                    if (FindAssetIdForPath(shaderBasePath) >= 0)
+                        ReloadLoadedShaders();
+                    return true;
+                }
+                default:
+                    return true;
+            }
         }
 
         int LoadSkybox(const std::string &_path)

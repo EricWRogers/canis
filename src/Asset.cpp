@@ -544,9 +544,83 @@ namespace Canis
         return true;
     }
 
+    bool TextureAsset::Reload(std::string _path)
+    {
+        GLTexture replacement = m_texture;
+        if (replacement.id == 0)
+            glGenTextures(1, &replacement.id);
+
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        bool loaded = false;
+
+        stbi_set_flip_vertically_on_load(false);
+        SDL_IOStream *io = SDL_IOFromFile(_path.c_str(), "rb");
+        if (io != nullptr)
+        {
+            size_t imageDataLength = 0;
+            void *imageData = SDL_LoadFile_IO(io, &imageDataLength, true);
+            if (imageData != nullptr && imageDataLength > 0)
+            {
+                stbi_uc *data = stbi_load_from_memory(static_cast<stbi_uc *>(imageData), imageDataLength, &width, &height, &channels, 4);
+                if (data != nullptr)
+                {
+                    glBindTexture(GL_TEXTURE_2D, replacement.id);
+                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+                    glGenerateMipmap(GL_TEXTURE_2D);
+                    glBindTexture(GL_TEXTURE_2D, 0);
+
+                    replacement.width = width;
+                    replacement.height = height;
+                    loaded = true;
+                }
+                else
+                {
+                    const char *failureReason = stbi_failure_reason();
+                    Debug::Warning(
+                        "Failed to reload texture %s%s%s",
+                        _path.c_str(),
+                        failureReason != nullptr ? ": " : "",
+                        failureReason != nullptr ? failureReason : "");
+                }
+
+                stbi_image_free(data);
+                SDL_free(imageData);
+            }
+            else
+            {
+                Debug::Warning("Failed to read texture for reload %s: %s", _path.c_str(), SDL_GetError());
+            }
+        }
+        else
+        {
+            Debug::Warning("Failed to open texture for reload: %s", _path.c_str());
+        }
+
+        stbi_set_flip_vertically_on_load(true);
+
+        if (!loaded)
+        {
+            if (m_texture.id == 0 && replacement.id != 0)
+                glDeleteTextures(1, &replacement.id);
+            return false;
+        }
+
+        m_path = _path;
+        m_texture = replacement;
+        return true;
+    }
+
     bool TextureAsset::Free()
     {
-        glDeleteTextures(1, &m_texture.id);
+        if (m_texture.id != 0)
+            glDeleteTextures(1, &m_texture.id);
+        m_texture = {};
         return true;
     }
 
@@ -1292,10 +1366,119 @@ namespace Canis
             return glm::translate(Matrix4(1.0f), translation) * glm::mat4_cast(q) * glm::scale(Matrix4(1.0f), scale);
         }
 
+        std::string SanitizeEmbeddedTextureName(std::string _name)
+        {
+            if (_name.empty())
+                return "embedded_texture";
+
+            for (char &c : _name)
+            {
+                const bool valid =
+                    (c >= 'a' && c <= 'z') ||
+                    (c >= 'A' && c <= 'Z') ||
+                    (c >= '0' && c <= '9') ||
+                    c == '_' ||
+                    c == '-';
+
+                if (!valid)
+                    c = '_';
+            }
+
+            return _name;
+        }
+
+        bool WriteRgbaTga(
+            const std::filesystem::path &_path,
+            int _width,
+            int _height,
+            const std::vector<unsigned char> &_rgbaPixels)
+        {
+            if (_width <= 0 || _height <= 0 || _rgbaPixels.size() < static_cast<std::size_t>(_width * _height * 4))
+                return false;
+
+            std::ofstream out(_path, std::ios::binary);
+            if (!out.is_open())
+                return false;
+
+            unsigned char header[18] = {};
+            header[2] = 2;
+            header[12] = static_cast<unsigned char>(_width & 0xFF);
+            header[13] = static_cast<unsigned char>((_width >> 8) & 0xFF);
+            header[14] = static_cast<unsigned char>(_height & 0xFF);
+            header[15] = static_cast<unsigned char>((_height >> 8) & 0xFF);
+            header[16] = 32;
+            header[17] = 0x20;
+            out.write(reinterpret_cast<const char *>(header), sizeof(header));
+
+            for (int y = 0; y < _height; ++y)
+            {
+                for (int x = 0; x < _width; ++x)
+                {
+                    const std::size_t offset = static_cast<std::size_t>((y * _width + x) * 4);
+                    const unsigned char bgra[4] = {
+                        _rgbaPixels[offset + 2],
+                        _rgbaPixels[offset + 1],
+                        _rgbaPixels[offset + 0],
+                        _rgbaPixels[offset + 3]
+                    };
+                    out.write(reinterpret_cast<const char *>(bgra), sizeof(bgra));
+                }
+            }
+
+            return out.good();
+        }
+
+        std::string ExtractEmbeddedTexture(
+            const tinygltf::Image &_image,
+            int _imageIndex,
+            const std::filesystem::path &_modelPath)
+        {
+            if (_image.image.empty() || _image.width <= 0 || _image.height <= 0)
+                return "";
+
+            if (_image.component != 4)
+            {
+                Debug::Warning("Embedded texture has %d channels. Only RGBA embedded textures are supported for extraction.", _image.component);
+                return "";
+            }
+
+            const std::filesystem::path modelDirectory = _modelPath.parent_path();
+            const std::string modelStem = _modelPath.stem().string().empty() ? "model" : _modelPath.stem().string();
+            const std::filesystem::path textureDirectory = modelDirectory / (modelStem + "_textures");
+
+            std::string textureName = _image.name;
+            if (textureName.empty())
+                textureName = "embedded_texture_" + std::to_string(_imageIndex);
+            textureName = SanitizeEmbeddedTextureName(textureName);
+
+            const std::filesystem::path texturePath = textureDirectory / (textureName + ".tga");
+
+            std::error_code ec;
+            std::filesystem::create_directories(textureDirectory, ec);
+            if (ec)
+            {
+                Debug::Warning("Failed to create embedded texture directory '%s': %s", textureDirectory.generic_string().c_str(), ec.message().c_str());
+                return "";
+            }
+
+            if (!std::filesystem::exists(texturePath))
+            {
+                if (!WriteRgbaTga(texturePath, _image.width, _image.height, _image.image))
+                {
+                    Debug::Warning("Failed to write embedded texture '%s'.", texturePath.generic_string().c_str());
+                    return "";
+                }
+            }
+
+            const std::string outputPath = texturePath.generic_string();
+            (void)AssetManager::GetMetaFile(outputPath);
+            return outputPath;
+        }
+
         std::string ResolveTexturePath(
             const tinygltf::Model &_gltfModel,
             const tinygltf::Primitive &_primitive,
-            const std::filesystem::path &_modelDirectory)
+            const std::filesystem::path &_modelPath)
         {
             if (_primitive.material < 0 || _primitive.material >= (int)_gltfModel.materials.size())
                 return "";
@@ -1310,16 +1493,13 @@ namespace Canis
                 return "";
 
             const tinygltf::Image &image = _gltfModel.images[texture.source];
-            if (image.uri.empty())
-                return "";
-
-            if (image.uri.rfind("data:", 0) == 0)
+            if (image.uri.empty() || image.uri.rfind("data:", 0) == 0)
             {
-                Debug::Warning("Embedded image data URIs are not supported yet.");
-                return "";
+                return ExtractEmbeddedTexture(image, texture.source, _modelPath);
             }
 
-            std::filesystem::path texturePath = _modelDirectory / image.uri;
+            const std::filesystem::path modelDirectory = _modelPath.parent_path();
+            std::filesystem::path texturePath = modelDirectory / image.uri;
             return texturePath.generic_string();
         }
 
@@ -1642,7 +1822,6 @@ namespace Canis
             m_animations[i] = clip;
         }
 
-        const std::filesystem::path modelDirectory = std::filesystem::path(_path).parent_path();
         std::unordered_map<int, int> gltfMaterialToSlot = {};
         auto getMaterialSlot = [&](int _gltfMaterialIndex) -> int
         {
@@ -1797,7 +1976,7 @@ namespace Canis
                 }
 
                 outputPrimitive.skinnedVertices = outputPrimitive.bindVertices;
-                std::string texturePath = ResolveTexturePath(gltfModel, primitive, modelDirectory);
+                std::string texturePath = ResolveTexturePath(gltfModel, primitive, std::filesystem::path(_path));
                 if (!texturePath.empty())
                     outputPrimitive.textureId = AssetManager::LoadTexture(texturePath);
 

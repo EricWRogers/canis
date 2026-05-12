@@ -121,6 +121,166 @@ namespace Canis
             }
         }
 
+        Matrix4 ComposeTransformMatrix(const Vector3 &_position, const Vector3 &_rotation, const Vector3 &_scale)
+        {
+            Matrix4 matrix = Matrix4(1.0f);
+            matrix = glm::translate(matrix, _position);
+            matrix = glm::rotate(matrix, _rotation.z, Vector3(0.0f, 0.0f, 1.0f));
+            matrix = glm::rotate(matrix, _rotation.y, Vector3(0.0f, 1.0f, 0.0f));
+            matrix = glm::rotate(matrix, _rotation.x, Vector3(1.0f, 0.0f, 0.0f));
+            matrix = glm::scale(matrix, _scale);
+            return matrix;
+        }
+
+        bool BuildEntityModelWorldVertices(
+            Entity *_entity,
+            const Matrix4 &_modelMatrix,
+            std::vector<Vector3> &_outVertices,
+            std::size_t _maxVertices)
+        {
+            if (_entity == nullptr || !_entity->active || !_entity->HasComponent<Model>())
+                return false;
+
+            Model &modelRenderer = _entity->GetComponent<Model>();
+            if (modelRenderer.modelId < 0)
+                return false;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                return false;
+
+            std::vector<Vector3> localVertices = {};
+            std::vector<u32> indices = {};
+            if (!model->BuildTriangleMesh(localVertices, indices, modelRenderer.nodeIndex, modelRenderer.applyNodeTransform))
+                return false;
+
+            if (localVertices.empty())
+                return false;
+
+            _outVertices.clear();
+            _outVertices.reserve(std::min(localVertices.size(), _maxVertices));
+
+            const std::size_t stride = localVertices.size() > _maxVertices ?
+                static_cast<std::size_t>(std::ceil(static_cast<float>(localVertices.size()) / static_cast<float>(_maxVertices))) :
+                1u;
+
+            for (std::size_t i = 0; i < localVertices.size() && _outVertices.size() < _maxVertices; i += stride)
+            {
+                const Vector3 &localVertex = localVertices[i];
+                const Vector4 world = _modelMatrix * Vector4(localVertex.x, localVertex.y, localVertex.z, 1.0f);
+                _outVertices.push_back(Vector3(world.x, world.y, world.z));
+            }
+
+            return true;
+        }
+
+        bool BuildEntityModelWorldBounds(
+            Entity *_entity,
+            const Matrix4 &_modelMatrix,
+            Vector3 &_outMin,
+            Vector3 &_outMax)
+        {
+            if (_entity == nullptr || !_entity->active || !_entity->HasComponent<Model>())
+                return false;
+
+            Model &modelRenderer = _entity->GetComponent<Model>();
+            if (modelRenderer.modelId < 0)
+                return false;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                return false;
+
+            Vector3 localMin(0.0f);
+            Vector3 localMax(0.0f);
+            if (!model->GetLocalBounds(localMin, localMax, modelRenderer.nodeIndex, modelRenderer.applyNodeTransform))
+                return false;
+
+            const Vector3 corners[8] = {
+                Vector3(localMin.x, localMin.y, localMin.z),
+                Vector3(localMax.x, localMin.y, localMin.z),
+                Vector3(localMin.x, localMax.y, localMin.z),
+                Vector3(localMax.x, localMax.y, localMin.z),
+                Vector3(localMin.x, localMin.y, localMax.z),
+                Vector3(localMax.x, localMin.y, localMax.z),
+                Vector3(localMin.x, localMax.y, localMax.z),
+                Vector3(localMax.x, localMax.y, localMax.z),
+            };
+
+            bool initialized = false;
+            for (const Vector3 &corner : corners)
+            {
+                const Vector4 world = _modelMatrix * Vector4(corner.x, corner.y, corner.z, 1.0f);
+                const Vector3 worldCorner(world.x, world.y, world.z);
+                if (!initialized)
+                {
+                    _outMin = worldCorner;
+                    _outMax = worldCorner;
+                    initialized = true;
+                    continue;
+                }
+
+                _outMin = glm::min(_outMin, worldCorner);
+                _outMax = glm::max(_outMax, worldCorner);
+            }
+
+            return initialized;
+        }
+
+        bool RangesOverlap(float _minA, float _maxA, float _minB, float _maxB, float _padding)
+        {
+            return _maxA + _padding >= _minB && _maxB + _padding >= _minA;
+        }
+
+        void RefreshMetaFileTimestamp(const std::string &_path)
+        {
+            MetaFileAsset *meta = AssetManager::GetMetaFile(_path);
+            if (meta == nullptr)
+                return;
+
+            SDL_PathInfo info;
+            if (!SDL_GetPathInfo(_path.c_str(), &info))
+                return;
+
+            meta->path = _path;
+            meta->name = GetFileName(_path);
+            meta->extension = GetFileExtension(_path);
+            std::transform(meta->extension.begin(), meta->extension.end(), meta->extension.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+            meta->size = info.size;
+            meta->modified = info.modify_time;
+            meta->Save();
+        }
+
+        bool IsHotReloadEligibleAsset(const std::string &_path)
+        {
+            if (_path.empty() || std::filesystem::path(_path).extension() == ".meta")
+                return false;
+
+            MetaFileAsset *meta = AssetManager::GetMetaFile(_path);
+            if (meta == nullptr)
+                return false;
+
+            switch (meta->type)
+            {
+                case MetaFileAsset::FileType::TEXTURE:
+                case MetaFileAsset::FileType::AUDIO:
+                case MetaFileAsset::FileType::ANIMATIONCLIP:
+                case MetaFileAsset::FileType::ANIMATORCONTROLLER:
+                case MetaFileAsset::FileType::MODEL:
+                case MetaFileAsset::FileType::MATERIAL:
+                case MetaFileAsset::FileType::SKYBOX:
+                case MetaFileAsset::FileType::POSTPROCESS:
+                case MetaFileAsset::FileType::VERTEX:
+                case MetaFileAsset::FileType::FRAGMENT:
+                    return true;
+                default:
+                    return false;
+            }
+        }
+
         float GetEditorToolbarHeight()
         {
             const ImGuiStyle &style = ImGui::GetStyle();
@@ -3349,6 +3509,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ApplyEditorFont(initialFontPath);
 
         m_assetPaths = FindFilesInFolder("assets", "");
+        PrimeAssetHotReloadState();
 
         m_gameViewportWidth = _window->GetWindowWidth();
         m_gameViewportHeight = _window->GetWindowHeight();
@@ -3442,6 +3603,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_gameInputWindowID = SDL_GetWindowID((SDL_Window *)m_window->GetSDLWindow());
         if (sceneChanged)
             ResetSceneHistory();
+        PollAssetHotReload(_deltaTime);
 
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
@@ -3484,18 +3646,45 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         ImGui::NewFrame();
         DrawMainDockspace();
 
-        bool refresh = DrawHierarchyPanel();
-        DrawAnimationWindow(_deltaTime);
-        DrawAnimatorWindow();
-        DrawInspectorPanel(refresh);
-        DrawEnvironment();
-        DrawSystemPanel();
-        DrawAssetsPanel();
-        DrawShaderGraphWindow();
-        DrawScriptsPanel();
-        DrawProjectSettings();
-        DrawSceneView();
-        DrawGameView();
+        bool refresh = false;
+        if (m_showHierarchyPanel)
+            refresh = DrawHierarchyPanel();
+        if (m_showAnimationPanel)
+            DrawAnimationWindow(_deltaTime);
+        if (m_showAnimatorPanel)
+            DrawAnimatorWindow();
+        if (m_showInspectorPanel)
+            DrawInspectorPanel(refresh);
+        if (m_showEnvironmentPanel)
+            DrawEnvironment();
+        if (m_showSystemsPanel)
+            DrawSystemPanel();
+        if (m_showAssetsPanel)
+            DrawAssetsPanel();
+        if (m_showShaderGraphPanel)
+            DrawShaderGraphWindow();
+        if (m_showScriptsPanel)
+            DrawScriptsPanel();
+        if (m_showProjectSettingsPanel)
+            DrawProjectSettings();
+        if (m_showScenePanel)
+            DrawSceneView();
+        else
+        {
+            m_gameViewHovered = false;
+            m_sceneViewClicked = false;
+        }
+
+        if (m_showGamePanel)
+            DrawGameView();
+        else
+        {
+            m_playViewHovered = false;
+            if (m_scene != nullptr)
+                m_scene->GetInputManager().ClearGameMouseViewport();
+        }
+
+        UpdatePlayMouseCapture();
         DrawEditorPanel(); // draw last
         ProcessQueuedPrefabRebuilds();
 
@@ -3720,8 +3909,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         if (m_mode != EditorMode::PLAY && m_mode != EditorMode::PAUSE)
             return;
 
-        if (m_window != nullptr && m_window->IsMouseLocked())
-            m_window->LockMouse(false);
+        ReleasePlayMouseCapture();
 
         AudioManager::StopMusic();
         AudioManager::StopAllSounds();
@@ -3738,6 +3926,289 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_scene->m_path = g_lastPlayScenePath;
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
         ResetSceneHistory();
+    }
+
+    void Editor::ReleasePlayMouseCapture()
+    {
+        m_playMouseCaptured = false;
+
+        if (m_window != nullptr && m_window->IsMouseLocked())
+            m_window->LockMouse(false);
+    }
+
+    void Editor::UpdatePlayMouseCapture()
+    {
+        if (m_window == nullptr)
+            return;
+
+        if (m_mode != EditorMode::PLAY || !m_showGamePanel)
+        {
+            ReleasePlayMouseCapture();
+            return;
+        }
+
+        if (!m_window->IsMouseLocked())
+            m_playMouseCaptured = false;
+
+        if (!m_playViewHovered)
+            return;
+
+        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+        {
+            m_window->LockMouse(true);
+            m_playMouseCaptured = true;
+        }
+    }
+
+    bool Editor::TryApplyVertexSnap(Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta)
+    {
+        if (_selected == nullptr || m_scene == nullptr)
+            return false;
+
+        static constexpr std::size_t kMaxSnapVerticesPerModel = 1024u;
+        static constexpr std::size_t kMaxSnapPairChecks = 2000000u;
+        static constexpr float kMaxSnapDistance = 0.75f;
+
+        const float maxDragComponent = std::max({ std::abs(_dragDelta.x), std::abs(_dragDelta.y), std::abs(_dragDelta.z) });
+        if (maxDragComponent <= 0.00001f)
+            return false;
+
+        const float axisThreshold = std::max(0.0005f, maxDragComponent * 0.15f);
+        const bool useX = std::abs(_dragDelta.x) >= axisThreshold;
+        const bool useY = std::abs(_dragDelta.y) >= axisThreshold;
+        const bool useZ = std::abs(_dragDelta.z) >= axisThreshold;
+        const int activeAxisCount = (useX ? 1 : 0) + (useY ? 1 : 0) + (useZ ? 1 : 0);
+
+        if (activeAxisCount == 1)
+        {
+            const int axis = useX ? 0 : (useY ? 1 : 2);
+            static constexpr float kBoundsOverlapPadding = 0.05f;
+
+            Vector3 selectedMin(0.0f);
+            Vector3 selectedMax(0.0f);
+            if (BuildEntityModelWorldBounds(_selected, _selectedWorldMatrix, selectedMin, selectedMax))
+            {
+                const bool movingNegative = _dragDelta[axis] < 0.0f;
+                float bestDistance = kMaxSnapDistance;
+                float bestAxisDelta = 0.0f;
+                bool foundBoundsSnap = false;
+
+                for (Entity *target : m_scene->GetEntities())
+                {
+                    if (target == nullptr || target == _selected || !target->active || !target->HasComponents<Transform, Model>())
+                        continue;
+
+                    Vector3 targetMin(0.0f);
+                    Vector3 targetMax(0.0f);
+                    const Matrix4 targetMatrix = target->GetComponent<Transform>().GetModelMatrix();
+                    if (!BuildEntityModelWorldBounds(target, targetMatrix, targetMin, targetMax))
+                        continue;
+
+                    bool overlapsInactiveAxes = true;
+                    for (int inactiveAxis = 0; inactiveAxis < 3; ++inactiveAxis)
+                    {
+                        if (inactiveAxis == axis)
+                            continue;
+
+                        if (!RangesOverlap(
+                            selectedMin[inactiveAxis],
+                            selectedMax[inactiveAxis],
+                            targetMin[inactiveAxis],
+                            targetMax[inactiveAxis],
+                            kBoundsOverlapPadding))
+                        {
+                            overlapsInactiveAxes = false;
+                            break;
+                        }
+                    }
+
+                    if (!overlapsInactiveAxes)
+                        continue;
+
+                    const float selectedSurface = movingNegative ? selectedMin[axis] : selectedMax[axis];
+                    const float targetSurface = movingNegative ? targetMax[axis] : targetMin[axis];
+                    const float axisDelta = targetSurface - selectedSurface;
+                    const float distance = std::abs(axisDelta);
+                    if (distance < bestDistance)
+                    {
+                        bestDistance = distance;
+                        bestAxisDelta = axisDelta;
+                        foundBoundsSnap = true;
+                    }
+                }
+
+                if (foundBoundsSnap)
+                {
+                    _worldPosition[axis] += bestAxisDelta;
+                    return true;
+                }
+            }
+        }
+
+        std::vector<Vector3> selectedVertices = {};
+        if (!BuildEntityModelWorldVertices(_selected, _selectedWorldMatrix, selectedVertices, kMaxSnapVerticesPerModel))
+            return false;
+
+        float bestDistanceSquared = kMaxSnapDistance * kMaxSnapDistance;
+        Vector3 bestConstrainedDelta = Vector3(0.0f);
+        bool found = false;
+
+        std::vector<Entity *> &entities = m_scene->GetEntities();
+        for (Entity *target : entities)
+        {
+            if (target == nullptr || target == _selected || !target->active || !target->HasComponents<Transform, Model>())
+                continue;
+
+            std::vector<Vector3> targetVertices = {};
+            const Matrix4 targetMatrix = target->GetComponent<Transform>().GetModelMatrix();
+            if (!BuildEntityModelWorldVertices(target, targetMatrix, targetVertices, kMaxSnapVerticesPerModel))
+                continue;
+
+            if (selectedVertices.size() * targetVertices.size() > kMaxSnapPairChecks)
+                continue;
+
+            for (const Vector3 &selectedVertex : selectedVertices)
+            {
+                for (const Vector3 &targetVertex : targetVertices)
+                {
+                    const Vector3 delta = targetVertex - selectedVertex;
+                    const Vector3 constrainedDelta(
+                        useX ? delta.x : 0.0f,
+                        useY ? delta.y : 0.0f,
+                        useZ ? delta.z : 0.0f);
+                    const float distanceSquared = glm::dot(constrainedDelta, constrainedDelta);
+                    if (distanceSquared < bestDistanceSquared)
+                    {
+                        bestDistanceSquared = distanceSquared;
+                        bestConstrainedDelta = constrainedDelta;
+                        found = true;
+                    }
+                }
+            }
+        }
+
+        if (!found)
+            return false;
+
+        if (glm::dot(bestConstrainedDelta, bestConstrainedDelta) <= 0.0000001f)
+            return false;
+
+        _worldPosition += bestConstrainedDelta;
+        return true;
+    }
+
+    void Editor::PrimeAssetHotReloadState()
+    {
+        m_assetHotReloadWriteTimes.clear();
+        m_pendingHotReloadAssets.clear();
+        m_assetHotReloadPollTimer = 0.0f;
+
+        m_assetPaths = FindFilesInFolder("assets", "");
+        for (const std::string &path : m_assetPaths)
+        {
+            if (!IsHotReloadEligibleAsset(path))
+                continue;
+
+            std::error_code ec;
+            const auto writeTime = std::filesystem::last_write_time(path, ec);
+            if (!ec)
+                m_assetHotReloadWriteTimes[path] = writeTime;
+        }
+    }
+
+    void Editor::PollAssetHotReload(float _deltaTime)
+    {
+        if (!m_hotReloadAssets)
+            return;
+
+        for (auto it = m_pendingHotReloadAssets.begin(); it != m_pendingHotReloadAssets.end();)
+        {
+            std::error_code ec;
+            const auto currentWriteTime = std::filesystem::last_write_time(it->first, ec);
+            if (ec)
+            {
+                it = m_pendingHotReloadAssets.erase(it);
+                continue;
+            }
+
+            if (currentWriteTime != it->second.writeTime)
+            {
+                it->second.writeTime = currentWriteTime;
+                it->second.debounceSeconds = 0.35f;
+                ++it;
+                continue;
+            }
+
+            it->second.debounceSeconds -= std::max(0.0f, _deltaTime);
+            if (it->second.debounceSeconds > 0.0f)
+            {
+                ++it;
+                continue;
+            }
+
+            const std::string path = it->first;
+            const bool reloaded = AssetManager::ReloadAsset(path);
+            if (reloaded)
+            {
+                RefreshMetaFileTimestamp(path);
+                Debug::Log("Hot reloaded asset: %s", path.c_str());
+            }
+            else
+            {
+                Debug::Warning("Failed to hot reload asset: %s", path.c_str());
+            }
+
+            m_assetHotReloadWriteTimes[path] = currentWriteTime;
+            it = m_pendingHotReloadAssets.erase(it);
+        }
+
+        m_assetHotReloadPollTimer -= std::max(0.0f, _deltaTime);
+        if (m_assetHotReloadPollTimer > 0.0f)
+            return;
+
+        m_assetHotReloadPollTimer = 0.5f;
+        m_assetPaths = FindFilesInFolder("assets", "");
+
+        std::unordered_set<std::string> currentPaths = {};
+        currentPaths.reserve(m_assetPaths.size());
+        for (const std::string &path : m_assetPaths)
+        {
+            currentPaths.insert(path);
+            if (!IsHotReloadEligibleAsset(path))
+                continue;
+
+            std::error_code ec;
+            const auto writeTime = std::filesystem::last_write_time(path, ec);
+            if (ec)
+                continue;
+
+            auto knownIt = m_assetHotReloadWriteTimes.find(path);
+            if (knownIt == m_assetHotReloadWriteTimes.end())
+            {
+                m_assetHotReloadWriteTimes[path] = writeTime;
+                continue;
+            }
+
+            if (knownIt->second != writeTime)
+            {
+                PendingHotReloadAsset pending = {};
+                pending.writeTime = writeTime;
+                pending.debounceSeconds = 0.35f;
+                m_pendingHotReloadAssets[path] = pending;
+            }
+        }
+
+        for (auto it = m_assetHotReloadWriteTimes.begin(); it != m_assetHotReloadWriteTimes.end();)
+        {
+            if (currentPaths.contains(it->first))
+            {
+                ++it;
+                continue;
+            }
+
+            m_pendingHotReloadAssets.erase(it->first);
+            it = m_assetHotReloadWriteTimes.erase(it);
+        }
     }
 
     bool Editor::CanTrackSceneHistory() const
@@ -4040,7 +4511,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawSceneView()
     {
-        ImGui::Begin("Scene");
+        ImGui::Begin("Scene", &m_showScenePanel);
+        m_sceneViewClicked = false;
 
         ImVec2 avail = ImGui::GetContentRegionAvail();
         int nextWidth = static_cast<int>(avail.x);
@@ -4099,6 +4571,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     ImVec2(0.0f, 1.0f),
                     ImVec2(1.0f, 0.0f));
                 hovered = ImGui::IsItemHovered();
+                m_sceneViewClicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
                 DrawSceneViewGizmo();
             }
             else
@@ -4126,12 +4599,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawGameView()
     {
-        ImGui::Begin("Game");
+        ImGui::Begin("Game", &m_showGamePanel);
 
         m_playViewportPosX = 0.0f;
         m_playViewportPosY = 0.0f;
         m_playViewportDrawWidth = 0.0f;
         m_playViewportDrawHeight = 0.0f;
+        m_playViewHovered = false;
 
         if (ImGuiViewport *viewport = ImGui::GetWindowViewport())
         {
@@ -4193,6 +4667,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                     drawSize,
                     ImVec2(0.0f, 1.0f),
                     ImVec2(1.0f, 0.0f));
+                m_playViewHovered = ImGui::IsItemHovered();
 
                 if (m_scene != nullptr)
                 {
@@ -4279,6 +4754,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             Matrix4 view = m_scene->GetEditorCamera3DView();
 
             Matrix4 model = transform3D->GetModelMatrix();
+            const Vector3 previousWorldPosition = transform3D->GetGlobalPosition();
 
             ImGuizmo::SetOrthographic(false);
             static ImGuizmo::OPERATION operation3D = ImGuizmo::TRANSLATE;
@@ -4304,9 +4780,18 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 float t[3], r[3], s[3];
                 ImGuizmo::DecomposeMatrixToComponents(glm::value_ptr(model), t, r, s);
 
-                const Vector3 worldPosition(t[0], t[1], t[2]);
+                Vector3 worldPosition(t[0], t[1], t[2]);
                 const Vector3 worldRotation(DEG2RAD * r[0], DEG2RAD * r[1], DEG2RAD * r[2]);
                 const Vector3 worldScale(s[0], s[1], s[2]);
+                const bool vertexSnapActive =
+                    operation3D == ImGuizmo::TRANSLATE &&
+                    (m_vertexSnappingEnabled || ImGui::IsKeyDown(ImGuiKey_V));
+
+                if (vertexSnapActive)
+                {
+                    const Matrix4 snapModel = ComposeTransformMatrix(worldPosition, worldRotation, worldScale);
+                    (void)TryApplyVertexSnap(selected, snapModel, worldPosition, worldPosition - previousWorldPosition);
+                }
 
                 if (transform3D->parent != nullptr)
                 {
@@ -6432,7 +6917,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     bool Editor::DrawHierarchyPanel()
     {
-        ImGui::Begin("Hierarchy###Hierarchy");
+        ImGui::Begin("Hierarchy###Hierarchy", &m_showHierarchyPanel);
         bool refresh = false;
 
         std::vector<Canis::Entity *> &entities = m_scene->GetEntities();
@@ -6667,7 +7152,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawInspectorPanel(bool _refresh)
     {
-        ImGui::Begin("Inspector");
+        ImGui::Begin("Inspector", &m_showInspectorPanel);
 
         if (!m_selectedAssetPath.empty())
         {
@@ -7919,7 +8404,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             m_animatorSelectedTransition = -1;
         }
 
-        ImGui::Begin("Animator");
+        ImGui::Begin("Animator", &m_showAnimatorPanel);
 
         MetaFileAsset *meta = nullptr;
         if (!IsAnimatorControllerAssetPath(m_animatorStatePath, &meta))
@@ -8611,7 +9096,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             RememberLastAnimationClipAssetPath(m_animationClipStatePath);
         };
 
-        ImGui::Begin("Animation");
+        ImGui::Begin("Animation", &m_showAnimationPanel);
 
         std::string clipLabel = "[ none ]";
         if (clipMeta != nullptr)
@@ -9462,7 +9947,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawEnvironment()
     {
-        ImGui::Begin("Environment");
+        ImGui::Begin("Environment", &m_showEnvironmentPanel);
         Color background = m_window->GetClearColor();
         ImGui::ColorEdit4("Background##", &background.r);
 
@@ -10299,7 +10784,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     {
         namespace fs = std::filesystem;
 
-        ImGui::Begin("Scripts");
+        ImGui::Begin("Scripts", &m_showScriptsPanel);
 
         const fs::path gameCodeRoot = FindGameCodeRoot();
         if (gameCodeRoot.empty())
@@ -10438,14 +10923,14 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawAssetsPanel()
     {
-        ImGui::Begin("Assets");
+        ImGui::Begin("Assets", &m_showAssetsPanel);
         DrawDirectoryRecursive("assets");
         ImGui::End();
     }
 
     void Editor::DrawSystemPanel()
     {
-        ImGui::Begin("Systems");
+        ImGui::Begin("Systems", &m_showSystemsPanel);
 
         if (m_scene == nullptr)
         {
@@ -10761,7 +11246,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
     void Editor::DrawProjectSettings()
     {
-        ImGui::Begin("ProjectSettings");
+        ImGui::Begin("ProjectSettings", &m_showProjectSettingsPanel);
 
         if (ImGui::Button("Save Project", ImVec2(-1.0f, 0.0f)))
         {
@@ -11154,6 +11639,51 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
     }
 
+    void Editor::DrawEditorWindowMenu()
+    {
+        if (ImGui::Button("Windows##EditorToolbar"))
+            ImGui::OpenPopup("EditorWindowsPopup");
+
+        if (!ImGui::BeginPopup("EditorWindowsPopup"))
+            return;
+
+        ImGui::MenuItem("Scene", nullptr, &m_showScenePanel);
+        ImGui::MenuItem("Game", nullptr, &m_showGamePanel);
+        ImGui::Separator();
+        ImGui::MenuItem("Hierarchy", nullptr, &m_showHierarchyPanel);
+        ImGui::MenuItem("Inspector", nullptr, &m_showInspectorPanel);
+        ImGui::MenuItem("Environment", nullptr, &m_showEnvironmentPanel);
+        ImGui::MenuItem("Systems", nullptr, &m_showSystemsPanel);
+        ImGui::MenuItem("Assets", nullptr, &m_showAssetsPanel);
+        ImGui::MenuItem("Scripts", nullptr, &m_showScriptsPanel);
+        ImGui::Separator();
+        ImGui::MenuItem("Animation", nullptr, &m_showAnimationPanel);
+        ImGui::MenuItem("Animator", nullptr, &m_showAnimatorPanel);
+        ImGui::MenuItem("ShaderGraph", nullptr, &m_showShaderGraphPanel);
+        ImGui::MenuItem("Project Settings", nullptr, &m_showProjectSettingsPanel);
+
+        ImGui::Separator();
+        ImGui::MenuItem("Hot Reload Assets", nullptr, &m_hotReloadAssets);
+        ImGui::Separator();
+        if (ImGui::MenuItem("Show All"))
+        {
+            m_showScenePanel = true;
+            m_showGamePanel = true;
+            m_showHierarchyPanel = true;
+            m_showInspectorPanel = true;
+            m_showEnvironmentPanel = true;
+            m_showSystemsPanel = true;
+            m_showAssetsPanel = true;
+            m_showScriptsPanel = true;
+            m_showAnimationPanel = true;
+            m_showAnimatorPanel = true;
+            m_showShaderGraphPanel = true;
+            m_showProjectSettingsPanel = true;
+        }
+
+        ImGui::EndPopup();
+    }
+
     void Editor::DrawEditorPanel()
     {
         FinalizeReloadBuildIfReady();
@@ -11355,6 +11885,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 if (ImGui::Button("Pause##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
                 {
                     hotKeyCoolDown = HOTKEYRESET;
+                    ReleasePlayMouseCapture();
                     m_mode = EditorMode::PAUSE;
                 }
             }
@@ -11363,6 +11894,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 if (ImGui::Button("Resume##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
                 {
                     hotKeyCoolDown = HOTKEYRESET;
+                    ReleasePlayMouseCapture();
                     m_mode = EditorMode::PLAY;
                 }
             }
@@ -11377,6 +11909,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         }
 
         hotKeyCoolDown -= Time::UnscaledDeltaTime();
+
+        ImGui::SameLine();
+        DrawEditorWindowMenu();
 
         ImGui::SameLine();
         ImGui::Text("FPS: %s", std::to_string(m_app->FPS()).c_str());
@@ -11396,6 +11931,12 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 m_guizmoMode = GuizmoMode::LOCAL;
             }
         }
+
+        ImGui::SameLine();
+        if (ImGui::Button(m_vertexSnappingEnabled ? "Vertex Snap: On##ScenePanel" : "Vertex Snap: Off##ScenePanel"))
+            m_vertexSnappingEnabled = !m_vertexSnappingEnabled;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hold V while translating for temporary vertex snapping.");
 
         ImGui::SameLine();
         int sceneCameraMode = static_cast<int>(m_sceneCameraMode);
@@ -11475,7 +12016,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
         m_selectionMouseWorld = mouse;
 
-        if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (!m_sceneViewClicked)
             return;
 
         bool mouseLock = false;
@@ -11530,7 +12071,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return;
         }
 
-        if (!ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        if (!m_sceneViewClicked)
             return;
 
         const int targetWidth = (m_gameTextureWidth > 0) ? m_gameTextureWidth : m_window->GetWindowWidth();
@@ -11590,7 +12131,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = registry.try_get<ModelAnimation>(entityHandle))
             {
-                if (animation->poseModelId == modelRenderer.modelId)
+                if (animation->poseModelId == modelRenderer.modelId &&
+                    animation->poseGeometryRevision == model->GetGeometryRevision())
                     pose = &animation->pose;
             }
 

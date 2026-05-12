@@ -750,7 +750,8 @@ namespace Canis
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
             {
-                if (animation->poseModelId == modelRenderer.modelId)
+                if (animation->poseModelId == modelRenderer.modelId &&
+                    animation->poseGeometryRevision == model->GetGeometryRevision())
                     pose = &animation->pose;
             }
 
@@ -1164,7 +1165,8 @@ namespace Canis
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
             {
-                if (animation->poseModelId == modelRenderer.modelId)
+                if (animation->poseModelId == modelRenderer.modelId &&
+                    animation->poseGeometryRevision == model->GetGeometryRevision())
                     pose = &animation->pose;
             }
 

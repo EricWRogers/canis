@@ -86,6 +86,30 @@ namespace Canis
         window->SetResized(false);
         const Uint32 mainWindowID = SDL_GetWindowID((SDL_Window*)window->GetSDLWindow());
         const Uint32 gameWindowID = (m_gameInputWindowID == 0u) ? mainWindowID : m_gameInputWindowID;
+        auto gameViewportContainsPoint = [this](float _x, float _y) -> bool
+        {
+            if (!m_gameMouseViewportEnabled)
+                return true;
+
+            return _x >= m_gameMouseViewportX &&
+                   _y >= m_gameMouseViewportY &&
+                   _x < m_gameMouseViewportX + m_gameMouseViewportDrawWidth &&
+                   _y < m_gameMouseViewportY + m_gameMouseViewportDrawHeight;
+        };
+
+        auto acceptsGameMouseEvent = [&](Uint32 _eventWindowID, float _x, float _y) -> bool
+        {
+            if (!Canis::IsEditorRuntimeEnabled())
+                return true;
+
+            if (_eventWindowID != gameWindowID)
+                return false;
+
+            if (window->IsMouseLocked())
+                return true;
+
+            return gameViewportContainsPoint(_x, _y);
+        };
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -150,6 +174,9 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
+                    if (!acceptsGameMouseEvent(eventWindowID, event.motion.x, event.motion.y))
+                        continue;
+
                     if (eventWindowID == gameWindowID &&
                         m_gameMouseViewportEnabled &&
                         m_gameMouseViewportDrawWidth > 0.0f &&
@@ -180,6 +207,8 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
+                if (!acceptsGameMouseEvent(eventWindowID, event.wheel.mouse_x, event.wheel.mouse_y))
+                    continue;
                 m_scrollVertical = event.wheel.y;
                 
                 m_lastInputDeviceType = (m_scrollVertical != 0.0f) ? InputDevice::MOUSE : m_lastInputDeviceType;
@@ -215,6 +244,8 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
+                if (!acceptsGameMouseEvent(eventWindowID, event.button.x, event.button.y))
+                    continue;
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = true;
                 if (event.button.button == SDL_BUTTON_RIGHT)
@@ -225,6 +256,8 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
+                if (Canis::IsEditorRuntimeEnabled() && eventWindowID != gameWindowID)
+                    continue;
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = false;
                 if (event.button.button == SDL_BUTTON_RIGHT)

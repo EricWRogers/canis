@@ -1196,6 +1196,7 @@ namespace Canis
 
         // Runtime pose cache for this entity's model instance.
         i32 poseModelId = -1;
+        u64 poseGeometryRevision = 0u;
         ModelAsset::Pose3D pose = {};
 
         // Runtime caching to skip redundant animation evaluation.

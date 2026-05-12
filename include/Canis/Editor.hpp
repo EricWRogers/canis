@@ -143,11 +143,18 @@ namespace Canis
             std::vector<UUID> hierarchyRootOrder = {};
         };
 
+        struct PendingHotReloadAsset
+        {
+            std::filesystem::file_time_type writeTime = {};
+            float debounceSeconds = 0.0f;
+        };
+
         void DrawMainDockspace();
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
         void DrawGameView();
         void DrawSceneViewGizmo();
+        void DrawEditorWindowMenu();
         void EnsureGameRenderTarget(int _width, int _height);
         void EnsureGamePickingRenderTarget(int _width, int _height);
         void EnsurePlayRenderTarget(int _width, int _height);
@@ -212,6 +219,11 @@ namespace Canis
         bool SceneHistoryContentEquals(const SceneHistoryState &_left, const SceneHistoryState &_right) const;
         void PushSceneUndoState(const SceneHistoryState &_state);
         void RestoreSceneHistoryState(const SceneHistoryState &_state);
+        void ReleasePlayMouseCapture();
+        void UpdatePlayMouseCapture();
+        void PrimeAssetHotReloadState();
+        void PollAssetHotReload(float _deltaTime);
+        bool TryApplyVertexSnap(Canis::Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta);
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -293,6 +305,24 @@ namespace Canis
         int m_editorFontSelection = 0;
         float m_editorUiScale = 1.0f;
         float m_editorFontScale = 1.0f;
+        bool m_showScenePanel = true;
+        bool m_showGamePanel = true;
+        bool m_showHierarchyPanel = true;
+        bool m_showInspectorPanel = true;
+        bool m_showEnvironmentPanel = true;
+        bool m_showSystemsPanel = true;
+        bool m_showAssetsPanel = true;
+        bool m_showScriptsPanel = true;
+        bool m_showAnimationPanel = true;
+        bool m_showAnimatorPanel = true;
+        bool m_showShaderGraphPanel = true;
+        bool m_showProjectSettingsPanel = true;
+        bool m_playViewHovered = false;
+        bool m_playMouseCaptured = false;
+        bool m_sceneViewClicked = false;
+        bool m_vertexSnappingEnabled = false;
+        float m_assetHotReloadPollTimer = 0.0f;
+        bool m_hotReloadAssets = true;
         std::vector<std::string> m_editorFontPaths = {};
         std::vector<std::string> m_editorFontLabels = {};
         bool m_editorFontApplyQueued = false;
@@ -324,6 +354,8 @@ namespace Canis
         bool m_hasSceneHistoryPendingBeforeState = false;
         bool m_sceneHistoryEditWasActive = false;
         bool m_sceneHistoryRestoring = false;
+        std::unordered_map<std::string, std::filesystem::file_time_type> m_assetHotReloadWriteTimes = {};
+        std::unordered_map<std::string, PendingHotReloadAsset> m_pendingHotReloadAssets = {};
 
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;

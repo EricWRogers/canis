@@ -3446,6 +3446,7 @@ namespace Canis
                                     animation->animationTime = 0.0f;
                                     animation->animationIndex = 0;
                                     animation->poseModelId = -1;
+                                    animation->poseGeometryRevision = 0u;
                                 }
                             }
                         }

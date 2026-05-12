@@ -2907,7 +2907,7 @@ shader_graph_preview_footer:
             ImGui::SetNextWindowDockID(m_mainDockspaceID, ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(960.0f, 640.0f), ImGuiCond_FirstUseEver);
 
-        const bool shaderGraphVisible = ImGui::Begin("ShaderGraph");
+        const bool shaderGraphVisible = ImGui::Begin("ShaderGraph", &m_showShaderGraphPanel);
         if (!shaderGraphVisible)
         {
             ImGui::End();

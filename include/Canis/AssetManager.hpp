@@ -243,6 +243,7 @@ namespace Canis
         }
 
         int LoadTexture(const std::string &_path);
+        bool ReloadTexture(const std::string &_path);
         TextureAsset *GetTexture(const std::string &_path);
         TextureAsset *GetTexture(const int _textureID);
 
@@ -281,6 +282,7 @@ namespace Canis
         AnimatorControllerAsset* GetAnimatorController(i32 _animatorControllerID);
 
         int LoadModel(const std::string &_path);
+        bool ReloadModel(const std::string &_path);
         int CreateModel();
         void FreeModel(i32 _modelID);
         ModelAsset* GetModel(const std::string &_path);
@@ -290,6 +292,7 @@ namespace Canis
         MaterialAsset* GetMaterial(const std::string &_path);
         MaterialAsset* GetMaterial(i32 _materialID);
         bool ReloadMaterial(const std::string &_path);
+        bool ReloadAsset(const std::string &_path);
 
         int LoadSkybox(const std::string &_path);
         SkyboxAsset* GetSkybox(const std::string &_path);
