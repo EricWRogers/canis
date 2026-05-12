@@ -3426,7 +3426,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 #if CANIS_EDITOR
         // if (GetProjectConfig().editor)
         //{
-        if (m_scene != _scene)
+        const bool sceneChanged = m_scene != _scene;
+        if (sceneChanged)
         {
             Debug::Log("new scene");
             m_hierarchyRootOrder.clear();
@@ -3439,6 +3440,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_window = _window;
         m_gameSharedLib = _gameSharedLib;
         m_gameInputWindowID = SDL_GetWindowID((SDL_Window *)m_window->GetSDLWindow());
+        if (sceneChanged)
+            ResetSceneHistory();
 
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
@@ -3460,6 +3463,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         const int gameplayWidth = (m_playViewportWidth > 0) ? m_playViewportWidth : m_window->GetWindowWidth();
         const int gameplayHeight = (m_playViewportHeight > 0) ? m_playViewportHeight : m_window->GetWindowHeight();
         m_window->SetRenderSize(gameplayWidth, gameplayHeight);
+
+        BeginSceneHistoryFrame();
 
         if (m_editorFontApplyQueued)
         {
@@ -3498,6 +3503,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             SelectModel3D();
         else
             SelectSprite2D();
+
+        EndSceneHistoryFrame();
 
         // find camera and verfy target entity
         m_debugDraw = DebugDraw::NONE;
@@ -3730,6 +3737,305 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_scene->Unload();
         m_scene->m_path = g_lastPlayScenePath;
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
+        ResetSceneHistory();
+    }
+
+    bool Editor::CanTrackSceneHistory() const
+    {
+        return m_scene != nullptr &&
+            m_mode == EditorMode::EDIT &&
+            !m_sceneHistoryRestoring;
+    }
+
+    Editor::SceneHistoryState Editor::CaptureSceneHistoryState() const
+    {
+        SceneHistoryState state = {};
+        if (m_scene == nullptr)
+            return state;
+
+        YAML::Emitter out;
+        out << m_scene->EncodeScene();
+        state.sceneYaml = out.c_str();
+        state.hierarchyRootOrder = m_hierarchyRootOrder;
+
+        const std::vector<Entity*> &entities = m_scene->GetEntities();
+        if (m_index >= 0 && m_index < static_cast<int>(entities.size()) && entities[m_index] != nullptr)
+            state.selectedEntityUUID = entities[m_index]->uuid;
+
+        return state;
+    }
+
+    bool Editor::SceneHistoryContentEquals(const SceneHistoryState &_left, const SceneHistoryState &_right) const
+    {
+        return _left.sceneYaml == _right.sceneYaml &&
+            _left.hierarchyRootOrder == _right.hierarchyRootOrder;
+    }
+
+    void Editor::ResetSceneHistory()
+    {
+        m_sceneUndoStack.clear();
+        m_sceneRedoStack.clear();
+        m_sceneHistoryPendingBeforeState = {};
+        m_hasSceneHistoryPendingBeforeState = false;
+        m_sceneHistoryCurrentState = CaptureSceneHistoryState();
+        m_hasSceneHistoryCurrentState = m_scene != nullptr && !m_sceneHistoryCurrentState.sceneYaml.empty();
+    }
+
+    void Editor::PushSceneUndoState(const SceneHistoryState &_state)
+    {
+        if (_state.sceneYaml.empty())
+            return;
+
+        if (!m_sceneUndoStack.empty() && SceneHistoryContentEquals(m_sceneUndoStack.back(), _state))
+            return;
+
+        constexpr size_t maxSceneHistoryStates = 100;
+        m_sceneUndoStack.push_back(_state);
+        if (m_sceneUndoStack.size() > maxSceneHistoryStates)
+            m_sceneUndoStack.erase(m_sceneUndoStack.begin());
+    }
+
+    bool Editor::IsSceneHistoryEditInProgress() const
+    {
+        return ImGuizmo::IsUsing() || ImGui::IsAnyItemActive() ||
+            ImGui::IsMouseDragging(ImGuiMouseButton_Left) ||
+            ImGui::IsMouseDragging(ImGuiMouseButton_Right);
+    }
+
+    void Editor::CommitSceneHistoryPendingChange()
+    {
+        if (!m_hasSceneHistoryPendingBeforeState)
+            return;
+
+        if (!SceneHistoryContentEquals(m_sceneHistoryPendingBeforeState, m_sceneHistoryCurrentState))
+        {
+            PushSceneUndoState(m_sceneHistoryPendingBeforeState);
+            m_sceneRedoStack.clear();
+        }
+
+        m_sceneHistoryPendingBeforeState = {};
+        m_hasSceneHistoryPendingBeforeState = false;
+    }
+
+    void Editor::CommitSceneHistoryImmediateChange(const SceneHistoryState &_beforeState)
+    {
+        if (!CanTrackSceneHistory() || _beforeState.sceneYaml.empty())
+            return;
+
+        SceneHistoryState afterState = CaptureSceneHistoryState();
+        if (SceneHistoryContentEquals(_beforeState, afterState))
+            return;
+
+        PushSceneUndoState(_beforeState);
+        m_sceneRedoStack.clear();
+        m_sceneHistoryCurrentState = afterState;
+        m_hasSceneHistoryCurrentState = true;
+        m_sceneHistoryPendingBeforeState = {};
+        m_hasSceneHistoryPendingBeforeState = false;
+    }
+
+    void Editor::BeginSceneHistoryFrame()
+    {
+        if (!CanTrackSceneHistory())
+            return;
+
+        if (!m_hasSceneHistoryCurrentState)
+        {
+            m_sceneHistoryCurrentState = CaptureSceneHistoryState();
+            m_hasSceneHistoryCurrentState = !m_sceneHistoryCurrentState.sceneYaml.empty();
+        }
+    }
+
+    void Editor::EndSceneHistoryFrame()
+    {
+        if (!CanTrackSceneHistory())
+            return;
+
+        if (!m_hasSceneHistoryCurrentState)
+        {
+            BeginSceneHistoryFrame();
+            return;
+        }
+
+        SceneHistoryState afterState = CaptureSceneHistoryState();
+        const bool sceneContentChanged = !SceneHistoryContentEquals(afterState, m_sceneHistoryCurrentState);
+
+        if (sceneContentChanged)
+        {
+            if (!m_hasSceneHistoryPendingBeforeState)
+            {
+                m_sceneHistoryPendingBeforeState = m_sceneHistoryCurrentState;
+                m_hasSceneHistoryPendingBeforeState = true;
+            }
+
+            m_sceneHistoryCurrentState = afterState;
+        }
+        else
+        {
+            m_sceneHistoryCurrentState.selectedEntityUUID = afterState.selectedEntityUUID;
+        }
+
+        if (m_hasSceneHistoryPendingBeforeState && !IsSceneHistoryEditInProgress())
+            CommitSceneHistoryPendingChange();
+    }
+
+    void Editor::FlushSceneHistoryPendingChange()
+    {
+        if (!CanTrackSceneHistory())
+            return;
+
+        if (!m_hasSceneHistoryCurrentState)
+            BeginSceneHistoryFrame();
+
+        SceneHistoryState afterState = CaptureSceneHistoryState();
+        if (!SceneHistoryContentEquals(afterState, m_sceneHistoryCurrentState))
+        {
+            if (!m_hasSceneHistoryPendingBeforeState)
+            {
+                m_sceneHistoryPendingBeforeState = m_sceneHistoryCurrentState;
+                m_hasSceneHistoryPendingBeforeState = true;
+            }
+
+            m_sceneHistoryCurrentState = afterState;
+        }
+        else
+        {
+            m_sceneHistoryCurrentState.selectedEntityUUID = afterState.selectedEntityUUID;
+        }
+
+        CommitSceneHistoryPendingChange();
+    }
+
+    void Editor::RestoreSceneHistoryState(const SceneHistoryState &_state)
+    {
+        if (m_scene == nullptr || _state.sceneYaml.empty())
+            return;
+
+        YAML::Node sceneRoot;
+        try
+        {
+            sceneRoot = YAML::Load(_state.sceneYaml);
+        }
+        catch (const YAML::Exception &_exception)
+        {
+            Debug::Warning("Failed to restore editor undo state: %s", _exception.what());
+            return;
+        }
+
+        const std::string scenePath = m_scene->m_path;
+        m_sceneHistoryRestoring = true;
+        m_scene->Unload();
+        m_scene->m_path = scenePath;
+        m_scene->LoadSceneNode(sceneRoot);
+        m_sceneHistoryRestoring = false;
+
+        m_hierarchyRootOrder = _state.hierarchyRootOrder;
+        m_queuedPrefabInstanceRebuilds.clear();
+        m_rebuildAllPrefabInstancesRequested = false;
+        m_hierarchyRevealTargetUUID = UUID(0);
+        m_hierarchyRevealPath.clear();
+        m_selectedAssetPath.clear();
+        m_selectedScriptPath.clear();
+
+        m_index = -1;
+        std::vector<Entity*> &entities = m_scene->GetEntities();
+        if ((uint64_t)_state.selectedEntityUUID != 0)
+        {
+            for (int i = 0; i < static_cast<int>(entities.size()); ++i)
+            {
+                if (entities[i] != nullptr && entities[i]->uuid == _state.selectedEntityUUID)
+                {
+                    m_index = i;
+                    break;
+                }
+            }
+        }
+
+        if (m_index < 0)
+        {
+            for (int i = 0; i < static_cast<int>(entities.size()); ++i)
+            {
+                if (entities[i] != nullptr)
+                {
+                    m_index = i;
+                    break;
+                }
+            }
+        }
+
+        m_sceneHistoryCurrentState = CaptureSceneHistoryState();
+        m_hasSceneHistoryCurrentState = !m_sceneHistoryCurrentState.sceneYaml.empty();
+        m_sceneHistoryPendingBeforeState = {};
+        m_hasSceneHistoryPendingBeforeState = false;
+        m_forceRefresh = true;
+    }
+
+    bool Editor::CanUndoSceneEdit() const
+    {
+        return m_hasSceneHistoryPendingBeforeState || !m_sceneUndoStack.empty();
+    }
+
+    bool Editor::CanRedoSceneEdit() const
+    {
+        return !m_hasSceneHistoryPendingBeforeState && !m_sceneRedoStack.empty();
+    }
+
+    void Editor::UndoSceneEdit()
+    {
+        if (!CanTrackSceneHistory())
+            return;
+
+        FlushSceneHistoryPendingChange();
+        if (m_sceneUndoStack.empty() || !m_hasSceneHistoryCurrentState)
+            return;
+
+        SceneHistoryState targetState = m_sceneUndoStack.back();
+        m_sceneUndoStack.pop_back();
+        m_sceneRedoStack.push_back(m_sceneHistoryCurrentState);
+        RestoreSceneHistoryState(targetState);
+    }
+
+    void Editor::RedoSceneEdit()
+    {
+        if (!CanTrackSceneHistory())
+            return;
+
+        if (m_sceneRedoStack.empty() || !m_hasSceneHistoryCurrentState)
+            return;
+
+        SceneHistoryState targetState = m_sceneRedoStack.back();
+        m_sceneRedoStack.pop_back();
+        PushSceneUndoState(m_sceneHistoryCurrentState);
+        RestoreSceneHistoryState(targetState);
+    }
+
+    bool Editor::HandleSceneHistoryShortcuts(float &_hotKeyCoolDown, float _hotKeyReset)
+    {
+        if (!CanTrackSceneHistory() || _hotKeyCoolDown >= 0.0f)
+            return false;
+
+        ImGuiIO &io = ImGui::GetIO();
+        if (io.WantTextInput || !io.KeyCtrl)
+            return false;
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Z))
+        {
+            _hotKeyCoolDown = _hotKeyReset;
+            if (io.KeyShift)
+                RedoSceneEdit();
+            else
+                UndoSceneEdit();
+            return true;
+        }
+
+        if (ImGui::IsKeyPressed(ImGuiKey_Y))
+        {
+            _hotKeyCoolDown = _hotKeyReset;
+            RedoSceneEdit();
+            return true;
+        }
+
+        return false;
     }
 
     void Editor::DrawSceneView()
@@ -6034,9 +6340,15 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
             if (idx >= 0 && ImGui::MenuItem("Remove"))
             {
+                const SceneHistoryState beforeRemoveState = CaptureSceneHistoryState();
+                const UUID removedUUID = _entity->uuid;
                 m_scene->Destroy(idx);
                 if (m_index == idx)
                     m_index = -1;
+                m_hierarchyRootOrder.erase(
+                    std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), removedUUID),
+                    m_hierarchyRootOrder.end());
+                CommitSceneHistoryImmediateChange(beforeRemoveState);
                 _refresh = true;
                 removeRequested = true;
             }
@@ -9846,6 +10158,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                             Canis::SaveEditorConfig();
                             m_scene->Unload();
                             m_scene->Load(meta->path);
+                            ResetSceneHistory();
                         }
                         else if (meta->type == MetaFileAsset::FileType::MATERIAL ||
                                  meta->type == MetaFileAsset::FileType::SKYBOX ||
@@ -10742,6 +11055,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             Debug::Warning("Failed to reload game code library after build: %s", loadError.c_str());
 
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
+        ResetSceneHistory();
     }
 
     void Editor::DrawReloadBuildPopup()
@@ -10866,15 +11180,47 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
 
         if (m_mode == EditorMode::EDIT)
         {
+            (void)HandleSceneHistoryShortcuts(hotKeyCoolDown, HOTKEYRESET);
+
+            const bool canUndo = CanUndoSceneEdit();
+            if (!canUndo)
+                ImGui::BeginDisabled();
+            if (ImGui::Button("Undo##ScenePanel"))
+            {
+                hotKeyCoolDown = HOTKEYRESET;
+                UndoSceneEdit();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Ctrl+Z");
+            if (!canUndo)
+                ImGui::EndDisabled();
+
+            ImGui::SameLine();
+            const bool canRedo = CanRedoSceneEdit();
+            if (!canRedo)
+                ImGui::BeginDisabled();
+            if (ImGui::Button("Redo##ScenePanel"))
+            {
+                hotKeyCoolDown = HOTKEYRESET;
+                RedoSceneEdit();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Ctrl+Y or Ctrl+Shift+Z");
+            if (!canRedo)
+                ImGui::EndDisabled();
+
+            ImGui::SameLine();
             if (ImGui::Button("Save##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
+                FlushSceneHistoryPendingChange();
                 m_scene->Save();
             }            
             ImGui::SameLine();
             if (ImGui::Button("Play##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
+                FlushSceneHistoryPendingChange();
                 m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
                 if (Canis::GetProjectConfig().useFrameLimit)
                     Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
@@ -10916,6 +11262,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
                 }
                 else
                 {
+                FlushSceneHistoryPendingChange();
                 const std::filesystem::path buildDir = std::filesystem::path("..") / "build";
                 const GameCodeBuildConfigInfo buildConfigInfo = ReadGameCodeBuildConfigInfo(buildDir);
                 if (!buildConfigInfo.singleConfigType.empty())

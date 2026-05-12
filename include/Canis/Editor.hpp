@@ -136,6 +136,13 @@ namespace Canis
             AnimationValue value = {};
         };
 
+        struct SceneHistoryState
+        {
+            std::string sceneYaml = "";
+            UUID selectedEntityUUID = UUID(0);
+            std::vector<UUID> hierarchyRootOrder = {};
+        };
+
         void DrawMainDockspace();
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
@@ -188,6 +195,23 @@ namespace Canis
         Canis::Entity* RebuildPrefabInstanceNow(Canis::Entity* _entity, bool _focusSelection);
         void ProcessQueuedPrefabRebuilds();
         void RequestHierarchyReveal(Canis::Entity *_entity);
+        void ResetSceneHistory();
+        void BeginSceneHistoryFrame();
+        void EndSceneHistoryFrame();
+        void FlushSceneHistoryPendingChange();
+        void CommitSceneHistoryPendingChange();
+        void CommitSceneHistoryImmediateChange(const SceneHistoryState &_beforeState);
+        void UndoSceneEdit();
+        void RedoSceneEdit();
+        bool CanUndoSceneEdit() const;
+        bool CanRedoSceneEdit() const;
+        bool HandleSceneHistoryShortcuts(float &_hotKeyCoolDown, float _hotKeyReset);
+        bool CanTrackSceneHistory() const;
+        bool IsSceneHistoryEditInProgress() const;
+        SceneHistoryState CaptureSceneHistoryState() const;
+        bool SceneHistoryContentEquals(const SceneHistoryState &_left, const SceneHistoryState &_right) const;
+        void PushSceneUndoState(const SceneHistoryState &_state);
+        void RestoreSceneHistoryState(const SceneHistoryState &_state);
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -292,6 +316,13 @@ namespace Canis
         bool m_rebuildAllPrefabInstancesRequested = false;
         UUID m_hierarchyRevealTargetUUID = UUID(0);
         std::vector<UUID> m_hierarchyRevealPath = {};
+        std::vector<SceneHistoryState> m_sceneUndoStack = {};
+        std::vector<SceneHistoryState> m_sceneRedoStack = {};
+        SceneHistoryState m_sceneHistoryCurrentState = {};
+        SceneHistoryState m_sceneHistoryPendingBeforeState = {};
+        bool m_hasSceneHistoryCurrentState = false;
+        bool m_hasSceneHistoryPendingBeforeState = false;
+        bool m_sceneHistoryRestoring = false;
 
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;
