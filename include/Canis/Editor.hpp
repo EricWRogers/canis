@@ -322,6 +322,7 @@ namespace Canis
         SceneHistoryState m_sceneHistoryPendingBeforeState = {};
         bool m_hasSceneHistoryCurrentState = false;
         bool m_hasSceneHistoryPendingBeforeState = false;
+        bool m_sceneHistoryEditWasActive = false;
         bool m_sceneHistoryRestoring = false;
 
         unsigned int m_gameFramebuffer = 0;

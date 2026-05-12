@@ -3777,6 +3777,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_sceneRedoStack.clear();
         m_sceneHistoryPendingBeforeState = {};
         m_hasSceneHistoryPendingBeforeState = false;
+        m_sceneHistoryEditWasActive = false;
         m_sceneHistoryCurrentState = CaptureSceneHistoryState();
         m_hasSceneHistoryCurrentState = m_scene != nullptr && !m_sceneHistoryCurrentState.sceneYaml.empty();
     }
@@ -3832,6 +3833,7 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         m_hasSceneHistoryCurrentState = true;
         m_sceneHistoryPendingBeforeState = {};
         m_hasSceneHistoryPendingBeforeState = false;
+        m_sceneHistoryEditWasActive = false;
     }
 
     void Editor::BeginSceneHistoryFrame()
@@ -3857,26 +3859,24 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             return;
         }
 
-        SceneHistoryState afterState = CaptureSceneHistoryState();
-        const bool sceneContentChanged = !SceneHistoryContentEquals(afterState, m_sceneHistoryCurrentState);
-
-        if (sceneContentChanged)
+        const bool editActive = IsSceneHistoryEditInProgress();
+        if (editActive)
         {
-            if (!m_hasSceneHistoryPendingBeforeState)
-            {
-                m_sceneHistoryPendingBeforeState = m_sceneHistoryCurrentState;
-                m_hasSceneHistoryPendingBeforeState = true;
-            }
-
-            m_sceneHistoryCurrentState = afterState;
-        }
-        else
-        {
-            m_sceneHistoryCurrentState.selectedEntityUUID = afterState.selectedEntityUUID;
+            m_sceneHistoryEditWasActive = true;
+            return;
         }
 
-        if (m_hasSceneHistoryPendingBeforeState && !IsSceneHistoryEditInProgress())
-            CommitSceneHistoryPendingChange();
+        ImGuiContext *imguiContext = ImGui::GetCurrentContext();
+        const bool editedItemDeactivated =
+            imguiContext != nullptr &&
+            imguiContext->ActiveId == 0 &&
+            imguiContext->DeactivatedItemData.HasBeenEditedBefore;
+
+        if (m_sceneHistoryEditWasActive || editedItemDeactivated)
+        {
+            m_sceneHistoryEditWasActive = false;
+            FlushSceneHistoryPendingChange();
+        }
     }
 
     void Editor::FlushSceneHistoryPendingChange()
