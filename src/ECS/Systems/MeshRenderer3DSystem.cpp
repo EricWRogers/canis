@@ -12,6 +12,7 @@
 #include <cmath>
 #include <map>
 #include <tuple>
+#include <vector>
 
 namespace Canis
 {
@@ -85,6 +86,132 @@ namespace Canis
             entt::entity entityHandle = entt::null;
             float distanceSquared = 0.0f;
         };
+
+        constexpr int kColliderCircleSegments = 28;
+
+        Vector3 TransformPoint(const Matrix4 &_matrix, const Vector3 &_point)
+        {
+            const Vector4 transformed = _matrix * Vector4(_point, 1.0f);
+            return Vector3(transformed.x, transformed.y, transformed.z);
+        }
+
+        void AppendLine(std::vector<Vector3> &_lines, const Vector3 &_start, const Vector3 &_end)
+        {
+            _lines.push_back(_start);
+            _lines.push_back(_end);
+        }
+
+        void AppendBoundsBoxLines(std::vector<Vector3> &_lines, const Matrix4 &_matrix, const Vector3 &_min, const Vector3 &_max)
+        {
+            const std::array<Vector3, 8> corners = {
+                Vector3(_min.x, _min.y, _min.z),
+                Vector3(_max.x, _min.y, _min.z),
+                Vector3(_max.x, _max.y, _min.z),
+                Vector3(_min.x, _max.y, _min.z),
+                Vector3(_min.x, _min.y, _max.z),
+                Vector3(_max.x, _min.y, _max.z),
+                Vector3(_max.x, _max.y, _max.z),
+                Vector3(_min.x, _max.y, _max.z)
+            };
+
+            const std::array<std::array<int, 2>, 12> edges = {{
+                {{0, 1}}, {{1, 2}}, {{2, 3}}, {{3, 0}},
+                {{4, 5}}, {{5, 6}}, {{6, 7}}, {{7, 4}},
+                {{0, 4}}, {{1, 5}}, {{2, 6}}, {{3, 7}}
+            }};
+
+            for (const std::array<int, 2> &edge : edges)
+            {
+                AppendLine(
+                    _lines,
+                    TransformPoint(_matrix, corners[edge[0]]),
+                    TransformPoint(_matrix, corners[edge[1]]));
+            }
+        }
+
+        void AppendCircleLines(
+            std::vector<Vector3> &_lines,
+            const Matrix4 &_matrix,
+            const Vector3 &_center,
+            const Vector3 &_axisA,
+            const Vector3 &_axisB,
+            float _radius)
+        {
+            constexpr float twoPi = 6.28318530718f;
+            for (int i = 0; i < kColliderCircleSegments; ++i)
+            {
+                const float a0 = (static_cast<float>(i) / static_cast<float>(kColliderCircleSegments)) * twoPi;
+                const float a1 = (static_cast<float>(i + 1) / static_cast<float>(kColliderCircleSegments)) * twoPi;
+                const Vector3 p0 = _center + (_axisA * (std::cos(a0) * _radius)) + (_axisB * (std::sin(a0) * _radius));
+                const Vector3 p1 = _center + (_axisA * (std::cos(a1) * _radius)) + (_axisB * (std::sin(a1) * _radius));
+                AppendLine(_lines, TransformPoint(_matrix, p0), TransformPoint(_matrix, p1));
+            }
+        }
+
+        void AppendArcLines(
+            std::vector<Vector3> &_lines,
+            const Matrix4 &_matrix,
+            const Vector3 &_center,
+            const Vector3 &_axisA,
+            const Vector3 &_axisB,
+            float _radius,
+            float _startRadians,
+            float _endRadians)
+        {
+            const int segmentCount = kColliderCircleSegments / 2;
+            for (int i = 0; i < segmentCount; ++i)
+            {
+                const float t0 = static_cast<float>(i) / static_cast<float>(segmentCount);
+                const float t1 = static_cast<float>(i + 1) / static_cast<float>(segmentCount);
+                const float a0 = _startRadians + ((_endRadians - _startRadians) * t0);
+                const float a1 = _startRadians + ((_endRadians - _startRadians) * t1);
+                const Vector3 p0 = _center + (_axisA * (std::cos(a0) * _radius)) + (_axisB * (std::sin(a0) * _radius));
+                const Vector3 p1 = _center + (_axisA * (std::cos(a1) * _radius)) + (_axisB * (std::sin(a1) * _radius));
+                AppendLine(_lines, TransformPoint(_matrix, p0), TransformPoint(_matrix, p1));
+            }
+        }
+
+        i32 ResolveMeshColliderModelId(entt::registry &_registry, entt::entity _entityHandle, const MeshCollider *_meshCollider)
+        {
+            if (_meshCollider == nullptr)
+                return -1;
+
+            if (_meshCollider->modelId >= 0)
+                return _meshCollider->modelId;
+
+            if (!_meshCollider->modelPath.empty())
+                return AssetManager::LoadModel(_meshCollider->modelPath);
+
+            if (_meshCollider->useAttachedModel)
+            {
+                if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                    return model->modelId;
+            }
+
+            return -1;
+        }
+
+        i32 ResolveMeshColliderNodeIndex(entt::registry &_registry, entt::entity _entityHandle, const MeshCollider *_meshCollider)
+        {
+            if (_meshCollider == nullptr || !_meshCollider->useAttachedModel)
+                return -1;
+
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->nodeIndex;
+
+            return -1;
+        }
+
+        bool ResolveMeshColliderApplyNodeTransform(entt::registry &_registry, entt::entity _entityHandle, const MeshCollider *_meshCollider)
+        {
+            if (_meshCollider == nullptr || !_meshCollider->useAttachedModel)
+                return true;
+
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->applyNodeTransform;
+
+            return true;
+        }
 
         struct StaticModelBatchKey
         {
@@ -284,8 +411,19 @@ namespace Canis
         }
 
         m_shadowShader = shadowShader;
+
+        int colliderShaderId = AssetManager::LoadShader("assets/shaders/debug_collider");
+        Shader *colliderShader = AssetManager::Get<ShaderAsset>(colliderShaderId)->GetShader();
+        if (!colliderShader->IsLinked())
+        {
+            colliderShader->AddAttribute("vertexPosition");
+            colliderShader->Link();
+        }
+
+        m_colliderDebugShader = colliderShader;
         CreateShadowMap();
         CreateSkyboxGeometry();
+        CreateColliderDebugGeometry();
     }
 
     void MeshRenderer3DSystem::Ready() {}
@@ -296,12 +434,19 @@ namespace Canis
             glDeleteBuffers(1, &m_skyboxVbo);
         if (m_skyboxVao != 0)
             glDeleteVertexArrays(1, &m_skyboxVao);
+        if (m_colliderDebugVbo != 0)
+            glDeleteBuffers(1, &m_colliderDebugVbo);
+        if (m_colliderDebugVao != 0)
+            glDeleteVertexArrays(1, &m_colliderDebugVao);
 
         DestroyShadowMap();
         m_skyboxVbo = 0;
         m_skyboxVao = 0;
+        m_colliderDebugVbo = 0;
+        m_colliderDebugVao = 0;
         m_skyboxShader = nullptr;
         m_shadowShader = nullptr;
+        m_colliderDebugShader = nullptr;
         m_shader = nullptr;
     }
 
@@ -320,6 +465,138 @@ namespace Canis
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    void MeshRenderer3DSystem::CreateColliderDebugGeometry()
+    {
+        if (m_colliderDebugVao == 0)
+            glGenVertexArrays(1, &m_colliderDebugVao);
+
+        if (m_colliderDebugVbo == 0)
+            glGenBuffers(1, &m_colliderDebugVbo);
+
+        glBindVertexArray(m_colliderDebugVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_colliderDebugVbo);
+        glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    void MeshRenderer3DSystem::DrawColliderDebugLines(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view)
+    {
+        if (scene == nullptr || !scene->GetShowColliders() || m_colliderDebugShader == nullptr)
+            return;
+
+        if (m_colliderDebugVao == 0 || m_colliderDebugVbo == 0)
+            CreateColliderDebugGeometry();
+
+        std::vector<Vector3> lines = {};
+        lines.reserve(1024);
+
+        auto transformView = _registry.view<Transform>();
+        for (const entt::entity entityHandle : transformView)
+        {
+            Transform &transform = transformView.get<Transform>(entityHandle);
+            Entity *entity = transform.entity;
+            if (entity == nullptr || !entity->active)
+                continue;
+
+            const Matrix4 modelMatrix = transform.GetModelMatrix();
+
+            if (BoxCollider *boxCollider = _registry.try_get<BoxCollider>(entityHandle))
+            {
+                if (boxCollider->active)
+                {
+                    const Vector3 halfSize = boxCollider->size * 0.5f;
+                    AppendBoundsBoxLines(lines, modelMatrix, -halfSize, halfSize);
+                }
+            }
+
+            if (SphereCollider *sphereCollider = _registry.try_get<SphereCollider>(entityHandle))
+            {
+                if (sphereCollider->active)
+                {
+                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f), sphereCollider->radius);
+                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
+                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
+                }
+            }
+
+            if (CapsuleCollider *capsuleCollider = _registry.try_get<CapsuleCollider>(entityHandle))
+            {
+                if (capsuleCollider->active)
+                {
+                    constexpr float pi = 3.14159265359f;
+                    const float halfHeight = capsuleCollider->halfHeight;
+                    const float radius = capsuleCollider->radius;
+                    const Vector3 top = Vector3(0.0f, halfHeight, 0.0f);
+                    const Vector3 bottom = Vector3(0.0f, -halfHeight, 0.0f);
+
+                    AppendCircleLines(lines, modelMatrix, top, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), radius);
+                    AppendCircleLines(lines, modelMatrix, bottom, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), radius);
+
+                    const std::array<Vector3, 4> cardinalOffsets = {
+                        Vector3(radius, 0.0f, 0.0f),
+                        Vector3(-radius, 0.0f, 0.0f),
+                        Vector3(0.0f, 0.0f, radius),
+                        Vector3(0.0f, 0.0f, -radius)
+                    };
+
+                    for (const Vector3 &offset : cardinalOffsets)
+                        AppendLine(lines, TransformPoint(modelMatrix, bottom + offset), TransformPoint(modelMatrix, top + offset));
+
+                    AppendArcLines(lines, modelMatrix, top, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f), radius, 0.0f, pi);
+                    AppendArcLines(lines, modelMatrix, bottom, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f), radius, pi, pi * 2.0f);
+                    AppendArcLines(lines, modelMatrix, top, Vector3(0.0f, 0.0f, 1.0f), Vector3(0.0f, 1.0f, 0.0f), radius, 0.0f, pi);
+                    AppendArcLines(lines, modelMatrix, bottom, Vector3(0.0f, 0.0f, 1.0f), Vector3(0.0f, 1.0f, 0.0f), radius, pi, pi * 2.0f);
+                }
+            }
+
+            if (MeshCollider *meshCollider = _registry.try_get<MeshCollider>(entityHandle))
+            {
+                if (meshCollider->active)
+                {
+                    const i32 modelId = ResolveMeshColliderModelId(_registry, entityHandle, meshCollider);
+                    ModelAsset *model = AssetManager::GetModel(modelId);
+                    if (model != nullptr)
+                    {
+                        Vector3 minBounds = Vector3(0.0f);
+                        Vector3 maxBounds = Vector3(0.0f);
+                        const i32 nodeIndex = ResolveMeshColliderNodeIndex(_registry, entityHandle, meshCollider);
+                        const bool applyNodeTransform = ResolveMeshColliderApplyNodeTransform(_registry, entityHandle, meshCollider);
+                        if (model->GetLocalBounds(minBounds, maxBounds, nodeIndex, applyNodeTransform))
+                            AppendBoundsBoxLines(lines, modelMatrix, minBounds, maxBounds);
+                    }
+                }
+            }
+        }
+
+        if (lines.empty())
+            return;
+
+        glBindVertexArray(m_colliderDebugVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_colliderDebugVbo);
+        glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(lines.size() * sizeof(Vector3)), lines.data(), GL_DYNAMIC_DRAW);
+
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glLineWidth(2.0f);
+
+        m_colliderDebugShader->Use();
+        m_colliderDebugShader->SetMat4("P", _projection);
+        m_colliderDebugShader->SetMat4("V", _view);
+        m_colliderDebugShader->SetVec4("lineColor", Vector4(0.15f, 0.85f, 1.0f, 0.9f));
+        glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
+        m_colliderDebugShader->UnUse();
+
+        glDepthMask(GL_TRUE);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
     }
 
     void MeshRenderer3DSystem::CreateShadowMap()
@@ -1169,6 +1446,8 @@ namespace Canis
             glActiveTexture(GL_TEXTURE0);
             currentShader->UnUse();
         }
+
+        DrawColliderDebugLines(_registry, projection, view);
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);

@@ -9168,6 +9168,13 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
         ImGui::TextDisabled("Scene-wide fill light for darker areas.");
 
+        ImGui::Separator();
+        bool showColliders = m_scene->GetShowColliders();
+        if (ImGui::Checkbox("Show Colliders", &showColliders))
+            m_scene->SetShowColliders(showColliders);
+        ImGui::TextDisabled("Draw physics collider wireframes for this scene.");
+        ImGui::Separator();
+
         ImGui::Text("Skybox");
         ImGui::SameLine();
 

@@ -93,6 +93,8 @@ namespace Canis
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
         void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
+        bool GetShowColliders() const { return m_showColliders; }
+        void SetShowColliders(bool _showColliders) { m_showColliders = _showColliders; }
         void SetLastRenderCamera(const Matrix4& _view, const Matrix4& _projection, const Vector3& _cameraPosition, float _nearClip, float _farClip);
         void ClearLastRenderCamera();
         const Matrix4& GetLastRenderProjection() const { return m_lastRenderProjection; }
@@ -173,6 +175,7 @@ namespace Canis
         float m_environmentAmbientLightIntensity = 1.0f;
         UUID m_environmentSkyboxUUID = UUID(0);
         UUID m_environmentPostProcessUUID = UUID(0);
+        bool m_showColliders = false;
         Matrix4 m_lastRenderView = Matrix4(1.0f);
         Matrix4 m_lastRenderProjection = Matrix4(1.0f);
         Vector3 m_lastRenderCameraPosition = Vector3(0.0f);

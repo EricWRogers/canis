@@ -268,6 +268,7 @@ namespace Canis
         m_isLoadingEntityNodes = false;
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
+        m_showColliders = false;
         ClearLastRenderCamera();
         ClearEditorCameraOverrides();
 
@@ -364,6 +365,7 @@ namespace Canis
         m_environmentAmbientLightIntensity = 1.0f;
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
+        m_showColliders = false;
         m_paused = false;
         
         for (System* system : m_systems)
@@ -385,6 +387,7 @@ namespace Canis
             );
             m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
+            m_showColliders = environment["ShowColliders"].as<bool>(false);
 
             if (YAML::Node skyboxNode = environment["SkyboxAsset"])
             {
@@ -659,6 +662,7 @@ namespace Canis
         environment["ClearColor"] = m_window->GetClearColor();
         environment["AmbientLight"] = m_environmentAmbientLight;
         environment["AmbientLightIntensity"] = m_environmentAmbientLightIntensity;
+        environment["ShowColliders"] = m_showColliders;
         if ((uint64_t)m_environmentSkyboxUUID != 0)
         {
             YAML::Node skyboxAsset(YAML::NodeType::Map);
