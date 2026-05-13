@@ -226,6 +226,48 @@ inline std::string BuildInspectorFieldLabel(const char *_label, const char *_idS
     return std::string(_label) + "##" + _idSuffix;
 }
 
+inline std::string BuildInspectorFieldWidgetID(const char *_label, const char *_idSuffix)
+{
+    std::string id = "##";
+    id += (_label != nullptr) ? _label : "field";
+
+    if (_idSuffix != nullptr && _idSuffix[0] != '\0')
+    {
+        id += "_";
+        id += _idSuffix;
+    }
+
+    return id;
+}
+
+inline float GetInspectorFieldLabelWidth()
+{
+    const float availableWidth = ImGui::GetContentRegionAvail().x;
+    const float preferredWidth = ImGui::CalcTextSize("rotationOriginOffset").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
+    const float maxWidth = std::max(80.0f, availableWidth * 0.48f);
+    return std::clamp(preferredWidth, 110.0f, maxWidth);
+}
+
+inline void DrawInspectorFieldLabel(const char *_label)
+{
+    ImGui::AlignTextToFramePadding();
+    ImGui::TextUnformatted((_label != nullptr) ? _label : "");
+    ImGui::SameLine(GetInspectorFieldLabelWidth());
+}
+
+inline void SetNextInspectorFieldItemWidth()
+{
+    ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x));
+}
+
+inline bool DrawInspectorComboField(const char *_label, const char *_idSuffix, int *_currentItem, const char *const _items[], int _itemsCount)
+{
+    DrawInspectorFieldLabel(_label);
+    SetNextInspectorFieldItemWidth();
+    const std::string widgetId = BuildInspectorFieldWidgetID(_label, _idSuffix);
+    return ImGui::Combo(widgetId.c_str(), _currentItem, _items, _itemsCount);
+}
+
 template <typename Component>
 inline void InvokeRegisteredCreate(Component& _component)
 {
@@ -247,43 +289,60 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
     if (_editor != nullptr && _editor->DrawRegisteredInspectorField(_label, _idSuffix, _value))
         return;
 
-    const std::string imguiLabel = BuildInspectorFieldLabel(_label, _idSuffix);
-    const char *fullLabel = imguiLabel.c_str();
+    const std::string widgetId = BuildInspectorFieldWidgetID(_label, _idSuffix);
+    const char *fullLabel = widgetId.c_str();
 
     if constexpr (std::is_same_v<T, bool>)
     {
+        DrawInspectorFieldLabel(_label);
         ImGui::Checkbox(fullLabel, &_value);
     }
     else if constexpr (std::is_same_v<T, int>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputInt(fullLabel, &_value);
     }
     else if constexpr (std::is_same_v<T, float>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputFloat(fullLabel, &_value);
     }
     else if constexpr (std::is_same_v<T, double>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputScalar(fullLabel, ImGuiDataType_Double, &_value);
     }
     else if constexpr (std::is_same_v<T, Vector2>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputFloat2(fullLabel, &_value.x);
     }
     else if constexpr (std::is_same_v<T, Vector3>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputFloat3(fullLabel, &_value.x);
     }
     else if constexpr (std::is_same_v<T, Vector4>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputFloat4(fullLabel, &_value.x);
     }
     else if constexpr (std::is_same_v<T, Canis::Color>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::ColorEdit4(fullLabel, &_value.r);
     }
     else if constexpr (std::is_same_v<T, std::string>)
     {
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         ImGui::InputText(fullLabel, &_value);
     }
     else if constexpr (std::is_same_v<T, Mask>)
@@ -292,8 +351,7 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
         if (_idSuffix != nullptr && _idSuffix[0] != '\0')
             ImGui::PushID(_idSuffix);
 
-        ImGui::TextUnformatted(_label);
-        ImGui::SameLine();
+        DrawInspectorFieldLabel(_label);
         ImGui::TextDisabled("0x%08X", static_cast<u32>(_value));
 
         const ImVec4 activeColor = ImGui::GetStyleColorVec4(ImGuiCol_ButtonActive);
@@ -354,12 +412,16 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
     else if constexpr (std::is_integral_v<T>)
     {
         long long value = static_cast<long long>(_value);
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         if (ImGui::InputScalar(fullLabel, ImGuiDataType_S64, &value))
             _value = static_cast<T>(value);
     }
     else if constexpr (std::is_floating_point_v<T>)
     {
         double value = static_cast<double>(_value);
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
         if (ImGui::InputScalar(fullLabel, ImGuiDataType_Double, &value))
             _value = static_cast<T>(value);
     }

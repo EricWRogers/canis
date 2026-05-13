@@ -156,8 +156,10 @@ namespace Canis
 
         void DrawInspectorColorField(const char *_label, const char *_idSuffix, Color &_value)
         {
-            const std::string imguiLabel = BuildInspectorFieldLabel(_label, _idSuffix);
-            ImGui::ColorEdit4(imguiLabel.c_str(), &_value.r);
+            DrawInspectorFieldLabel(_label);
+            SetNextInspectorFieldItemWidth();
+            const std::string widgetId = BuildInspectorFieldWidgetID(_label, _idSuffix);
+            ImGui::ColorEdit4(widgetId.c_str(), &_value.r);
         }
 
         void ResolveProjectWorkingDirectory()
@@ -1358,12 +1360,12 @@ namespace Canis
                     if (prefabInstance->firstEntity->HasComponent<RectTransform>())
                     {
                         RectTransform &transform = prefabInstance->firstEntity->GetComponent<RectTransform>();
-                        ImGui::InputFloat2(BuildInspectorFieldLabel("overridePosition", _conf.name.c_str()).c_str(), &transform.position.x, "%.3f");
+                        DrawInspectorField(_editor, "overridePosition", _conf.name.c_str(), transform.position);
                     }
                     else if (prefabInstance->firstEntity->HasComponent<Transform>())
                     {
                         Transform &transform = prefabInstance->firstEntity->GetComponent<Transform>();
-                        ImGui::InputFloat3(BuildInspectorFieldLabel("overridePosition", _conf.name.c_str()).c_str(), &transform.position.x, "%.3f");
+                        DrawInspectorField(_editor, "overridePosition", _conf.name.c_str(), transform.position);
                     }
                     else
                     {
@@ -1424,19 +1426,19 @@ namespace Canis
                 Canvas* canvas = nullptr;
                 if (_entity.HasComponent<Canvas>() && ((canvas = &_entity.GetComponent<Canvas>()), true))
                 {
-                    ImGui::Checkbox("active", &canvas->active);
+                    DrawInspectorField(_editor, "active", _conf.name.c_str(), canvas->active);
 
                     int renderMode = static_cast<int>(canvas->renderMode);
-                    if (ImGui::Combo("renderMode", &renderMode, CanvasRenderModeLabels, IM_ARRAYSIZE(CanvasRenderModeLabels)))
+                    if (DrawInspectorComboField("renderMode", _conf.name.c_str(), &renderMode, CanvasRenderModeLabels, IM_ARRAYSIZE(CanvasRenderModeLabels)))
                         canvas->renderMode = static_cast<unsigned int>(renderMode);
 
                     if (canvas->renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
                     {
                         int scaleMode = static_cast<int>(canvas->scaleMode);
-                        if (ImGui::Combo("scaleMode", &scaleMode, CanvasScaleModeLabels, IM_ARRAYSIZE(CanvasScaleModeLabels)))
+                        if (DrawInspectorComboField("scaleMode", _conf.name.c_str(), &scaleMode, CanvasScaleModeLabels, IM_ARRAYSIZE(CanvasScaleModeLabels)))
                             canvas->scaleMode = static_cast<unsigned int>(scaleMode);
 
-                        ImGui::InputFloat2("screenSize", &canvas->screenSize.x, "%.3f");
+                        DrawInspectorField(_editor, "screenSize", _conf.name.c_str(), canvas->screenSize);
                         canvas->screenSize.x = std::max(1.0f, canvas->screenSize.x);
                         canvas->screenSize.y = std::max(1.0f, canvas->screenSize.y);
                     }
@@ -1542,10 +1544,10 @@ namespace Canis
                     const float beforeDepth = transform->depth;
                     const float beforeRotation = transform->rotation;
 
-                    ImGui::Checkbox("active", &transform->active);
-                    ImGui::InputFloat2("position", &transform->position.x, "%.3f");
-                    ImGui::InputFloat2("size", &transform->size.x, "%.3f");
-                    ImGui::InputFloat2("scale", &transform->scale.x, "%.3f");
+                    DrawInspectorField(_editor, "active", _conf.name.c_str(), transform->active);
+                    DrawInspectorField(_editor, "position", _conf.name.c_str(), transform->position);
+                    DrawInspectorField(_editor, "size", _conf.name.c_str(), transform->size);
+                    DrawInspectorField(_editor, "scale", _conf.name.c_str(), transform->scale);
                     int anchorPreset = transform->GetAnchorPreset();
                     int anchorPresetSelection = anchorPreset < 0 ? 0 : anchorPreset + 1;
                     static const char* anchorPresetLabels[] = {
@@ -1554,18 +1556,18 @@ namespace Canis
                         "Center Left", "Center", "Center Right",
                         "Bottom Left", "Bottom Center", "Bottom Right"
                     };
-                    if (ImGui::Combo("anchorPreset", &anchorPresetSelection, anchorPresetLabels, IM_ARRAYSIZE(anchorPresetLabels)) && anchorPresetSelection > 0)
+                    if (DrawInspectorComboField("anchorPreset", _conf.name.c_str(), &anchorPresetSelection, anchorPresetLabels, IM_ARRAYSIZE(anchorPresetLabels)) && anchorPresetSelection > 0)
                         transform->SetAnchorPreset(static_cast<RectAnchor>(anchorPresetSelection - 1));
 
-                    ImGui::InputFloat2("anchorMin", &transform->anchorMin.x, "%.3f");
-                    ImGui::InputFloat2("anchorMax", &transform->anchorMax.x, "%.3f");
-                    ImGui::InputFloat2("pivot", &transform->pivot.x, "%.3f");
-                    ImGui::InputFloat2("originOffset", &transform->originOffset.x, "%.3f");
-                    ImGui::InputFloat2("rotationOriginOffset", &transform->rotationOriginOffset.x, "%.3f");
-                    ImGui::InputFloat("depth", &transform->depth);
+                    DrawInspectorField(_editor, "anchorMin", _conf.name.c_str(), transform->anchorMin);
+                    DrawInspectorField(_editor, "anchorMax", _conf.name.c_str(), transform->anchorMax);
+                    DrawInspectorField(_editor, "pivot", _conf.name.c_str(), transform->pivot);
+                    DrawInspectorField(_editor, "originOffset", _conf.name.c_str(), transform->originOffset);
+                    DrawInspectorField(_editor, "rotationOriginOffset", _conf.name.c_str(), transform->rotationOriginOffset);
+                    DrawInspectorField(_editor, "depth", _conf.name.c_str(), transform->depth);
                     // let user work with degrees
                     float degrees = RAD2DEG * transform->rotation;
-                    ImGui::InputFloat("rotation", &degrees);
+                    DrawInspectorField(_editor, "rotation", _conf.name.c_str(), degrees);
                     transform->rotation = DEG2RAD * degrees;
 
                     auto clamp01 = [](float value) -> float
@@ -1696,14 +1698,18 @@ namespace Canis
                 if (_entity.HasComponent<Sprite2D>() && ((sprite = &_entity.GetComponent<Sprite2D>()), true))
                 {
                     // textureHandle
-                    ImGui::ColorEdit4("color", &sprite->color.r);
-                    ImGui::InputFloat4("uv", &sprite->uv.x, "%.3f");
+                    DrawInspectorColorField("color", _conf.name.c_str(), sprite->color);
+                    DrawInspectorField(_editor, "uv", _conf.name.c_str(), sprite->uv);
 
                     bool updateUV = false;
                     
-                    if (ImGui::Checkbox("flipX", &sprite->flipX))
+                    const bool flipXBefore = sprite->flipX;
+                    DrawInspectorField(_editor, "flipX", _conf.name.c_str(), sprite->flipX);
+                    if (flipXBefore != sprite->flipX)
                         updateUV = true;
-                    if (ImGui::Checkbox("flipY", &sprite->flipY))
+                    const bool flipYBefore = sprite->flipY;
+                    DrawInspectorField(_editor, "flipY", _conf.name.c_str(), sprite->flipY);
+                    if (flipYBefore != sprite->flipY)
                         updateUV = true;
                     
                     if (updateUV)
@@ -1848,22 +1854,24 @@ namespace Canis
                     static const char *alignmentLabels[] = {"Left", "Right", "Center"};
                     static const char *horizontalBoundaryLabels[] = {"Overflow", "Wrap"};
 
-                    if (ImGui::InputText("text", &text->text))
+                    const std::string textBefore = text->text;
+                    DrawInspectorField(_editor, "text", _conf.name.c_str(), text->text);
+                    if (textBefore != text->text)
                     {
                         text->_status |= BIT::ONE;
                     }
 
-                    ImGui::ColorEdit4("color", &text->color.r);
+                    DrawInspectorColorField("color", _conf.name.c_str(), text->color);
 
                     int alignment = (int)text->alignment;
-                    if (ImGui::Combo("alignment", &alignment, alignmentLabels, IM_ARRAYSIZE(alignmentLabels)))
+                    if (DrawInspectorComboField("alignment", _conf.name.c_str(), &alignment, alignmentLabels, IM_ARRAYSIZE(alignmentLabels)))
                     {
                         text->alignment = (unsigned int)alignment;
                         text->_status |= BIT::ONE;
                     }
 
                     int boundary = (int)text->horizontalBoundary;
-                    if (ImGui::Combo("horizontalBoundary", &boundary, horizontalBoundaryLabels, IM_ARRAYSIZE(horizontalBoundaryLabels)))
+                    if (DrawInspectorComboField("horizontalBoundary", _conf.name.c_str(), &boundary, horizontalBoundaryLabels, IM_ARRAYSIZE(horizontalBoundaryLabels)))
                     {
                         text->horizontalBoundary = (unsigned int)boundary;
                         text->_status |= BIT::ONE;
@@ -2203,8 +2211,8 @@ namespace Canis
                     Vector2 lastPosition = camera->GetPosition();
                     float lastScale = camera->GetScale();
 
-                    ImGui::InputFloat2(("position##" + _conf.name).c_str(), &lastPosition.x, "%.3f");
-                    ImGui::InputFloat(("scale##" + _conf.name).c_str(), &lastScale);
+                    DrawInspectorField(_editor, "position", _conf.name.c_str(), lastPosition);
+                    DrawInspectorField(_editor, "scale", _conf.name.c_str(), lastScale);
 
                     if (lastPosition != camera->GetPosition())
                         camera->SetPosition(lastPosition);
@@ -2290,16 +2298,14 @@ namespace Canis
                     const Vector3 beforeRotation = transform->rotation;
                     const Vector3 beforeScale = transform->scale;
 
-                    ImGui::Checkbox("active", &transform->active);
-                    ImGui::InputFloat3("position", &transform->position.x, "%.3f");
+                    DrawInspectorField(_editor, "active", _conf.name.c_str(), transform->active);
+                    DrawInspectorField(_editor, "position", _conf.name.c_str(), transform->position);
 
                     Vector3 degrees = transform->rotation * RAD2DEG;
-                    if (ImGui::InputFloat3("rotation", &degrees.x, "%.3f"))
-                    {
-                        transform->rotation = degrees * DEG2RAD;
-                    }
+                    DrawInspectorField(_editor, "rotation", _conf.name.c_str(), degrees);
+                    transform->rotation = degrees * DEG2RAD;
 
-                    ImGui::InputFloat3("scale", &transform->scale.x, "%.3f");
+                    DrawInspectorField(_editor, "scale", _conf.name.c_str(), transform->scale);
 
                     if (transform->parent != nullptr)
                     {
@@ -2373,11 +2379,11 @@ namespace Canis
                 NetworkIdentity *identity = nullptr;
                 if (_entity.HasComponent<NetworkIdentity>() && ((identity = &_entity.GetComponent<NetworkIdentity>()), true))
                 {
-                    ImGui::InputScalar("netId", ImGuiDataType_U32, &identity->netId);
-                    ImGui::InputScalar("ownerClientId", ImGuiDataType_U32, &identity->ownerClientId);
-                    ImGui::Checkbox("serverOwned", &identity->serverOwned);
-                    ImGui::Checkbox("localOwned", &identity->localOwned);
-                    ImGui::Checkbox("replicateTransform", &identity->replicateTransform);
+                    DrawInspectorField(_editor, "netId", _conf.name.c_str(), identity->netId);
+                    DrawInspectorField(_editor, "ownerClientId", _conf.name.c_str(), identity->ownerClientId);
+                    DrawInspectorField(_editor, "serverOwned", _conf.name.c_str(), identity->serverOwned);
+                    DrawInspectorField(_editor, "localOwned", _conf.name.c_str(), identity->localOwned);
+                    DrawInspectorField(_editor, "replicateTransform", _conf.name.c_str(), identity->replicateTransform);
                     _editor.InputSceneAsset("prefab", "NetworkIdentity", identity->prefab);
                 }
             },
@@ -2474,25 +2480,25 @@ namespace Canis
                     rigidbody->motionType = RigidbodyMotionType::DYNAMIC;
                 }
 
-                ImGui::Checkbox(("active##" + _conf.name).c_str(), &rigidbody->active);
-                ImGui::Combo(("motionType##" + _conf.name).c_str(), &rigidbody->motionType, motionTypeLabels, IM_ARRAYSIZE(motionTypeLabels));
-                ImGui::InputFloat(("mass##" + _conf.name).c_str(), &rigidbody->mass);
-                ImGui::InputFloat(("friction##" + _conf.name).c_str(), &rigidbody->friction);
-                ImGui::InputFloat(("restitution##" + _conf.name).c_str(), &rigidbody->restitution);
-                ImGui::InputFloat(("linearDamping##" + _conf.name).c_str(), &rigidbody->linearDamping);
-                ImGui::InputFloat(("angularDamping##" + _conf.name).c_str(), &rigidbody->angularDamping);
-                ImGui::Checkbox(("useGravity##" + _conf.name).c_str(), &rigidbody->useGravity);
-                ImGui::InputFloat(("gravityFactor##" + _conf.name).c_str(), &rigidbody->gravityFactor);
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), rigidbody->active);
+                DrawInspectorComboField("motionType", _conf.name.c_str(), &rigidbody->motionType, motionTypeLabels, IM_ARRAYSIZE(motionTypeLabels));
+                DrawInspectorField(_editor, "mass", _conf.name.c_str(), rigidbody->mass);
+                DrawInspectorField(_editor, "friction", _conf.name.c_str(), rigidbody->friction);
+                DrawInspectorField(_editor, "restitution", _conf.name.c_str(), rigidbody->restitution);
+                DrawInspectorField(_editor, "linearDamping", _conf.name.c_str(), rigidbody->linearDamping);
+                DrawInspectorField(_editor, "angularDamping", _conf.name.c_str(), rigidbody->angularDamping);
+                DrawInspectorField(_editor, "useGravity", _conf.name.c_str(), rigidbody->useGravity);
+                DrawInspectorField(_editor, "gravityFactor", _conf.name.c_str(), rigidbody->gravityFactor);
                 rigidbody->gravityFactor = std::max(0.0f, rigidbody->gravityFactor);
-                ImGui::Checkbox(("isSensor##" + _conf.name).c_str(), &rigidbody->isSensor);
+                DrawInspectorField(_editor, "isSensor", _conf.name.c_str(), rigidbody->isSensor);
                 DrawInspectorField("layer", _conf.name.c_str(), rigidbody->layer);
                 DrawInspectorField("mask", _conf.name.c_str(), rigidbody->mask);
-                ImGui::Checkbox(("allowSleeping##" + _conf.name).c_str(), &rigidbody->allowSleeping);
-                ImGui::Checkbox(("lockRotationX##" + _conf.name).c_str(), &rigidbody->lockRotationX);
-                ImGui::Checkbox(("lockRotationY##" + _conf.name).c_str(), &rigidbody->lockRotationY);
-                ImGui::Checkbox(("lockRotationZ##" + _conf.name).c_str(), &rigidbody->lockRotationZ);
-                ImGui::InputFloat3(("linearVelocity##" + _conf.name).c_str(), &rigidbody->linearVelocity.x, "%.3f");
-                ImGui::InputFloat3(("angularVelocity##" + _conf.name).c_str(), &rigidbody->angularVelocity.x, "%.3f");
+                DrawInspectorField(_editor, "allowSleeping", _conf.name.c_str(), rigidbody->allowSleeping);
+                DrawInspectorField(_editor, "lockRotationX", _conf.name.c_str(), rigidbody->lockRotationX);
+                DrawInspectorField(_editor, "lockRotationY", _conf.name.c_str(), rigidbody->lockRotationY);
+                DrawInspectorField(_editor, "lockRotationZ", _conf.name.c_str(), rigidbody->lockRotationZ);
+                DrawInspectorField(_editor, "linearVelocity", _conf.name.c_str(), rigidbody->linearVelocity);
+                DrawInspectorField(_editor, "angularVelocity", _conf.name.c_str(), rigidbody->angularVelocity);
             },
         };
 
@@ -2540,8 +2546,8 @@ namespace Canis
                 if (boxCollider == nullptr)
                     return;
 
-                ImGui::Checkbox(("active##" + _conf.name).c_str(), &boxCollider->active);
-                ImGui::InputFloat3(("size##" + _conf.name).c_str(), &boxCollider->size.x, "%.3f");
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), boxCollider->active);
+                DrawInspectorField(_editor, "size", _conf.name.c_str(), boxCollider->size);
             },
         };
 
@@ -2590,8 +2596,8 @@ namespace Canis
                 if (sphereCollider == nullptr)
                     return;
 
-                ImGui::Checkbox(("active##" + _conf.name).c_str(), &sphereCollider->active);
-                ImGui::InputFloat(("radius##" + _conf.name).c_str(), &sphereCollider->radius);
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), sphereCollider->active);
+                DrawInspectorField(_editor, "radius", _conf.name.c_str(), sphereCollider->radius);
             },
         };
 
@@ -2642,9 +2648,9 @@ namespace Canis
                 if (capsuleCollider == nullptr)
                     return;
 
-                ImGui::Checkbox(("active##" + _conf.name).c_str(), &capsuleCollider->active);
-                ImGui::InputFloat(("halfHeight##" + _conf.name).c_str(), &capsuleCollider->halfHeight);
-                ImGui::InputFloat(("radius##" + _conf.name).c_str(), &capsuleCollider->radius);
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), capsuleCollider->active);
+                DrawInspectorField(_editor, "halfHeight", _conf.name.c_str(), capsuleCollider->halfHeight);
+                DrawInspectorField(_editor, "radius", _conf.name.c_str(), capsuleCollider->radius);
             },
         };
 
@@ -2716,10 +2722,11 @@ namespace Canis
                 if (meshCollider == nullptr)
                     return;
 
-                ImGui::Checkbox(("active##" + _conf.name).c_str(), &meshCollider->active);
-                ImGui::Checkbox(("useAttachedModel##" + _conf.name).c_str(), &meshCollider->useAttachedModel);
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), meshCollider->active);
+                DrawInspectorField(_editor, "useAttachedModel", _conf.name.c_str(), meshCollider->useAttachedModel);
                 std::string modelPath = meshCollider->modelPath;
-                if (ImGui::InputText(("modelPath##" + _conf.name).c_str(), &modelPath))
+                DrawInspectorField(_editor, "modelPath", _conf.name.c_str(), modelPath);
+                if (modelPath != meshCollider->modelPath)
                 {
                     meshCollider->modelPath = modelPath;
                     meshCollider->modelId = meshCollider->modelPath.empty() ? -1 : AssetManager::LoadModel(meshCollider->modelPath);
@@ -2773,10 +2780,10 @@ namespace Canis
                 Camera* camera = nullptr;
                 if (_entity.HasComponent<Camera>() && ((camera = &_entity.GetComponent<Camera>()), true))
                 {
-                    ImGui::Checkbox("primary", &camera->primary);
-                    ImGui::InputFloat("fovDegrees", &camera->fovDegrees);
-                    ImGui::InputFloat("nearClip", &camera->nearClip);
-                    ImGui::InputFloat("farClip", &camera->farClip);
+                    DrawInspectorField(_editor, "primary", _conf.name.c_str(), camera->primary);
+                    DrawInspectorField(_editor, "fovDegrees", _conf.name.c_str(), camera->fovDegrees);
+                    DrawInspectorField(_editor, "nearClip", _conf.name.c_str(), camera->nearClip);
+                    DrawInspectorField(_editor, "farClip", _conf.name.c_str(), camera->farClip);
                 }
             },
         };
@@ -2820,10 +2827,10 @@ namespace Canis
                 DirectionalLight* light = nullptr;
                 if (_entity.HasComponent<DirectionalLight>() && ((light = &_entity.GetComponent<DirectionalLight>()), true))
                 {
-                    ImGui::Checkbox("enabled", &light->enabled);
-                    ImGui::ColorEdit3("color", &light->color.r);
-                    ImGui::InputFloat("intensity", &light->intensity);
-                    ImGui::InputFloat3("direction", &light->direction.x, "%.3f");
+                    DrawInspectorField(_editor, "enabled", _conf.name.c_str(), light->enabled);
+                    DrawInspectorColorField("color", _conf.name.c_str(), light->color);
+                    DrawInspectorField(_editor, "intensity", _conf.name.c_str(), light->intensity);
+                    DrawInspectorField(_editor, "direction", _conf.name.c_str(), light->direction);
                 }
             },
         };
@@ -2870,10 +2877,10 @@ namespace Canis
                 PointLight* light = nullptr;
                 if (_entity.HasComponent<PointLight>() && ((light = &_entity.GetComponent<PointLight>()), true))
                 {
-                    ImGui::Checkbox("enabled", &light->enabled);
-                    ImGui::ColorEdit3("color", &light->color.r);
-                    ImGui::InputFloat("intensity", &light->intensity);
-                    ImGui::InputFloat("range", &light->range);
+                    DrawInspectorField(_editor, "enabled", _conf.name.c_str(), light->enabled);
+                    DrawInspectorColorField("color", _conf.name.c_str(), light->color);
+                    DrawInspectorField(_editor, "intensity", _conf.name.c_str(), light->intensity);
+                    DrawInspectorField(_editor, "range", _conf.name.c_str(), light->range);
                 }
             },
         };
@@ -3073,7 +3080,7 @@ namespace Canis
                         return path;
                     };
 
-                    ImGui::ColorEdit4("material color", &material->color.r);
+                    DrawInspectorColorField("material color", _conf.name.c_str(), material->color);
 
                     std::string materialLabel = getMaterialLabel(material->materialId);
 
@@ -3137,6 +3144,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("int_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (int)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3149,12 +3158,11 @@ namespace Canis
                                 int editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::DragInt("##value", &editedValue, 1.0f) && hasOverride)
                                     material->materialFields.SetInt(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (int)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3166,6 +3174,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("float_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (float)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3178,12 +3188,11 @@ namespace Canis
                                 float editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::DragFloat("##value", &editedValue, 0.01f) && hasOverride)
                                     material->materialFields.SetFloat(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (float)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3195,6 +3204,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("vec2_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (Vector2)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3207,12 +3218,11 @@ namespace Canis
                                 Vector2 editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::DragFloat2("##value", &editedValue.x, 0.01f) && hasOverride)
                                     material->materialFields.SetVec2(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (Vector2)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3224,6 +3234,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("vec3_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (Vector3)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3236,12 +3248,11 @@ namespace Canis
                                 Vector3 editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::DragFloat3("##value", &editedValue.x, 0.01f) && hasOverride)
                                     material->materialFields.SetVec3(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (Vector3)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3253,6 +3264,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("vec4_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (Vector4)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3265,12 +3278,11 @@ namespace Canis
                                 Vector4 editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::DragFloat4("##value", &editedValue.x, 0.01f) && hasOverride)
                                     material->materialFields.SetVec4(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (Vector4)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3282,6 +3294,8 @@ namespace Canis
                                     overrideValue = baseUniform.value;
 
                                 ImGui::PushID(("color_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (Color)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3294,12 +3308,11 @@ namespace Canis
                                 Color editedValue = overrideValue;
                                 if (!hasOverride)
                                     ImGui::BeginDisabled();
+                                SetNextInspectorFieldItemWidth();
                                 if (ImGui::ColorEdit4("##value", &editedValue.r) && hasOverride)
                                     material->materialFields.SetColor(baseUniform.name, editedValue);
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
-                                ImGui::SameLine();
-                                ImGui::Text("%s (Color)", baseUniform.name.c_str());
                                 ImGui::PopID();
                             }
 
@@ -3312,6 +3325,8 @@ namespace Canis
                                 const i32 originalOverrideTextureId = overrideTextureId;
 
                                 ImGui::PushID(("texture_" + baseUniform.name).c_str());
+                                const std::string label = baseUniform.name + " (Texture)";
+                                DrawInspectorFieldLabel(label.c_str());
                                 if (ImGui::Checkbox("##override", &hasOverride))
                                 {
                                     if (hasOverride)
@@ -3325,7 +3340,8 @@ namespace Canis
                                     ImGui::BeginDisabled();
 
                                 const std::string textureButtonLabel = getTextureLabel(overrideTextureId) + "##texture_override";
-                                ImGui::Button(textureButtonLabel.c_str(), ImVec2(170, 0));
+                                SetNextInspectorFieldItemWidth();
+                                ImGui::Button(textureButtonLabel.c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0));
                                 if (hasOverride && ImGui::BeginDragDropTarget())
                                 {
                                     if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
@@ -3354,8 +3370,6 @@ namespace Canis
                                 if (!hasOverride)
                                     ImGui::EndDisabled();
 
-                                ImGui::SameLine();
-                                ImGui::Text("%s (Texture)", baseUniform.name.c_str());
                                 ImGui::PopID();
 
                                 if (hasOverride && overrideTextureId != originalOverrideTextureId)
@@ -3482,8 +3496,8 @@ namespace Canis
                 Model* model = nullptr;
                 if (_entity.HasComponent<Model>() && ((model = &_entity.GetComponent<Model>()), true))
                 {
-                    ImGui::ColorEdit4("color", &model->color.r);
-                    ImGui::Checkbox("static", &model->staticModel);
+                    DrawInspectorColorField("color", _conf.name.c_str(), model->color);
+                    DrawInspectorField(_editor, "static", _conf.name.c_str(), model->staticModel);
 
                     std::string modelLabel = "[ empty ]";
                     ModelAsset* modelAsset = nullptr;
@@ -3633,10 +3647,10 @@ namespace Canis
                 ModelAnimation* animation = nullptr;
                 if (_entity.HasComponent<ModelAnimation>() && ((animation = &_entity.GetComponent<ModelAnimation>()), true))
                 {
-                    ImGui::Checkbox("playAnimation", &animation->playAnimation);
-                    ImGui::Checkbox("loop", &animation->loop);
-                    ImGui::InputFloat("animationSpeed", &animation->animationSpeed);
-                    ImGui::InputFloat("animationTime", &animation->animationTime);
+                    DrawInspectorField(_editor, "playAnimation", _conf.name.c_str(), animation->playAnimation);
+                    DrawInspectorField(_editor, "loop", _conf.name.c_str(), animation->loop);
+                    DrawInspectorField(_editor, "animationSpeed", _conf.name.c_str(), animation->animationSpeed);
+                    DrawInspectorField(_editor, "animationTime", _conf.name.c_str(), animation->animationTime);
 
                     ModelAsset* modelAsset = nullptr;
                     if (Model* model = _entity.HasComponent<Model>() ? &_entity.GetComponent<Model>() : nullptr)
@@ -3653,7 +3667,7 @@ namespace Canis
                         if (animationCount > 0)
                         {
                             animation->animationIndex = std::clamp(animation->animationIndex, 0, animationCount - 1);
-                            ImGui::InputInt("animationIndex", &animation->animationIndex);
+                            DrawInspectorField(_editor, "animationIndex", _conf.name.c_str(), animation->animationIndex);
                             animation->animationIndex = std::clamp(animation->animationIndex, 0, animationCount - 1);
 
                             ImGui::Text("clip: %s", modelAsset->GetAnimationName(animation->animationIndex).c_str());
@@ -3756,21 +3770,24 @@ namespace Canis
                         case AnimatorParameterType::FLOAT:
                         {
                             float value = runtimeParameter->value.AsFloat();
-                            if (ImGui::InputFloat(definition.name.c_str(), &value, 0.0f, 0.0f, "%.3f"))
+                            DrawInspectorField(_editor, definition.name.c_str(), _conf.name.c_str(), value);
+                            if (value != runtimeParameter->value.AsFloat())
                                 runtimeParameter->value = AnimationValue::Float(value);
                             break;
                         }
                         case AnimatorParameterType::INT:
                         {
                             int value = runtimeParameter->value.AsInt();
-                            if (ImGui::InputInt(definition.name.c_str(), &value))
+                            DrawInspectorField(_editor, definition.name.c_str(), _conf.name.c_str(), value);
+                            if (value != runtimeParameter->value.AsInt())
                                 runtimeParameter->value = AnimationValue::Int(value);
                             break;
                         }
                         case AnimatorParameterType::BOOL:
                         {
                             bool value = runtimeParameter->value.AsBool();
-                            if (ImGui::Checkbox(definition.name.c_str(), &value))
+                            DrawInspectorField(_editor, definition.name.c_str(), _conf.name.c_str(), value);
+                            if (value != runtimeParameter->value.AsBool())
                                 runtimeParameter->value = AnimationValue::Bool(value);
                             break;
                         }
@@ -3887,7 +3904,7 @@ namespace Canis
                 {
                     
                     _editor.InputAnimationClip("animation", animation->id);
-                    ImGui::InputFloat("speed", &animation->speed);
+                    DrawInspectorField(_editor, "speed", _conf.name.c_str(), animation->speed);
                 }
             },
         };
