@@ -31,6 +31,7 @@
 #include <filesystem>
 #include <fstream>
 #include <memory>
+#include <optional>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
@@ -55,23 +56,76 @@ namespace Canis
 
         const char *GetGameCodeSharedObjectPath()
         {
+            static std::string resolvedPath;
+
 #if defined(__EMSCRIPTEN__)
             return "";
 #elif defined(_WIN32)
-            return "./libGameCode.dll";
+            constexpr const char *libraryName = "libGameCode.dll";
 #elif defined(__APPLE__)
-            return "./libGameCode.dylib";
+            constexpr const char *libraryName = "libGameCode.dylib";
 #elif defined(__linux__)
-            return "./libGameCode.so";
+            constexpr const char *libraryName = "libGameCode.so";
 #else
             return "";
 #endif
+
+            std::vector<fs::path> candidates = {};
+            if (const char *basePath = SDL_GetBasePath())
+                candidates.emplace_back(fs::path(basePath) / libraryName);
+
+            candidates.emplace_back(fs::current_path() / libraryName);
+
+            for (const fs::path &candidatePath : candidates)
+            {
+                std::error_code ec;
+                if (fs::exists(candidatePath, ec) && fs::is_regular_file(candidatePath, ec))
+                {
+                    resolvedPath = candidatePath.generic_string();
+                    return resolvedPath.c_str();
+                }
+            }
+
+            resolvedPath = std::string("./") + libraryName;
+            return resolvedPath.c_str();
         }
 
         bool HasAssetsFolder(const fs::path &_path)
         {
             const fs::path assetsPath = _path / "assets";
             return fs::exists(assetsPath) && fs::is_directory(assetsPath);
+        }
+
+        fs::path WeaklyCanonicalPath(const fs::path &_path)
+        {
+            std::error_code ec;
+            const fs::path canonicalPath = fs::weakly_canonical(_path, ec);
+            return ec ? _path.lexically_normal() : canonicalPath;
+        }
+
+        std::optional<fs::path> NormalizeProjectPath(const fs::path &_path)
+        {
+            if (_path.empty())
+                return std::nullopt;
+
+            const fs::path normalizedPath = WeaklyCanonicalPath(_path);
+            if (HasAssetsFolder(normalizedPath))
+                return normalizedPath;
+
+            const fs::path nestedProjectPath = WeaklyCanonicalPath(normalizedPath / "project");
+            if (HasAssetsFolder(nestedProjectPath))
+                return nestedProjectPath;
+
+            return std::nullopt;
+        }
+
+        std::optional<fs::path> ResolveProjectFromEnvironment()
+        {
+            const char *projectPath = std::getenv("CANIS_PROJECT");
+            if (projectPath == nullptr || projectPath[0] == '\0')
+                return std::nullopt;
+
+            return NormalizeProjectPath(projectPath);
         }
 
         bool TryParseEnvironmentBool(const char *_value, bool &_outValue)
@@ -1177,6 +1231,27 @@ namespace Canis
 
     void App::Run()
     {
+#if CANIS_EDITOR && !defined(__EMSCRIPTEN__)
+        std::optional<std::filesystem::path> environmentProject = ResolveProjectFromEnvironment();
+        const char *environmentProjectPath = std::getenv("CANIS_PROJECT");
+        if (!environmentProject.has_value() && environmentProjectPath != nullptr && environmentProjectPath[0] != '\0')
+        {
+            Debug::Error("CANIS_PROJECT is not a valid project folder: %s", environmentProjectPath);
+            return;
+        }
+
+        if (environmentProject.has_value())
+        {
+            std::error_code ec;
+            std::filesystem::current_path(*environmentProject, ec);
+            if (ec)
+            {
+                Debug::Error("Failed to open project from CANIS_PROJECT: %s", environmentProject->generic_string().c_str());
+                return;
+            }
+        }
+#endif
+
         InitializeRuntime();
 
 #if defined(__EMSCRIPTEN__)

@@ -276,6 +276,7 @@ namespace Canis
         std::string m_renamingPath;
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
+        std::string m_assetSearch = {};
         std::string m_selectedScriptPath = {};
         std::string m_animationClipStatePath = {};
         std::string m_animatorStatePath = {};

@@ -3006,6 +3006,53 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         return _value;
     }
 
+    static std::string NormalizeAssetSearchQuery(const std::string &_query)
+    {
+        if (_query.find_first_not_of(" \t\r\n") == std::string::npos)
+            return {};
+
+        return ToLowerCopy(_query);
+    }
+
+    static bool ShouldHideAssetBrowserPath(const std::filesystem::path &_path)
+    {
+        return _path.filename() == ".DS_Store" || _path.extension() == ".meta";
+    }
+
+    static bool AssetPathMatchesSearch(const std::filesystem::path &_path, const std::string &_lowerQuery)
+    {
+        if (_lowerQuery.empty())
+            return true;
+
+        const std::string path = ToLowerCopy(_path.generic_string());
+        const std::string name = ToLowerCopy(_path.filename().string());
+        return path.find(_lowerQuery) != std::string::npos || name.find(_lowerQuery) != std::string::npos;
+    }
+
+    static bool AssetDirectoryContainsSearchMatch(const std::filesystem::path &_path, const std::string &_lowerQuery)
+    {
+        if (_lowerQuery.empty() || AssetPathMatchesSearch(_path, _lowerQuery))
+            return true;
+
+        std::error_code ec;
+        std::filesystem::recursive_directory_iterator it(
+            _path,
+            std::filesystem::directory_options::skip_permission_denied,
+            ec);
+        const std::filesystem::recursive_directory_iterator end = {};
+
+        while (!ec && it != end)
+        {
+            const std::filesystem::path currentPath = it->path();
+            if (!ShouldHideAssetBrowserPath(currentPath) && AssetPathMatchesSearch(currentPath, _lowerQuery))
+                return true;
+
+            it.increment(ec);
+        }
+
+        return false;
+    }
+
     static bool IsReservedMaterialKey(const std::string &_key)
     {
         return _key == "shader" || _key == "albedo" || _key == "specular" || _key == "roughness" || _key == "metallic" ||
@@ -10171,6 +10218,8 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     {
         namespace fs = std::filesystem;
         fs::path path = _dirPath;
+        const std::string searchQuery = NormalizeAssetSearchQuery(m_assetSearch);
+        const bool searchActive = !searchQuery.empty();
 
         std::vector<fs::directory_entry> entries = {};
         for (const auto &entry : fs::directory_iterator(path))
@@ -10179,14 +10228,20 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
         for (const auto &entry : entries)
         {
             const std::string name = entry.path().filename().string();
-            if (name == ".DS_Store" || entry.path().extension() == ".meta")
+            if (ShouldHideAssetBrowserPath(entry.path()))
                 continue;
 
             if (entry.is_directory())
             {
+                if (searchActive && !AssetDirectoryContainsSearchMatch(entry.path(), searchQuery))
+                    continue;
+
                 ImGuiTreeNodeFlags nodeFlags =
                     ImGuiTreeNodeFlags_OpenOnArrow |
                     ImGuiTreeNodeFlags_SpanAvailWidth;
+                if (searchActive)
+                    nodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
+
                 bool open = ImGui::TreeNodeEx(entry.path().string().c_str(), nodeFlags, "%s", name.c_str());
 
                 if (ImGui::BeginDragDropTarget())
@@ -10475,6 +10530,9 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
             else if (entry.is_regular_file())
             {
                 const std::string fullPath = entry.path().string();
+                if (searchActive && !AssetPathMatchesSearch(entry.path(), searchQuery))
+                    continue;
+
                 const bool isRenamingThis = m_isRenamingAsset && (m_renamingPath == fullPath);
 
                 if (isRenamingThis)
@@ -10984,6 +11042,20 @@ DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X S
     void Editor::DrawAssetsPanel()
     {
         ImGui::Begin("Assets", &m_showAssetsPanel);
+
+        ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 72.0f));
+        ImGui::InputTextWithHint("##AssetSearch", "Search assets...", &m_assetSearch);
+        ImGui::SameLine();
+        const bool hasSearch = !NormalizeAssetSearchQuery(m_assetSearch).empty();
+        if (!hasSearch)
+            ImGui::BeginDisabled();
+        if (ImGui::Button("Clear"))
+            m_assetSearch.clear();
+        if (!hasSearch)
+            ImGui::EndDisabled();
+
+        ImGui::Separator();
+
         DrawDirectoryRecursive("assets");
         ImGui::End();
     }
