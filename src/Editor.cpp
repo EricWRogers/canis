@@ -21,6 +21,7 @@
 #include <Canis/PostProcessPipeline.hpp>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_dialog.h>
 #include <SDL3/SDL_process.h>
 
 #include <imgui.h>
@@ -38,6 +39,10 @@
 #include <glm/gtx/matrix_decompose.hpp>
 #include <glm/gtx/quaternion.hpp>
 
+#define TINYGLTF_NO_STB_IMAGE
+#define TINYGLTF_NO_STB_IMAGE_WRITE
+#include <Canis/External/tinygltf/tiny_gltf.h>
+
 #include <filesystem>
 #include <cstdint>
 #include <algorithm>
@@ -50,6 +55,8 @@
 #include <sstream>
 #include <unordered_map>
 #include <unordered_set>
+
+#include <stb_image.h>
 
 namespace Canis
 {
@@ -3385,6 +3392,464 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _root[_key] = node;
     }
 
+    static bool LoadTinyGLTFImageDataForEditor(
+        tinygltf::Image *_image,
+        const int /*_imageIndex*/,
+        std::string *_error,
+        std::string* /*_warning*/,
+        int /*_reqWidth*/,
+        int /*_reqHeight*/,
+        const unsigned char *_bytes,
+        int _size,
+        void* /*_userPointer*/)
+    {
+        if (_image == nullptr || _bytes == nullptr || _size <= 0)
+        {
+            if (_error != nullptr)
+                *_error += "Invalid glTF image payload.\n";
+            return false;
+        }
+
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        stbi_uc *decoded = stbi_load_from_memory(_bytes, _size, &width, &height, &channels, 4);
+        if (decoded == nullptr)
+        {
+            if (_error != nullptr)
+            {
+                *_error += "Failed to decode glTF image data";
+                if (const char *reason = stbi_failure_reason())
+                {
+                    *_error += ": ";
+                    *_error += reason;
+                }
+                *_error += "\n";
+            }
+            return false;
+        }
+
+        _image->width = width;
+        _image->height = height;
+        _image->component = 4;
+        _image->bits = 8;
+        _image->pixel_type = TINYGLTF_COMPONENT_TYPE_UNSIGNED_BYTE;
+        _image->image.assign(decoded, decoded + (width * height * 4));
+
+        stbi_image_free(decoded);
+        return true;
+    }
+
+    static bool IsGltfModelAssetPath(const std::filesystem::path &_path)
+    {
+        const std::string extension = ToLowerCopy(_path.extension().string());
+        return extension == ".glb" || extension == ".gltf";
+    }
+
+    static std::string SanitizeAssetFileStem(std::string _name, const std::string &_fallback)
+    {
+        if (_name.empty())
+            _name = _fallback.empty() ? "asset" : _fallback;
+
+        for (char &c : _name)
+        {
+            const bool valid =
+                (c >= 'a' && c <= 'z') ||
+                (c >= 'A' && c <= 'Z') ||
+                (c >= '0' && c <= '9') ||
+                c == '_' ||
+                c == '-';
+
+            if (!valid)
+                c = '_';
+        }
+
+        if (_name.empty())
+            return _fallback.empty() ? "asset" : _fallback;
+
+        return _name;
+    }
+
+    static std::filesystem::path MakeUniqueFilePath(const std::filesystem::path &_desiredPath)
+    {
+        namespace fs = std::filesystem;
+
+        if (!fs::exists(_desiredPath))
+            return _desiredPath;
+
+        const fs::path parent = _desiredPath.parent_path();
+        const std::string stem = _desiredPath.stem().string();
+        const std::string extension = _desiredPath.extension().string();
+
+        int index = 1;
+        fs::path candidate;
+        do
+        {
+            candidate = parent / (stem + "_" + std::to_string(index) + extension);
+            ++index;
+        } while (fs::exists(candidate));
+
+        return candidate;
+    }
+
+    static bool AreEquivalentPaths(const std::filesystem::path &_a, const std::filesystem::path &_b)
+    {
+        std::error_code ec;
+        const bool equivalent = std::filesystem::equivalent(_a, _b, ec);
+        return !ec && equivalent;
+    }
+
+    static std::string MakeEditorAssetPath(const std::filesystem::path &_path)
+    {
+        namespace fs = std::filesystem;
+
+        fs::path normalized = _path.lexically_normal();
+        if (!normalized.is_absolute())
+            return normalized.generic_string();
+
+        std::error_code ec;
+        const fs::path runtimeBasePath = GetEditorRuntimeBasePath();
+        const fs::path currentPath = fs::current_path(ec);
+        const std::vector<fs::path> roots =
+        {
+            runtimeBasePath,
+            runtimeBasePath / "project",
+            currentPath,
+            currentPath / "project"
+        };
+
+        for (const fs::path &root : roots)
+        {
+            if (root.empty())
+                continue;
+
+            ec.clear();
+            fs::path relativePath = fs::relative(normalized, root, ec);
+            if (ec || relativePath.empty())
+                continue;
+
+            const auto firstPart = relativePath.begin();
+            if (firstPart != relativePath.end() && firstPart->string() != "..")
+                return relativePath.lexically_normal().generic_string();
+        }
+
+        return normalized.generic_string();
+    }
+
+    static bool WriteEditorRgbaTga(
+        const std::filesystem::path &_path,
+        int _width,
+        int _height,
+        const std::vector<unsigned char> &_rgbaPixels)
+    {
+        if (_width <= 0 || _height <= 0 || _rgbaPixels.size() < static_cast<std::size_t>(_width * _height * 4))
+            return false;
+
+        std::ofstream out(_path, std::ios::binary);
+        if (!out.is_open())
+            return false;
+
+        unsigned char header[18] = {};
+        header[2] = 2;
+        header[12] = static_cast<unsigned char>(_width & 0xFF);
+        header[13] = static_cast<unsigned char>((_width >> 8) & 0xFF);
+        header[14] = static_cast<unsigned char>(_height & 0xFF);
+        header[15] = static_cast<unsigned char>((_height >> 8) & 0xFF);
+        header[16] = 32;
+        header[17] = 0x20;
+        out.write(reinterpret_cast<const char *>(header), sizeof(header));
+
+        for (int y = 0; y < _height; ++y)
+        {
+            for (int x = 0; x < _width; ++x)
+            {
+                const std::size_t offset = static_cast<std::size_t>((y * _width + x) * 4);
+                const unsigned char bgra[4] =
+                {
+                    _rgbaPixels[offset + 2],
+                    _rgbaPixels[offset + 1],
+                    _rgbaPixels[offset + 0],
+                    _rgbaPixels[offset + 3]
+                };
+                out.write(reinterpret_cast<const char *>(bgra), sizeof(bgra));
+            }
+        }
+
+        return out.good();
+    }
+
+    static bool ExportGltfImageToFolder(
+        const tinygltf::Image &_image,
+        int _imageIndex,
+        const std::filesystem::path &_modelPath,
+        const std::filesystem::path &_targetFolder,
+        std::string &_outAssetPath,
+        std::string &_outError)
+    {
+        namespace fs = std::filesystem;
+
+        _outAssetPath.clear();
+
+        std::string textureName = _image.name;
+        fs::path sourcePath;
+        std::string extension = ".tga";
+
+        if (!_image.uri.empty() && _image.uri.rfind("data:", 0) != 0)
+        {
+            sourcePath = (_modelPath.parent_path() / _image.uri).lexically_normal();
+            const fs::path uriPath(_image.uri);
+            if (textureName.empty())
+                textureName = uriPath.stem().string();
+            if (!uriPath.extension().empty())
+                extension = uriPath.extension().string();
+        }
+        else if (_image.mimeType == "image/png")
+        {
+            extension = ".png";
+        }
+        else if (_image.mimeType == "image/jpeg" || _image.mimeType == "image/jpg")
+        {
+            extension = ".jpg";
+        }
+
+        textureName = SanitizeAssetFileStem(textureName, "texture_" + std::to_string(_imageIndex));
+
+        std::error_code ec;
+        if (!sourcePath.empty() && fs::exists(sourcePath, ec) && !ec)
+        {
+            fs::path targetPath = (_targetFolder / (textureName + extension)).lexically_normal();
+            if (!AreEquivalentPaths(sourcePath, targetPath))
+                targetPath = MakeUniqueFilePath(targetPath);
+
+            if (!AreEquivalentPaths(sourcePath, targetPath))
+            {
+                ec.clear();
+                fs::copy_file(sourcePath, targetPath, ec);
+                if (ec)
+                {
+                    _outError = "Failed to copy texture '" + sourcePath.generic_string() + "': " + ec.message();
+                    return false;
+                }
+            }
+
+            _outAssetPath = MakeEditorAssetPath(targetPath);
+            (void)AssetManager::GetMetaFile(_outAssetPath);
+            return true;
+        }
+
+        if (_image.image.empty() || _image.width <= 0 || _image.height <= 0)
+        {
+            _outError = "Texture image data was empty.";
+            return false;
+        }
+
+        fs::path targetPath = MakeUniqueFilePath((_targetFolder / (textureName + ".tga")).lexically_normal());
+        if (!WriteEditorRgbaTga(targetPath, _image.width, _image.height, _image.image))
+        {
+            _outError = "Failed to write embedded texture '" + targetPath.generic_string() + "'.";
+            return false;
+        }
+
+        _outAssetPath = MakeEditorAssetPath(targetPath);
+        (void)AssetManager::GetMetaFile(_outAssetPath);
+        return true;
+    }
+
+    static bool ExportGltfTextureToFolder(
+        const tinygltf::Model &_gltfModel,
+        int _textureIndex,
+        const std::filesystem::path &_modelPath,
+        const std::filesystem::path &_targetFolder,
+        std::unordered_map<int, std::string> &_exportedImagePaths,
+        std::string &_outAssetPath,
+        int &_textureExportCount,
+        std::string &_outError)
+    {
+        _outAssetPath.clear();
+
+        if (_textureIndex < 0 || _textureIndex >= static_cast<int>(_gltfModel.textures.size()))
+            return false;
+
+        const tinygltf::Texture &texture = _gltfModel.textures[_textureIndex];
+        if (texture.source < 0 || texture.source >= static_cast<int>(_gltfModel.images.size()))
+            return false;
+
+        auto existing = _exportedImagePaths.find(texture.source);
+        if (existing != _exportedImagePaths.end())
+        {
+            _outAssetPath = existing->second;
+            return !_outAssetPath.empty();
+        }
+
+        if (!ExportGltfImageToFolder(_gltfModel.images[texture.source], texture.source, _modelPath, _targetFolder, _outAssetPath, _outError))
+            return false;
+
+        _exportedImagePaths[texture.source] = _outAssetPath;
+        ++_textureExportCount;
+        return true;
+    }
+
+    struct ModelMaterialExportResult
+    {
+        int materialCount = 0;
+        int textureCount = 0;
+        std::string error = {};
+    };
+
+    static ModelMaterialExportResult ExportModelMaterialsAndTextures(
+        const std::string &_modelPath,
+        const std::string &_targetFolder)
+    {
+        namespace fs = std::filesystem;
+
+        ModelMaterialExportResult result = {};
+        const fs::path modelPath(_modelPath);
+        const fs::path targetFolder(_targetFolder);
+
+        std::error_code ec;
+        fs::create_directories(targetFolder, ec);
+        if (ec)
+        {
+            result.error = "Failed to create export folder '" + targetFolder.generic_string() + "': " + ec.message();
+            return result;
+        }
+
+        tinygltf::TinyGLTF loader;
+        loader.SetImageLoader(LoadTinyGLTFImageDataForEditor, nullptr);
+
+        tinygltf::Model gltfModel;
+        std::string error;
+        std::string warning;
+        bool loaded = false;
+        const std::string extension = ToLowerCopy(modelPath.extension().string());
+        if (extension == ".glb")
+            loaded = loader.LoadBinaryFromFile(&gltfModel, &error, &warning, modelPath.string());
+        else if (extension == ".gltf")
+            loaded = loader.LoadASCIIFromFile(&gltfModel, &error, &warning, modelPath.string());
+        else
+        {
+            result.error = "Only .glb and .gltf model assets can export materials.";
+            return result;
+        }
+
+        if (!warning.empty())
+            Debug::Warning("tinygltf: %s", warning.c_str());
+
+        if (!loaded)
+        {
+            result.error = error.empty() ? "Failed to load glTF model." : error;
+            return result;
+        }
+
+        if (gltfModel.materials.empty())
+        {
+            result.error = "Model has no glTF materials to export.";
+            return result;
+        }
+
+        std::unordered_map<int, std::string> exportedImagePaths = {};
+        const std::string modelStem = SanitizeAssetFileStem(modelPath.stem().string(), "model");
+
+        for (std::size_t materialIndex = 0; materialIndex < gltfModel.materials.size(); ++materialIndex)
+        {
+            const tinygltf::Material &gltfMaterial = gltfModel.materials[materialIndex];
+            const tinygltf::PbrMetallicRoughness &pbr = gltfMaterial.pbrMetallicRoughness;
+
+            const std::string materialName = SanitizeAssetFileStem(
+                gltfMaterial.name,
+                modelStem + "_material_" + std::to_string(materialIndex));
+            const fs::path materialPath = MakeUniqueFilePath((targetFolder / (materialName + ".material")).lexically_normal());
+
+            YAML::Node root(YAML::NodeType::Map);
+            if (MetaFileAsset *shaderMeta = AssetManager::GetMetaFile("assets/shaders/model3d.vs"))
+            {
+                YAML::Node shaderNode(YAML::NodeType::Map);
+                shaderNode["uuid"] = (uint64_t)shaderMeta->uuid;
+                shaderNode["path"] = shaderMeta->path;
+                root["shader"] = shaderNode;
+            }
+
+            Color color(1.0f);
+            if (pbr.baseColorFactor.size() == 4u)
+            {
+                color = Color(
+                    static_cast<float>(pbr.baseColorFactor[0]),
+                    static_cast<float>(pbr.baseColorFactor[1]),
+                    static_cast<float>(pbr.baseColorFactor[2]),
+                    static_cast<float>(pbr.baseColorFactor[3]));
+            }
+            root["color"] = color;
+            root["specularValue"] = 0.5f;
+            root["roughnessValue"] = static_cast<float>(pbr.roughnessFactor);
+            root["metallicValue"] = static_cast<float>(pbr.metallicFactor);
+            root["backFaceCulling"] = !gltfMaterial.doubleSided;
+
+            std::string texturePath;
+            std::string textureError;
+            if (ExportGltfTextureToFolder(gltfModel, pbr.baseColorTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
+                root["albedo"] = MakeAssetRefNode(texturePath);
+            else if (!textureError.empty())
+                Debug::Warning("%s", textureError.c_str());
+
+            textureError.clear();
+            if (ExportGltfTextureToFolder(gltfModel, pbr.metallicRoughnessTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
+            {
+                root["roughness"] = MakeAssetRefNode(texturePath);
+                root["metallic"] = MakeAssetRefNode(texturePath);
+            }
+            else if (!textureError.empty())
+            {
+                Debug::Warning("%s", textureError.c_str());
+            }
+
+            textureError.clear();
+            if (ExportGltfTextureToFolder(gltfModel, gltfMaterial.emissiveTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
+                root["emission"] = MakeAssetRefNode(texturePath);
+            else if (!textureError.empty())
+                Debug::Warning("%s", textureError.c_str());
+
+            auto setTextureUniform = [&](const char *_uniformName, const std::string &_texturePath) -> void
+            {
+                YAML::Node uniformNode(YAML::NodeType::Map);
+                uniformNode["type"] = "texture";
+                uniformNode["value"] = MakeAssetRefNode(_texturePath);
+                root["uniforms"][_uniformName] = uniformNode;
+            };
+
+            textureError.clear();
+            if (ExportGltfTextureToFolder(gltfModel, gltfMaterial.normalTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
+                setTextureUniform("normalTexture", texturePath);
+            else if (!textureError.empty())
+                Debug::Warning("%s", textureError.c_str());
+
+            textureError.clear();
+            if (ExportGltfTextureToFolder(gltfModel, gltfMaterial.occlusionTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
+                setTextureUniform("occlusionTexture", texturePath);
+            else if (!textureError.empty())
+                Debug::Warning("%s", textureError.c_str());
+
+            std::ofstream out(materialPath);
+            if (!out.is_open())
+            {
+                result.error = "Failed to create material '" + materialPath.generic_string() + "'.";
+                return result;
+            }
+
+            out << root;
+            if (!out.good())
+            {
+                result.error = "Failed to write material '" + materialPath.generic_string() + "'.";
+                return result;
+            }
+
+            const std::string materialAssetPath = MakeEditorAssetPath(materialPath);
+            (void)AssetManager::GetMetaFile(materialAssetPath);
+            ++result.materialCount;
+        }
+
+        return result;
+    }
+
     static void ApplyMaterialNodeToAsset(const YAML::Node &_root, MaterialAsset *_material)
     {
         if (_material == nullptr)
@@ -3676,6 +4141,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (sceneChanged)
             ResetSceneHistory();
         PollAssetHotReload(_deltaTime);
+        ProcessModelMaterialExportDialog();
 
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
@@ -4319,6 +4785,130 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_pendingHotReloadAssets.erase(it->first);
             it = m_assetHotReloadWriteTimes.erase(it);
         }
+    }
+
+    void Editor::RequestModelMaterialExport(const std::string &_modelPath)
+    {
+        if (m_window == nullptr)
+            return;
+
+        {
+            std::lock_guard<std::mutex> lock(m_modelMaterialExportDialog.mutex);
+            if (m_modelMaterialExportDialog.active)
+            {
+                Debug::Warning("A model material export folder picker is already open.");
+                return;
+            }
+
+            namespace fs = std::filesystem;
+            fs::path modelPath(_modelPath);
+            if (!modelPath.is_absolute())
+                modelPath = fs::absolute(modelPath);
+
+            m_modelMaterialExportDialog.modelPath = _modelPath;
+            m_modelMaterialExportDialog.defaultLocation = modelPath.parent_path().string();
+            m_modelMaterialExportDialog.selectedFolder.clear();
+            m_modelMaterialExportDialog.error.clear();
+            m_modelMaterialExportDialog.pending = false;
+            m_modelMaterialExportDialog.canceled = false;
+            m_modelMaterialExportDialog.active = true;
+        }
+
+        auto onFolderSelected = [](void *_userdata, const char * const *_filelist, int)
+        {
+            ModelMaterialExportDialogState *dialog = static_cast<ModelMaterialExportDialogState*>(_userdata);
+            if (dialog == nullptr)
+                return;
+
+            std::lock_guard<std::mutex> lock(dialog->mutex);
+            dialog->selectedFolder.clear();
+            dialog->error.clear();
+            dialog->canceled = false;
+            dialog->pending = true;
+            dialog->active = false;
+
+            if (_filelist == nullptr)
+            {
+                dialog->error = SDL_GetError();
+                if (dialog->error.empty())
+                    dialog->error = "Could not open folder dialog.";
+                return;
+            }
+
+            if (_filelist[0] == nullptr)
+            {
+                dialog->canceled = true;
+                return;
+            }
+
+            dialog->selectedFolder = _filelist[0];
+        };
+
+        std::string defaultLocationStorage;
+        {
+            std::lock_guard<std::mutex> lock(m_modelMaterialExportDialog.mutex);
+            defaultLocationStorage = m_modelMaterialExportDialog.defaultLocation;
+        }
+        const char *defaultLocation = defaultLocationStorage.empty() ? nullptr : defaultLocationStorage.c_str();
+
+        SDL_ShowOpenFolderDialog(
+            onFolderSelected,
+            &m_modelMaterialExportDialog,
+            static_cast<SDL_Window*>(m_window->GetSDLWindow()),
+            defaultLocation,
+            false);
+    }
+
+    void Editor::ProcessModelMaterialExportDialog()
+    {
+        std::string modelPath;
+        std::string selectedFolder;
+        std::string error;
+        bool pending = false;
+        bool canceled = false;
+
+        {
+            std::lock_guard<std::mutex> lock(m_modelMaterialExportDialog.mutex);
+            pending = m_modelMaterialExportDialog.pending;
+            if (!pending)
+                return;
+
+            modelPath = m_modelMaterialExportDialog.modelPath;
+            selectedFolder = m_modelMaterialExportDialog.selectedFolder;
+            error = m_modelMaterialExportDialog.error;
+            canceled = m_modelMaterialExportDialog.canceled;
+
+            m_modelMaterialExportDialog.pending = false;
+            m_modelMaterialExportDialog.modelPath.clear();
+            m_modelMaterialExportDialog.selectedFolder.clear();
+            m_modelMaterialExportDialog.error.clear();
+            m_modelMaterialExportDialog.canceled = false;
+        }
+
+        if (!error.empty())
+        {
+            Debug::Warning("Model material export failed: %s", error.c_str());
+            return;
+        }
+
+        if (canceled || selectedFolder.empty())
+            return;
+
+        const ModelMaterialExportResult result = ExportModelMaterialsAndTextures(modelPath, selectedFolder);
+        if (!result.error.empty())
+        {
+            Debug::Warning("Model material export failed: %s", result.error.c_str());
+            return;
+        }
+
+        Debug::Log(
+            "Exported %d material(s) and %d texture(s) from '%s' to '%s'.",
+            result.materialCount,
+            result.textureCount,
+            modelPath.c_str(),
+            selectedFolder.c_str());
+
+        m_assetPaths = FindFilesInFolder("assets", "");
     }
 
     bool Editor::CanTrackSceneHistory() const
@@ -7288,6 +7878,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (!m_selectedAssetPath.empty())
         {
+            if (DrawModelAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
+
             if (DrawMaterialAssetInspector(m_selectedAssetPath))
             {
                 ImGui::End();
@@ -7390,6 +7986,34 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::End();
+    }
+
+    bool Editor::DrawModelAssetInspector(const std::string &_modelPath)
+    {
+        MetaFileAsset *meta = AssetManager::GetMetaFile(_modelPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::MODEL)
+            return false;
+
+        const std::string modelPath = meta->path.empty() ? _modelPath : meta->path;
+
+        ImGui::Text("Asset: %s", meta->name.c_str());
+        ImGui::Text("Path: %s", modelPath.c_str());
+        ImGui::Separator();
+
+        const bool canExportMaterials = IsGltfModelAssetPath(modelPath);
+        if (!canExportMaterials)
+            ImGui::BeginDisabled();
+
+        if (ImGui::Button("Export Materials/Textures...", ImVec2(240.0f, 0.0f)))
+            RequestModelMaterialExport(modelPath);
+
+        if (!canExportMaterials)
+        {
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Material export currently supports .glb and .gltf models.");
+        }
+
+        return true;
     }
 
     bool Editor::DrawMaterialAssetInspector(const std::string &_materialPath)
@@ -10615,7 +11239,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     {
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
-                            if (meta->type == MetaFileAsset::FileType::MATERIAL ||
+                            if (meta->type == MetaFileAsset::FileType::MODEL ||
+                                meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
@@ -10638,7 +11263,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     {
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
-                            if (meta->type == MetaFileAsset::FileType::MATERIAL ||
+                            if (meta->type == MetaFileAsset::FileType::MODEL ||
+                                meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
@@ -10660,6 +11286,24 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     // right click
                     if (ImGui::BeginPopupContextItem())
                     {
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
+                        {
+                            if (meta->type == MetaFileAsset::FileType::MODEL)
+                            {
+                                const bool canExportMaterials = IsGltfModelAssetPath(fullPath);
+                                if (!canExportMaterials)
+                                    ImGui::BeginDisabled();
+
+                                if (ImGui::MenuItem("Export Materials/Textures..."))
+                                    RequestModelMaterialExport(fullPath);
+
+                                if (!canExportMaterials)
+                                    ImGui::EndDisabled();
+
+                                ImGui::Separator();
+                            }
+                        }
+
                         if (ImGui::MenuItem("Duplicate"))
                             duplicateThisAsset = true;
 
@@ -10706,7 +11350,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                             if (MetaFileAsset *duplicatedMeta = AssetManager::GetMetaFile(duplicatePath.string()))
                             {
-                                if (duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
+                                if (duplicatedMeta->type == MetaFileAsset::FileType::MODEL ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SKYBOX ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH ||
@@ -10788,7 +11433,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             m_scene->Load(meta->path);
                             ResetSceneHistory();
                         }
-                        else if (meta->type == MetaFileAsset::FileType::MATERIAL ||
+                        else if (meta->type == MetaFileAsset::FileType::MODEL ||
+                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
                                  meta->type == MetaFileAsset::FileType::SKYBOX ||
                                  meta->type == MetaFileAsset::FileType::POSTPROCESS ||
                                  meta->type == MetaFileAsset::FileType::SHADERGRAPH ||

@@ -149,6 +149,18 @@ namespace Canis
             float debounceSeconds = 0.0f;
         };
 
+        struct ModelMaterialExportDialogState
+        {
+            std::mutex mutex = {};
+            std::string modelPath = {};
+            std::string defaultLocation = {};
+            std::string selectedFolder = {};
+            std::string error = {};
+            bool active = false;
+            bool pending = false;
+            bool canceled = false;
+        };
+
         void DrawMainDockspace();
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
@@ -174,6 +186,7 @@ namespace Canis
         void DrawScriptsPanel();
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
+        bool DrawModelAssetInspector(const std::string &_modelPath);
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
         bool DrawPostProcessAssetInspector(const std::string &_postProcessPath);
@@ -223,6 +236,8 @@ namespace Canis
         void UpdatePlayMouseCapture();
         void PrimeAssetHotReloadState();
         void PollAssetHotReload(float _deltaTime);
+        void RequestModelMaterialExport(const std::string &_modelPath);
+        void ProcessModelMaterialExportDialog();
         void ResetVertexSnapDrag();
         bool TryApplyVertexSnap(Canis::Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta);
 
@@ -361,6 +376,7 @@ namespace Canis
         bool m_sceneHistoryRestoring = false;
         std::unordered_map<std::string, std::filesystem::file_time_type> m_assetHotReloadWriteTimes = {};
         std::unordered_map<std::string, PendingHotReloadAsset> m_pendingHotReloadAssets = {};
+        ModelMaterialExportDialogState m_modelMaterialExportDialog = {};
 
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;
