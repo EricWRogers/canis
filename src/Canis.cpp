@@ -17,6 +17,7 @@ namespace Canis
         constexpr const char* kProjectConfigPath = "project_settings/project.canis";
         constexpr const char* kLegacyProjectConfigPath = "project.canis";
         constexpr const char* kEditorConfigPath = "user_settings/editor.conf";
+        constexpr const char* kDefaultEditorConfigPath = "project_settings/editor.conf";
         bool g_editorRuntimeEnabled = true;
 
         int NormalizeProjectSyncMode(int _value)
@@ -70,6 +71,9 @@ namespace Canis
         {
             if (FileExists(kEditorConfigPath))
                 return kEditorConfigPath;
+
+            if (FileExists(kDefaultEditorConfigPath))
+                return kDefaultEditorConfigPath;
 
             return kEditorConfigPath;
         }

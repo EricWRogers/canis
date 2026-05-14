@@ -1460,10 +1460,10 @@ Size=1920,24
 Collapsed=0
 
 [Window][Game]
-Pos=0,573
-Size=1327,569
+Pos=0,44
+Size=687,320
 Collapsed=0
-DockId=0x00000007,0
+DockId=0x0000000A,0
 
 [Window][Hierarchy]
 Pos=1329,0
@@ -1472,34 +1472,34 @@ Collapsed=0
 DockId=0x00000004,0
 
 [Window][Inspector]
-Pos=1606,0
-Size=314,617
+Pos=897,44
+Size=383,365
 Collapsed=0
-DockId=0x00000005,0
+DockId=0x0000000C,0
 
 [Window][Assets]
-Pos=1329,619
-Size=591,523
+Pos=689,411
+Size=591,309
 Collapsed=0
 DockId=0x00000008,0
 
 [Window][Systems]
-Pos=1329,619
-Size=591,523
+Pos=689,411
+Size=591,309
 Collapsed=0
 DockId=0x00000008,1
 
 [Window][Environment]
-Pos=1606,0
-Size=314,617
+Pos=897,44
+Size=383,365
 Collapsed=0
-DockId=0x00000005,1
+DockId=0x0000000C,1
 
 [Window][ProjectSettings]
-Pos=1606,0
-Size=314,617
+Pos=897,44
+Size=383,365
 Collapsed=0
-DockId=0x00000005,2
+DockId=0x0000000C,2
 
 [Window][Canis Component Registry]
 Pos=320,74
@@ -1523,27 +1523,50 @@ Size=1819,619
 Collapsed=0
 
 [Window][MainDockspace]
-Pos=0,0
-Size=1920,1142
+Pos=0,44
+Size=1280,676
 Collapsed=0
 
 [Window][Scene]
-Pos=0,54
-Size=1327,517
+Pos=0,366
+Size=687,354
 Collapsed=0
-DockId=0x0000000A,0
+DockId=0x00000007,0
 
 [Window][ShaderGraph]
-Pos=0,54
-Size=1327,517
+Pos=0,44
+Size=687,320
 Collapsed=0
 DockId=0x0000000A,1
 
 [Window][Canis Editor]
-Pos=0,0
 Size=1327,52
 Collapsed=0
 DockId=0x00000009,0
+
+[Window][###Hierarchy]
+Pos=689,44
+Size=206,365
+Collapsed=0
+DockId=0x0000000B,0
+
+[Window][Animation]
+Pos=0,44
+Size=687,320
+Collapsed=0
+DockId=0x0000000A,3
+
+[Window][Animator]
+Pos=0,44
+Size=687,320
+Collapsed=0
+DockId=0x0000000A,2
+
+[Window][Scripts]
+Pos=689,411
+Size=591,309
+Collapsed=0
+DockId=0x00000008,2
 
 [Table][0xA0A1C938,2]
 RefScale=18
@@ -1562,18 +1585,20 @@ Column 2  Weight=1.0000
 Column 3  Weight=1.0000
 
 [Docking][Data]
-DockSpace       ID=0x11111111 Pos=0,25 Size=1920,1032 CentralNode=1 Selected=0x79A00B04
-DockSpace       ID=0x49B9F6FE Window=0x1C358F53 Pos=0,0 Size=1920,1142 Split=X Selected=0xE601B12F
-  DockNode      ID=0x00000001 Parent=0x49B9F6FE SizeRef=1327,1142 Split=Y Selected=0xE601B12F
-    DockNode    ID=0x00000006 Parent=0x00000001 SizeRef=1327,571 Split=Y Selected=0xE601B12F
-      DockNode  ID=0x00000009 Parent=0x00000006 SizeRef=1327,52 Selected=0xAD07D0E7
-      DockNode  ID=0x0000000A Parent=0x00000006 SizeRef=1327,517 CentralNode=1 Selected=0xE601B12F
-    DockNode    ID=0x00000007 Parent=0x00000001 SizeRef=1327,569 Selected=0xD1EB2482
-  DockNode      ID=0x00000002 Parent=0x49B9F6FE SizeRef=591,1142 Split=Y Selected=0x73E3D51F
-    DockNode    ID=0x00000003 Parent=0x00000002 SizeRef=319,617 Split=X Selected=0x73E3D51F
-      DockNode  ID=0x00000004 Parent=0x00000003 SizeRef=275,617 Selected=0xBABDAE5E
-      DockNode  ID=0x00000005 Parent=0x00000003 SizeRef=314,617 Selected=0x13B2DC32
-    DockNode    ID=0x00000008 Parent=0x00000002 SizeRef=319,523 Selected=0x42C24103
+DockSpace         ID=0x11111111 Pos=0,25 Size=1920,1032 CentralNode=1 Selected=0x79A00B04
+DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X Selected=0xE601B12F
+  DockNode        ID=0x00000001 Parent=0x49B9F6FE SizeRef=1327,1142 Split=Y Selected=0xE601B12F
+    DockNode      ID=0x00000006 Parent=0x00000001 SizeRef=1327,320 Split=Y Selected=0xE601B12F
+      DockNode    ID=0x00000009 Parent=0x00000006 SizeRef=1327,52 Selected=0xAD07D0E7
+      DockNode    ID=0x0000000A Parent=0x00000006 SizeRef=1327,517 CentralNode=1 Selected=0xD1EB2482
+    DockNode      ID=0x00000007 Parent=0x00000001 SizeRef=1327,354 Selected=0xE601B12F
+  DockNode        ID=0x00000002 Parent=0x49B9F6FE SizeRef=591,1142 Split=Y Selected=0x73E3D51F
+    DockNode      ID=0x00000003 Parent=0x00000002 SizeRef=319,617 Split=X Selected=0x73E3D51F
+      DockNode    ID=0x00000004 Parent=0x00000003 SizeRef=275,617 Selected=0xBABDAE5E
+      DockNode    ID=0x00000005 Parent=0x00000003 SizeRef=314,617 Split=X Selected=0x13B2DC32
+        DockNode  ID=0x0000000B Parent=0x00000005 SizeRef=206,365 Selected=0x42E466D2
+        DockNode  ID=0x0000000C Parent=0x00000005 SizeRef=383,365 Selected=0x36DC96AB
+    DockNode      ID=0x00000008 Parent=0x00000002 SizeRef=319,523 Selected=0x42C24103
 )";
 
         void EnsureDefaultImguiIniFile(const std::filesystem::path& _path)
