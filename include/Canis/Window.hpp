@@ -1,6 +1,8 @@
 #pragma once
 #include <Canis/Math.hpp>
 
+#include <string>
+
 namespace Canis
 {
 
