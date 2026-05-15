@@ -3061,6 +3061,99 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return path.find(_lowerQuery) != std::string::npos || name.find(_lowerQuery) != std::string::npos;
     }
 
+    static bool ConsoleLogLevelEnabled(
+        Canis::Debug::LogLevel _level,
+        bool _showLogs,
+        bool _showWarnings,
+        bool _showErrors,
+        bool _showFatal)
+    {
+        switch (_level)
+        {
+            case Canis::Debug::LogLevel::Warning: return _showWarnings;
+            case Canis::Debug::LogLevel::Error: return _showErrors;
+            case Canis::Debug::LogLevel::Fatal: return _showFatal;
+            case Canis::Debug::LogLevel::Log:
+            default: return _showLogs;
+        }
+    }
+
+    static bool ConsoleEntryMatchesSearch(const Canis::Debug::LogEntry &_entry, const std::string &_lowerQuery)
+    {
+        if (_lowerQuery.empty())
+            return true;
+
+        const std::string level = ToLowerCopy(Canis::Debug::LogLevelName(_entry.level));
+        const std::string message = ToLowerCopy(_entry.message);
+        const std::string file = ToLowerCopy(_entry.file);
+        return level.find(_lowerQuery) != std::string::npos ||
+            message.find(_lowerQuery) != std::string::npos ||
+            file.find(_lowerQuery) != std::string::npos;
+    }
+
+    static ImVec4 ConsoleLogLevelColor(Canis::Debug::LogLevel _level)
+    {
+        switch (_level)
+        {
+            case Canis::Debug::LogLevel::Warning: return ImVec4(1.0f, 0.78f, 0.24f, 1.0f);
+            case Canis::Debug::LogLevel::Error: return ImVec4(1.0f, 0.38f, 0.36f, 1.0f);
+            case Canis::Debug::LogLevel::Fatal: return ImVec4(1.0f, 0.18f, 0.18f, 1.0f);
+            case Canis::Debug::LogLevel::Log:
+            default: return ImVec4(0.72f, 0.92f, 0.72f, 1.0f);
+        }
+    }
+
+    static std::string MakeConsoleSourceDisplayPath(const std::string &_file)
+    {
+        if (_file.empty())
+            return "";
+
+        namespace fs = std::filesystem;
+        const fs::path filePath(_file);
+        if (!filePath.is_absolute())
+            return filePath.generic_string();
+
+        std::error_code ec;
+        const fs::path currentPath = fs::current_path(ec);
+        if (!ec && !currentPath.empty())
+        {
+            ec.clear();
+            const fs::path relativePath = fs::relative(filePath, currentPath, ec);
+            if (!ec && !relativePath.empty() && relativePath.begin()->string() != "..")
+                return relativePath.generic_string();
+        }
+
+        return filePath.filename().generic_string();
+    }
+
+    static std::string MakeConsoleOpenTarget(const Canis::Debug::LogEntry &_entry)
+    {
+        if (_entry.file.empty())
+            return "";
+
+        namespace fs = std::filesystem;
+        fs::path filePath(_entry.file);
+
+        std::error_code ec;
+        if (!filePath.is_absolute() && !fs::exists(filePath, ec))
+        {
+            const fs::path currentCandidate = fs::current_path(ec) / filePath;
+            if (fs::exists(currentCandidate, ec))
+                filePath = currentCandidate;
+            else
+            {
+                const fs::path runtimeCandidate = GetEditorRuntimeBasePath() / filePath;
+                if (fs::exists(runtimeCandidate, ec))
+                    filePath = runtimeCandidate;
+            }
+        }
+
+        std::string target = filePath.generic_string();
+        if (_entry.line > 0)
+            target += ":" + std::to_string(_entry.line);
+        return target;
+    }
+
     static bool AssetDirectoryContainsSearchMatch(const std::filesystem::path &_path, const std::string &_lowerQuery)
     {
         if (_lowerQuery.empty() || AssetPathMatchesSearch(_path, _lowerQuery))
@@ -4205,6 +4298,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawScriptsPanel();
         if (m_showProjectSettingsPanel)
             DrawProjectSettings();
+        if (m_showConsolePanel)
+            DrawConsolePanel();
         if (m_showScenePanel)
             DrawSceneView();
         else
@@ -11789,6 +11884,150 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
     }
 
+    void Editor::DrawConsolePanel()
+    {
+        if (!ImGui::Begin("Canis Console", &m_showConsolePanel))
+        {
+            ImGui::End();
+            return;
+        }
+
+        const std::vector<Canis::Debug::LogEntry> entries = Canis::Debug::GetEntries();
+        const std::string lowerSearch = NormalizeAssetSearchQuery(m_consoleSearch);
+
+        int visibleCount = 0;
+        int logCount = 0;
+        int warningCount = 0;
+        int errorCount = 0;
+        int fatalCount = 0;
+        for (const Canis::Debug::LogEntry &entry : entries)
+        {
+            switch (entry.level)
+            {
+                case Canis::Debug::LogLevel::Warning: ++warningCount; break;
+                case Canis::Debug::LogLevel::Error: ++errorCount; break;
+                case Canis::Debug::LogLevel::Fatal: ++fatalCount; break;
+                case Canis::Debug::LogLevel::Log:
+                default: ++logCount; break;
+            }
+
+            if (ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) &&
+                ConsoleEntryMatchesSearch(entry, lowerSearch))
+            {
+                ++visibleCount;
+            }
+        }
+
+        ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x - 280.0f));
+        ImGui::InputTextWithHint("##ConsoleSearch", "Search logs...", &m_consoleSearch);
+        ImGui::SameLine();
+        const bool hasSearch = !lowerSearch.empty();
+        if (!hasSearch)
+            ImGui::BeginDisabled();
+        if (ImGui::Button("Clear Search"))
+            m_consoleSearch.clear();
+        if (!hasSearch)
+            ImGui::EndDisabled();
+
+        ImGui::SameLine();
+        if (ImGui::Button("Clear Logs"))
+        {
+            Canis::Debug::ClearEntries();
+            m_consoleLastEntryId = 0u;
+        }
+
+        ImGui::Checkbox(("Log (" + std::to_string(logCount) + ")").c_str(), &m_consoleShowLogs);
+        ImGui::SameLine();
+        ImGui::Checkbox(("Warning (" + std::to_string(warningCount) + ")").c_str(), &m_consoleShowWarnings);
+        ImGui::SameLine();
+        ImGui::Checkbox(("Error (" + std::to_string(errorCount) + ")").c_str(), &m_consoleShowErrors);
+        ImGui::SameLine();
+        ImGui::Checkbox(("Fatal (" + std::to_string(fatalCount) + ")").c_str(), &m_consoleShowFatal);
+        ImGui::SameLine();
+        ImGui::Checkbox("Auto-scroll", &m_consoleAutoScroll);
+        ImGui::SameLine();
+        ImGui::TextDisabled("%d / %zu", visibleCount, entries.size());
+
+        ImGui::Separator();
+
+        const uint64_t newestEntryId = entries.empty() ? 0u : entries.back().id;
+        const bool hasNewEntries = newestEntryId != 0u && newestEntryId != m_consoleLastEntryId;
+
+        ImGui::BeginChild("##ConsoleLogBody", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
+        if (ImGui::BeginTable(
+            "ConsoleLogTable",
+            4,
+            ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollX))
+        {
+            ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+            ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
+            ImGui::TableSetupColumn("File", ImGuiTableColumnFlags_WidthFixed, 220.0f);
+            ImGui::TableSetupColumn("Line", ImGuiTableColumnFlags_WidthFixed, 64.0f);
+            ImGui::TableHeadersRow();
+
+            for (const Canis::Debug::LogEntry &entry : entries)
+            {
+                if (!ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) ||
+                    !ConsoleEntryMatchesSearch(entry, lowerSearch))
+                {
+                    continue;
+                }
+
+                const std::string openTarget = MakeConsoleOpenTarget(entry);
+                const std::string displayPath = MakeConsoleSourceDisplayPath(entry.file);
+                const bool canOpenSource = !openTarget.empty();
+
+                ImGui::PushID(static_cast<int>(entry.id));
+                ImGui::TableNextRow();
+                ImGui::TableSetColumnIndex(0);
+
+                ImGui::PushStyleColor(ImGuiCol_Text, ConsoleLogLevelColor(entry.level));
+                const bool rowClicked = ImGui::Selectable(
+                    Canis::Debug::LogLevelName(entry.level),
+                    false,
+                    ImGuiSelectableFlags_SpanAllColumns | ImGuiSelectableFlags_AllowOverlap);
+                ImGui::PopStyleColor();
+
+                if (rowClicked && canOpenSource)
+                    OpenInVSCode(openTarget);
+
+                if (ImGui::IsItemHovered())
+                {
+                    if (canOpenSource)
+                        ImGui::SetTooltip("%s\n%s", entry.message.c_str(), openTarget.c_str());
+                    else
+                        ImGui::SetTooltip("%s", entry.message.c_str());
+                }
+
+                ImGui::TableSetColumnIndex(1);
+                ImGui::TextUnformatted(entry.message.c_str());
+
+                ImGui::TableSetColumnIndex(2);
+                if (!displayPath.empty())
+                    ImGui::TextUnformatted(displayPath.c_str());
+                else
+                    ImGui::TextDisabled("-");
+
+                ImGui::TableSetColumnIndex(3);
+                if (entry.line > 0)
+                    ImGui::Text("%d", entry.line);
+                else
+                    ImGui::TextDisabled("-");
+
+                ImGui::PopID();
+            }
+
+            ImGui::EndTable();
+        }
+
+        if (m_consoleAutoScroll && hasNewEntries)
+            ImGui::SetScrollHereY(1.0f);
+
+        ImGui::EndChild();
+        m_consoleLastEntryId = newestEntryId;
+        ImGui::End();
+    }
+
     std::string Editor::ResolveRememberedShaderGraphPath() const
     {
         const ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
@@ -12459,6 +12698,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::MenuItem("Systems", nullptr, &m_showSystemsPanel);
         ImGui::MenuItem("Assets", nullptr, &m_showAssetsPanel);
         ImGui::MenuItem("Scripts", nullptr, &m_showScriptsPanel);
+        ImGui::MenuItem("Console", nullptr, &m_showConsolePanel);
         ImGui::Separator();
         ImGui::MenuItem("Animation", nullptr, &m_showAnimationPanel);
         ImGui::MenuItem("Animator", nullptr, &m_showAnimatorPanel);
@@ -12482,6 +12722,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_showAnimatorPanel = true;
             m_showShaderGraphPanel = true;
             m_showProjectSettingsPanel = true;
+            m_showConsolePanel = true;
         }
 
         ImGui::EndPopup();

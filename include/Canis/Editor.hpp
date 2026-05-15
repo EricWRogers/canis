@@ -201,6 +201,7 @@ namespace Canis
         void DrawShaderGraphWindow();
         void DrawProjectSettings();
         void DrawSystemPanel();
+        void DrawConsolePanel();
         void DrawEditorPanel();
         std::string ResolveRememberedShaderGraphPath() const;
         void RememberLastShaderGraphAssetPath(const std::string &_path);
@@ -334,6 +335,7 @@ namespace Canis
         bool m_showAnimatorPanel = true;
         bool m_showShaderGraphPanel = true;
         bool m_showProjectSettingsPanel = true;
+        bool m_showConsolePanel = true;
         bool m_playViewHovered = false;
         bool m_playMouseCaptured = false;
         bool m_sceneViewClicked = false;
@@ -377,6 +379,13 @@ namespace Canis
         std::unordered_map<std::string, std::filesystem::file_time_type> m_assetHotReloadWriteTimes = {};
         std::unordered_map<std::string, PendingHotReloadAsset> m_pendingHotReloadAssets = {};
         ModelMaterialExportDialogState m_modelMaterialExportDialog = {};
+        std::string m_consoleSearch = {};
+        bool m_consoleShowLogs = true;
+        bool m_consoleShowWarnings = true;
+        bool m_consoleShowErrors = true;
+        bool m_consoleShowFatal = true;
+        bool m_consoleAutoScroll = true;
+        uint64_t m_consoleLastEntryId = 0u;
 
         unsigned int m_gameFramebuffer = 0;
         unsigned int m_gameColorTexture = 0;
