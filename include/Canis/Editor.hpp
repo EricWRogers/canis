@@ -385,6 +385,7 @@ namespace Canis
         bool m_consoleShowErrors = true;
         bool m_consoleShowFatal = true;
         bool m_consoleAutoScroll = true;
+        bool m_consoleCollapseDuplicates = false;
         uint64_t m_consoleLastEntryId = 0u;
 
         unsigned int m_gameFramebuffer = 0;

@@ -3103,6 +3103,20 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
     }
 
+    struct ConsoleDisplayEntry
+    {
+        Canis::Debug::LogEntry entry = {};
+        int count = 1;
+    };
+
+    static bool ConsoleEntriesAreDuplicates(const Canis::Debug::LogEntry &_left, const Canis::Debug::LogEntry &_right)
+    {
+        return _left.level == _right.level &&
+            _left.message == _right.message &&
+            _left.file == _right.file &&
+            _left.line == _right.line;
+    }
+
     static std::string MakeConsoleSourceDisplayPath(const std::string &_file)
     {
         if (_file.empty())
@@ -11900,6 +11914,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         int warningCount = 0;
         int errorCount = 0;
         int fatalCount = 0;
+        int matchedEntryCount = 0;
+        std::vector<ConsoleDisplayEntry> displayEntries = {};
         for (const Canis::Debug::LogEntry &entry : entries)
         {
             switch (entry.level)
@@ -11914,9 +11930,26 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) &&
                 ConsoleEntryMatchesSearch(entry, lowerSearch))
             {
-                ++visibleCount;
+                ++matchedEntryCount;
+
+                if (m_consoleCollapseDuplicates)
+                {
+                    auto duplicate = std::find_if(displayEntries.begin(), displayEntries.end(), [&entry](const ConsoleDisplayEntry &_displayEntry)
+                    {
+                        return ConsoleEntriesAreDuplicates(_displayEntry.entry, entry);
+                    });
+
+                    if (duplicate != displayEntries.end())
+                    {
+                        ++duplicate->count;
+                        continue;
+                    }
+                }
+
+                displayEntries.push_back(ConsoleDisplayEntry{ .entry = entry, .count = 1 });
             }
         }
+        visibleCount = static_cast<int>(displayEntries.size());
 
         ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x - 280.0f));
         ImGui::InputTextWithHint("##ConsoleSearch", "Search logs...", &m_consoleSearch);
@@ -11946,7 +11979,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::SameLine();
         ImGui::Checkbox("Auto-scroll", &m_consoleAutoScroll);
         ImGui::SameLine();
-        ImGui::TextDisabled("%d / %zu", visibleCount, entries.size());
+        ImGui::Checkbox("Collapse Duplicates", &m_consoleCollapseDuplicates);
+        ImGui::SameLine();
+        if (m_consoleCollapseDuplicates)
+            ImGui::TextDisabled("%d rows / %d matching / %zu total", visibleCount, matchedEntryCount, entries.size());
+        else
+            ImGui::TextDisabled("%d / %zu", visibleCount, entries.size());
 
         ImGui::Separator();
 
@@ -11956,22 +11994,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::BeginChild("##ConsoleLogBody", ImVec2(0.0f, 0.0f), false, ImGuiWindowFlags_HorizontalScrollbar);
         if (ImGui::BeginTable(
             "ConsoleLogTable",
-            4,
+            5,
             ImGuiTableFlags_RowBg | ImGuiTableFlags_BordersInnerV | ImGuiTableFlags_Resizable | ImGuiTableFlags_ScrollX))
         {
             ImGui::TableSetupColumn("Type", ImGuiTableColumnFlags_WidthFixed, 84.0f);
+            ImGui::TableSetupColumn("Count", ImGuiTableColumnFlags_WidthFixed, 64.0f);
             ImGui::TableSetupColumn("Message", ImGuiTableColumnFlags_WidthStretch);
             ImGui::TableSetupColumn("File", ImGuiTableColumnFlags_WidthFixed, 220.0f);
             ImGui::TableSetupColumn("Line", ImGuiTableColumnFlags_WidthFixed, 64.0f);
             ImGui::TableHeadersRow();
 
-            for (const Canis::Debug::LogEntry &entry : entries)
+            for (const ConsoleDisplayEntry &displayEntry : displayEntries)
             {
-                if (!ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) ||
-                    !ConsoleEntryMatchesSearch(entry, lowerSearch))
-                {
-                    continue;
-                }
+                const Canis::Debug::LogEntry &entry = displayEntry.entry;
 
                 const std::string openTarget = MakeConsoleOpenTarget(entry);
                 const std::string displayPath = MakeConsoleSourceDisplayPath(entry.file);
@@ -11996,19 +12031,25 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (canOpenSource)
                         ImGui::SetTooltip("%s\n%s", entry.message.c_str(), openTarget.c_str());
                     else
-                        ImGui::SetTooltip("%s", entry.message.c_str());
+                    ImGui::SetTooltip("%s", entry.message.c_str());
                 }
 
                 ImGui::TableSetColumnIndex(1);
-                ImGui::TextUnformatted(entry.message.c_str());
+                if (displayEntry.count > 1)
+                    ImGui::Text("x%d", displayEntry.count);
+                else
+                    ImGui::TextUnformatted("1");
 
                 ImGui::TableSetColumnIndex(2);
+                ImGui::TextUnformatted(entry.message.c_str());
+
+                ImGui::TableSetColumnIndex(3);
                 if (!displayPath.empty())
                     ImGui::TextUnformatted(displayPath.c_str());
                 else
                     ImGui::TextDisabled("-");
 
-                ImGui::TableSetColumnIndex(3);
+                ImGui::TableSetColumnIndex(4);
                 if (entry.line > 0)
                     ImGui::Text("%d", entry.line);
                 else
