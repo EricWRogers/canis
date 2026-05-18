@@ -26,6 +26,7 @@
 #include <imgui_stdlib.h>
 
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 #include <cctype>
 #include <filesystem>
@@ -152,6 +153,60 @@ namespace Canis
             }
 
             return false;
+        }
+
+        Vector3 MaxVector3(const Vector3 &_left, const Vector3 &_right)
+        {
+            return Vector3(
+                std::max(_left.x, _right.x),
+                std::max(_left.y, _right.y),
+                std::max(_left.z, _right.z));
+        }
+
+        bool TryGetAttachedModelLocalBounds(Entity &_entity, Vector3 &_outMin, Vector3 &_outMax)
+        {
+            if (!_entity.HasComponent<Model>())
+                return false;
+
+            const Model &modelRenderer = _entity.GetComponent<Model>();
+            if (modelRenderer.modelId < 0)
+                return false;
+
+            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            if (model == nullptr)
+                return false;
+
+            return model->GetLocalBounds(_outMin, _outMax, modelRenderer.nodeIndex, modelRenderer.applyNodeTransform);
+        }
+
+        bool DrawGenerateColliderButton(const char *_idSuffix)
+        {
+            const std::string label = BuildInspectorFieldLabel("Generate Collider", _idSuffix);
+            return ImGui::Button(label.c_str());
+        }
+
+        void GenerateBoxColliderFromBounds(BoxCollider &_collider, const Vector3 &_min, const Vector3 &_max)
+        {
+            _collider.offset = (_min + _max) * 0.5f;
+            _collider.size = MaxVector3(_max - _min, Vector3(0.01f));
+        }
+
+        void GenerateSphereColliderFromBounds(SphereCollider &_collider, const Vector3 &_min, const Vector3 &_max)
+        {
+            const Vector3 halfExtents = MaxVector3((_max - _min) * 0.5f, Vector3(0.01f));
+            _collider.offset = (_min + _max) * 0.5f;
+            _collider.radius = std::max(0.01f, static_cast<float>(std::sqrt(
+                halfExtents.x * halfExtents.x +
+                halfExtents.y * halfExtents.y +
+                halfExtents.z * halfExtents.z)));
+        }
+
+        void GenerateCapsuleColliderFromBounds(CapsuleCollider &_collider, const Vector3 &_min, const Vector3 &_max)
+        {
+            const Vector3 halfExtents = MaxVector3((_max - _min) * 0.5f, Vector3(0.01f));
+            _collider.offset = (_min + _max) * 0.5f;
+            _collider.radius = std::max(0.01f, std::max(halfExtents.x, halfExtents.z));
+            _collider.halfHeight = std::max(0.01f, halfExtents.y - _collider.radius);
         }
 
         void DrawInspectorColorField(const char *_label, const char *_idSuffix, Color &_value)
@@ -2523,6 +2578,7 @@ namespace Canis
                 {
                     YAML::Node comp;
                     comp["active"] = boxCollider->active;
+                    comp["offset"] = boxCollider->offset;
                     comp["size"] = boxCollider->size;
                     _node["Canis::BoxCollider"] = comp;
                 }
@@ -2536,6 +2592,7 @@ namespace Canis
                 {
                     auto &boxCollider = *_entity.AddComponent<BoxCollider>();
                     boxCollider.active = comp["active"].as<bool>(true);
+                    boxCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     boxCollider.size = comp["size"].as<Vector3>(Vector3(1.0f));
                     if (_callCreate)
                         boxCollider.Create();
@@ -2547,7 +2604,13 @@ namespace Canis
                     return;
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), boxCollider->active);
+                DrawInspectorField(_editor, "offset", _conf.name.c_str(), boxCollider->offset);
                 DrawInspectorField(_editor, "size", _conf.name.c_str(), boxCollider->size);
+
+                Vector3 boundsMin = Vector3(0.0f);
+                Vector3 boundsMax = Vector3(0.0f);
+                if (TryGetAttachedModelLocalBounds(_entity, boundsMin, boundsMax) && DrawGenerateColliderButton(_conf.name.c_str()))
+                    GenerateBoxColliderFromBounds(*boxCollider, boundsMin, boundsMax);
             },
         };
 
@@ -2573,6 +2636,7 @@ namespace Canis
                 {
                     YAML::Node comp;
                     comp["active"] = sphereCollider->active;
+                    comp["offset"] = sphereCollider->offset;
                     comp["radius"] = sphereCollider->radius;
                     _node["Canis::SphereCollider"] = comp;
                 }
@@ -2586,6 +2650,7 @@ namespace Canis
                 {
                     auto &sphereCollider = *_entity.AddComponent<SphereCollider>();
                     sphereCollider.active = comp["active"].as<bool>(true);
+                    sphereCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     sphereCollider.radius = comp["radius"].as<float>(0.5f);
                     if (_callCreate)
                         sphereCollider.Create();
@@ -2597,7 +2662,13 @@ namespace Canis
                     return;
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), sphereCollider->active);
+                DrawInspectorField(_editor, "offset", _conf.name.c_str(), sphereCollider->offset);
                 DrawInspectorField(_editor, "radius", _conf.name.c_str(), sphereCollider->radius);
+
+                Vector3 boundsMin = Vector3(0.0f);
+                Vector3 boundsMax = Vector3(0.0f);
+                if (TryGetAttachedModelLocalBounds(_entity, boundsMin, boundsMax) && DrawGenerateColliderButton(_conf.name.c_str()))
+                    GenerateSphereColliderFromBounds(*sphereCollider, boundsMin, boundsMax);
             },
         };
 
@@ -2623,6 +2694,7 @@ namespace Canis
                 {
                     YAML::Node comp;
                     comp["active"] = capsuleCollider->active;
+                    comp["offset"] = capsuleCollider->offset;
                     comp["halfHeight"] = capsuleCollider->halfHeight;
                     comp["radius"] = capsuleCollider->radius;
                     _node["Canis::CapsuleCollider"] = comp;
@@ -2637,6 +2709,7 @@ namespace Canis
                 {
                     auto &capsuleCollider = *_entity.AddComponent<CapsuleCollider>();
                     capsuleCollider.active = comp["active"].as<bool>(true);
+                    capsuleCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     capsuleCollider.halfHeight = comp["halfHeight"].as<float>(0.5f);
                     capsuleCollider.radius = comp["radius"].as<float>(0.25f);
                     if (_callCreate)
@@ -2649,8 +2722,14 @@ namespace Canis
                     return;
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), capsuleCollider->active);
+                DrawInspectorField(_editor, "offset", _conf.name.c_str(), capsuleCollider->offset);
                 DrawInspectorField(_editor, "halfHeight", _conf.name.c_str(), capsuleCollider->halfHeight);
                 DrawInspectorField(_editor, "radius", _conf.name.c_str(), capsuleCollider->radius);
+
+                Vector3 boundsMin = Vector3(0.0f);
+                Vector3 boundsMax = Vector3(0.0f);
+                if (TryGetAttachedModelLocalBounds(_entity, boundsMin, boundsMax) && DrawGenerateColliderButton(_conf.name.c_str()))
+                    GenerateCapsuleColliderFromBounds(*capsuleCollider, boundsMin, boundsMax);
             },
         };
 

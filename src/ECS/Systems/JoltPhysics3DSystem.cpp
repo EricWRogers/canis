@@ -23,6 +23,7 @@
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
 #include <Jolt/Physics/PhysicsSystem.h>
@@ -202,6 +203,29 @@ namespace Canis
             return glm::all(glm::lessThanEqual(glm::abs(_value), Vector3(_epsilon)));
         }
 
+        JPH::RefConst<JPH::Shape> ApplyLocalShapeOffset(
+            const JPH::RefConst<JPH::Shape> &_shape,
+            const Vector3 &_scaledOffset,
+            const char *_debugName)
+        {
+            if (_shape.GetPtr() == nullptr || NearlyZero(_scaledOffset))
+                return _shape;
+
+            JPH::RotatedTranslatedShapeSettings shapeSettings(
+                ToJoltVec3(_scaledOffset),
+                JPH::Quat::sIdentity(),
+                _shape.GetPtr());
+
+            JPH::Shape::ShapeResult shapeResult = shapeSettings.Create();
+            if (shapeResult.HasError())
+            {
+                Debug::Log("Jolt %s offset shape error: %s", _debugName, shapeResult.GetError().c_str());
+                return nullptr;
+            }
+
+            return shapeResult.Get();
+        }
+
         JPH::EMotionType ToMotionType(int _motionType)
         {
             switch (_motionType)
@@ -347,23 +371,27 @@ namespace Canis
             hash = HashCombine(hash, std::hash<u32>{}(_rigidbody.mask));
             hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.allowSleeping));
             hash = HashCombine(hash, HashVector(glm::abs(_transform.GetGlobalScale())));
+            hash = HashCombine(hash, HashVector(_transform.GetGlobalScale()));
 
             if (_boxCollider != nullptr)
             {
                 hash = HashCombine(hash, 101u);
                 hash = HashCombine(hash, std::hash<bool>{}(_boxCollider->active));
+                hash = HashCombine(hash, HashVector(_boxCollider->offset));
                 hash = HashCombine(hash, HashVector(_boxCollider->size));
             }
             else if (_sphereCollider != nullptr)
             {
                 hash = HashCombine(hash, 102u);
                 hash = HashCombine(hash, std::hash<bool>{}(_sphereCollider->active));
+                hash = HashCombine(hash, HashVector(_sphereCollider->offset));
                 hash = HashCombine(hash, std::hash<float>{}(_sphereCollider->radius));
             }
             else if (_capsuleCollider != nullptr)
             {
                 hash = HashCombine(hash, 103u);
                 hash = HashCombine(hash, std::hash<bool>{}(_capsuleCollider->active));
+                hash = HashCombine(hash, HashVector(_capsuleCollider->offset));
                 hash = HashCombine(hash, std::hash<float>{}(_capsuleCollider->halfHeight));
                 hash = HashCombine(hash, std::hash<float>{}(_capsuleCollider->radius));
             }
@@ -400,7 +428,8 @@ namespace Canis
             const CapsuleCollider *_capsuleCollider,
             const MeshCollider *_meshCollider)
         {
-            const Vector3 globalScale = glm::abs(_transform.GetGlobalScale());
+            const Vector3 signedGlobalScale = _transform.GetGlobalScale();
+            const Vector3 globalScale = glm::abs(signedGlobalScale);
 
             if (_boxCollider != nullptr)
             {
@@ -412,7 +441,9 @@ namespace Canis
                     Debug::Log("Jolt BoxCollider shape error: %s", shapeResult.GetError().c_str());
                     return nullptr;
                 }
-                return shapeResult.Get();
+
+                JPH::RefConst<JPH::Shape> shape = shapeResult.Get();
+                return ApplyLocalShapeOffset(shape, _boxCollider->offset * signedGlobalScale, "BoxCollider");
             }
 
             if (_sphereCollider != nullptr)
@@ -426,7 +457,9 @@ namespace Canis
                     Debug::Log("Jolt SphereCollider shape error: %s", shapeResult.GetError().c_str());
                     return nullptr;
                 }
-                return shapeResult.Get();
+
+                JPH::RefConst<JPH::Shape> shape = shapeResult.Get();
+                return ApplyLocalShapeOffset(shape, _sphereCollider->offset * signedGlobalScale, "SphereCollider");
             }
 
             if (_capsuleCollider != nullptr)
@@ -441,7 +474,9 @@ namespace Canis
                     Debug::Log("Jolt CapsuleCollider shape error: %s", shapeResult.GetError().c_str());
                     return nullptr;
                 }
-                return shapeResult.Get();
+
+                JPH::RefConst<JPH::Shape> shape = shapeResult.Get();
+                return ApplyLocalShapeOffset(shape, _capsuleCollider->offset * signedGlobalScale, "CapsuleCollider");
             }
 
             if (_meshCollider != nullptr)
@@ -1167,7 +1202,7 @@ namespace Canis
                 if (runtimeData.bodyID.IsInvalid() || !bodyInterface->IsAdded(runtimeData.bodyID))
                     continue;
 
-                const Vector3 worldPosition = ToCanisPosition(bodyInterface->GetCenterOfMassPosition(runtimeData.bodyID));
+                const Vector3 worldPosition = ToCanisPosition(bodyInterface->GetPosition(runtimeData.bodyID));
                 Vector3 worldRotation = ToCanisRotation(bodyInterface->GetRotation(runtimeData.bodyID));
                 const JPH::Vec3 bodyLinearVelocity = bodyInterface->GetLinearVelocity(runtimeData.bodyID);
                 const JPH::Vec3 bodyAngularVelocity = bodyInterface->GetAngularVelocity(runtimeData.bodyID);

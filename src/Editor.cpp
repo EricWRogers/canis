@@ -145,7 +145,10 @@ namespace Canis
             std::vector<Vector3> &_outVertices,
             std::size_t _maxVertices)
         {
-            if (_entity == nullptr || !_entity->active || !_entity->HasComponent<Model>())
+            if (_entity == nullptr ||
+                !_entity->HasComponent<Transform>() ||
+                !_entity->GetComponent<Transform>().IsActiveInHierarchy() ||
+                !_entity->HasComponent<Model>())
                 return false;
 
             Model &modelRenderer = _entity->GetComponent<Model>();
@@ -187,7 +190,10 @@ namespace Canis
             Vector3 &_outMin,
             Vector3 &_outMax)
         {
-            if (_entity == nullptr || !_entity->active || !_entity->HasComponent<Model>())
+            if (_entity == nullptr ||
+                !_entity->HasComponent<Transform>() ||
+                !_entity->GetComponent<Transform>().IsActiveInHierarchy() ||
+                !_entity->HasComponent<Model>())
                 return false;
 
             Model &modelRenderer = _entity->GetComponent<Model>();
@@ -1316,6 +1322,51 @@ namespace Canis
             }
 
             return pairedPath;
+        }
+
+        std::filesystem::path GetScriptHeaderPathFromName(
+            const std::filesystem::path &_includeRoot,
+            const std::string &_scriptName)
+        {
+            namespace fs = std::filesystem;
+
+            if (_scriptName.empty())
+                return {};
+
+            const std::string normalizedName = NormalizeScriptTarget(_scriptName);
+            std::vector<std::string> nameParts = SplitScriptTarget(normalizedName);
+            if (nameParts.empty())
+                return {};
+
+            fs::path relativePath;
+            for (std::size_t i = 0; i + 1 < nameParts.size(); ++i)
+                relativePath /= nameParts[i];
+
+            relativePath /= nameParts.back() + ".hpp";
+            return _includeRoot / relativePath;
+        }
+
+        bool OpenScriptFromInspector(const ScriptConf &_conf)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path gameCodeRoot = FindGameCodeRoot();
+            if (gameCodeRoot.empty())
+                return false;
+
+            const fs::path includeRoot = gameCodeRoot / "game" / "include";
+            const fs::path sourceRoot = gameCodeRoot / "game" / "src";
+            const fs::path headerPath = GetScriptHeaderPathFromName(includeRoot, _conf.name);
+            if (headerPath.empty() || !fs::exists(headerPath))
+                return false;
+
+            OpenInVSCode(headerPath.string());
+
+            const fs::path pairedPath = GetPairedScriptPath(includeRoot, sourceRoot, headerPath);
+            if (!pairedPath.empty() && pairedPath != headerPath && fs::exists(pairedPath))
+                OpenInVSCode(pairedPath.string());
+
+            return true;
         }
 
         bool DeleteScriptPair(
@@ -4595,16 +4646,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         if (!m_window->IsMouseLocked())
-            m_playMouseCaptured = false;
-
-        if (!m_playViewHovered)
-            return;
-
-        if (ImGui::IsMouseClicked(ImGuiMouseButton_Left) || ImGui::IsMouseClicked(ImGuiMouseButton_Right))
         {
-            m_window->LockMouse(true);
-            m_playMouseCaptured = true;
+            m_playMouseCaptured = false;
+            return;
         }
+
+        m_playMouseCaptured = true;
     }
 
     void Editor::ResetVertexSnapDrag()
@@ -4677,12 +4724,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 for (Entity *target : m_scene->GetEntities())
                 {
-                    if (target == nullptr || target == _selected || !target->active || !target->HasComponents<Transform, Model>())
+                    if (target == nullptr || target == _selected || !target->HasComponents<Transform, Model>())
                         continue;
 
                     Vector3 targetMin(0.0f);
                     Vector3 targetMax(0.0f);
-                    const Matrix4 targetMatrix = target->GetComponent<Transform>().GetModelMatrix();
+                    Transform &targetTransform = target->GetComponent<Transform>();
+                    if (!targetTransform.IsActiveInHierarchy())
+                        continue;
+
+                    const Matrix4 targetMatrix = targetTransform.GetModelMatrix();
                     if (!BuildEntityModelWorldBounds(target, targetMatrix, targetMin, targetMax))
                         continue;
 
@@ -4741,11 +4792,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         std::vector<Entity *> &entities = m_scene->GetEntities();
         for (Entity *target : entities)
         {
-            if (target == nullptr || target == _selected || !target->active || !target->HasComponents<Transform, Model>())
+            if (target == nullptr || target == _selected || !target->HasComponents<Transform, Model>())
                 continue;
 
             std::vector<Vector3> targetVertices = {};
-            const Matrix4 targetMatrix = target->GetComponent<Transform>().GetModelMatrix();
+            Transform &targetTransform = target->GetComponent<Transform>();
+            if (!targetTransform.IsActiveInHierarchy())
+                continue;
+
+            const Matrix4 targetMatrix = targetTransform.GetModelMatrix();
             if (!BuildEntityModelWorldVertices(target, targetMatrix, targetVertices, kMaxSnapVerticesPerModel))
                 continue;
 
@@ -8077,6 +8132,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (ImGui::BeginPopupContextItem(std::string("Menu##" + conf.name).c_str()))
                     {
+                        if (conf.kind == RegistryEntryKind::Script)
+                        {
+                            if (ImGui::MenuItem(std::string("Open##" + conf.name).c_str()))
+                            {
+                                if (!OpenScriptFromInspector(conf))
+                                    Debug::Warning("Failed to locate script source for '%s'.", conf.name.c_str());
+                            }
+                        }
+
                         if (ImGui::MenuItem(std::string("Remove##" + conf.name).c_str()))
                         {
                             conf.Remove(entity);
@@ -13206,7 +13270,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !entity->active || entity->id < 0 || modelRenderer.modelId < 0)
+            if (entity == nullptr || !transform.IsActiveInHierarchy() || entity->id < 0 || modelRenderer.modelId < 0)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);

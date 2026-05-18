@@ -757,6 +757,17 @@ namespace Canis
             return parent != nullptr;
         }
 
+        bool IsActiveInHierarchy() const
+        {
+            if (entity == nullptr || !entity->active || !active)
+                return false;
+
+            if (parent != nullptr && parent->HasComponent<Transform>())
+                return parent->GetComponent<Transform>().IsActiveInHierarchy();
+
+            return true;
+        }
+
         void SetParentAtIndex(Entity* newParent, std::size_t index)
         {
             Entity* self = entity;
@@ -1016,6 +1027,7 @@ namespace Canis
         void Create() {}
 
         bool active = true;
+        Vector3 offset = Vector3(0.0f);
         Vector3 size = Vector3(1.0f);
         std::vector<Entity*> entered = {};
         std::vector<Entity*> exited = {};
@@ -1034,6 +1046,7 @@ namespace Canis
         void Create() {}
 
         bool active = true;
+        Vector3 offset = Vector3(0.0f);
         float radius = 0.5f;
         std::vector<Entity*> entered = {};
         std::vector<Entity*> exited = {};
@@ -1052,6 +1065,7 @@ namespace Canis
         void Create() {}
 
         bool active = true;
+        Vector3 offset = Vector3(0.0f);
         float halfHeight = 0.5f;
         float radius = 0.25f;
         std::vector<Entity*> entered = {};

@@ -2,7 +2,6 @@
 #include <string>
 #include <cstring>
 #include <fstream>
-#include <cstdlib>
 #include <filesystem>
 
 
@@ -14,9 +13,62 @@
 #include <stb_image.h>
 
 #include <SDL3/SDL.h>
+#include <SDL3/SDL_process.h>
 
 namespace Canis
 {
+	namespace
+	{
+		bool LaunchBackgroundProcess(const char * const *_args)
+		{
+			if (_args == nullptr || _args[0] == nullptr)
+				return false;
+
+			SDL_PropertiesID properties = SDL_CreateProperties();
+			if (properties == 0)
+			{
+				Debug::Warning("OpenInVSCode failed to create process properties: %s", SDL_GetError());
+				return false;
+			}
+
+			bool success = SDL_SetPointerProperty(
+				properties,
+				SDL_PROP_PROCESS_CREATE_ARGS_POINTER,
+				const_cast<void *>(static_cast<const void *>(_args)));
+			success = success && SDL_SetBooleanProperty(
+				properties,
+				SDL_PROP_PROCESS_CREATE_BACKGROUND_BOOLEAN,
+				true);
+			success = success && SDL_SetNumberProperty(
+				properties,
+				SDL_PROP_PROCESS_CREATE_STDOUT_NUMBER,
+				SDL_PROCESS_STDIO_NULL);
+			success = success && SDL_SetNumberProperty(
+				properties,
+				SDL_PROP_PROCESS_CREATE_STDERR_NUMBER,
+				SDL_PROCESS_STDIO_NULL);
+
+			if (!success)
+			{
+				Debug::Warning("OpenInVSCode failed to configure process properties: %s", SDL_GetError());
+				SDL_DestroyProperties(properties);
+				return false;
+			}
+
+			SDL_Process *process = SDL_CreateProcessWithProperties(properties);
+			SDL_DestroyProperties(properties);
+
+			if (process == nullptr)
+			{
+				Debug::Warning("OpenInVSCode failed to launch '%s': %s", _args[0], SDL_GetError());
+				return false;
+			}
+
+			SDL_DestroyProcess(process);
+			return true;
+		}
+	}
+
 	bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer)
 	{
 		std::ifstream file(filePath, std::ios::binary);
@@ -201,19 +253,13 @@ namespace Canis
 		Debug::Warning("OpenInVSCode is unavailable in web builds.");
 	#else
 	#if defined(_WIN32)
-		std::string cmd = "code --reuse-window --goto \"" + _filePath + "\"";
+		const char *args[] = { "cmd.exe", "/C", "start", "", "code", "--reuse-window", "--goto", _filePath.c_str(), nullptr };
 	#elif defined(__APPLE__)
-		// macOS: open the app directly to bring VS Code to the foreground.
-		std::string cmd = "open -a \"Visual Studio Code\" \"" + _filePath + "\"";
+		const char *args[] = { "open", "-a", "Visual Studio Code", _filePath.c_str(), nullptr };
 	#else
-		// Linux: open target file and attempt to focus VS Code if wmctrl is available.
-		std::string cmd = "code --reuse-window --goto \"" + _filePath + "\"";
-		cmd += " && (command -v wmctrl >/dev/null 2>&1 && wmctrl -xa code.Code >/dev/null 2>&1 || true)";
+		const char *args[] = { "code", "--reuse-window", "--goto", _filePath.c_str(), nullptr };
 	#endif
-		int exitCode = std::system(cmd.c_str());
-		
-		if (exitCode != 0)
-			Debug::Warning("Warning OpenInVSCode exit code: %i command: %s", exitCode, cmd.c_str());
+		LaunchBackgroundProcess(args);
 	#endif
 	}
 

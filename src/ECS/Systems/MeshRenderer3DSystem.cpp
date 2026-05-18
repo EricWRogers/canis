@@ -360,7 +360,7 @@ namespace Canis
                 if (entity == nullptr)
                     entity = lightTransform.entity;
 
-                if (entity == nullptr || !entity->active || !light.enabled)
+                if (entity == nullptr || !lightTransform.IsActiveInHierarchy() || !light.enabled)
                     continue;
 
                 PointLightState state = {};
@@ -500,7 +500,7 @@ namespace Canis
         {
             Transform &transform = transformView.get<Transform>(entityHandle);
             Entity *entity = transform.entity;
-            if (entity == nullptr || !entity->active)
+            if (entity == nullptr || !transform.IsActiveInHierarchy())
                 continue;
 
             const Matrix4 modelMatrix = transform.GetModelMatrix();
@@ -510,7 +510,7 @@ namespace Canis
                 if (boxCollider->active)
                 {
                     const Vector3 halfSize = boxCollider->size * 0.5f;
-                    AppendBoundsBoxLines(lines, modelMatrix, -halfSize, halfSize);
+                    AppendBoundsBoxLines(lines, modelMatrix, boxCollider->offset - halfSize, boxCollider->offset + halfSize);
                 }
             }
 
@@ -518,9 +518,9 @@ namespace Canis
             {
                 if (sphereCollider->active)
                 {
-                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f), sphereCollider->radius);
-                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
-                    AppendCircleLines(lines, modelMatrix, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
+                    AppendCircleLines(lines, modelMatrix, sphereCollider->offset, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 1.0f, 0.0f), sphereCollider->radius);
+                    AppendCircleLines(lines, modelMatrix, sphereCollider->offset, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
+                    AppendCircleLines(lines, modelMatrix, sphereCollider->offset, Vector3(0.0f, 1.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), sphereCollider->radius);
                 }
             }
 
@@ -531,8 +531,8 @@ namespace Canis
                     constexpr float pi = 3.14159265359f;
                     const float halfHeight = capsuleCollider->halfHeight;
                     const float radius = capsuleCollider->radius;
-                    const Vector3 top = Vector3(0.0f, halfHeight, 0.0f);
-                    const Vector3 bottom = Vector3(0.0f, -halfHeight, 0.0f);
+                    const Vector3 top = capsuleCollider->offset + Vector3(0.0f, halfHeight, 0.0f);
+                    const Vector3 bottom = capsuleCollider->offset + Vector3(0.0f, -halfHeight, 0.0f);
 
                     AppendCircleLines(lines, modelMatrix, top, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), radius);
                     AppendCircleLines(lines, modelMatrix, bottom, Vector3(1.0f, 0.0f, 0.0f), Vector3(0.0f, 0.0f, 1.0f), radius);
@@ -740,7 +740,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
@@ -881,7 +881,7 @@ namespace Canis
                 if (entity == nullptr)
                     entity = candidateTransform.entity;
 
-                if (entity == nullptr || !entity->active)
+                if (entity == nullptr || !candidateTransform.IsActiveInHierarchy())
                     continue;
 
                 if (candidateCamera.primary)
@@ -955,7 +955,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
@@ -1148,7 +1148,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !entity->active || modelRenderer.modelId < 0)
+            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
                 return;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
