@@ -34,6 +34,12 @@ namespace Canis
         float fraction = 0.0f;
     };
 
+    struct Ray
+    {
+        Vector3 origin = Vector3(0.0f);
+        Vector3 direction = Vector3(0.0f, 0.0f, -1.0f);
+    };
+
     class Scene
     {
         #if CANIS_EDITOR
@@ -74,6 +80,8 @@ namespace Canis
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, RaycastHit &_hit, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         std::vector<RaycastHit> RaycastAll(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
+        bool TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const;
+        bool TryGetMouseRayFromCamera(const Entity &_cameraEntity, Ray &_ray) const;
 
         void SetEditorCamera3DOverride(const Matrix4 &_view, const Matrix4 &_projection);
         void SetEditorCamera2DOverride(const Matrix4 &_cameraMatrix, const Vector2 &_position);

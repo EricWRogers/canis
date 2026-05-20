@@ -136,6 +136,9 @@ namespace Canis
         void OnGameControllerConnected(void *_device);
         void OnGameControllerDisconnect(void *_device);
         void ResetState();
+        bool GameViewportContainsPoint(float _x, float _y) const;
+        bool AcceptsGameMouseEvent(unsigned int _eventWindowID, float _x, float _y, unsigned int _gameWindowID, bool _mouseLocked) const;
+        void UpdateMousePosition(unsigned int _eventWindowID, float _x, float _y, int _screenHeight, unsigned int _gameWindowID);
 
         std::vector<InputData> m_keyVec;
         std::vector<InputData> m_lastKnown;

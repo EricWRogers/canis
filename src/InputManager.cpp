@@ -73,6 +73,55 @@ namespace Canis
         }
     }
 
+    bool InputManager::GameViewportContainsPoint(float _x, float _y) const
+    {
+        if (!m_gameMouseViewportEnabled)
+            return true;
+
+        return _x >= m_gameMouseViewportX &&
+               _y >= m_gameMouseViewportY &&
+               _x < m_gameMouseViewportX + m_gameMouseViewportDrawWidth &&
+               _y < m_gameMouseViewportY + m_gameMouseViewportDrawHeight;
+    }
+
+    bool InputManager::AcceptsGameMouseEvent(unsigned int _eventWindowID, float _x, float _y, unsigned int _gameWindowID, bool _mouseLocked) const
+    {
+        if (!Canis::IsEditorRuntimeEnabled())
+            return true;
+
+        if (_eventWindowID != _gameWindowID)
+            return false;
+
+        if (_mouseLocked)
+            return true;
+
+        return GameViewportContainsPoint(_x, _y);
+    }
+
+    void InputManager::UpdateMousePosition(unsigned int _eventWindowID, float _x, float _y, int _screenHeight, unsigned int _gameWindowID)
+    {
+        if (_eventWindowID == _gameWindowID &&
+            m_gameMouseViewportEnabled &&
+            m_gameMouseViewportDrawWidth > 0.0f &&
+            m_gameMouseViewportDrawHeight > 0.0f &&
+            m_gameMouseViewportLogicalWidth > 0.0f &&
+            m_gameMouseViewportLogicalHeight > 0.0f)
+        {
+            const float localX = _x - m_gameMouseViewportX;
+            const float localY = _y - m_gameMouseViewportY;
+            const float scaleX = m_gameMouseViewportLogicalWidth / m_gameMouseViewportDrawWidth;
+            const float scaleY = m_gameMouseViewportLogicalHeight / m_gameMouseViewportDrawHeight;
+
+            mouse.x = localX * scaleX;
+            mouse.y = m_gameMouseViewportLogicalHeight - (localY * scaleY);
+        }
+        else
+        {
+            mouse.x = _x;
+            mouse.y = _screenHeight - _y;
+        }
+    }
+
     bool InputManager::Update(void* _window)
     {
         SwapMaps();
@@ -86,30 +135,6 @@ namespace Canis
         window->SetResized(false);
         const Uint32 mainWindowID = SDL_GetWindowID((SDL_Window*)window->GetSDLWindow());
         const Uint32 gameWindowID = (m_gameInputWindowID == 0u) ? mainWindowID : m_gameInputWindowID;
-        auto gameViewportContainsPoint = [this](float _x, float _y) -> bool
-        {
-            if (!m_gameMouseViewportEnabled)
-                return true;
-
-            return _x >= m_gameMouseViewportX &&
-                   _y >= m_gameMouseViewportY &&
-                   _x < m_gameMouseViewportX + m_gameMouseViewportDrawWidth &&
-                   _y < m_gameMouseViewportY + m_gameMouseViewportDrawHeight;
-        };
-
-        auto acceptsGameMouseEvent = [&](Uint32 _eventWindowID, float _x, float _y) -> bool
-        {
-            if (!Canis::IsEditorRuntimeEnabled())
-                return true;
-
-            if (_eventWindowID != gameWindowID)
-                return false;
-
-            if (window->IsMouseLocked())
-                return true;
-
-            return gameViewportContainsPoint(_x, _y);
-        };
 
         SDL_Event event;
         while (SDL_PollEvent(&event))
@@ -174,29 +199,10 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
-                    if (!acceptsGameMouseEvent(eventWindowID, event.motion.x, event.motion.y))
+                    if (!AcceptsGameMouseEvent(eventWindowID, event.motion.x, event.motion.y, gameWindowID, window->IsMouseLocked()))
                         continue;
 
-                    if (eventWindowID == gameWindowID &&
-                        m_gameMouseViewportEnabled &&
-                        m_gameMouseViewportDrawWidth > 0.0f &&
-                        m_gameMouseViewportDrawHeight > 0.0f &&
-                        m_gameMouseViewportLogicalWidth > 0.0f &&
-                        m_gameMouseViewportLogicalHeight > 0.0f)
-                    {
-                        const float localX = event.motion.x - m_gameMouseViewportX;
-                        const float localY = event.motion.y - m_gameMouseViewportY;
-                        const float scaleX = m_gameMouseViewportLogicalWidth / m_gameMouseViewportDrawWidth;
-                        const float scaleY = m_gameMouseViewportLogicalHeight / m_gameMouseViewportDrawHeight;
-
-                        mouse.x = localX * scaleX;
-                        mouse.y = m_gameMouseViewportLogicalHeight - (localY * scaleY);
-                    }
-                    else
-                    {
-                        mouse.x = event.motion.x;
-                        mouse.y = screenHeight - event.motion.y;
-                    }
+                    UpdateMousePosition(eventWindowID, event.motion.x, event.motion.y, screenHeight, gameWindowID);
                     mouseRel.x = event.motion.xrel;
                     mouseRel.y = event.motion.yrel;
                     
@@ -207,8 +213,9 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
-                if (!acceptsGameMouseEvent(eventWindowID, event.wheel.mouse_x, event.wheel.mouse_y))
+                if (!AcceptsGameMouseEvent(eventWindowID, event.wheel.mouse_x, event.wheel.mouse_y, gameWindowID, window->IsMouseLocked()))
                     continue;
+                UpdateMousePosition(eventWindowID, event.wheel.mouse_x, event.wheel.mouse_y, screenHeight, gameWindowID);
                 m_scrollVertical = event.wheel.y;
                 
                 m_lastInputDeviceType = (m_scrollVertical != 0.0f) ? InputDevice::MOUSE : m_lastInputDeviceType;
@@ -244,8 +251,9 @@ namespace Canis
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
                 #endif
-                if (!acceptsGameMouseEvent(eventWindowID, event.button.x, event.button.y))
+                if (!AcceptsGameMouseEvent(eventWindowID, event.button.x, event.button.y, gameWindowID, window->IsMouseLocked()))
                     continue;
+                UpdateMousePosition(eventWindowID, event.button.x, event.button.y, screenHeight, gameWindowID);
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = true;
                 if (event.button.button == SDL_BUTTON_RIGHT)
@@ -258,6 +266,7 @@ namespace Canis
                 #endif
                 if (Canis::IsEditorRuntimeEnabled() && eventWindowID != gameWindowID)
                     continue;
+                UpdateMousePosition(eventWindowID, event.button.x, event.button.y, screenHeight, gameWindowID);
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = false;
                 if (event.button.button == SDL_BUTTON_RIGHT)

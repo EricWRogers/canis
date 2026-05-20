@@ -8,6 +8,7 @@
 #include <Canis/System.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Window.hpp>
+#include <Canis/InputManager.hpp>
 #include <Canis/ECS/Systems/SpriteAnimationSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 #include <Canis/ECS/Systems/UIInteractionSystem.hpp>
@@ -160,6 +161,72 @@ namespace Canis
             return physicsSystem->RaycastAll(_origin, _direction, _maxDistance, _mask);
 
         return {};
+    }
+
+    bool Scene::TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const
+    {
+        if (m_window == nullptr ||
+            !_cameraEntity.HasComponent<Camera>() ||
+            !_cameraEntity.HasComponent<Transform>())
+        {
+            _ray = Ray{};
+            return false;
+        }
+
+        const float screenWidth = static_cast<float>(m_window->GetScreenWidth());
+        const float screenHeight = static_cast<float>(m_window->GetScreenHeight());
+        if (screenWidth <= 0.0f || screenHeight <= 0.0f)
+        {
+            _ray = Ray{};
+            return false;
+        }
+
+        const Camera &camera = _cameraEntity.GetComponent<Camera>();
+        const Transform &transform = _cameraEntity.GetComponent<Transform>();
+
+        const Matrix4 projection = glm::perspective(
+            DEG2RAD * camera.fovDegrees,
+            screenWidth / screenHeight,
+            camera.nearClip,
+            camera.farClip);
+
+        const Vector3 eye = transform.GetGlobalPosition();
+        const Matrix4 view = glm::lookAt(eye, eye + transform.GetForward(), transform.GetUp());
+        const Vector4 viewport = Vector4(0.0f, 0.0f, screenWidth, screenHeight);
+
+        const Vector3 nearPoint = glm::unProject(
+            Vector3(_screenPosition.x, _screenPosition.y, 0.0f),
+            view,
+            projection,
+            viewport);
+
+        const Vector3 farPoint = glm::unProject(
+            Vector3(_screenPosition.x, _screenPosition.y, 1.0f),
+            view,
+            projection,
+            viewport);
+
+        const Vector3 direction = farPoint - nearPoint;
+        if (glm::length(direction) <= 0.000001f)
+        {
+            _ray = Ray{};
+            return false;
+        }
+
+        _ray.origin = eye;
+        _ray.direction = glm::normalize(direction);
+        return true;
+    }
+
+    bool Scene::TryGetMouseRayFromCamera(const Entity &_cameraEntity, Ray &_ray) const
+    {
+        if (m_inputManager == nullptr)
+        {
+            _ray = Ray{};
+            return false;
+        }
+
+        return TryGetRayFromCamera(_cameraEntity, m_inputManager->mouse, _ray);
     }
 
     void Scene::Update(float _deltaTime)

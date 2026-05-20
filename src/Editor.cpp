@@ -53,6 +53,7 @@
 #include <cctype>
 #include <limits>
 #include <sstream>
+#include <utility>
 #include <unordered_map>
 #include <unordered_set>
 
@@ -945,7 +946,7 @@ namespace Canis
                 source << sourceIndent << "void " << className << "::Create() {}\n\n";
                 source << sourceIndent << "void " << className << "::Ready() {}\n\n";
                 source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
-                source << sourceIndent << "void " << className << "::Update(float) {}\n";
+                source << sourceIndent << "void " << className << "::Update(float _dt) {}\n";
             }
             else if (_scriptType == GameScriptType::Component)
             {
@@ -1228,6 +1229,222 @@ namespace Canis
             }
 
             return candidatePath;
+        }
+
+        bool ReplaceAll(std::string &_value, const std::string &_from, const std::string &_to)
+        {
+            if (_from.empty())
+                return false;
+
+            bool replaced = false;
+            size_t position = 0;
+            while ((position = _value.find(_from, position)) != std::string::npos)
+            {
+                _value.replace(position, _from.length(), _to);
+                position += _to.length();
+                replaced = true;
+            }
+
+            return replaced;
+        }
+
+        bool IsGameCodeFilePath(const std::filesystem::path &_path)
+        {
+            std::string extension = _path.extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+
+            return extension == ".hpp" ||
+                extension == ".h" ||
+                extension == ".cpp" ||
+                extension == ".cc" ||
+                extension == ".cxx";
+        }
+
+        bool TryMakeLexicalRelative(
+            const std::filesystem::path &_path,
+            const std::filesystem::path &_basePath,
+            std::filesystem::path &_outRelativePath)
+        {
+            namespace fs = std::filesystem;
+
+            const fs::path relativePath = _path.lexically_normal().lexically_relative(_basePath.lexically_normal());
+            if (relativePath.empty())
+                return false;
+
+            for (const fs::path &part : relativePath)
+            {
+                if (part == "..")
+                    return false;
+            }
+
+            _outRelativePath = relativePath;
+            return true;
+        }
+
+        bool UpdateScriptIncludePathPrefixes(
+            const std::filesystem::path &_includeRoot,
+            const std::filesystem::path &_sourceRoot,
+            const std::filesystem::path &_oldRelativeDir,
+            const std::filesystem::path &_newRelativeDir,
+            std::string &_outError)
+        {
+            namespace fs = std::filesystem;
+
+            const std::string oldPrefix = _oldRelativeDir.generic_string() + "/";
+            const std::string newPrefix = _newRelativeDir.generic_string() + "/";
+
+            const std::vector<std::pair<std::string, std::string>> replacements =
+            {
+                { "#include <" + oldPrefix, "#include <" + newPrefix },
+                { "#include \"" + oldPrefix, "#include \"" + newPrefix }
+            };
+
+            const std::vector<fs::path> roots = { _includeRoot, _sourceRoot };
+            for (const fs::path &root : roots)
+            {
+                std::error_code iterEc;
+                fs::recursive_directory_iterator it(root, iterEc);
+                const fs::recursive_directory_iterator end;
+                if (iterEc)
+                {
+                    _outError = iterEc.message();
+                    return false;
+                }
+
+                while (it != end)
+                {
+                    const fs::path path = it->path();
+                    if (it->is_regular_file(iterEc) && IsGameCodeFilePath(path))
+                    {
+                        std::ifstream input(path, std::ios::binary);
+                        if (!input.is_open())
+                        {
+                            _outError = "Failed to read " + path.string();
+                            return false;
+                        }
+
+                        std::ostringstream stream;
+                        stream << input.rdbuf();
+                        std::string contents = stream.str();
+
+                        bool changed = false;
+                        for (const auto &replacement : replacements)
+                            changed |= ReplaceAll(contents, replacement.first, replacement.second);
+
+                        if (changed)
+                        {
+                            std::ofstream output(path, std::ios::binary | std::ios::trunc);
+                            if (!output.is_open())
+                            {
+                                _outError = "Failed to write " + path.string();
+                                return false;
+                            }
+
+                            output << contents;
+                        }
+                    }
+
+                    iterEc.clear();
+                    it.increment(iterEc);
+                    if (iterEc)
+                    {
+                        _outError = iterEc.message();
+                        return false;
+                    }
+                }
+            }
+
+            return true;
+        }
+
+        bool RenameScriptFolderPair(
+            const std::filesystem::path &_includeRoot,
+            const std::filesystem::path &_sourceRoot,
+            const std::filesystem::path &_includeFolderPath,
+            const std::string &_newFolderName,
+            std::filesystem::path &_outNewIncludeFolderPath,
+            std::string &_outError)
+        {
+            namespace fs = std::filesystem;
+
+            if (!IsValidCppIdentifier(_newFolderName))
+            {
+                _outError = "Folder name must be a valid C++ identifier.";
+                return false;
+            }
+
+            std::error_code ec;
+            if (!fs::is_directory(_includeFolderPath, ec))
+            {
+                _outError = "Script folder does not exist.";
+                return false;
+            }
+
+            const fs::path oldIncludeFolderPath = _includeFolderPath;
+            const fs::path newIncludeFolderPath = oldIncludeFolderPath.parent_path() / _newFolderName;
+            if (newIncludeFolderPath == oldIncludeFolderPath)
+            {
+                _outNewIncludeFolderPath = oldIncludeFolderPath;
+                return true;
+            }
+
+            if (fs::exists(newIncludeFolderPath, ec))
+            {
+                _outError = "A script folder with that name already exists.";
+                return false;
+            }
+
+            std::error_code relativeEc;
+            const fs::path oldRelativeDir = fs::relative(oldIncludeFolderPath, _includeRoot, relativeEc);
+            if (relativeEc || oldRelativeDir.empty() || oldRelativeDir == ".")
+            {
+                _outError = "Could not resolve script folder relative path.";
+                return false;
+            }
+
+            const fs::path newRelativeDir = oldRelativeDir.parent_path() / _newFolderName;
+            const fs::path oldSourceFolderPath = _sourceRoot / oldRelativeDir;
+            const fs::path newSourceFolderPath = _sourceRoot / newRelativeDir;
+
+            const bool hasSourceFolder = fs::is_directory(oldSourceFolderPath, ec);
+            if (hasSourceFolder && fs::exists(newSourceFolderPath, ec))
+            {
+                _outError = "A matching source folder with that name already exists.";
+                return false;
+            }
+
+            ec.clear();
+            fs::rename(oldIncludeFolderPath, newIncludeFolderPath, ec);
+            if (ec)
+            {
+                _outError = "Failed to rename script folder: " + ec.message();
+                return false;
+            }
+
+            if (hasSourceFolder)
+            {
+                ec.clear();
+                fs::rename(oldSourceFolderPath, newSourceFolderPath, ec);
+                if (ec)
+                {
+                    std::error_code rollbackEc;
+                    fs::rename(newIncludeFolderPath, oldIncludeFolderPath, rollbackEc);
+                    _outError = "Failed to rename matching source folder: " + ec.message();
+                    if (rollbackEc)
+                        _outError += " Also failed to restore include folder: " + rollbackEc.message();
+                    return false;
+                }
+            }
+
+            std::string includeUpdateError = "";
+            if (!UpdateScriptIncludePathPrefixes(_includeRoot, _sourceRoot, oldRelativeDir, newRelativeDir, includeUpdateError))
+                Debug::Warning("Renamed script folder, but failed to update include paths: %s", includeUpdateError.c_str());
+
+            _outNewIncludeFolderPath = newIncludeFolderPath;
+            return true;
         }
 
         std::string MakeUniqueScriptTarget(
@@ -11036,6 +11253,47 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_renamingPath.clear();
     }
 
+    void Editor::CommitScriptFolderRename(const std::filesystem::path &_includeRoot, const std::filesystem::path &_sourceRoot)
+    {
+        namespace fs = std::filesystem;
+
+        if (!m_isRenamingScriptFolder || m_scriptFolderRenamingPath.empty())
+            return;
+
+        const std::string newFolderName = m_scriptFolderRenameBuffer;
+        if (newFolderName.empty())
+        {
+            m_isRenamingScriptFolder = false;
+            m_focusScriptFolderRenameInput = false;
+            m_scriptFolderRenameError.clear();
+            m_scriptFolderRenamingPath.clear();
+            return;
+        }
+
+        const fs::path oldIncludeFolderPath = m_scriptFolderRenamingPath;
+        fs::path newIncludeFolderPath = {};
+        std::string error = "";
+        if (!RenameScriptFolderPair(_includeRoot, _sourceRoot, oldIncludeFolderPath, newFolderName, newIncludeFolderPath, error))
+        {
+            m_scriptFolderRenameError = error.empty() ? "Failed to rename script folder." : error;
+            m_focusScriptFolderRenameInput = true;
+            return;
+        }
+
+        fs::path selectedRelativePath = {};
+        if (!m_selectedScriptPath.empty() && TryMakeLexicalRelative(fs::path(m_selectedScriptPath), oldIncludeFolderPath, selectedRelativePath))
+            m_selectedScriptPath = (selectedRelativePath == "." ? newIncludeFolderPath : newIncludeFolderPath / selectedRelativePath).string();
+
+        fs::path createTargetRelativePath = {};
+        if (!m_scriptCreateTargetDir.empty() && TryMakeLexicalRelative(fs::path(m_scriptCreateTargetDir), oldIncludeFolderPath, createTargetRelativePath))
+            m_scriptCreateTargetDir = (createTargetRelativePath == "." ? newIncludeFolderPath : newIncludeFolderPath / createTargetRelativePath).string();
+
+        m_isRenamingScriptFolder = false;
+        m_focusScriptFolderRenameInput = false;
+        m_scriptFolderRenameError.clear();
+        m_scriptFolderRenamingPath.clear();
+    }
+
     void Editor::DrawDirectoryRecursive(const std::string &_dirPath)
     {
         namespace fs = std::filesystem;
@@ -11652,6 +11910,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (entry.is_directory())
             {
+                const std::string fullPath = entry.path().string();
+                const bool isRenamingThis = m_isRenamingScriptFolder && (m_scriptFolderRenamingPath == fullPath);
+                if (isRenamingThis)
+                {
+                    ImGui::PushID(fullPath.c_str());
+                    ImGui::SetNextItemWidth(-1.0f);
+
+                    ImGuiInputTextFlags flags =
+                        ImGuiInputTextFlags_EnterReturnsTrue |
+                        ImGuiInputTextFlags_CharsNoBlank |
+                        ImGuiInputTextFlags_CallbackAlways;
+
+                    if (m_focusScriptFolderRenameInput)
+                        ImGui::SetKeyboardFocusHere();
+
+                    if (ImGui::InputText("##rename_script_folder", m_scriptFolderRenameBuffer, sizeof(m_scriptFolderRenameBuffer), flags, PlaceRenameCursorAtEnd, &m_focusScriptFolderRenameInput))
+                        CommitScriptFolderRename(_includeRoot, _sourceRoot);
+
+                    if (!m_scriptFolderRenameError.empty())
+                        ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f), "%s", m_scriptFolderRenameError.c_str());
+
+                    if (!ImGui::IsItemActive() &&
+                        (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1)))
+                    {
+                        m_isRenamingScriptFolder = false;
+                        m_focusScriptFolderRenameInput = false;
+                        m_scriptFolderRenameError.clear();
+                        m_scriptFolderRenamingPath.clear();
+                    }
+
+                    ImGui::PopID();
+                    continue;
+                }
+
                 const ImGuiTreeNodeFlags nodeFlags =
                     ImGuiTreeNodeFlags_OpenOnArrow |
                     ImGuiTreeNodeFlags_SpanAvailWidth;
@@ -11659,6 +11951,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 if (ImGui::BeginPopupContextItem())
                 {
+                    if (ImGui::MenuItem("Rename Folder"))
+                    {
+                        m_isRenamingScriptFolder = true;
+                        m_scriptFolderRenamingPath = fullPath;
+                        m_scriptFolderRenameError.clear();
+                        m_focusScriptFolderRenameInput = true;
+
+                        std::snprintf(m_scriptFolderRenameBuffer, sizeof(m_scriptFolderRenameBuffer), "%s", name.c_str());
+                    }
+
                     if (ImGui::MenuItem("Create Folder"))
                     {
                         const fs::path includeFolderPath = MakeUniqueDirectoryPath(entry.path(), "NewFolder");

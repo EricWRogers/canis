@@ -186,6 +186,7 @@ namespace Canis
         void DrawScriptsPanel();
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
+        void CommitScriptFolderRename(const std::filesystem::path &_includeRoot, const std::filesystem::path &_sourceRoot);
         bool DrawModelAssetInspector(const std::string &_modelPath);
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
@@ -319,6 +320,11 @@ namespace Canis
         std::string m_scriptCreateTargetDir = {};
         std::string m_scriptCreateError = {};
         int m_scriptCreateTypeSelection = 0;
+        bool m_isRenamingScriptFolder = false;
+        bool m_focusScriptFolderRenameInput = false;
+        char m_scriptFolderRenameBuffer[128] = {};
+        std::string m_scriptFolderRenamingPath = {};
+        std::string m_scriptFolderRenameError = {};
         int m_editorThemeSelection = 0;
         int m_editorFontSelection = 0;
         float m_editorUiScale = 1.0f;
