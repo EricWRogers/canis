@@ -40,6 +40,13 @@ namespace Canis
         Vector3 direction = Vector3(0.0f, 0.0f, -1.0f);
     };
 
+    struct DebugGizmoLine
+    {
+        Vector3 start = Vector3(0.0f);
+        Vector3 end = Vector3(0.0f);
+        Color color = Color(1.0f);
+    };
+
     class Scene
     {
         #if CANIS_EDITOR
@@ -82,6 +89,9 @@ namespace Canis
         std::vector<RaycastHit> RaycastAll(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         bool TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const;
         bool TryGetMouseRayFromCamera(const Entity &_cameraEntity, Ray &_ray) const;
+        void DrawDebugGizmoLine(const Vector3 &_start, const Vector3 &_end, const Color &_color = Color(1.0f));
+        void ClearDebugGizmoLines();
+        const std::vector<DebugGizmoLine>& GetDebugGizmoLines() const { return m_debugGizmoLines; }
 
         void SetEditorCamera3DOverride(const Matrix4 &_view, const Matrix4 &_projection);
         void SetEditorCamera2DOverride(const Matrix4 &_cameraMatrix, const Vector2 &_position);
@@ -169,6 +179,7 @@ namespace Canis
         std::vector<System*> m_updateSystems = {};
         std::vector<System*> m_renderSystems = {};
         std::vector<SystemTiming> m_systemTimings = {};
+        std::vector<DebugGizmoLine> m_debugGizmoLines = {};
         std::vector<int> m_entitiesToReady = {};
         std::vector<int> m_entitiesToDestroy = {};
         bool m_isUpdating = false;

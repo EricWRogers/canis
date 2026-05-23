@@ -632,6 +632,43 @@ namespace Canis
             return candidatePath;
         }
 
+        std::filesystem::path BuildUniqueAssetPath(
+            const std::filesystem::path &_folderPath,
+            const std::string &_stem,
+            const std::string &_extension)
+        {
+            namespace fs = std::filesystem;
+
+            fs::path candidatePath = _folderPath / (_stem + _extension);
+            int index = 1;
+            while (fs::exists(candidatePath) || fs::exists(candidatePath.string() + ".meta"))
+            {
+                candidatePath = _folderPath / (_stem + "_" + std::to_string(index) + _extension);
+                ++index;
+            }
+
+            return candidatePath;
+        }
+
+        bool IsPathAtOrInsidePrefix(const std::string &_path, const std::string &_prefix)
+        {
+            if (_path == _prefix)
+                return true;
+
+            return _path.rfind(_prefix + "/", 0) == 0;
+        }
+
+        std::string RemapPathPrefix(
+            const std::string &_path,
+            const std::string &_oldPrefix,
+            const std::string &_newPrefix)
+        {
+            if (!IsPathAtOrInsidePrefix(_path, _oldPrefix))
+                return _path;
+
+            return _newPrefix + _path.substr(_oldPrefix.size());
+        }
+
         bool RefreshDuplicatedMetaFile(const std::string &_assetPath)
         {
             const std::string metaPath = _assetPath + ".meta";
@@ -11217,7 +11254,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         string newName = m_renameBuffer;
         fs::path oldPath = m_renamingPath;
-        const std::string extension = oldPath.extension().string();
+        const bool renamingDirectory = fs::is_directory(oldPath);
+        const std::string extension = renamingDirectory ? "" : oldPath.extension().string();
 
         // nothing entered, cancel
         if (newName.empty())
@@ -11238,7 +11276,70 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
-        if (AssetManager::MoveAsset(oldPath.string(), newPath.string()))
+        if (renamingDirectory)
+        {
+            if (fs::exists(newPath))
+            {
+                Debug::Warning("Rename target already exists: %s", newPath.string().c_str());
+            }
+            else
+            {
+                std::error_code ec;
+                fs::rename(oldPath, newPath, ec);
+                if (ec)
+                {
+                    Debug::Warning("Failed to rename folder '%s' to '%s': %s", oldPath.string().c_str(), newPath.string().c_str(), ec.message().c_str());
+                }
+                else
+                {
+                    const std::string oldPrefix = oldPath.generic_string();
+                    const std::string newPrefix = newPath.generic_string();
+
+                    auto remapTrackedPath = [&](std::string &_path)
+                    {
+                        if (!_path.empty())
+                            _path = RemapPathPrefix(fs::path(_path).generic_string(), oldPrefix, newPrefix);
+                    };
+
+                    remapTrackedPath(m_selectedAssetPath);
+                    remapTrackedPath(m_animationClipStatePath);
+                    remapTrackedPath(m_shaderGraphStatePath);
+
+                    auto &assetLibrary = AssetManager::GetAssetLibrary();
+                    std::vector<std::pair<std::string, int>> remappedAssetPaths = {};
+                    for (const auto &[pathKey, assetId] : assetLibrary.assetPath)
+                    {
+                        const std::string remappedPath = RemapPathPrefix(fs::path(pathKey).generic_string(), oldPrefix, newPrefix);
+                        if (remappedPath != pathKey)
+                            remappedAssetPaths.push_back({ pathKey, assetId });
+                    }
+
+                    for (const auto &[oldKey, assetId] : remappedAssetPaths)
+                    {
+                        const std::string newKey = RemapPathPrefix(fs::path(oldKey).generic_string(), oldPrefix, newPrefix);
+                        assetLibrary.assetPath.erase(oldKey);
+                        assetLibrary.assetPath[newKey] = assetId;
+
+                        if (newKey.size() > 5 && newKey.ends_with(".meta") && assetLibrary.assets.contains(assetId))
+                        {
+                            if (MetaFileAsset *meta = static_cast<MetaFileAsset *>(assetLibrary.assets[assetId]))
+                            {
+                                const std::string assetPath = newKey.substr(0, newKey.size() - 5);
+                                meta->path = assetPath;
+                                meta->name = fs::path(assetPath).filename().string();
+                                meta->Save();
+                            }
+                        }
+                    }
+
+                    for (auto &[uuid, pathValue] : assetLibrary.uuidAssetPath)
+                        pathValue = RemapPathPrefix(fs::path(pathValue).generic_string(), oldPrefix, newPrefix);
+
+                    m_assetPaths = FindFilesInFolder("assets", "");
+                }
+            }
+        }
+        else if (AssetManager::MoveAsset(oldPath.string(), newPath.string()))
         {
             if (m_selectedAssetPath == oldPath.string())
                 m_selectedAssetPath = newPath.string();
@@ -11294,6 +11395,344 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_scriptFolderRenamingPath.clear();
     }
 
+    void Editor::DrawAssetCreateMenu(const std::filesystem::path &_folderPath)
+    {
+        namespace fs = std::filesystem;
+
+        if (!ImGui::BeginMenu("Create"))
+            return;
+
+        auto writeSceneAsset = [&](const fs::path &_targetPath, YAML::Node &_root) -> bool
+        {
+            std::ofstream out(_targetPath.string());
+            if (!out.is_open())
+            {
+                Debug::Warning("Failed to create scene asset: %s", _targetPath.string().c_str());
+                return false;
+            }
+
+            out << _root;
+            out.close();
+
+            (void)AssetManager::GetMetaFile(_targetPath.string());
+            m_selectedAssetPath = _targetPath.string();
+            return true;
+        };
+
+        auto makeDefaultEnvironment = []() -> YAML::Node
+        {
+            YAML::Node environment(YAML::NodeType::Map);
+            environment["ClearColor"] = Vector4(0.12f, 0.14f, 0.17f, 1.0f);
+            environment["AmbientLight"] = Vector4(0.24f, 0.26f, 0.32f, 1.0f);
+            environment["AmbientLightIntensity"] = 1.0f;
+            environment["ShowColliders"] = false;
+            return environment;
+        };
+
+        if (ImGui::MenuItem("Folder"))
+        {
+            fs::path targetPath = _folderPath / "New Folder";
+            int index = 1;
+            while (fs::exists(targetPath))
+            {
+                targetPath = _folderPath / ("New Folder " + std::to_string(index));
+                ++index;
+            }
+
+            std::error_code ec;
+            fs::create_directory(targetPath, ec);
+            if (ec)
+                Debug::Warning("Failed to create folder '%s': %s", targetPath.string().c_str(), ec.message().c_str());
+        }
+
+        ImGui::Separator();
+
+        if (ImGui::MenuItem("Scene"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_scene", ".scene");
+            YAML::Node root(YAML::NodeType::Map);
+            root["Environment"] = makeDefaultEnvironment();
+            root["Entities"] = YAML::Node(YAML::NodeType::Sequence);
+            (void)writeSceneAsset(targetPath, root);
+        }
+
+        if (ImGui::MenuItem("3D Scene"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_3d_scene", ".scene");
+
+            uint64_t defaultMaterialUUID = 0;
+            if (MetaFileAsset *materialMeta = AssetManager::GetMetaFile("assets/defaults/materials/default.material"))
+                defaultMaterialUUID = static_cast<uint64_t>(materialMeta->uuid);
+
+            uint64_t cubeModelUUID = 0;
+            if (MetaFileAsset *cubeMeta = AssetManager::GetMetaFile("assets/defaults/models/cube.glb"))
+                cubeModelUUID = static_cast<uint64_t>(cubeMeta->uuid);
+
+            YAML::Node root(YAML::NodeType::Map);
+            root["Environment"] = makeDefaultEnvironment();
+            YAML::Node entities(YAML::NodeType::Sequence);
+
+            YAML::Node camera(YAML::NodeType::Map);
+            camera["Entity"] = static_cast<uint64_t>(UUID());
+            camera["Name"] = "Camera";
+            camera["Tag"] = "MainCamera";
+            camera["Active"] = true;
+            YAML::Node cameraTransform(YAML::NodeType::Map);
+            cameraTransform["active"] = true;
+            cameraTransform["position"] = Vector3(0.0f, 2.0f, 6.0f);
+            cameraTransform["rotation"] = Vector3(-0.32f, 0.0f, 0.0f);
+            cameraTransform["scale"] = Vector3(1.0f);
+            cameraTransform["parent"] = static_cast<uint64_t>(0);
+            cameraTransform["children"] = YAML::Node(YAML::NodeType::Sequence);
+            camera["Canis::Transform"] = cameraTransform;
+            YAML::Node cameraComponent(YAML::NodeType::Map);
+            cameraComponent["primary"] = true;
+            cameraComponent["fovDegrees"] = 60.0f;
+            cameraComponent["nearClip"] = 0.1f;
+            cameraComponent["farClip"] = 300.0f;
+            camera["Canis::Camera"] = cameraComponent;
+            entities.push_back(camera);
+
+            YAML::Node light(YAML::NodeType::Map);
+            light["Entity"] = static_cast<uint64_t>(UUID());
+            light["Name"] = "Directional Light";
+            light["Tag"] = "";
+            light["Active"] = true;
+            YAML::Node lightComponent(YAML::NodeType::Map);
+            lightComponent["enabled"] = true;
+            lightComponent["color"] = Vector4(1.0f);
+            lightComponent["intensity"] = 1.0f;
+            lightComponent["direction"] = Vector3(-0.4f, -1.0f, -0.25f);
+            light["Canis::DirectionalLight"] = lightComponent;
+            entities.push_back(light);
+
+            YAML::Node cube(YAML::NodeType::Map);
+            cube["Entity"] = static_cast<uint64_t>(UUID());
+            cube["Name"] = "Cube";
+            cube["Tag"] = "";
+            cube["Active"] = true;
+            YAML::Node cubeTransform(YAML::NodeType::Map);
+            cubeTransform["active"] = true;
+            cubeTransform["position"] = Vector3(0.0f);
+            cubeTransform["rotation"] = Vector3(0.0f);
+            cubeTransform["scale"] = Vector3(1.0f);
+            cubeTransform["parent"] = static_cast<uint64_t>(0);
+            cubeTransform["children"] = YAML::Node(YAML::NodeType::Sequence);
+            cube["Canis::Transform"] = cubeTransform;
+            YAML::Node cubeMaterial(YAML::NodeType::Map);
+            cubeMaterial["color"] = Vector4(1.0f);
+            YAML::Node materialAsset(YAML::NodeType::Map);
+            materialAsset["uuid"] = defaultMaterialUUID;
+            cubeMaterial["MaterialAsset"] = materialAsset;
+            cube["Canis::Material"] = cubeMaterial;
+            YAML::Node cubeModel(YAML::NodeType::Map);
+            cubeModel["color"] = Vector4(1.0f);
+            YAML::Node modelAsset(YAML::NodeType::Map);
+            modelAsset["uuid"] = cubeModelUUID;
+            cubeModel["ModelAsset"] = modelAsset;
+            cube["Canis::Model"] = cubeModel;
+            entities.push_back(cube);
+
+            root["Entities"] = entities;
+            (void)writeSceneAsset(targetPath, root);
+        }
+
+        if (ImGui::MenuItem("2D Scene"))
+        {
+            const fs::path templatePath = "assets/defaults/templates/scenes/2d_scene.scene";
+            const fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_2d_scene", ".scene");
+
+            std::error_code ec;
+            fs::copy_file(templatePath, targetPath, ec);
+            if (ec)
+            {
+                Debug::Warning("Failed to create 2D scene from template: %s", targetPath.string().c_str());
+            }
+            else
+            {
+                (void)AssetManager::GetMetaFile(targetPath.string());
+                m_selectedAssetPath = targetPath.string();
+            }
+        }
+
+        if (ImGui::MenuItem("Material"))
+        {
+            const fs::path templatePath = "assets/defaults/materials/default.material";
+            const fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_material", ".material");
+
+            std::error_code ec;
+            fs::copy_file(templatePath, targetPath, ec);
+            if (ec)
+            {
+                std::ofstream out(targetPath.string());
+                out << "color: [1, 1, 1, 1]\n";
+                out << "backFaceCulling: true\n";
+                out.close();
+            }
+
+            (void)AssetManager::GetMetaFile(targetPath.string());
+            m_selectedAssetPath = targetPath.string();
+        }
+
+        if (ImGui::MenuItem("Shader (Model3D Copy)"))
+        {
+            fs::path basePath = _folderPath / "new_shader";
+            fs::path vertexPath = basePath;
+            fs::path fragmentPath = basePath;
+            vertexPath.replace_extension(".vs");
+            fragmentPath.replace_extension(".fs");
+
+            int index = 1;
+            while (fs::exists(vertexPath) || fs::exists(fragmentPath) ||
+                   fs::exists(vertexPath.string() + ".meta") || fs::exists(fragmentPath.string() + ".meta"))
+            {
+                basePath = _folderPath / ("new_shader_" + std::to_string(index));
+                vertexPath = basePath;
+                fragmentPath = basePath;
+                vertexPath.replace_extension(".vs");
+                fragmentPath.replace_extension(".fs");
+                ++index;
+            }
+
+            auto copyTemplateShader = [](const fs::path &_targetPath, const std::vector<fs::path> &_sourceCandidates) -> bool
+            {
+                std::error_code ec;
+                for (const fs::path &candidate : _sourceCandidates)
+                {
+                    ec.clear();
+                    if (!fs::exists(candidate, ec))
+                        continue;
+
+                    ec.clear();
+                    fs::copy_file(candidate, _targetPath, ec);
+                    if (!ec)
+                        return true;
+                }
+
+                return false;
+            };
+
+            const bool copiedVertex = copyTemplateShader(vertexPath, { "assets/shaders/model3d.vs", "project/assets/shaders/model3d.vs" });
+            const bool copiedFragment = copyTemplateShader(fragmentPath, { "assets/shaders/model3d.fs", "project/assets/shaders/model3d.fs" });
+
+            if (!copiedVertex)
+                Debug::Warning("Failed to create shader vertex file from model3d template: %s", vertexPath.string().c_str());
+            if (!copiedFragment)
+                Debug::Warning("Failed to create shader fragment file from model3d template: %s", fragmentPath.string().c_str());
+
+            if (copiedVertex)
+                (void)AssetManager::GetMetaFile(vertexPath.string());
+            if (copiedFragment)
+                (void)AssetManager::GetMetaFile(fragmentPath.string());
+        }
+
+        if (ImGui::MenuItem("Shader Graph"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_shader_graph", ".shadergraph");
+
+            ShaderGraphDocument document = MakeDefaultShaderGraphDocument();
+            if (!SaveShaderGraphDocument(targetPath.string(), document))
+            {
+                Debug::Warning("Failed to create shader graph asset: %s", targetPath.string().c_str());
+            }
+            else
+            {
+                std::string errorMessage = {};
+                if (!GenerateShaderGraphAssets(targetPath.string(), document, &errorMessage) && !errorMessage.empty())
+                    Debug::Warning("%s", errorMessage.c_str());
+
+                (void)AssetManager::GetMetaFile(targetPath.string());
+                (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedVertexPath(targetPath.string()));
+                (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedFragmentPath(targetPath.string()));
+                (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedMaterialPath(targetPath.string()));
+
+                m_selectedAssetPath = targetPath.string();
+                RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                m_shaderGraphStatePath.clear();
+                m_shaderGraphSelectedNodeId = -1;
+            }
+        }
+
+        if (ImGui::MenuItem("Animation Clip"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_animation", ".animclip");
+
+            AnimationClipAsset clip = {};
+            clip.length = 1.0f;
+            if (clip.Save(targetPath.string()))
+            {
+                (void)AssetManager::GetMetaFile(targetPath.string());
+                m_selectedAssetPath = targetPath.string();
+                m_animationClipStatePath = targetPath.string();
+                RememberLastAnimationClipAssetPath(targetPath.string());
+            }
+        }
+
+        if (ImGui::MenuItem("Animator Controller"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_animator", ".animator");
+
+            AnimatorControllerAsset controller = {};
+            controller.entryState = "Default";
+            controller.states.push_back(AnimatorState{});
+            controller.states.back().name = "Default";
+            if (controller.Save(targetPath.string()))
+            {
+                (void)AssetManager::GetMetaFile(targetPath.string());
+                m_selectedAssetPath = targetPath.string();
+            }
+        }
+
+        if (ImGui::MenuItem("Skybox"))
+        {
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_skybox", ".skybox");
+
+            YAML::Node skyboxRoot(YAML::NodeType::Map);
+            auto makeFaceRef = []() -> YAML::Node
+            {
+                YAML::Node node(YAML::NodeType::Map);
+                node["uuid"] = static_cast<uint64_t>(0);
+                return node;
+            };
+            skyboxRoot["right"] = makeFaceRef();
+            skyboxRoot["left"] = makeFaceRef();
+            skyboxRoot["top"] = makeFaceRef();
+            skyboxRoot["bottom"] = makeFaceRef();
+            skyboxRoot["front"] = makeFaceRef();
+            skyboxRoot["back"] = makeFaceRef();
+
+            std::ofstream out(targetPath.string());
+            out << skyboxRoot;
+            out.close();
+
+            (void)AssetManager::GetMetaFile(targetPath.string());
+            m_selectedAssetPath = targetPath.string();
+        }
+
+        if (ImGui::MenuItem("PostProcess"))
+        {
+            const fs::path templatePath = "assets/defaults/postprocess/default.postprocess";
+            fs::path targetPath = BuildUniqueAssetPath(_folderPath, "new_postprocess", ".postprocess");
+
+            std::error_code ec;
+            fs::copy_file(templatePath, targetPath, ec);
+            if (ec)
+            {
+                YAML::Node root(YAML::NodeType::Map);
+                YAML::Node passes(YAML::NodeType::Sequence);
+                root["passes"] = passes;
+                std::ofstream out(targetPath.string());
+                out << root;
+                out.close();
+            }
+
+            (void)AssetManager::GetMetaFile(targetPath.string());
+            m_selectedAssetPath = targetPath.string();
+        }
+
+        ImGui::EndMenu();
+    }
+
     void Editor::DrawDirectoryRecursive(const std::string &_dirPath)
     {
         namespace fs = std::filesystem;
@@ -11313,8 +11752,37 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (entry.is_directory())
             {
+                const std::string fullPath = entry.path().string();
                 if (searchActive && !AssetDirectoryContainsSearchMatch(entry.path(), searchQuery))
                     continue;
+
+                const bool isRenamingThis = m_isRenamingAsset && (m_renamingPath == fullPath);
+                if (isRenamingThis)
+                {
+                    ImGui::PushID(fullPath.c_str());
+                    ImGui::SetNextItemWidth(-1.0f);
+
+                    ImGuiInputTextFlags flags =
+                        ImGuiInputTextFlags_EnterReturnsTrue |
+                        ImGuiInputTextFlags_CharsNoBlank |
+                        ImGuiInputTextFlags_CallbackAlways;
+
+                    if (m_focusAssetRenameInput)
+                        ImGui::SetKeyboardFocusHere();
+
+                    if (ImGui::InputText("##rename_asset_folder", m_renameBuffer, sizeof(m_renameBuffer), flags, PlaceRenameCursorAtEnd, &m_focusAssetRenameInput))
+                        CommitAssetRename();
+
+                    if (!ImGui::IsItemActive() &&
+                        (ImGui::IsMouseClicked(0) || ImGui::IsMouseClicked(1)))
+                    {
+                        m_isRenamingAsset = false;
+                        m_focusAssetRenameInput = false;
+                    }
+
+                    ImGui::PopID();
+                    continue;
+                }
 
                 ImGuiTreeNodeFlags nodeFlags =
                     ImGuiTreeNodeFlags_OpenOnArrow |
@@ -11368,234 +11836,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 // right click
                 if (ImGui::BeginPopupContextItem())
                 {
-                    if (ImGui::MenuItem("Create 2D Scene"))
+                    DrawAssetCreateMenu(entry.path());
+                    ImGui::Separator();
+
+                    if (ImGui::MenuItem("Rename"))
                     {
-                        // copy scene template
-                        std::string from = "assets/defaults/templates/scenes/2d_scene.scene";
-                        std::string to = entry.path().string() + "/new_2d_scene.scene";
-                        std::error_code ec;
-                        fs::copy_file(from, to, ec);
+                        m_isRenamingAsset = true;
+                        m_renamingPath = fullPath;
+                        m_focusAssetRenameInput = true;
 
-                        // add it to asset manager meta
-                        if (!ec)
-                            MetaFileAsset *meta = AssetManager::GetMetaFile(to);
-                    }
-
-                    if (ImGui::MenuItem("Create Material"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        const fs::path templatePath = "assets/defaults/materials/default.material";
-
-                        fs::path targetPath = folderPath / "new_material.material";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_material_" + std::to_string(index) + ".material");
-                            ++index;
-                        }
-
-                        std::error_code ec;
-                        fs::copy_file(templatePath, targetPath, ec);
-                        if (ec)
-                        {
-                            std::ofstream out(targetPath.string());
-                            out << "color: [1, 1, 1, 1]\n";
-                            out << "backFaceCulling: true\n";
-                            out.close();
-                        }
-
-                        MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
-                    }
-
-                    if (ImGui::MenuItem("Create Shader (Model3D Copy)"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        fs::path basePath = folderPath / "new_shader";
-                        fs::path vertexPath = basePath;
-                        fs::path fragmentPath = basePath;
-                        vertexPath.replace_extension(".vs");
-                        fragmentPath.replace_extension(".fs");
-
-                        int index = 1;
-                        while (fs::exists(vertexPath) || fs::exists(fragmentPath))
-                        {
-                            basePath = folderPath / ("new_shader_" + std::to_string(index));
-                            vertexPath = basePath;
-                            fragmentPath = basePath;
-                            vertexPath.replace_extension(".vs");
-                            fragmentPath.replace_extension(".fs");
-                            ++index;
-                        }
-
-                        auto copyTemplateShader = [](const fs::path &_targetPath, const std::vector<fs::path> &_sourceCandidates) -> bool
-                        {
-                            std::error_code ec;
-                            for (const fs::path &candidate : _sourceCandidates)
-                            {
-                                ec.clear();
-                                if (!fs::exists(candidate, ec))
-                                    continue;
-
-                                ec.clear();
-                                fs::copy_file(candidate, _targetPath, ec);
-                                if (!ec)
-                                    return true;
-                            }
-
-                            return false;
-                        };
-
-                        const bool copiedVertex = copyTemplateShader(vertexPath, { "assets/shaders/model3d.vs", "project/assets/shaders/model3d.vs" });
-                        const bool copiedFragment = copyTemplateShader(fragmentPath, { "assets/shaders/model3d.fs", "project/assets/shaders/model3d.fs" });
-
-                        if (!copiedVertex)
-                            Debug::Warning("Failed to create shader vertex file from model3d template: %s", vertexPath.string().c_str());
-                        if (!copiedFragment)
-                            Debug::Warning("Failed to create shader fragment file from model3d template: %s", fragmentPath.string().c_str());
-
-                        if (copiedVertex)
-                            (void)AssetManager::GetMetaFile(vertexPath.string());
-                        if (copiedFragment)
-                            (void)AssetManager::GetMetaFile(fragmentPath.string());
-                    }
-
-                    if (ImGui::MenuItem("Create Shader Graph"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        fs::path targetPath = folderPath / "new_shader_graph.shadergraph";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_shader_graph_" + std::to_string(index) + ".shadergraph");
-                            ++index;
-                        }
-
-                        ShaderGraphDocument document = MakeDefaultShaderGraphDocument();
-                        if (!SaveShaderGraphDocument(targetPath.string(), document))
-                        {
-                            Debug::Warning("Failed to create shader graph asset: %s", targetPath.string().c_str());
-                        }
-                        else
-                        {
-                            std::string errorMessage = {};
-                            if (!GenerateShaderGraphAssets(targetPath.string(), document, &errorMessage) && !errorMessage.empty())
-                                Debug::Warning("%s", errorMessage.c_str());
-
-                            (void)AssetManager::GetMetaFile(targetPath.string());
-                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedVertexPath(targetPath.string()));
-                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedFragmentPath(targetPath.string()));
-                            (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedMaterialPath(targetPath.string()));
-
-                            m_selectedAssetPath = targetPath.string();
-                            RememberLastShaderGraphAssetPath(m_selectedAssetPath);
-                            m_shaderGraphStatePath.clear();
-                            m_shaderGraphSelectedNodeId = -1;
-                        }
-                    }
-
-                    if (ImGui::MenuItem("Create Animation Clip"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        fs::path targetPath = folderPath / "new_animation.animclip";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_animation_" + std::to_string(index) + ".animclip");
-                            ++index;
-                        }
-
-                        AnimationClipAsset clip = {};
-                        clip.length = 1.0f;
-                        if (clip.Save(targetPath.string()))
-                        {
-                            (void)AssetManager::GetMetaFile(targetPath.string());
-                            m_selectedAssetPath = targetPath.string();
-                            m_animationClipStatePath = targetPath.string();
-                            RememberLastAnimationClipAssetPath(targetPath.string());
-                        }
-                    }
-
-                    if (ImGui::MenuItem("Create Animator Controller"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        fs::path targetPath = folderPath / "new_animator.animator";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_animator_" + std::to_string(index) + ".animator");
-                            ++index;
-                        }
-
-                        AnimatorControllerAsset controller = {};
-                        controller.entryState = "Default";
-                        controller.states.push_back(AnimatorState{});
-                        controller.states.back().name = "Default";
-                        if (controller.Save(targetPath.string()))
-                        {
-                            (void)AssetManager::GetMetaFile(targetPath.string());
-                            m_selectedAssetPath = targetPath.string();
-                        }
-                    }
-
-                    if (ImGui::MenuItem("Create Skybox"))
-                    {
-                        const fs::path folderPath = entry.path();
-
-                        fs::path targetPath = folderPath / "new_skybox.skybox";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_skybox_" + std::to_string(index) + ".skybox");
-                            ++index;
-                        }
-
-                        YAML::Node skyboxRoot(YAML::NodeType::Map);
-                        auto makeFaceRef = []() -> YAML::Node
-                        {
-                            YAML::Node node(YAML::NodeType::Map);
-                            node["uuid"] = (uint64_t)0;
-                            return node;
-                        };
-                        skyboxRoot["right"] = makeFaceRef();
-                        skyboxRoot["left"] = makeFaceRef();
-                        skyboxRoot["top"] = makeFaceRef();
-                        skyboxRoot["bottom"] = makeFaceRef();
-                        skyboxRoot["front"] = makeFaceRef();
-                        skyboxRoot["back"] = makeFaceRef();
-
-                        std::ofstream out(targetPath.string());
-                        out << skyboxRoot;
-                        out.close();
-
-                        MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
-                    }
-
-                    if (ImGui::MenuItem("Create PostProcess"))
-                    {
-                        const fs::path folderPath = entry.path();
-                        const fs::path templatePath = "assets/defaults/postprocess/default.postprocess";
-
-                        fs::path targetPath = folderPath / "new_postprocess.postprocess";
-                        int index = 1;
-                        while (fs::exists(targetPath))
-                        {
-                            targetPath = folderPath / ("new_postprocess_" + std::to_string(index) + ".postprocess");
-                            ++index;
-                        }
-
-                        std::error_code ec;
-                        fs::copy_file(templatePath, targetPath, ec);
-                        if (ec)
-                        {
-                            YAML::Node root(YAML::NodeType::Map);
-                            YAML::Node passes(YAML::NodeType::Sequence);
-                            root["passes"] = passes;
-                            std::ofstream out(targetPath.string());
-                            out << root;
-                            out.close();
-                        }
-
-                        MetaFileAsset *meta = AssetManager::GetMetaFile(targetPath.string());
+                        std::strncpy(m_renameBuffer, name.c_str(), sizeof(m_renameBuffer));
+                        m_renameBuffer[sizeof(m_renameBuffer) - 1] = '\0';
                     }
 
                     ImGui::EndPopup();
@@ -12203,6 +12454,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::Separator();
 
         DrawDirectoryRecursive("assets");
+
+        if (ImGui::BeginPopupContextWindow("assets_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
+        {
+            DrawAssetCreateMenu("assets");
+            ImGui::EndPopup();
+        }
+
         ImGui::End();
     }
 

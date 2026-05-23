@@ -229,8 +229,23 @@ namespace Canis
         return TryGetRayFromCamera(_cameraEntity, m_inputManager->mouse, _ray);
     }
 
+    void Scene::DrawDebugGizmoLine(const Vector3 &_start, const Vector3 &_end, const Color &_color)
+    {
+        m_debugGizmoLines.push_back(DebugGizmoLine{
+            .start = _start,
+            .end = _end,
+            .color = _color
+        });
+    }
+
+    void Scene::ClearDebugGizmoLines()
+    {
+        m_debugGizmoLines.clear();
+    }
+
     void Scene::Update(float _deltaTime)
     {
+        ClearDebugGizmoLines();
         m_isUpdating = true;
 
         for (System* system : m_updateSystems)
@@ -336,6 +351,7 @@ namespace Canis
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
+        ClearDebugGizmoLines();
         ClearLastRenderCamera();
         ClearEditorCameraOverrides();
 

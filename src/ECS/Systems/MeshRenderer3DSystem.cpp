@@ -438,12 +438,18 @@ namespace Canis
             glDeleteBuffers(1, &m_colliderDebugVbo);
         if (m_colliderDebugVao != 0)
             glDeleteVertexArrays(1, &m_colliderDebugVao);
+        if (m_debugGizmoVbo != 0)
+            glDeleteBuffers(1, &m_debugGizmoVbo);
+        if (m_debugGizmoVao != 0)
+            glDeleteVertexArrays(1, &m_debugGizmoVao);
 
         DestroyShadowMap();
         m_skyboxVbo = 0;
         m_skyboxVao = 0;
         m_colliderDebugVbo = 0;
         m_colliderDebugVao = 0;
+        m_debugGizmoVbo = 0;
+        m_debugGizmoVao = 0;
         m_skyboxShader = nullptr;
         m_shadowShader = nullptr;
         m_colliderDebugShader = nullptr;
@@ -482,6 +488,64 @@ namespace Canis
         glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
         glBindVertexArray(0);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    void MeshRenderer3DSystem::CreateDebugGizmoGeometry()
+    {
+        if (m_debugGizmoVao == 0)
+            glGenVertexArrays(1, &m_debugGizmoVao);
+
+        if (m_debugGizmoVbo == 0)
+            glGenBuffers(1, &m_debugGizmoVbo);
+
+        glBindVertexArray(m_debugGizmoVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_debugGizmoVbo);
+        glBufferData(GL_ARRAY_BUFFER, 0, nullptr, GL_DYNAMIC_DRAW);
+        glEnableVertexAttribArray(0);
+        glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, 3 * sizeof(float), (void *)0);
+        glBindVertexArray(0);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+    }
+
+    void MeshRenderer3DSystem::DrawDebugGizmoLines(const Matrix4 &_projection, const Matrix4 &_view)
+    {
+        if (scene == nullptr || !scene->HasEditorCamera3DOverride() || m_colliderDebugShader == nullptr)
+            return;
+
+        const std::vector<DebugGizmoLine> &debugGizmoLines = scene->GetDebugGizmoLines();
+        if (debugGizmoLines.empty())
+            return;
+
+        if (m_debugGizmoVao == 0 || m_debugGizmoVbo == 0)
+            CreateDebugGizmoGeometry();
+
+        glDisable(GL_CULL_FACE);
+        glDisable(GL_DEPTH_TEST);
+        glDepthMask(GL_FALSE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glLineWidth(3.0f);
+
+        m_colliderDebugShader->Use();
+        m_colliderDebugShader->SetMat4("P", _projection);
+        m_colliderDebugShader->SetMat4("V", _view);
+
+        glBindVertexArray(m_debugGizmoVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_debugGizmoVbo);
+
+        for (const DebugGizmoLine &line : debugGizmoLines)
+        {
+            const Vector3 vertices[2] = { line.start, line.end };
+            glBufferData(GL_ARRAY_BUFFER, sizeof(vertices), vertices, GL_DYNAMIC_DRAW);
+            m_colliderDebugShader->SetVec4("lineColor", line.color);
+            glDrawArrays(GL_LINES, 0, 2);
+        }
+
+        m_colliderDebugShader->UnUse();
+
+        glDepthMask(GL_TRUE);
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
     }
 
     void MeshRenderer3DSystem::DrawColliderDebugLines(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view)
@@ -726,7 +790,7 @@ namespace Canis
         glEnable(GL_CULL_FACE);
         glCullFace(GL_FRONT);
         glEnable(GL_POLYGON_OFFSET_FILL);
-        glPolygonOffset(2.0f, 4.0f);
+        glPolygonOffset(0.6f, 1.0f);
 
         m_shadowShader->Use();
         m_shadowShader->SetMat4("lightSpaceMatrix", m_shadowLightSpaceMatrix);
@@ -1450,6 +1514,7 @@ namespace Canis
         }
 
         DrawColliderDebugLines(_registry, projection, view);
+        DrawDebugGizmoLines(projection, view);
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);

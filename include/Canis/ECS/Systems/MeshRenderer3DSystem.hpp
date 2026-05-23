@@ -28,6 +28,8 @@ namespace Canis
         unsigned int m_skyboxVbo = 0;
         unsigned int m_colliderDebugVao = 0;
         unsigned int m_colliderDebugVbo = 0;
+        unsigned int m_debugGizmoVao = 0;
+        unsigned int m_debugGizmoVbo = 0;
         unsigned int m_shadowFramebuffer = 0;
         unsigned int m_shadowDepthTexture = 0;
         Matrix4 m_shadowLightSpaceMatrix = Matrix4(1.0f);
@@ -36,6 +38,8 @@ namespace Canis
         void DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view);
         void CreateColliderDebugGeometry();
         void DrawColliderDebugLines(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view);
+        void CreateDebugGizmoGeometry();
+        void DrawDebugGizmoLines(const Matrix4 &_projection, const Matrix4 &_view);
         void CreateShadowMap();
         void DestroyShadowMap();
         void RenderDirectionalShadowMap(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view, const Vector3 &_cameraPosition, float _cameraFarClip, const Vector3 &_directionalLightDirection, bool _useDirectionalLight);

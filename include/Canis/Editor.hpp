@@ -183,6 +183,7 @@ namespace Canis
         void DrawEnvironment();
         void DrawAssetsPanel();
         void DrawDirectoryRecursive(const std::string &_dirPath);
+        void DrawAssetCreateMenu(const std::filesystem::path &_folderPath);
         void DrawScriptsPanel();
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
