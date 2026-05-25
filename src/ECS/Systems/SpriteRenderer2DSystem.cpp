@@ -18,7 +18,16 @@
 
 namespace Canis
 {
-    void SpriteRenderer2DSystem::DrawText(Entity* _entity, RectTransform* _transform, Text* _text, const Vector2& _cameraPosition, float _halfWidth, float _halfHeight)
+    void SpriteRenderer2DSystem::DrawText(
+        Entity* _entity,
+        RectTransform* _transform,
+        Text* _text,
+        const Vector2& _position,
+        const Vector2& _size,
+        const Vector2& _rectMin,
+        const Vector2& _scale,
+        float _depth,
+        float _rotation)
     {
         if (_entity == nullptr || _transform == nullptr || _text == nullptr || _text->assetId < 0)
             return;
@@ -28,12 +37,10 @@ namespace Canis
         if (font == nullptr || _text->text.empty())
             return;
 
-        Vector2 transformPos = _transform->GetPosition();
-        Vector2 transformScale = _transform->GetScale();
-        const float scaleX = std::abs(transformScale.x);
-        const float scaleY = std::abs(transformScale.y);
-        const Vector2 rectSize = _transform->GetResolvedSize();
-        const Vector2 rectMin = _transform->GetRectMin() + _transform->originOffset;
+        const float scaleX = std::abs(_scale.x);
+        const float scaleY = std::abs(_scale.y);
+        const Vector2 rectSize = _size;
+        const Vector2 rectMin = _rectMin + _transform->originOffset;
         const float maxWidth = rectSize.x;
         const bool wrap = (_text->horizontalBoundary == TextBoundary::WRAP) && (maxWidth > 0.0f);
         const float wrapWidth = (maxWidth > 0.0f) ? maxWidth : 0.0f;
@@ -101,7 +108,7 @@ namespace Canis
             return rectMin.x;
         };
 
-        const Vector2 textRotationPivot = transformPos + _transform->rotationOriginOffset;
+        const Vector2 textRotationPivot = _position + _transform->rotationOriginOffset;
 
         i32 lineIndex = 0;
         float x = computeLineStart(lineWidths[0]);
@@ -146,9 +153,9 @@ namespace Canis
                     Vector4(xpos, ypos, w, h),
                     Vector4(ch.atlasPos.x, uvY, ch.atlasSize.x, ch.atlasSize.y),
                     GLTexture{font->GetTexture(), 0, 0},
-                    _transform->GetDepth(),
+                    _depth,
                     _text->color,
-                    _transform->GetRotation(),
+                    _rotation,
                     Vector2(0.0f),
                     textRotationPivot);
             }
@@ -613,8 +620,13 @@ namespace Canis
                 {
                     Sprite2D* sprite = _registry.try_get<Sprite2D>(_entity->GetHandle());
                     Text* text = _registry.try_get<Text>(_entity->GetHandle());
-                    const Vector2 position = transform.GetPosition();
-                    const Vector2 size = transform.GetResolvedSize();
+                    const RectTransform::LayoutData layout = transform.GetLayout();
+                    const Vector2 position = layout.pivotPosition;
+                    const Vector2 size = layout.size;
+                    const Vector2 rectMin = layout.min;
+                    const Vector2 scale = transform.GetScale();
+                    const float depth = transform.GetDepth();
+                    const float rotation = transform.GetRotation();
 
                     if (sprite != nullptr &&
                         (_renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
@@ -631,14 +643,14 @@ namespace Canis
                             Vector4(position.x, position.y, size.x, size.y),
                             sprite->uv,
                             sprite->textureHandle.texture,
-                            transform.GetDepth(),
+                            depth,
                             sprite->color,
-                            transform.GetRotation(),
+                            rotation,
                             pivotOffset);
                     }
 
                     if (text != nullptr)
-                        DrawText(_entity, &transform, text, camPos, halfWidth, halfHeight);
+                        DrawText(_entity, &transform, text, position, size, rectMin, scale, depth, rotation);
                 }
 
                 for (Entity* child : transform.children)

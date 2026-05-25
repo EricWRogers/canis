@@ -1,7 +1,9 @@
 #pragma once
 #include <Canis/UUID.hpp>
 #include <Canis/AssetHandle.hpp>
+#include <Canis/Math.hpp>
 #include <string>
+#include <vector>
 
 namespace Canis
 {
@@ -49,6 +51,18 @@ namespace Canis
         int targetGameHeight = 512;
     };
 
+    struct EditorSceneCameraConfig
+    {
+        SceneAssetHandle scene = {};
+        int sceneCameraMode = 0;
+        Vector3 sceneCamera3DPosition = Vector3(0.0f, 2.0f, 8.0f);
+        float sceneCamera3DYaw = -90.0f;
+        float sceneCamera3DPitch = -12.0f;
+        float sceneCamera3DFovDegrees = 60.0f;
+        Vector2 sceneCamera2DPosition = Vector2(0.0f);
+        float sceneCamera2DScale = 1.0f;
+    };
+
     struct EditorConfig
     {
         SceneAssetHandle lastEditorScene = {};
@@ -58,6 +72,14 @@ namespace Canis
         std::string fontPath = "";
         float fontScale = 1.0f;
         bool reloadBuildAutoCloseOnSuccess = false;
+        int sceneCameraMode = 0;
+        Vector3 sceneCamera3DPosition = Vector3(0.0f, 2.0f, 8.0f);
+        float sceneCamera3DYaw = -90.0f;
+        float sceneCamera3DPitch = -12.0f;
+        float sceneCamera3DFovDegrees = 60.0f;
+        Vector2 sceneCamera2DPosition = Vector2(0.0f);
+        float sceneCamera2DScale = 1.0f;
+        std::vector<EditorSceneCameraConfig> sceneCameras = {};
     };
 
     ProjectConfig& GetProjectConfig();

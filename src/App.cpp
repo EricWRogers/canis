@@ -1038,7 +1038,12 @@ namespace Canis
             Debug::FatalError("Failed to resolve startup scene from '%s'.", requestedStartupScenePath.c_str());
 
         if (runtime.editorRuntimeEnabled)
+        {
             SaveLastEditorScenePath(startupScenePath);
+#if CANIS_EDITOR
+            runtime.editor->LoadSceneCameraConfig();
+#endif
+        }
 
         scene.Init(this, runtime.window.get(), runtime.inputManager.get());
         m_network = std::make_unique<NetworkSession>(*this);

@@ -48,6 +48,123 @@ namespace Canis
             return std::clamp(_value, 0.5f, 2.5f);
         }
 
+        float NormalizeSceneCameraPitch(float _value)
+        {
+            if (!std::isfinite(_value))
+                return -12.0f;
+
+            return std::clamp(_value, -89.0f, 89.0f);
+        }
+
+        float NormalizeSceneCameraFov(float _value)
+        {
+            if (!std::isfinite(_value))
+                return 60.0f;
+
+            return std::clamp(_value, 1.0f, 179.0f);
+        }
+
+        float NormalizeSceneCamera2DScale(float _value)
+        {
+            if (!std::isfinite(_value))
+                return 1.0f;
+
+            return std::clamp(_value, 0.01f, 100.0f);
+        }
+
+        Vector2 NormalizeVector2(Vector2 _value, Vector2 _fallback)
+        {
+            if (!std::isfinite(_value.x) || !std::isfinite(_value.y))
+                return _fallback;
+
+            return _value;
+        }
+
+        Vector3 NormalizeVector3(Vector3 _value, Vector3 _fallback)
+        {
+            if (!std::isfinite(_value.x) || !std::isfinite(_value.y) || !std::isfinite(_value.z))
+                return _fallback;
+
+            return _value;
+        }
+
+        bool SceneAssetHandlesMatch(const SceneAssetHandle &_left, const SceneAssetHandle &_right)
+        {
+            if (_left.uuid != UUID(0) && _right.uuid != UUID(0))
+                return _left.uuid == _right.uuid;
+
+            if (!_left.path.empty() && !_right.path.empty())
+                return _left.path == _right.path;
+
+            return false;
+        }
+
+        EditorSceneCameraConfig MakeSceneCameraConfigFromEditorFallback(const EditorConfig &_editorConfig)
+        {
+            EditorSceneCameraConfig sceneCamera = {};
+            sceneCamera.scene = _editorConfig.lastEditorScene;
+            sceneCamera.sceneCameraMode = (_editorConfig.sceneCameraMode == 0 || _editorConfig.sceneCameraMode == 1)
+                ? _editorConfig.sceneCameraMode : 0;
+            sceneCamera.sceneCamera3DPosition = NormalizeVector3(_editorConfig.sceneCamera3DPosition, Vector3(0.0f, 2.0f, 8.0f));
+            sceneCamera.sceneCamera3DYaw = std::isfinite(_editorConfig.sceneCamera3DYaw) ? _editorConfig.sceneCamera3DYaw : -90.0f;
+            sceneCamera.sceneCamera3DPitch = NormalizeSceneCameraPitch(_editorConfig.sceneCamera3DPitch);
+            sceneCamera.sceneCamera3DFovDegrees = NormalizeSceneCameraFov(_editorConfig.sceneCamera3DFovDegrees);
+            sceneCamera.sceneCamera2DPosition = NormalizeVector2(_editorConfig.sceneCamera2DPosition, Vector2(0.0f));
+            sceneCamera.sceneCamera2DScale = NormalizeSceneCamera2DScale(_editorConfig.sceneCamera2DScale);
+            return sceneCamera;
+        }
+
+        bool HasSceneCameraConfigForScene(const std::vector<EditorSceneCameraConfig> &_sceneCameras, const SceneAssetHandle &_scene)
+        {
+            for (const EditorSceneCameraConfig &sceneCamera : _sceneCameras)
+            {
+                if (SceneAssetHandlesMatch(sceneCamera.scene, _scene))
+                    return true;
+            }
+
+            return false;
+        }
+
+        YAML::Node EncodeSceneCameraConfig(const EditorSceneCameraConfig &_sceneCamera)
+        {
+            YAML::Node node;
+            node["scene"] = _sceneCamera.scene;
+            node["sceneCameraMode"] = (_sceneCamera.sceneCameraMode == 0 || _sceneCamera.sceneCameraMode == 1)
+                ? _sceneCamera.sceneCameraMode : 0;
+            node["sceneCamera3DPosition"] = NormalizeVector3(_sceneCamera.sceneCamera3DPosition, Vector3(0.0f, 2.0f, 8.0f));
+            node["sceneCamera3DYaw"] = std::isfinite(_sceneCamera.sceneCamera3DYaw) ? _sceneCamera.sceneCamera3DYaw : -90.0f;
+            node["sceneCamera3DPitch"] = NormalizeSceneCameraPitch(_sceneCamera.sceneCamera3DPitch);
+            node["sceneCamera3DFovDegrees"] = NormalizeSceneCameraFov(_sceneCamera.sceneCamera3DFovDegrees);
+            node["sceneCamera2DPosition"] = NormalizeVector2(_sceneCamera.sceneCamera2DPosition, Vector2(0.0f));
+            node["sceneCamera2DScale"] = NormalizeSceneCamera2DScale(_sceneCamera.sceneCamera2DScale);
+            return node;
+        }
+
+        EditorSceneCameraConfig DecodeSceneCameraConfig(const YAML::Node &_node, const EditorConfig &_fallbackConfig)
+        {
+            EditorSceneCameraConfig sceneCamera = MakeSceneCameraConfigFromEditorFallback(_fallbackConfig);
+            sceneCamera.scene = _node["scene"].as<SceneAssetHandle>(sceneCamera.scene);
+            sceneCamera.sceneCameraMode = _node["sceneCameraMode"].as<int>(sceneCamera.sceneCameraMode);
+            if (sceneCamera.sceneCameraMode < 0 || sceneCamera.sceneCameraMode > 1)
+                sceneCamera.sceneCameraMode = 0;
+            sceneCamera.sceneCamera3DPosition = NormalizeVector3(
+                _node["sceneCamera3DPosition"].as<Vector3>(sceneCamera.sceneCamera3DPosition),
+                Vector3(0.0f, 2.0f, 8.0f));
+            sceneCamera.sceneCamera3DYaw = _node["sceneCamera3DYaw"].as<float>(sceneCamera.sceneCamera3DYaw);
+            if (!std::isfinite(sceneCamera.sceneCamera3DYaw))
+                sceneCamera.sceneCamera3DYaw = -90.0f;
+            sceneCamera.sceneCamera3DPitch = NormalizeSceneCameraPitch(
+                _node["sceneCamera3DPitch"].as<float>(sceneCamera.sceneCamera3DPitch));
+            sceneCamera.sceneCamera3DFovDegrees = NormalizeSceneCameraFov(
+                _node["sceneCamera3DFovDegrees"].as<float>(sceneCamera.sceneCamera3DFovDegrees));
+            sceneCamera.sceneCamera2DPosition = NormalizeVector2(
+                _node["sceneCamera2DPosition"].as<Vector2>(sceneCamera.sceneCamera2DPosition),
+                Vector2(0.0f));
+            sceneCamera.sceneCamera2DScale = NormalizeSceneCamera2DScale(
+                _node["sceneCamera2DScale"].as<float>(sceneCamera.sceneCamera2DScale));
+            return sceneCamera;
+        }
+
         float NormalizeVolume(float _value)
         {
             if (!std::isfinite(_value))
@@ -161,6 +278,20 @@ namespace Canis
         node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
         node["reloadBuildAutoCloseOnSuccess"] = editorConfig.reloadBuildAutoCloseOnSuccess;
 
+        std::vector<EditorSceneCameraConfig> sceneCamerasToSave = editorConfig.sceneCameras;
+        if (sceneCamerasToSave.empty() && !editorConfig.lastEditorScene.Empty())
+            sceneCamerasToSave.push_back(MakeSceneCameraConfigFromEditorFallback(editorConfig));
+
+        YAML::Node sceneCameras(YAML::NodeType::Sequence);
+        for (const EditorSceneCameraConfig &sceneCamera : sceneCamerasToSave)
+        {
+            if (sceneCamera.scene.Empty())
+                continue;
+
+            sceneCameras.push_back(EncodeSceneCameraConfig(sceneCamera));
+        }
+        node["sceneCameras"] = sceneCameras;
+
         std::error_code ec;
         fs::create_directories(fs::path(kEditorConfigPath).parent_path(), ec);
         if (ec)
@@ -242,6 +373,57 @@ namespace Canis
         editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));
         editorConfig.reloadBuildAutoCloseOnSuccess =
             editorNode["reloadBuildAutoCloseOnSuccess"].as<bool>(editorConfig.reloadBuildAutoCloseOnSuccess);
+        editorConfig.sceneCameraMode = editorNode["sceneCameraMode"].as<int>(editorConfig.sceneCameraMode);
+        if (editorConfig.sceneCameraMode < 0 || editorConfig.sceneCameraMode > 1)
+            editorConfig.sceneCameraMode = 0;
+        editorConfig.sceneCamera3DPosition = NormalizeVector3(
+            editorNode["sceneCamera3DPosition"].as<Vector3>(editorConfig.sceneCamera3DPosition),
+            Vector3(0.0f, 2.0f, 8.0f));
+        editorConfig.sceneCamera3DYaw = editorNode["sceneCamera3DYaw"].as<float>(editorConfig.sceneCamera3DYaw);
+        if (!std::isfinite(editorConfig.sceneCamera3DYaw))
+            editorConfig.sceneCamera3DYaw = -90.0f;
+        editorConfig.sceneCamera3DPitch = NormalizeSceneCameraPitch(
+            editorNode["sceneCamera3DPitch"].as<float>(editorConfig.sceneCamera3DPitch));
+        editorConfig.sceneCamera3DFovDegrees = NormalizeSceneCameraFov(
+            editorNode["sceneCamera3DFovDegrees"].as<float>(editorConfig.sceneCamera3DFovDegrees));
+        editorConfig.sceneCamera2DPosition = NormalizeVector2(
+            editorNode["sceneCamera2DPosition"].as<Vector2>(editorConfig.sceneCamera2DPosition),
+            Vector2(0.0f));
+        editorConfig.sceneCamera2DScale = NormalizeSceneCamera2DScale(
+            editorNode["sceneCamera2DScale"].as<float>(editorConfig.sceneCamera2DScale));
+
+        editorConfig.sceneCameras.clear();
+        if (YAML::Node sceneCamerasNode = editorNode["sceneCameras"])
+        {
+            if (sceneCamerasNode.IsSequence())
+            {
+                for (YAML::const_iterator it = sceneCamerasNode.begin(); it != sceneCamerasNode.end(); ++it)
+                {
+                    const YAML::Node sceneCameraNode = *it;
+                    if (!sceneCameraNode || !sceneCameraNode.IsMap())
+                        continue;
+
+                    EditorSceneCameraConfig sceneCamera = DecodeSceneCameraConfig(sceneCameraNode, editorConfig);
+                    if (!sceneCamera.scene.Empty() && !HasSceneCameraConfigForScene(editorConfig.sceneCameras, sceneCamera.scene))
+                        editorConfig.sceneCameras.push_back(sceneCamera);
+                }
+            }
+        }
+
+        const bool hasLegacySceneCameraConfig =
+            editorNode["sceneCameraMode"] ||
+            editorNode["sceneCamera3DPosition"] ||
+            editorNode["sceneCamera3DYaw"] ||
+            editorNode["sceneCamera3DPitch"] ||
+            editorNode["sceneCamera3DFovDegrees"] ||
+            editorNode["sceneCamera2DPosition"] ||
+            editorNode["sceneCamera2DScale"];
+        if (hasLegacySceneCameraConfig &&
+            !editorConfig.lastEditorScene.Empty() &&
+            !HasSceneCameraConfigForScene(editorConfig.sceneCameras, editorConfig.lastEditorScene))
+        {
+            editorConfig.sceneCameras.push_back(MakeSceneCameraConfigFromEditorFallback(editorConfig));
+        }
 
         // Backward compatibility with older project keys.
         if (!node["editorWindowWidth"] && node["windowWidth"])

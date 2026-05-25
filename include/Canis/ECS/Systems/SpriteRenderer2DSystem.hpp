@@ -72,7 +72,16 @@ namespace Canis
 
         void Update(entt::registry &_registry, float _deltaTime) override;
     private:
-        void DrawText(Entity* _entity, RectTransform* _transform, Text* _text, const Vector2& _cameraPosition, float _halfWidth, float _halfHeight);
+        void DrawText(
+            Entity* _entity,
+            RectTransform* _transform,
+            Text* _text,
+            const Vector2& _position,
+            const Vector2& _size,
+            const Vector2& _rectMin,
+            const Vector2& _scale,
+            float _depth,
+            float _rotation);
         float m_time = 0.0f;
     };
 } // end of Canis namespace

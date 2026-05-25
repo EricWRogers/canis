@@ -84,6 +84,7 @@ namespace Canis
         InputManager& GetInputManager() { return *m_inputManager; }
         entt::registry& GetRegistry() { return m_registry; }
         const entt::registry& GetRegistry() const { return m_registry; }
+        const std::string& GetPath() const { return m_path; }
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, RaycastHit &_hit, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         std::vector<RaycastHit> RaycastAll(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());

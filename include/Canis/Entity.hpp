@@ -444,6 +444,15 @@ namespace Canis
             return parent != nullptr;
         }
 
+        struct LayoutData
+        {
+            Vector2 min = Vector2(0.0f);
+            Vector2 size = Vector2(0.0f);
+            Vector2 pivotPosition = Vector2(0.0f);
+        };
+
+        LayoutData GetLayout() const;
+
         void SetParentAtIndex(Entity* newParent, std::size_t index)
         {
             Entity* self = entity;
@@ -626,14 +635,6 @@ namespace Canis
         }
 
     private:
-        struct LayoutData
-        {
-            Vector2 min = Vector2(0.0f);
-            Vector2 size = Vector2(0.0f);
-            Vector2 pivotPosition = Vector2(0.0f);
-        };
-
-        LayoutData GetLayout() const;
         const Canvas* FindCanvas() const;
         float GetCanvasOverlayScaleFactor() const;
         Vector2 GetCanvasOverlayLogicalSize() const;
@@ -1396,6 +1397,9 @@ namespace Canis
 
         void SetText(const std::string &_text)
         {
+            if (text == _text)
+                return;
+
             text = _text;
             _status |= BIT::ONE;
         }

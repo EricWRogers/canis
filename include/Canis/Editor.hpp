@@ -243,6 +243,10 @@ namespace Canis
         void ProcessModelMaterialExportDialog();
         void ResetVertexSnapDrag();
         bool TryApplyVertexSnap(Canis::Entity *_selected, const Matrix4 &_selectedWorldMatrix, Vector3 &_worldPosition, const Vector3 &_dragDelta);
+        void LoadSceneCameraConfig();
+        void SaveSceneCameraConfig();
+        void MarkSceneCameraConfigDirty();
+        void UpdateSceneCameraConfigAutosave(float _deltaTime);
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -267,10 +271,10 @@ namespace Canis
             SCENE_CAMERA_2D = 1,
         };
 
-        Scene *m_scene;
-        App *m_app;
-        Window* m_window;
-        GameCodeObject* m_gameSharedLib;
+        Scene *m_scene = nullptr;
+        App *m_app = nullptr;
+        Window* m_window = nullptr;
+        GameCodeObject* m_gameSharedLib = nullptr;
         int m_index = 0;
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
@@ -346,6 +350,8 @@ namespace Canis
         bool m_playViewHovered = false;
         bool m_playMouseCaptured = false;
         bool m_sceneViewClicked = false;
+        bool m_sceneCameraConfigDirty = false;
+        float m_sceneCameraConfigSaveDelay = 0.0f;
         bool m_vertexSnappingEnabled = false;
         bool m_vertexSnapDragActive = false;
         int m_vertexSnapAxesMask = 0;

@@ -106,6 +106,138 @@ namespace Canis
             return std::clamp(_fontScale, 0.5f, 2.5f);
         }
 
+        int NormalizeSceneCameraModeSelection(int _modeSelection)
+        {
+            if (_modeSelection == 0 || _modeSelection == 1)
+                return _modeSelection;
+
+            return 0;
+        }
+
+        float NormalizeSceneCameraPitch(float _pitch)
+        {
+            if (!std::isfinite(_pitch))
+                return -12.0f;
+
+            return std::clamp(_pitch, -89.0f, 89.0f);
+        }
+
+        float NormalizeSceneCameraFov(float _fovDegrees)
+        {
+            if (!std::isfinite(_fovDegrees))
+                return 60.0f;
+
+            return std::clamp(_fovDegrees, 1.0f, 179.0f);
+        }
+
+        float NormalizeSceneCamera2DScale(float _scale)
+        {
+            if (!std::isfinite(_scale))
+                return 1.0f;
+
+            return std::clamp(_scale, 0.01f, 100.0f);
+        }
+
+        Vector2 NormalizeFiniteVector2(Vector2 _value, Vector2 _fallback)
+        {
+            if (!std::isfinite(_value.x) || !std::isfinite(_value.y))
+                return _fallback;
+
+            return _value;
+        }
+
+        Vector3 NormalizeFiniteVector3(Vector3 _value, Vector3 _fallback)
+        {
+            if (!std::isfinite(_value.x) || !std::isfinite(_value.y) || !std::isfinite(_value.z))
+                return _fallback;
+
+            return _value;
+        }
+
+        bool NearlyEqual(float _a, float _b, float _epsilon = 0.0001f)
+        {
+            return std::abs(_a - _b) <= _epsilon;
+        }
+
+        bool NearlyEqual(const Vector2 &_a, const Vector2 &_b, float _epsilon = 0.0001f)
+        {
+            return NearlyEqual(_a.x, _b.x, _epsilon) && NearlyEqual(_a.y, _b.y, _epsilon);
+        }
+
+        bool NearlyEqual(const Vector3 &_a, const Vector3 &_b, float _epsilon = 0.0001f)
+        {
+            return NearlyEqual(_a.x, _b.x, _epsilon) &&
+                NearlyEqual(_a.y, _b.y, _epsilon) &&
+                NearlyEqual(_a.z, _b.z, _epsilon);
+        }
+
+        std::string ResolveSceneHandlePath(const SceneAssetHandle &_scene)
+        {
+            if (!_scene.path.empty())
+                return _scene.path;
+
+            if (_scene.uuid == UUID(0))
+                return "";
+
+            const std::string path = AssetManager::GetPath(_scene.uuid);
+            return path == "Path was not found in AssetLibrary" ? "" : path;
+        }
+
+        bool SceneAssetHandleMatches(const SceneAssetHandle &_left, const SceneAssetHandle &_right)
+        {
+            if (_left.uuid != UUID(0) && _right.uuid != UUID(0))
+                return _left.uuid == _right.uuid;
+
+            const std::string leftPath = ResolveSceneHandlePath(_left);
+            const std::string rightPath = ResolveSceneHandlePath(_right);
+            return !leftPath.empty() && leftPath == rightPath;
+        }
+
+        EditorSceneCameraConfig MakeDefaultSceneCameraConfig(const SceneAssetHandle &_scene)
+        {
+            EditorSceneCameraConfig sceneCamera = {};
+            sceneCamera.scene = _scene;
+            return sceneCamera;
+        }
+
+        const EditorSceneCameraConfig* FindSceneCameraConfig(
+            const std::vector<EditorSceneCameraConfig> &_sceneCameras,
+            const SceneAssetHandle &_scene)
+        {
+            for (const EditorSceneCameraConfig &sceneCamera : _sceneCameras)
+            {
+                if (SceneAssetHandleMatches(sceneCamera.scene, _scene))
+                    return &sceneCamera;
+            }
+
+            return nullptr;
+        }
+
+        EditorSceneCameraConfig* FindSceneCameraConfig(
+            std::vector<EditorSceneCameraConfig> &_sceneCameras,
+            const SceneAssetHandle &_scene)
+        {
+            for (EditorSceneCameraConfig &sceneCamera : _sceneCameras)
+            {
+                if (SceneAssetHandleMatches(sceneCamera.scene, _scene))
+                    return &sceneCamera;
+            }
+
+            return nullptr;
+        }
+
+        bool SceneCameraConfigEquals(const EditorSceneCameraConfig &_left, const EditorSceneCameraConfig &_right)
+        {
+            return SceneAssetHandleMatches(_left.scene, _right.scene) &&
+                _left.sceneCameraMode == _right.sceneCameraMode &&
+                NearlyEqual(_left.sceneCamera3DPosition, _right.sceneCamera3DPosition) &&
+                NearlyEqual(_left.sceneCamera3DYaw, _right.sceneCamera3DYaw) &&
+                NearlyEqual(_left.sceneCamera3DPitch, _right.sceneCamera3DPitch) &&
+                NearlyEqual(_left.sceneCamera3DFovDegrees, _right.sceneCamera3DFovDegrees) &&
+                NearlyEqual(_left.sceneCamera2DPosition, _right.sceneCamera2DPosition) &&
+                NearlyEqual(_left.sceneCamera2DScale, _right.sceneCamera2DScale);
+        }
+
         void ApplyEditorThemeStyle(int _themeSelection, float _uiScale)
         {
             const float normalizedUiScale = (std::isfinite(_uiScale) && _uiScale > 0.0f) ? _uiScale : 1.0f;
@@ -4440,6 +4572,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_editorFontScale = NormalizeEditorFontScale(Canis::GetEditorConfig().fontScale);
         Canis::GetEditorConfig().fontScale = m_editorFontScale;
         m_reloadBuildAutoCloseOnSuccess = Canis::GetEditorConfig().reloadBuildAutoCloseOnSuccess;
+        LoadSceneCameraConfig();
         ApplyEditorThemeStyle(m_editorThemeSelection, m_editorUiScale);
         RefreshEditorFontOptions();
 
@@ -4471,6 +4604,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     Editor::~Editor()
     {
+        SaveSceneCameraConfig();
+
         if (m_reloadBuildThread.joinable())
             m_reloadBuildThread.join();
 
@@ -4479,6 +4614,100 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         DestroyPlayRenderTarget();
         DestroyRenderTarget(m_gameViewPostProcessTarget);
         DestroyRenderTarget(m_playViewPostProcessTarget);
+    }
+
+    void Editor::LoadSceneCameraConfig()
+    {
+        const EditorConfig &config = Canis::GetEditorConfig();
+        const EditorSceneCameraConfig *storedSceneCamera = FindSceneCameraConfig(config.sceneCameras, config.lastEditorScene);
+        const EditorSceneCameraConfig sceneCamera = storedSceneCamera != nullptr ?
+            *storedSceneCamera : MakeDefaultSceneCameraConfig(config.lastEditorScene);
+
+        m_sceneCameraMode = static_cast<SceneCameraMode>(NormalizeSceneCameraModeSelection(sceneCamera.sceneCameraMode));
+        m_editorCamera3DPosition = NormalizeFiniteVector3(sceneCamera.sceneCamera3DPosition, Vector3(0.0f, 2.0f, 8.0f));
+        m_editorCamera3DYaw = std::isfinite(sceneCamera.sceneCamera3DYaw) ? sceneCamera.sceneCamera3DYaw : -90.0f;
+        m_editorCamera3DPitch = NormalizeSceneCameraPitch(sceneCamera.sceneCamera3DPitch);
+        m_editorCamera3DFovDegrees = NormalizeSceneCameraFov(sceneCamera.sceneCamera3DFovDegrees);
+        m_editorCamera2DPosition = NormalizeFiniteVector2(sceneCamera.sceneCamera2DPosition, Vector2(0.0f));
+        m_editorCamera2DScale = NormalizeSceneCamera2DScale(sceneCamera.sceneCamera2DScale);
+        m_sceneCameraConfigDirty = false;
+        m_sceneCameraConfigSaveDelay = 0.0f;
+    }
+
+    void Editor::SaveSceneCameraConfig()
+    {
+        EditorConfig &config = Canis::GetEditorConfig();
+        SceneAssetHandle currentScene = config.lastEditorScene;
+        if ((currentScene.Empty() || currentScene.path.empty()) && m_scene != nullptr)
+            currentScene = MakeSceneAssetHandleFromPath(m_scene->GetPath());
+
+        if (currentScene.Empty())
+        {
+            m_sceneCameraConfigDirty = false;
+            m_sceneCameraConfigSaveDelay = 0.0f;
+            return;
+        }
+
+        EditorSceneCameraConfig sceneCamera = {};
+        sceneCamera.scene = currentScene;
+
+        sceneCamera.sceneCameraMode = static_cast<int>(m_sceneCameraMode);
+        if (sceneCamera.sceneCameraMode < 0 || sceneCamera.sceneCameraMode > 1)
+            sceneCamera.sceneCameraMode = 0;
+
+        sceneCamera.sceneCamera3DPosition = NormalizeFiniteVector3(m_editorCamera3DPosition, Vector3(0.0f, 2.0f, 8.0f));
+        sceneCamera.sceneCamera3DYaw = std::isfinite(m_editorCamera3DYaw) ? m_editorCamera3DYaw : -90.0f;
+        sceneCamera.sceneCamera3DPitch = NormalizeSceneCameraPitch(m_editorCamera3DPitch);
+        sceneCamera.sceneCamera3DFovDegrees = NormalizeSceneCameraFov(m_editorCamera3DFovDegrees);
+        sceneCamera.sceneCamera2DPosition = NormalizeFiniteVector2(m_editorCamera2DPosition, Vector2(0.0f));
+        sceneCamera.sceneCamera2DScale = NormalizeSceneCamera2DScale(m_editorCamera2DScale);
+
+        // Keep these mirrors around for old config files and any code that still
+        // reads the fallback values directly.
+        config.sceneCameraMode = sceneCamera.sceneCameraMode;
+        config.sceneCamera3DPosition = sceneCamera.sceneCamera3DPosition;
+        config.sceneCamera3DYaw = sceneCamera.sceneCamera3DYaw;
+        config.sceneCamera3DPitch = sceneCamera.sceneCamera3DPitch;
+        config.sceneCamera3DFovDegrees = sceneCamera.sceneCamera3DFovDegrees;
+        config.sceneCamera2DPosition = sceneCamera.sceneCamera2DPosition;
+        config.sceneCamera2DScale = sceneCamera.sceneCamera2DScale;
+
+        bool changed = false;
+        if (EditorSceneCameraConfig *storedSceneCamera = FindSceneCameraConfig(config.sceneCameras, currentScene))
+        {
+            if (!SceneCameraConfigEquals(*storedSceneCamera, sceneCamera))
+            {
+                *storedSceneCamera = sceneCamera;
+                changed = true;
+            }
+        }
+        else
+        {
+            config.sceneCameras.push_back(sceneCamera);
+            changed = true;
+        }
+
+        if (changed)
+            Canis::SaveEditorConfig();
+
+        m_sceneCameraConfigDirty = false;
+        m_sceneCameraConfigSaveDelay = 0.0f;
+    }
+
+    void Editor::MarkSceneCameraConfigDirty()
+    {
+        m_sceneCameraConfigDirty = true;
+        m_sceneCameraConfigSaveDelay = 0.75f;
+    }
+
+    void Editor::UpdateSceneCameraConfigAutosave(float _deltaTime)
+    {
+        if (!m_sceneCameraConfigDirty)
+            return;
+
+        m_sceneCameraConfigSaveDelay -= std::max(_deltaTime, 0.0f);
+        if (m_sceneCameraConfigSaveDelay <= 0.0f)
+            SaveSceneCameraConfig();
     }
 
     void Editor::BeginGameRender(Window* _window)
@@ -4570,6 +4799,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         RenderGameDebug();
         EndGameRender(m_window);
         m_scene->ClearEditorCameraOverrides();
+        UpdateSceneCameraConfigAutosave(_deltaTime);
 
         // Keep logical gameplay size set to Game panel size for scripts/input math between frames.
         const int gameplayWidth = (m_playViewportWidth > 0) ? m_playViewportWidth : m_window->GetWindowWidth();
@@ -4745,6 +4975,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_mode == EditorMode::HIDDEN)
             return;
 
+        const Vector3 previousCamera3DPosition = m_editorCamera3DPosition;
+        const float previousCamera3DYaw = m_editorCamera3DYaw;
+        const float previousCamera3DPitch = m_editorCamera3DPitch;
+        const Vector2 previousCamera2DPosition = m_editorCamera2DPosition;
+        const float previousCamera2DScale = m_editorCamera2DScale;
+
         InputManager& input = m_scene->GetInputManager();
         const bool rightClickNavigation = m_gameViewHovered && input.GetRightClick();
 
@@ -4814,6 +5050,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                                 -m_editorCamera2DPosition.y + renderHeight * 0.5f, 0.0f));
             view = glm::scale(view, Vector3(m_editorCamera2DScale, m_editorCamera2DScale, 0.0f));
             m_scene->SetEditorCamera2DOverride(projection * view, m_editorCamera2DPosition);
+        }
+
+        if (!NearlyEqual(previousCamera3DPosition, m_editorCamera3DPosition) ||
+            !NearlyEqual(previousCamera3DYaw, m_editorCamera3DYaw) ||
+            !NearlyEqual(previousCamera3DPitch, m_editorCamera3DPitch) ||
+            !NearlyEqual(previousCamera2DPosition, m_editorCamera2DPosition) ||
+            !NearlyEqual(previousCamera2DScale, m_editorCamera2DScale))
+        {
+            MarkSceneCameraConfigDirty();
         }
     }
 
@@ -6678,6 +6923,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_3D;
         m_editorCamera3DPosition = target - forward * distance;
+        MarkSceneCameraConfigDirty();
     }
 
     void Editor::InputEntity(const std::string &_name, Canis::Entity *&_variable)
@@ -12109,11 +12355,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         if (meta->type == MetaFileAsset::FileType::SCENE && m_mode == EditorMode::EDIT)
                         {
+                            SaveSceneCameraConfig();
                             Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(meta->path);
                             Canis::SaveEditorConfig();
                             m_scene->Unload();
                             m_scene->Load(meta->path);
                             ResetSceneHistory();
+                            LoadSceneCameraConfig();
                         }
                         else if (meta->type == MetaFileAsset::FileType::MODEL ||
                                  meta->type == MetaFileAsset::FileType::MATERIAL ||
@@ -13652,7 +13900,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const char* sceneCameraModeLabels[] = { "3D", "2D" };
         ImGui::SetNextItemWidth(70.0f);
         if (ImGui::Combo("##SceneCameraMode", &sceneCameraMode, sceneCameraModeLabels, IM_ARRAYSIZE(sceneCameraModeLabels)))
+        {
             m_sceneCameraMode = static_cast<SceneCameraMode>(sceneCameraMode);
+            MarkSceneCameraConfigDirty();
+        }
 
         size_t entityCount = 0;
 

@@ -326,12 +326,15 @@ namespace Canis
 
     void Scene::Unload()
     {
-        for (Entity* e : m_entities)
+        for (Entity*& e : m_entities)
         {
-            if (e == nullptr)
+            Entity* entity = e;
+            e = nullptr;
+
+            if (entity == nullptr)
                 continue;
-            e->RemoveAllScripts();
-            delete e;
+            entity->RemoveAllScripts();
+            delete entity;
         }
 
         m_entities.clear();
