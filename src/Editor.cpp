@@ -169,6 +169,540 @@ namespace Canis
             return NearlyEqual(_a.x, _b.x, _epsilon) && NearlyEqual(_a.y, _b.y, _epsilon);
         }
 
+        enum class TerrainTileDirection
+        {
+            NORTH = 0,
+            EAST = 1,
+            SOUTH = 2,
+            WEST = 3
+        };
+
+        struct TerrainTileInfo
+        {
+            Entity *entity = nullptr;
+            TerrainAsset *asset = nullptr;
+            std::string path = "";
+            Vector3 center = Vector3(0.0f);
+            Matrix4 model = Matrix4(1.0f);
+            Matrix4 inverseModel = Matrix4(1.0f);
+        };
+
+        const char *TerrainTileDirectionName(TerrainTileDirection _direction)
+        {
+            switch (_direction)
+            {
+            case TerrainTileDirection::NORTH:
+                return "north";
+            case TerrainTileDirection::EAST:
+                return "east";
+            case TerrainTileDirection::SOUTH:
+                return "south";
+            case TerrainTileDirection::WEST:
+                return "west";
+            }
+
+            return "tile";
+        }
+
+        Vector2 TerrainTileDirectionOffset(TerrainTileDirection _direction)
+        {
+            switch (_direction)
+            {
+            case TerrainTileDirection::NORTH:
+                return Vector2(0.0f, 1.0f);
+            case TerrainTileDirection::EAST:
+                return Vector2(1.0f, 0.0f);
+            case TerrainTileDirection::SOUTH:
+                return Vector2(0.0f, -1.0f);
+            case TerrainTileDirection::WEST:
+                return Vector2(-1.0f, 0.0f);
+            }
+
+            return Vector2(0.0f);
+        }
+
+        float TerrainTileTolerance(const TerrainAsset &_asset)
+        {
+            return std::max(0.05f, std::max(_asset.cellSize, 0.01f) * 0.25f);
+        }
+
+        Vector3 TerrainTileNeighborCenter(const TerrainTileInfo &_tile, TerrainTileDirection _direction)
+        {
+            const Vector2 offset = TerrainTileDirectionOffset(_direction);
+            return Vector3(
+                _tile.center.x + offset.x * _tile.asset->size.x,
+                _tile.center.y,
+                _tile.center.z + offset.y * _tile.asset->size.y);
+        }
+
+        std::vector<TerrainTileInfo> CollectTerrainTiles(Scene *_scene)
+        {
+            std::vector<TerrainTileInfo> tiles = {};
+            if (_scene == nullptr)
+                return tiles;
+
+            for (Entity *entity : _scene->GetEntities())
+            {
+                if (entity == nullptr || !entity->HasComponent<Terrain>() || !entity->HasComponent<Transform>())
+                    continue;
+
+                Terrain &terrainComponent = entity->GetComponent<Terrain>();
+                const std::string terrainPath = AssetManager::ResolvePath(terrainComponent.terrain);
+                if (terrainPath.empty())
+                    continue;
+
+                TerrainAsset *asset = AssetManager::GetTerrain(terrainPath);
+                if (asset == nullptr)
+                    continue;
+
+                Transform &transform = entity->GetComponent<Transform>();
+                TerrainTileInfo tile = {};
+                tile.entity = entity;
+                tile.asset = asset;
+                tile.path = terrainPath;
+                tile.center = transform.position;
+                tile.model = transform.GetModelMatrix();
+                tile.inverseModel = glm::inverse(tile.model);
+                tiles.push_back(tile);
+            }
+
+            return tiles;
+        }
+
+        const TerrainTileInfo *FindTerrainTile(const std::vector<TerrainTileInfo> &_tiles, const Entity *_entity)
+        {
+            for (const TerrainTileInfo &tile : _tiles)
+            {
+                if (tile.entity == _entity)
+                    return &tile;
+            }
+
+            return nullptr;
+        }
+
+        const TerrainTileInfo *FindTerrainTileAtCenter(
+            const std::vector<TerrainTileInfo> &_tiles,
+            const Vector3 &_center,
+            const float _tolerance)
+        {
+            for (const TerrainTileInfo &tile : _tiles)
+            {
+                if (std::abs(tile.center.x - _center.x) <= _tolerance &&
+                    std::abs(tile.center.z - _center.z) <= _tolerance)
+                    return &tile;
+            }
+
+            return nullptr;
+        }
+
+        bool TerrainTileIntersectsWorldCircle(const TerrainTileInfo &_tile, const Vector3 &_worldCenter, const float _radius)
+        {
+            const float halfX = _tile.asset->size.x * 0.5f;
+            const float halfZ = _tile.asset->size.y * 0.5f;
+            const float dx = std::max(std::abs(_worldCenter.x - _tile.center.x) - halfX, 0.0f);
+            const float dz = std::max(std::abs(_worldCenter.z - _tile.center.z) - halfZ, 0.0f);
+            return (dx * dx + dz * dz) <= (_radius * _radius);
+        }
+
+        void DrawTerrainCellOutline(Scene *_scene, const Vector3 &_center, const Vector2 &_size, const Color &_color)
+        {
+            if (_scene == nullptr)
+                return;
+
+            const float y = _center.y + 0.06f;
+            const float halfX = _size.x * 0.5f;
+            const float halfZ = _size.y * 0.5f;
+            const Vector3 a(_center.x - halfX, y, _center.z - halfZ);
+            const Vector3 b(_center.x + halfX, y, _center.z - halfZ);
+            const Vector3 c(_center.x + halfX, y, _center.z + halfZ);
+            const Vector3 d(_center.x - halfX, y, _center.z + halfZ);
+
+            _scene->DrawDebugGizmoLine(a, b, _color);
+            _scene->DrawDebugGizmoLine(b, c, _color);
+            _scene->DrawDebugGizmoLine(c, d, _color);
+            _scene->DrawDebugGizmoLine(d, a, _color);
+            _scene->DrawDebugGizmoLine(a, c, Color(_color.r, _color.g, _color.b, _color.a * 0.45f));
+            _scene->DrawDebugGizmoLine(b, d, Color(_color.r, _color.g, _color.b, _color.a * 0.45f));
+        }
+
+        bool RayIntersectsTerrainCell(
+            const Vector3 &_rayOrigin,
+            const Vector3 &_rayDirection,
+            const float _rayLength,
+            const Vector3 &_center,
+            const Vector2 &_size,
+            Vector3 &_hit)
+        {
+            if (std::abs(_rayDirection.y) < 0.00001f)
+                return false;
+
+            const float t = (_center.y - _rayOrigin.y) / _rayDirection.y;
+            if (t < 0.0f || t > _rayLength)
+                return false;
+
+            _hit = _rayOrigin + _rayDirection * t;
+            return std::abs(_hit.x - _center.x) <= (_size.x * 0.5f) &&
+                std::abs(_hit.z - _center.z) <= (_size.y * 0.5f);
+        }
+
+        bool TryIntersectTerrainTile(
+            const TerrainTileInfo &_tile,
+            const Vector3 &_worldNear,
+            const Vector3 &_worldFar,
+            Vector3 &_localPoint,
+            Vector3 &_worldPoint,
+            float &_worldDistance)
+        {
+            if (_tile.entity == nullptr || _tile.asset == nullptr)
+                return false;
+
+            const Vector3 localNear = Vector3(_tile.inverseModel * Vector4(_worldNear, 1.0f));
+            const Vector3 localFar = Vector3(_tile.inverseModel * Vector4(_worldFar, 1.0f));
+            const Vector3 localRay = localFar - localNear;
+            const float rayLength = glm::length(localRay);
+            if (rayLength < 0.00001f)
+                return false;
+
+            const Vector3 localDirection = localRay / rayLength;
+            const float halfX = _tile.asset->size.x * 0.5f;
+            const float halfZ = _tile.asset->size.y * 0.5f;
+            float minHeight = 0.0f;
+            float maxHeight = 0.0f;
+            if (!_tile.asset->heights.empty())
+            {
+                const auto [minIt, maxIt] = std::minmax_element(_tile.asset->heights.begin(), _tile.asset->heights.end());
+                minHeight = *minIt;
+                maxHeight = *maxIt;
+            }
+
+            Vector3 boundsMin(-halfX, minHeight - 2.0f, -halfZ);
+            Vector3 boundsMax(halfX, maxHeight + 2.0f, halfZ);
+            float tEnter = 0.0f;
+            float tExit = rayLength;
+            auto intersectAxis = [&](float origin, float direction, float minValue, float maxValue) -> bool
+            {
+                if (std::abs(direction) < 0.00001f)
+                    return origin >= minValue && origin <= maxValue;
+
+                float t0 = (minValue - origin) / direction;
+                float t1 = (maxValue - origin) / direction;
+                if (t0 > t1)
+                    std::swap(t0, t1);
+
+                tEnter = std::max(tEnter, t0);
+                tExit = std::min(tExit, t1);
+                return tEnter <= tExit;
+            };
+
+            if (!intersectAxis(localNear.x, localDirection.x, boundsMin.x, boundsMax.x) ||
+                !intersectAxis(localNear.y, localDirection.y, boundsMin.y, boundsMax.y) ||
+                !intersectAxis(localNear.z, localDirection.z, boundsMin.z, boundsMax.z))
+                return false;
+
+            tEnter = std::clamp(tEnter, 0.0f, rayLength);
+            tExit = std::clamp(tExit, 0.0f, rayLength);
+            if (tExit < tEnter)
+                return false;
+
+            constexpr int marchSteps = 192;
+            bool hasPrevious = false;
+            float previousT = tEnter;
+            float previousDistance = 0.0f;
+
+            for (int step = 0; step <= marchSteps; ++step)
+            {
+                const float alpha = static_cast<float>(step) / static_cast<float>(marchSteps);
+                const float t = glm::mix(tEnter, tExit, alpha);
+                const Vector3 point = localNear + localDirection * t;
+
+                float terrainHeight = 0.0f;
+                if (!_tile.asset->SampleHeightBilinear(point.x, point.z, terrainHeight))
+                    continue;
+
+                const float distanceToSurface = point.y - terrainHeight;
+                if (!hasPrevious)
+                {
+                    hasPrevious = true;
+                    previousT = t;
+                    previousDistance = distanceToSurface;
+                    if (std::abs(distanceToSurface) < 0.0001f)
+                    {
+                        _localPoint = Vector3(point.x, terrainHeight, point.z);
+                        _worldPoint = Vector3(_tile.model * Vector4(_localPoint, 1.0f));
+                        _worldDistance = glm::distance(_worldNear, _worldPoint);
+                        return true;
+                    }
+                    continue;
+                }
+
+                if ((previousDistance >= 0.0f && distanceToSurface <= 0.0f) ||
+                    (previousDistance <= 0.0f && distanceToSurface >= 0.0f))
+                {
+                    float lowT = previousT;
+                    float highT = t;
+                    for (int refine = 0; refine < 12; ++refine)
+                    {
+                        const float midT = (lowT + highT) * 0.5f;
+                        const Vector3 midPoint = localNear + localDirection * midT;
+                        float midHeight = 0.0f;
+                        if (!_tile.asset->SampleHeightBilinear(midPoint.x, midPoint.z, midHeight))
+                            break;
+
+                        const float midDistance = midPoint.y - midHeight;
+                        if ((previousDistance >= 0.0f && midDistance >= 0.0f) ||
+                            (previousDistance <= 0.0f && midDistance <= 0.0f))
+                        {
+                            lowT = midT;
+                            previousDistance = midDistance;
+                        }
+                        else
+                        {
+                            highT = midT;
+                        }
+                    }
+
+                    const float finalT = (lowT + highT) * 0.5f;
+                    const Vector3 finalPoint = localNear + localDirection * finalT;
+                    float finalHeight = 0.0f;
+                    if (!_tile.asset->SampleHeightBilinear(finalPoint.x, finalPoint.z, finalHeight))
+                        return false;
+
+                    _localPoint = Vector3(finalPoint.x, finalHeight, finalPoint.z);
+                    _worldPoint = Vector3(_tile.model * Vector4(_localPoint, 1.0f));
+                    _worldDistance = glm::distance(_worldNear, _worldPoint);
+                    return true;
+                }
+
+                previousT = t;
+                previousDistance = distanceToSurface;
+            }
+
+            return false;
+        }
+
+        bool TrySampleTerrainWorldHeight(
+            const std::vector<TerrainTileInfo> &_tiles,
+            const Vector3 &_worldFlatPoint,
+            float &_worldHeight)
+        {
+            for (const TerrainTileInfo &tile : _tiles)
+            {
+                if (tile.asset == nullptr)
+                    continue;
+
+                const Vector3 localFlat = Vector3(tile.inverseModel * Vector4(_worldFlatPoint, 1.0f));
+                float localHeight = 0.0f;
+                if (!tile.asset->SampleHeightBilinear(localFlat.x, localFlat.z, localHeight))
+                    continue;
+
+                const Vector3 worldPoint = Vector3(tile.model * Vector4(localFlat.x, localHeight, localFlat.z, 1.0f));
+                _worldHeight = worldPoint.y;
+                return true;
+            }
+
+            return false;
+        }
+
+        bool TryGetTerrainDirectionBetween(
+            const TerrainTileInfo &_a,
+            const TerrainTileInfo &_b,
+            TerrainTileDirection &_direction)
+        {
+            if (_a.asset == nullptr || _b.asset == nullptr)
+                return false;
+
+            const float tolerance = TerrainTileTolerance(*_a.asset);
+            const float dx = _b.center.x - _a.center.x;
+            const float dz = _b.center.z - _a.center.z;
+            if (std::abs(dx - _a.asset->size.x) <= tolerance && std::abs(dz) <= tolerance)
+            {
+                _direction = TerrainTileDirection::EAST;
+                return true;
+            }
+
+            if (std::abs(dx + _a.asset->size.x) <= tolerance && std::abs(dz) <= tolerance)
+            {
+                _direction = TerrainTileDirection::WEST;
+                return true;
+            }
+
+            if (std::abs(dz - _a.asset->size.y) <= tolerance && std::abs(dx) <= tolerance)
+            {
+                _direction = TerrainTileDirection::NORTH;
+                return true;
+            }
+
+            if (std::abs(dz + _a.asset->size.y) <= tolerance && std::abs(dx) <= tolerance)
+            {
+                _direction = TerrainTileDirection::SOUTH;
+                return true;
+            }
+
+            return false;
+        }
+
+        std::array<unsigned char, 4> GetTerrainSplatPixel(const TerrainAsset &_asset, const int _x, const int _z)
+        {
+            const int index = _asset.GetSplatIndex(_x, _z);
+            if (index < 0 || index + 3 >= static_cast<int>(_asset.splatmap.size()))
+                return {255, 0, 0, 0};
+
+            return {
+                _asset.splatmap[index + 0],
+                _asset.splatmap[index + 1],
+                _asset.splatmap[index + 2],
+                _asset.splatmap[index + 3]};
+        }
+
+        void SetTerrainSplatPixel(TerrainAsset &_asset, const int _x, const int _z, const std::array<unsigned char, 4> &_value)
+        {
+            const int index = _asset.GetSplatIndex(_x, _z);
+            if (index < 0 || index + 3 >= static_cast<int>(_asset.splatmap.size()))
+                return;
+
+            for (int channel = 0; channel < 4; ++channel)
+                _asset.splatmap[index + channel] = _value[channel];
+        }
+
+        int RemapTerrainEdgeIndex(const int _index, const int _count, const int _targetCount)
+        {
+            if (_count <= 1 || _targetCount <= 1)
+                return 0;
+
+            return std::clamp(
+                static_cast<int>(std::round((static_cast<float>(_index) / static_cast<float>(_count - 1)) * static_cast<float>(_targetCount - 1))),
+                0,
+                _targetCount - 1);
+        }
+
+        void SynchronizeTerrainHeightEdges(
+            const std::vector<TerrainTileInfo> &_tiles,
+            std::unordered_set<Entity*> &_changedEntities)
+        {
+            for (size_t i = 0; i < _tiles.size(); ++i)
+            {
+                for (size_t j = i + 1; j < _tiles.size(); ++j)
+                {
+                    const bool aChanged = _changedEntities.contains(_tiles[i].entity);
+                    const bool bChanged = _changedEntities.contains(_tiles[j].entity);
+                    if (!aChanged && !bChanged)
+                        continue;
+
+                    TerrainTileDirection direction = TerrainTileDirection::NORTH;
+                    if (!TryGetTerrainDirectionBetween(_tiles[i], _tiles[j], direction))
+                        continue;
+
+                    TerrainAsset &a = *_tiles[i].asset;
+                    TerrainAsset &b = *_tiles[j].asset;
+                    const int aw = a.GetSampleWidth();
+                    const int ad = a.GetSampleDepth();
+                    const int bw = b.GetSampleWidth();
+                    const int bd = b.GetSampleDepth();
+
+                    if (direction == TerrainTileDirection::EAST || direction == TerrainTileDirection::WEST)
+                    {
+                        const int ax = direction == TerrainTileDirection::EAST ? aw - 1 : 0;
+                        const int bx = direction == TerrainTileDirection::EAST ? 0 : bw - 1;
+                        const int count = std::max(ad, bd);
+                        for (int s = 0; s < count; ++s)
+                        {
+                            const int az = RemapTerrainEdgeIndex(s, count, ad);
+                            const int bz = RemapTerrainEdgeIndex(s, count, bd);
+                            const float height = (a.GetHeight(ax, az) + b.GetHeight(bx, bz)) * 0.5f;
+                            a.SetHeight(ax, az, height);
+                            b.SetHeight(bx, bz, height);
+                        }
+                    }
+                    else
+                    {
+                        const int az = direction == TerrainTileDirection::NORTH ? ad - 1 : 0;
+                        const int bz = direction == TerrainTileDirection::NORTH ? 0 : bd - 1;
+                        const int count = std::max(aw, bw);
+                        for (int s = 0; s < count; ++s)
+                        {
+                            const int ax = RemapTerrainEdgeIndex(s, count, aw);
+                            const int bx = RemapTerrainEdgeIndex(s, count, bw);
+                            const float height = (a.GetHeight(ax, az) + b.GetHeight(bx, bz)) * 0.5f;
+                            a.SetHeight(ax, az, height);
+                            b.SetHeight(bx, bz, height);
+                        }
+                    }
+
+                    _changedEntities.insert(_tiles[i].entity);
+                    _changedEntities.insert(_tiles[j].entity);
+                }
+            }
+        }
+
+        void SynchronizeTerrainPaintEdges(
+            const std::vector<TerrainTileInfo> &_tiles,
+            std::unordered_set<Entity*> &_changedEntities)
+        {
+            for (size_t i = 0; i < _tiles.size(); ++i)
+            {
+                for (size_t j = i + 1; j < _tiles.size(); ++j)
+                {
+                    const bool aChanged = _changedEntities.contains(_tiles[i].entity);
+                    const bool bChanged = _changedEntities.contains(_tiles[j].entity);
+                    if (!aChanged && !bChanged)
+                        continue;
+
+                    TerrainTileDirection direction = TerrainTileDirection::NORTH;
+                    if (!TryGetTerrainDirectionBetween(_tiles[i], _tiles[j], direction))
+                        continue;
+
+                    TerrainAsset &a = *_tiles[i].asset;
+                    TerrainAsset &b = *_tiles[j].asset;
+                    const int aw = a.GetSplatmapWidth();
+                    const int ah = a.GetSplatmapHeight();
+                    const int bw = b.GetSplatmapWidth();
+                    const int bh = b.GetSplatmapHeight();
+
+                    if (direction == TerrainTileDirection::EAST || direction == TerrainTileDirection::WEST)
+                    {
+                        const int ax = direction == TerrainTileDirection::EAST ? aw - 1 : 0;
+                        const int bx = direction == TerrainTileDirection::EAST ? 0 : bw - 1;
+                        const int count = std::max(ah, bh);
+                        for (int s = 0; s < count; ++s)
+                        {
+                            const int az = RemapTerrainEdgeIndex(s, count, ah);
+                            const int bz = RemapTerrainEdgeIndex(s, count, bh);
+                            const auto aPixel = GetTerrainSplatPixel(a, ax, az);
+                            const auto bPixel = GetTerrainSplatPixel(b, bx, bz);
+                            std::array<unsigned char, 4> value = {};
+                            for (int channel = 0; channel < 4; ++channel)
+                                value[channel] = static_cast<unsigned char>((static_cast<int>(aPixel[channel]) + static_cast<int>(bPixel[channel])) / 2);
+                            SetTerrainSplatPixel(a, ax, az, value);
+                            SetTerrainSplatPixel(b, bx, bz, value);
+                        }
+                    }
+                    else
+                    {
+                        const int az = direction == TerrainTileDirection::NORTH ? ah - 1 : 0;
+                        const int bz = direction == TerrainTileDirection::NORTH ? 0 : bh - 1;
+                        const int count = std::max(aw, bw);
+                        for (int s = 0; s < count; ++s)
+                        {
+                            const int ax = RemapTerrainEdgeIndex(s, count, aw);
+                            const int bx = RemapTerrainEdgeIndex(s, count, bw);
+                            const auto aPixel = GetTerrainSplatPixel(a, ax, az);
+                            const auto bPixel = GetTerrainSplatPixel(b, bx, bz);
+                            std::array<unsigned char, 4> value = {};
+                            for (int channel = 0; channel < 4; ++channel)
+                                value[channel] = static_cast<unsigned char>((static_cast<int>(aPixel[channel]) + static_cast<int>(bPixel[channel])) / 2);
+                            SetTerrainSplatPixel(a, ax, az, value);
+                            SetTerrainSplatPixel(b, bx, bz, value);
+                        }
+                    }
+
+                    a.MarkSplatmapDirty();
+                    b.MarkSplatmapDirty();
+                    _changedEntities.insert(_tiles[i].entity);
+                    _changedEntities.insert(_tiles[j].entity);
+                }
+            }
+        }
+
         bool NearlyEqual(const Vector3 &_a, const Vector3 &_b, float _epsilon = 0.0001f)
         {
             return NearlyEqual(_a.x, _b.x, _epsilon) &&
@@ -5712,6 +6246,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         out << m_scene->EncodeScene();
         state.sceneYaml = out.c_str();
         state.hierarchyRootOrder = m_hierarchyRootOrder;
+        state.terrainAssets = CaptureTerrainAssetHistory();
 
         const std::vector<Entity*> &entities = m_scene->GetEntities();
         if (m_index >= 0 && m_index < static_cast<int>(entities.size()) && entities[m_index] != nullptr)
@@ -5720,10 +6255,153 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return state;
     }
 
+    std::vector<Editor::SceneHistoryState::TerrainAssetSnapshot> Editor::CaptureTerrainAssetHistory() const
+    {
+        std::vector<SceneHistoryState::TerrainAssetSnapshot> snapshots = {};
+        if (m_scene == nullptr)
+            return snapshots;
+
+        std::unordered_set<std::string> capturedPaths = {};
+        for (Entity *entity : m_scene->GetEntities())
+        {
+            if (entity == nullptr || !entity->HasComponent<Terrain>())
+                continue;
+
+            const std::string terrainPath = AssetManager::ResolvePath(entity->GetComponent<Terrain>().terrain);
+            if (terrainPath.empty() || !capturedPaths.insert(terrainPath).second)
+                continue;
+
+            TerrainAsset *asset = AssetManager::GetTerrain(terrainPath);
+            if (asset == nullptr)
+                continue;
+
+            SceneHistoryState::TerrainAssetSnapshot snapshot = {};
+            snapshot.path = terrainPath;
+            snapshot.version = asset->version;
+            snapshot.size = asset->size;
+            snapshot.cellSize = asset->cellSize;
+            snapshot.heights = asset->heights;
+            snapshot.layers.reserve(TerrainAsset::MaxLayers);
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+                snapshot.layers.push_back(asset->layers[i]);
+            snapshot.materialUUID = asset->materialUUID;
+            snapshot.materialPath = asset->materialPath;
+            snapshot.selectedTool = asset->selectedTool;
+            snapshot.selectedLayer = asset->selectedLayer;
+            snapshot.brushRadius = asset->brushRadius;
+            snapshot.brushStrength = asset->brushStrength;
+            snapshot.flattenHeight = asset->flattenHeight;
+            snapshot.splatmapWidth = asset->GetSplatmapWidth();
+            snapshot.splatmapHeight = asset->GetSplatmapHeight();
+            snapshot.splatmap = asset->splatmap;
+            snapshots.push_back(std::move(snapshot));
+        }
+
+        return snapshots;
+    }
+
+    bool Editor::TerrainAssetSnapshotEquals(
+        const SceneHistoryState::TerrainAssetSnapshot &_left,
+        const SceneHistoryState::TerrainAssetSnapshot &_right) const
+    {
+        if (_left.path != _right.path ||
+            _left.version != _right.version ||
+            _left.size != _right.size ||
+            _left.cellSize != _right.cellSize ||
+            _left.heights != _right.heights ||
+            _left.materialUUID != _right.materialUUID ||
+            _left.materialPath != _right.materialPath ||
+            _left.selectedTool != _right.selectedTool ||
+            _left.selectedLayer != _right.selectedLayer ||
+            _left.brushRadius != _right.brushRadius ||
+            _left.brushStrength != _right.brushStrength ||
+            _left.flattenHeight != _right.flattenHeight ||
+            _left.splatmapWidth != _right.splatmapWidth ||
+            _left.splatmapHeight != _right.splatmapHeight ||
+            _left.splatmap != _right.splatmap ||
+            _left.layers.size() != _right.layers.size())
+            return false;
+
+        for (std::size_t i = 0; i < _left.layers.size(); ++i)
+        {
+            if (_left.layers[i].textureUUID != _right.layers[i].textureUUID ||
+                _left.layers[i].texturePath != _right.layers[i].texturePath)
+                return false;
+        }
+
+        return true;
+    }
+
+    bool Editor::TerrainAssetHistoryEquals(
+        const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_left,
+        const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_right) const
+    {
+        if (_left.size() != _right.size())
+            return false;
+
+        for (std::size_t i = 0; i < _left.size(); ++i)
+        {
+            if (!TerrainAssetSnapshotEquals(_left[i], _right[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    void Editor::RestoreTerrainAssetHistory(const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_snapshots)
+    {
+        std::unordered_set<std::string> restoredPaths = {};
+        for (const SceneHistoryState::TerrainAssetSnapshot &snapshot : _snapshots)
+        {
+            if (snapshot.path.empty())
+                continue;
+
+            TerrainAsset *asset = AssetManager::GetTerrain(snapshot.path);
+            if (asset == nullptr)
+                continue;
+
+            asset->version = snapshot.version;
+            asset->size = snapshot.size;
+            asset->cellSize = snapshot.cellSize;
+            asset->heights = snapshot.heights;
+            asset->SetSplatmapSize(snapshot.splatmapWidth, snapshot.splatmapHeight);
+            asset->splatmap = snapshot.splatmap;
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+            {
+                asset->layers[i] = i < static_cast<int>(snapshot.layers.size())
+                    ? snapshot.layers[static_cast<std::size_t>(i)]
+                    : TerrainAsset::Layer{};
+            }
+            asset->materialUUID = snapshot.materialUUID;
+            asset->materialPath = snapshot.materialPath;
+            asset->selectedTool = snapshot.selectedTool;
+            asset->selectedLayer = snapshot.selectedLayer;
+            asset->brushRadius = snapshot.brushRadius;
+            asset->brushStrength = snapshot.brushStrength;
+            asset->flattenHeight = snapshot.flattenHeight;
+            asset->MarkSplatmapDirty();
+            restoredPaths.insert(snapshot.path);
+        }
+
+        if (m_scene == nullptr || restoredPaths.empty())
+            return;
+
+        for (Entity *entity : m_scene->GetEntities())
+        {
+            if (entity == nullptr || !entity->HasComponent<Terrain>())
+                continue;
+
+            const std::string terrainPath = AssetManager::ResolvePath(entity->GetComponent<Terrain>().terrain);
+            if (restoredPaths.contains(terrainPath))
+                RebuildTerrainEntity(*entity);
+        }
+    }
+
     bool Editor::SceneHistoryContentEquals(const SceneHistoryState &_left, const SceneHistoryState &_right) const
     {
         return _left.sceneYaml == _right.sceneYaml &&
-            _left.hierarchyRootOrder == _right.hierarchyRootOrder;
+            _left.hierarchyRootOrder == _right.hierarchyRootOrder &&
+            TerrainAssetHistoryEquals(_left.terrainAssets, _right.terrainAssets);
     }
 
     void Editor::ResetSceneHistory()
@@ -5882,6 +6560,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_scene->Unload();
         m_scene->m_path = scenePath;
         m_scene->LoadSceneNode(sceneRoot);
+        RestoreTerrainAssetHistory(_state.terrainAssets);
         m_sceneHistoryRestoring = false;
 
         m_hierarchyRootOrder = _state.hierarchyRootOrder;
@@ -14274,15 +14953,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         DrawReloadBuildPopup();
     }
 
-    bool Editor::TryGetTerrainBrushHit(Entity *_entity, Vector3 &_localPoint, Vector3 &_worldPoint) const
+    bool Editor::TryGetSceneViewMouseRay(Vector3 &_origin, Vector3 &_direction, float &_length) const
     {
-        if (_entity == nullptr || !_entity->HasComponent<Terrain>() || !_entity->HasComponent<Transform>())
-            return false;
-
-        TerrainAsset *asset = AssetManager::GetTerrain(AssetManager::ResolvePath(_entity->GetComponent<Terrain>().terrain));
-        if (asset == nullptr)
-            return false;
-
         if (!m_gameViewHovered || m_gameViewportDrawWidth <= 0.0f || m_gameViewportDrawHeight <= 0.0f)
             return false;
 
@@ -14302,129 +14974,258 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const Vector3 worldNear = Vector3(nearClip) / nearClip.w;
         const Vector3 worldFar = Vector3(farClip) / farClip.w;
-
-        const Matrix4 inverseModel = glm::inverse(_entity->GetComponent<Transform>().GetModelMatrix());
-        const Vector3 localNear = Vector3(inverseModel * Vector4(worldNear, 1.0f));
-        const Vector3 localFar = Vector3(inverseModel * Vector4(worldFar, 1.0f));
-        const Vector3 localRay = localFar - localNear;
-        const float rayLength = glm::length(localRay);
+        const Vector3 ray = worldFar - worldNear;
+        const float rayLength = glm::length(ray);
         if (rayLength < 0.00001f)
             return false;
-        const Vector3 localDirection = localRay / rayLength;
 
-        const float halfX = asset->size.x * 0.5f;
-        const float halfZ = asset->size.y * 0.5f;
-        float minHeight = 0.0f;
-        float maxHeight = 0.0f;
-        if (!asset->heights.empty())
+        _origin = worldNear;
+        _direction = ray / rayLength;
+        _length = rayLength;
+        return true;
+    }
+
+    bool Editor::TryGetTerrainBrushHit(Entity *_entity, Vector3 &_localPoint, Vector3 &_worldPoint) const
+    {
+        if (_entity == nullptr || !_entity->HasComponent<Terrain>() || !_entity->HasComponent<Transform>())
+            return false;
+
+        TerrainAsset *asset = AssetManager::GetTerrain(AssetManager::ResolvePath(_entity->GetComponent<Terrain>().terrain));
+        if (asset == nullptr)
+            return false;
+
+        Vector3 rayOrigin = Vector3(0.0f);
+        Vector3 rayDirection = Vector3(0.0f);
+        float rayLength = 0.0f;
+        if (!TryGetSceneViewMouseRay(rayOrigin, rayDirection, rayLength))
+            return false;
+
+        TerrainTileInfo tile = {};
+        tile.entity = _entity;
+        tile.asset = asset;
+        tile.center = _entity->GetComponent<Transform>().position;
+        tile.model = _entity->GetComponent<Transform>().GetModelMatrix();
+        tile.inverseModel = glm::inverse(tile.model);
+
+        float worldDistance = 0.0f;
+        return TryIntersectTerrainTile(tile, rayOrigin, rayOrigin + rayDirection * rayLength, _localPoint, _worldPoint, worldDistance);
+    }
+
+    bool Editor::TryGetTerrainBrushHit(Vector3 &_worldPoint, Entity *&_hitEntity, Vector3 &_hitLocalPoint) const
+    {
+        _worldPoint = Vector3(0.0f);
+        _hitEntity = nullptr;
+        _hitLocalPoint = Vector3(0.0f);
+
+        Vector3 rayOrigin = Vector3(0.0f);
+        Vector3 rayDirection = Vector3(0.0f);
+        float rayLength = 0.0f;
+        if (!TryGetSceneViewMouseRay(rayOrigin, rayDirection, rayLength))
+            return false;
+
+        const Vector3 rayEnd = rayOrigin + rayDirection * rayLength;
+        const std::vector<TerrainTileInfo> tiles = CollectTerrainTiles(m_scene);
+        float bestDistance = std::numeric_limits<float>::max();
+        bool hit = false;
+        for (const TerrainTileInfo &tile : tiles)
         {
-            const auto [minIt, maxIt] = std::minmax_element(asset->heights.begin(), asset->heights.end());
-            minHeight = *minIt;
-            maxHeight = *maxIt;
+            Vector3 localPoint = Vector3(0.0f);
+            Vector3 worldPoint = Vector3(0.0f);
+            float worldDistance = 0.0f;
+            if (!TryIntersectTerrainTile(tile, rayOrigin, rayEnd, localPoint, worldPoint, worldDistance))
+                continue;
+
+            if (worldDistance < bestDistance)
+            {
+                bestDistance = worldDistance;
+                _worldPoint = worldPoint;
+                _hitEntity = tile.entity;
+                _hitLocalPoint = localPoint;
+                hit = true;
+            }
         }
 
-        Vector3 boundsMin(-halfX, minHeight - 2.0f, -halfZ);
-        Vector3 boundsMax(halfX, maxHeight + 2.0f, halfZ);
-        float tEnter = 0.0f;
-        float tExit = rayLength;
-        auto intersectAxis = [&](float origin, float direction, float minValue, float maxValue) -> bool
-        {
-            if (std::abs(direction) < 0.00001f)
-                return origin >= minValue && origin <= maxValue;
+        return hit;
+    }
 
-            float t0 = (minValue - origin) / direction;
-            float t1 = (maxValue - origin) / direction;
-            if (t0 > t1)
-                std::swap(t0, t1);
-
-            tEnter = std::max(tEnter, t0);
-            tExit = std::min(tExit, t1);
-            return tEnter <= tExit;
-        };
-
-        if (!intersectAxis(localNear.x, localDirection.x, boundsMin.x, boundsMax.x) ||
-            !intersectAxis(localNear.y, localDirection.y, boundsMin.y, boundsMax.y) ||
-            !intersectAxis(localNear.z, localDirection.z, boundsMin.z, boundsMax.z))
+    bool Editor::DrawTerrainExpansionGizmos(Entity *_selected, TerrainAsset *_selectedAsset)
+    {
+        if (_selected == nullptr || _selectedAsset == nullptr || m_scene == nullptr || !_selected->HasComponent<Transform>())
             return false;
 
-        tEnter = std::clamp(tEnter, 0.0f, rayLength);
-        tExit = std::clamp(tExit, 0.0f, rayLength);
-        if (tExit < tEnter)
+        const std::string sourceTerrainPath = AssetManager::ResolvePath(_selected->GetComponent<Terrain>().terrain);
+        if (sourceTerrainPath.empty())
             return false;
 
-        constexpr int marchSteps = 192;
-        bool hasPrevious = false;
-        float previousT = tEnter;
-        float previousDistance = 0.0f;
+        const std::vector<TerrainTileInfo> tiles = CollectTerrainTiles(m_scene);
+        const TerrainTileInfo *selectedTile = FindTerrainTile(tiles, _selected);
+        if (selectedTile == nullptr)
+            return false;
 
-        for (int step = 0; step <= marchSteps; ++step)
+        Vector3 rayOrigin = Vector3(0.0f);
+        Vector3 rayDirection = Vector3(0.0f);
+        float rayLength = 0.0f;
+        const bool hasRay = TryGetSceneViewMouseRay(rayOrigin, rayDirection, rayLength);
+        const float tolerance = TerrainTileTolerance(*_selectedAsset);
+        const TerrainTileDirection directions[] = {
+            TerrainTileDirection::NORTH,
+            TerrainTileDirection::EAST,
+            TerrainTileDirection::SOUTH,
+            TerrainTileDirection::WEST};
+
+        for (TerrainTileDirection direction : directions)
         {
-            const float alpha = static_cast<float>(step) / static_cast<float>(marchSteps);
-            const float t = glm::mix(tEnter, tExit, alpha);
-            const Vector3 point = localNear + localDirection * t;
-
-            float terrainHeight = 0.0f;
-            if (!asset->SampleHeightBilinear(point.x, point.z, terrainHeight))
+            const Vector3 neighborCenter = TerrainTileNeighborCenter(*selectedTile, direction);
+            if (FindTerrainTileAtCenter(tiles, neighborCenter, tolerance) != nullptr)
                 continue;
 
-            const float distanceToSurface = point.y - terrainHeight;
-            if (!hasPrevious)
-            {
-                hasPrevious = true;
-                previousT = t;
-                previousDistance = distanceToSurface;
-                if (std::abs(distanceToSurface) < 0.0001f)
-                {
-                    Vector3 localPoint(point.x, terrainHeight, point.z);
-                    _localPoint = localPoint;
-                    _worldPoint = Vector3(_entity->GetComponent<Transform>().GetModelMatrix() * Vector4(localPoint, 1.0f));
-                    return true;
-                }
-                continue;
-            }
+            Vector3 hit = Vector3(0.0f);
+            const bool hovered = hasRay && RayIntersectsTerrainCell(
+                rayOrigin,
+                rayDirection,
+                rayLength,
+                neighborCenter,
+                _selectedAsset->size,
+                hit);
+            const Color color = hovered
+                ? Color(0.55f, 0.95f, 1.0f, 1.0f)
+                : Color(0.2f, 0.65f, 1.0f, 0.65f);
+            DrawTerrainCellOutline(m_scene, neighborCenter, _selectedAsset->size, color);
 
-            if ((previousDistance >= 0.0f && distanceToSurface <= 0.0f) ||
-                (previousDistance <= 0.0f && distanceToSurface >= 0.0f))
-            {
-                float lowT = previousT;
-                float highT = t;
-                for (int refine = 0; refine < 12; ++refine)
-                {
-                    const float midT = (lowT + highT) * 0.5f;
-                    const Vector3 midPoint = localNear + localDirection * midT;
-                    float midHeight = 0.0f;
-                    if (!asset->SampleHeightBilinear(midPoint.x, midPoint.z, midHeight))
-                        break;
-
-                    const float midDistance = midPoint.y - midHeight;
-                    if ((previousDistance >= 0.0f && midDistance > 0.0f) ||
-                        (previousDistance <= 0.0f && midDistance < 0.0f))
-                    {
-                        lowT = midT;
-                    }
-                    else
-                    {
-                        highT = midT;
-                    }
-                }
-
-                const float hitT = (lowT + highT) * 0.5f;
-                Vector3 localPoint = localNear + localDirection * hitT;
-                float hitHeight = 0.0f;
-                if (!asset->SampleHeightBilinear(localPoint.x, localPoint.z, hitHeight))
-                    return false;
-
-                localPoint.y = hitHeight;
-                _localPoint = localPoint;
-                _worldPoint = Vector3(_entity->GetComponent<Transform>().GetModelMatrix() * Vector4(localPoint, 1.0f));
-                return true;
-            }
-
-            previousT = t;
-            previousDistance = distanceToSurface;
+            if (hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !m_terrainStrokeActive)
+                return TryCreateAdjacentTerrainTile(*_selected, *_selectedAsset, sourceTerrainPath, static_cast<int>(direction));
         }
 
         return false;
+    }
+
+    bool Editor::TryCreateAdjacentTerrainTile(
+        Entity &_sourceEntity,
+        TerrainAsset &_sourceAsset,
+        const std::string &_sourceTerrainPath,
+        int _direction)
+    {
+        if (m_scene == nullptr || !_sourceEntity.HasComponent<Transform>())
+            return false;
+
+        const TerrainTileDirection direction = static_cast<TerrainTileDirection>(_direction);
+        namespace fs = std::filesystem;
+        const fs::path sourcePath(_sourceTerrainPath);
+        const fs::path folderPath = sourcePath.parent_path().empty() ? fs::path("assets") : sourcePath.parent_path();
+        const std::string newStem = sourcePath.stem().string() + "_" + TerrainTileDirectionName(direction);
+        const fs::path terrainPath = BuildUniqueAssetPath(folderPath, newStem, ".terrain");
+        const std::string terrainPathString = terrainPath.generic_string();
+
+        TerrainAsset terrainAsset = {};
+        terrainAsset.version = _sourceAsset.version;
+        terrainAsset.size = _sourceAsset.size;
+        terrainAsset.cellSize = _sourceAsset.cellSize;
+        terrainAsset.SetSplatmapSize(_sourceAsset.GetSplatmapWidth(), _sourceAsset.GetSplatmapHeight());
+        terrainAsset.materialUUID = _sourceAsset.materialUUID;
+        terrainAsset.materialPath = _sourceAsset.materialPath;
+        terrainAsset.selectedTool = _sourceAsset.selectedTool;
+        terrainAsset.selectedLayer = _sourceAsset.selectedLayer;
+        terrainAsset.brushRadius = _sourceAsset.brushRadius;
+        terrainAsset.brushStrength = _sourceAsset.brushStrength;
+        terrainAsset.flattenHeight = _sourceAsset.flattenHeight;
+        for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+            terrainAsset.layers[i] = _sourceAsset.layers[i];
+        terrainAsset.EnsureDefaults();
+
+        const int sourceWidth = _sourceAsset.GetSampleWidth();
+        const int sourceDepth = _sourceAsset.GetSampleDepth();
+        const int newWidth = terrainAsset.GetSampleWidth();
+        const int newDepth = terrainAsset.GetSampleDepth();
+        if (direction == TerrainTileDirection::EAST || direction == TerrainTileDirection::WEST)
+        {
+            const int sourceX = direction == TerrainTileDirection::EAST ? sourceWidth - 1 : 0;
+            for (int z = 0; z < newDepth; ++z)
+            {
+                const int sourceZ = RemapTerrainEdgeIndex(z, newDepth, sourceDepth);
+                const float height = _sourceAsset.GetHeight(sourceX, sourceZ);
+                for (int x = 0; x < newWidth; ++x)
+                    terrainAsset.SetHeight(x, z, height);
+            }
+        }
+        else
+        {
+            const int sourceZ = direction == TerrainTileDirection::NORTH ? sourceDepth - 1 : 0;
+            for (int x = 0; x < newWidth; ++x)
+            {
+                const int sourceX = RemapTerrainEdgeIndex(x, newWidth, sourceWidth);
+                const float height = _sourceAsset.GetHeight(sourceX, sourceZ);
+                for (int z = 0; z < newDepth; ++z)
+                    terrainAsset.SetHeight(x, z, height);
+            }
+        }
+
+        const int sourceSplatWidth = _sourceAsset.GetSplatmapWidth();
+        const int sourceSplatHeight = _sourceAsset.GetSplatmapHeight();
+        const int newSplatWidth = terrainAsset.GetSplatmapWidth();
+        const int newSplatHeight = terrainAsset.GetSplatmapHeight();
+        if (direction == TerrainTileDirection::EAST || direction == TerrainTileDirection::WEST)
+        {
+            const int sourceX = direction == TerrainTileDirection::EAST ? sourceSplatWidth - 1 : 0;
+            for (int z = 0; z < newSplatHeight; ++z)
+            {
+                const int sourceZ = RemapTerrainEdgeIndex(z, newSplatHeight, sourceSplatHeight);
+                const auto pixel = GetTerrainSplatPixel(_sourceAsset, sourceX, sourceZ);
+                for (int x = 0; x < newSplatWidth; ++x)
+                    SetTerrainSplatPixel(terrainAsset, x, z, pixel);
+            }
+        }
+        else
+        {
+            const int sourceZ = direction == TerrainTileDirection::NORTH ? sourceSplatHeight - 1 : 0;
+            for (int x = 0; x < newSplatWidth; ++x)
+            {
+                const int sourceX = RemapTerrainEdgeIndex(x, newSplatWidth, sourceSplatWidth);
+                const auto pixel = GetTerrainSplatPixel(_sourceAsset, sourceX, sourceZ);
+                for (int z = 0; z < newSplatHeight; ++z)
+                    SetTerrainSplatPixel(terrainAsset, x, z, pixel);
+            }
+        }
+        terrainAsset.MarkSplatmapDirty();
+
+        const SceneHistoryState beforeState = CaptureSceneHistoryState();
+        if (!terrainAsset.Save(terrainPathString))
+        {
+            Debug::Warning("Failed to create adjacent terrain asset '%s'.", terrainPathString.c_str());
+            return false;
+        }
+
+        (void)AssetManager::GetMetaFile(terrainPathString);
+        RefreshMetaFileTimestamp(terrainPathString);
+
+        Transform &sourceTransform = _sourceEntity.GetComponent<Transform>();
+        const Vector2 offset = TerrainTileDirectionOffset(direction);
+        Entity *entity = m_scene->CreateEntity(MakeUniqueEntityName(*m_scene, std::string("Terrain ") + TerrainTileDirectionName(direction)));
+        if (entity == nullptr)
+            return false;
+
+        Transform &transform = *entity->AddComponent<Transform>();
+        transform.position = Vector3(
+            sourceTransform.position.x + offset.x * _sourceAsset.size.x,
+            sourceTransform.position.y,
+            sourceTransform.position.z + offset.y * _sourceAsset.size.y);
+        transform.rotation = sourceTransform.rotation;
+        transform.scale = sourceTransform.scale;
+
+        Terrain &terrain = *entity->AddComponent<Terrain>();
+        terrain.terrain = MakeTerrainAssetHandleFromPath(terrainPathString);
+        Rigidbody &rigidbody = entity->AddOrReplaceComponent<Rigidbody>();
+        rigidbody.motionType = RigidbodyMotionType::STATIC;
+        rigidbody.useGravity = false;
+        rigidbody.layer = Rigidbody::DefaultLayer;
+        rigidbody.mask = Rigidbody::DefaultMask;
+
+        RebuildTerrainEntity(*entity);
+        RebuildTerrainEntity(_sourceEntity);
+        FocusEntity(entity);
+        m_terrainToolEnabled = true;
+        m_assetPaths = FindFilesInFolder("assets", "");
+        CommitSceneHistoryImmediateChange(beforeState);
+        return true;
     }
 
     void Editor::RebuildTerrainEntity(Entity &_entity)
@@ -14458,32 +15259,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
-        Vector3 localPoint = Vector3(0.0f);
         Vector3 worldPoint = Vector3(0.0f);
-        const bool hasHit = TryGetTerrainBrushHit(selected, localPoint, worldPoint);
+        Entity *hitEntity = nullptr;
+        Vector3 hitLocalPoint = Vector3(0.0f);
+        if (DrawTerrainExpansionGizmos(selected, asset))
+            return;
+
+        const bool hasHit = TryGetTerrainBrushHit(worldPoint, hitEntity, hitLocalPoint);
+        TerrainAsset *hitAsset = nullptr;
+        if (hitEntity != nullptr && hitEntity->HasComponent<Terrain>())
+            hitAsset = AssetManager::GetTerrain(AssetManager::ResolvePath(hitEntity->GetComponent<Terrain>().terrain));
+
         m_terrainBrushDebugValid = false;
-        if (hasHit)
+        if (hasHit && hitAsset != nullptr)
         {
-            const int splatWidth = asset->GetSplatmapWidth();
-            const int splatHeight = asset->GetSplatmapHeight();
+            const int splatWidth = hitAsset->GetSplatmapWidth();
+            const int splatHeight = hitAsset->GetSplatmapHeight();
             const int splatX = std::clamp(
-                static_cast<int>(std::round(((localPoint.x + asset->size.x * 0.5f) / asset->size.x) * static_cast<float>(std::max(1, splatWidth - 1)))),
+                static_cast<int>(std::round(((hitLocalPoint.x + hitAsset->size.x * 0.5f) / hitAsset->size.x) * static_cast<float>(std::max(1, splatWidth - 1)))),
                 0,
                 std::max(0, splatWidth - 1));
             const int splatZ = std::clamp(
-                static_cast<int>(std::round(((localPoint.z + asset->size.y * 0.5f) / asset->size.y) * static_cast<float>(std::max(1, splatHeight - 1)))),
+                static_cast<int>(std::round(((hitLocalPoint.z + hitAsset->size.y * 0.5f) / hitAsset->size.y) * static_cast<float>(std::max(1, splatHeight - 1)))),
                 0,
                 std::max(0, splatHeight - 1));
-            const int splatIndex = asset->GetSplatIndex(splatX, splatZ);
-            if (splatIndex >= 0 && splatIndex + 3 < static_cast<int>(asset->splatmap.size()))
+            const int splatIndex = hitAsset->GetSplatIndex(splatX, splatZ);
+            if (splatIndex >= 0 && splatIndex + 3 < static_cast<int>(hitAsset->splatmap.size()))
             {
                 m_terrainBrushDebugValid = true;
                 m_terrainBrushDebugX = splatX;
                 m_terrainBrushDebugZ = splatZ;
-                m_terrainBrushDebugWeights[0] = asset->splatmap[splatIndex + 0];
-                m_terrainBrushDebugWeights[1] = asset->splatmap[splatIndex + 1];
-                m_terrainBrushDebugWeights[2] = asset->splatmap[splatIndex + 2];
-                m_terrainBrushDebugWeights[3] = asset->splatmap[splatIndex + 3];
+                m_terrainBrushDebugWeights[0] = hitAsset->splatmap[splatIndex + 0];
+                m_terrainBrushDebugWeights[1] = hitAsset->splatmap[splatIndex + 1];
+                m_terrainBrushDebugWeights[2] = hitAsset->splatmap[splatIndex + 2];
+                m_terrainBrushDebugWeights[3] = hitAsset->splatmap[splatIndex + 3];
             }
         }
 
@@ -14492,19 +15301,18 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             constexpr int segments = 32;
             Vector3 previous = Vector3(0.0f);
             bool hasPrevious = false;
-            const Matrix4 modelMatrix = selected->GetComponent<Transform>().GetModelMatrix();
+            const std::vector<TerrainTileInfo> tiles = CollectTerrainTiles(m_scene);
             for (int i = 0; i <= segments; ++i)
             {
                 const float angle = (static_cast<float>(i) / static_cast<float>(segments)) * 6.28318530718f;
-                Vector3 ringLocal(
-                    localPoint.x + std::cos(angle) * asset->brushRadius,
-                    0.0f,
-                    localPoint.z + std::sin(angle) * asset->brushRadius);
+                Vector3 ringWorld(
+                    worldPoint.x + std::cos(angle) * asset->brushRadius,
+                    worldPoint.y,
+                    worldPoint.z + std::sin(angle) * asset->brushRadius);
                 float ringHeight = 0.0f;
-                if (!asset->SampleHeightBilinear(ringLocal.x, ringLocal.z, ringHeight))
+                if (!TrySampleTerrainWorldHeight(tiles, ringWorld, ringHeight))
                     continue;
-                ringLocal.y = ringHeight + 0.03f;
-                const Vector3 ringWorld = Vector3(modelMatrix * Vector4(ringLocal, 1.0f));
+                ringWorld.y = ringHeight + 0.03f;
                 if (hasPrevious)
                     m_scene->DrawDebugGizmoLine(previous, ringWorld, Color(0.2f, 0.75f, 1.0f, 1.0f));
                 previous = ringWorld;
@@ -14521,140 +15329,175 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_terrainStrokeBeforeState = CaptureSceneHistoryState();
         }
 
-        bool changedHeights = false;
-        bool changedPaint = false;
+        std::unordered_set<Entity*> changedHeightEntities = {};
+        std::unordered_set<Entity*> changedPaintEntities = {};
         if (mouseDown)
         {
-            const int width = asset->GetSampleWidth();
-            const int depth = asset->GetSampleDepth();
+            const std::vector<TerrainTileInfo> tiles = CollectTerrainTiles(m_scene);
             const float radius = std::max(asset->brushRadius, 0.05f);
             const float strength = std::max(asset->brushStrength, 0.0f);
-            const float cellSize = std::max(asset->cellSize, 0.01f);
-            const int minX = std::clamp(static_cast<int>(std::floor((localPoint.x + asset->size.x * 0.5f - radius) / cellSize)), 0, width - 1);
-            const int maxX = std::clamp(static_cast<int>(std::ceil((localPoint.x + asset->size.x * 0.5f + radius) / cellSize)), 0, width - 1);
-            const int minZ = std::clamp(static_cast<int>(std::floor((localPoint.z + asset->size.y * 0.5f - radius) / cellSize)), 0, depth - 1);
-            const int maxZ = std::clamp(static_cast<int>(std::ceil((localPoint.z + asset->size.y * 0.5f + radius) / cellSize)), 0, depth - 1);
+            const int selectedTool = std::clamp(asset->selectedTool, 0, 4);
+            const int selectedLayer = std::clamp(asset->selectedLayer, 0, TerrainAsset::MaxLayers - 1);
 
-            for (int z = minZ; z <= maxZ; ++z)
+            for (const TerrainTileInfo &tile : tiles)
             {
-                for (int x = minX; x <= maxX; ++x)
+                if (tile.entity == nullptr || tile.asset == nullptr || !TerrainTileIntersectsWorldCircle(tile, worldPoint, radius))
+                    continue;
+
+                TerrainAsset &tileAsset = *tile.asset;
+                bool changedTileHeights = false;
+                bool changedTilePaint = false;
+
+                if (selectedTool != 4)
                 {
-                    const Vector3 sample = asset->GetLocalPosition(x, z);
-                    const float distance = glm::distance(Vector2(sample.x, sample.z), Vector2(localPoint.x, localPoint.z));
-                    if (distance > radius)
-                        continue;
-
-                    const float falloff = 1.0f - (distance / radius);
-                    const float amount = strength * falloff * 0.08f;
-                    if (asset->selectedTool == 0 || asset->selectedTool == 1)
+                    const int width = tileAsset.GetSampleWidth();
+                    const int depth = tileAsset.GetSampleDepth();
+                    for (int z = 0; z < depth; ++z)
                     {
-                        const float direction = (asset->selectedTool == 1 || ImGui::GetIO().KeyShift) ? -1.0f : 1.0f;
-                        asset->SetHeight(x, z, asset->GetHeight(x, z) + direction * amount);
-                        changedHeights = true;
-                    }
-                    else if (asset->selectedTool == 2)
-                    {
-                        float total = 0.0f;
-                        int count = 0;
-                        for (int oz = -1; oz <= 1; ++oz)
+                        for (int x = 0; x < width; ++x)
                         {
-                            for (int ox = -1; ox <= 1; ++ox)
-                            {
-                                total += asset->GetHeight(x + ox, z + oz);
-                                count++;
-                            }
-                        }
-                        const float average = total / static_cast<float>(std::max(count, 1));
-                        asset->SetHeight(x, z, glm::mix(asset->GetHeight(x, z), average, std::min(amount, 1.0f)));
-                        changedHeights = true;
-                    }
-                    else if (asset->selectedTool == 3)
-                    {
-                        asset->SetHeight(x, z, glm::mix(asset->GetHeight(x, z), asset->flattenHeight, std::min(amount, 1.0f)));
-                        changedHeights = true;
-                    }
-                }
-            }
-
-            if (asset->selectedTool == 4)
-            {
-                const int splatWidth = asset->GetSplatmapWidth();
-                const int splatHeight = asset->GetSplatmapHeight();
-                const int layer = std::clamp(asset->selectedLayer, 0, TerrainAsset::MaxLayers - 1);
-                for (int z = 0; z < splatHeight; ++z)
-                {
-                    for (int x = 0; x < splatWidth; ++x)
-                    {
-                        const float px = -asset->size.x * 0.5f + (static_cast<float>(x) / static_cast<float>(std::max(1, splatWidth - 1))) * asset->size.x;
-                        const float pz = -asset->size.y * 0.5f + (static_cast<float>(z) / static_cast<float>(std::max(1, splatHeight - 1))) * asset->size.y;
-                        const float distance = glm::distance(Vector2(px, pz), Vector2(localPoint.x, localPoint.z));
-                        if (distance > radius)
-                            continue;
-
-                        const float falloff = 1.0f - (distance / radius);
-                        const float gain = std::clamp(strength * falloff * 0.35f, 0.0f, 1.0f);
-                        if (gain <= 0.0f)
-                            continue;
-
-                        const int index = asset->GetSplatIndex(x, z);
-                        float weights[TerrainAsset::MaxLayers] = {
-                            asset->splatmap[index + 0] / 255.0f,
-                            asset->splatmap[index + 1] / 255.0f,
-                            asset->splatmap[index + 2] / 255.0f,
-                            asset->splatmap[index + 3] / 255.0f
-                        };
-
-                        float total = 0.0f;
-                        for (float weight : weights)
-                            total += weight;
-
-                        if (total <= 0.0001f)
-                        {
-                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
-                                weights[channel] = 0.0f;
-                            weights[0] = 1.0f;
-                            total = 1.0f;
-                        }
-                        else
-                        {
-                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
-                                weights[channel] /= total;
-                        }
-
-                        const float selectedBefore = weights[layer];
-                        const float appliedGain = std::min(gain, 1.0f - selectedBefore);
-                        const float otherTotal = std::max(1.0f - selectedBefore, 0.0f);
-                        if (appliedGain <= 0.0f || otherTotal <= 0.0001f)
-                            continue;
-
-                        for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
-                        {
-                            if (channel == layer)
+                            const Vector3 localSample = tileAsset.GetLocalPosition(x, z);
+                            const Vector3 worldSample = Vector3(tile.model * Vector4(localSample, 1.0f));
+                            const float distance = glm::distance(Vector2(worldSample.x, worldSample.z), Vector2(worldPoint.x, worldPoint.z));
+                            if (distance > radius)
                                 continue;
 
-                            weights[channel] = std::max(0.0f, weights[channel] - appliedGain * (weights[channel] / otherTotal));
+                            const float falloff = 1.0f - (distance / radius);
+                            const float amount = strength * falloff * 0.08f;
+                            if (selectedTool == 0 || selectedTool == 1)
+                            {
+                                const float direction = (selectedTool == 1 || ImGui::GetIO().KeyShift) ? -1.0f : 1.0f;
+                                tileAsset.SetHeight(x, z, tileAsset.GetHeight(x, z) + direction * amount);
+                                changedTileHeights = true;
+                            }
+                            else if (selectedTool == 2)
+                            {
+                                float total = 0.0f;
+                                int count = 0;
+                                for (int oz = -1; oz <= 1; ++oz)
+                                {
+                                    for (int ox = -1; ox <= 1; ++ox)
+                                    {
+                                        total += tileAsset.GetHeight(x + ox, z + oz);
+                                        count++;
+                                    }
+                                }
+                                const float average = total / static_cast<float>(std::max(count, 1));
+                                tileAsset.SetHeight(x, z, glm::mix(tileAsset.GetHeight(x, z), average, std::min(amount, 1.0f)));
+                                changedTileHeights = true;
+                            }
+                            else if (selectedTool == 3)
+                            {
+                                tileAsset.SetHeight(x, z, glm::mix(tileAsset.GetHeight(x, z), asset->flattenHeight, std::min(amount, 1.0f)));
+                                changedTileHeights = true;
+                            }
                         }
-                        weights[layer] = std::min(1.0f, selectedBefore + appliedGain);
-
-                        total = 0.0f;
-                        for (float weight : weights)
-                            total += weight;
-                        total = std::max(total, 0.0001f);
-                        for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
-                            asset->splatmap[index + channel] = static_cast<unsigned char>(std::round(std::clamp(weights[channel] / total, 0.0f, 1.0f) * 255.0f));
-                        changedPaint = true;
                     }
                 }
-                if (changedPaint)
-                    asset->MarkSplatmapDirty();
+                else
+                {
+                    const int splatWidth = tileAsset.GetSplatmapWidth();
+                    const int splatHeight = tileAsset.GetSplatmapHeight();
+                    for (int z = 0; z < splatHeight; ++z)
+                    {
+                        for (int x = 0; x < splatWidth; ++x)
+                        {
+                            const float px = -tileAsset.size.x * 0.5f + (static_cast<float>(x) / static_cast<float>(std::max(1, splatWidth - 1))) * tileAsset.size.x;
+                            const float pz = -tileAsset.size.y * 0.5f + (static_cast<float>(z) / static_cast<float>(std::max(1, splatHeight - 1))) * tileAsset.size.y;
+                            const Vector3 worldSample = Vector3(tile.model * Vector4(px, 0.0f, pz, 1.0f));
+                            const float distance = glm::distance(Vector2(worldSample.x, worldSample.z), Vector2(worldPoint.x, worldPoint.z));
+                            if (distance > radius)
+                                continue;
+
+                            const float falloff = 1.0f - (distance / radius);
+                            const float gain = std::clamp(strength * falloff * 0.35f, 0.0f, 1.0f);
+                            if (gain <= 0.0f)
+                                continue;
+
+                            const int index = tileAsset.GetSplatIndex(x, z);
+                            if (index < 0 || index + 3 >= static_cast<int>(tileAsset.splatmap.size()))
+                                continue;
+
+                            float weights[TerrainAsset::MaxLayers] = {
+                                tileAsset.splatmap[index + 0] / 255.0f,
+                                tileAsset.splatmap[index + 1] / 255.0f,
+                                tileAsset.splatmap[index + 2] / 255.0f,
+                                tileAsset.splatmap[index + 3] / 255.0f
+                            };
+
+                            float total = 0.0f;
+                            for (float weight : weights)
+                                total += weight;
+
+                            if (total <= 0.0001f)
+                            {
+                                for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                                    weights[channel] = 0.0f;
+                                weights[0] = 1.0f;
+                                total = 1.0f;
+                            }
+                            else
+                            {
+                                for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                                    weights[channel] /= total;
+                            }
+
+                            const float selectedBefore = weights[selectedLayer];
+                            const float appliedGain = std::min(gain, 1.0f - selectedBefore);
+                            const float otherTotal = std::max(1.0f - selectedBefore, 0.0f);
+                            if (appliedGain <= 0.0f || otherTotal <= 0.0001f)
+                                continue;
+
+                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                            {
+                                if (channel == selectedLayer)
+                                    continue;
+
+                                weights[channel] = std::max(0.0f, weights[channel] - appliedGain * (weights[channel] / otherTotal));
+                            }
+                            weights[selectedLayer] = std::min(1.0f, selectedBefore + appliedGain);
+
+                            total = 0.0f;
+                            for (float weight : weights)
+                                total += weight;
+                            total = std::max(total, 0.0001f);
+                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                                tileAsset.splatmap[index + channel] = static_cast<unsigned char>(std::round(std::clamp(weights[channel] / total, 0.0f, 1.0f) * 255.0f));
+                            changedTilePaint = true;
+                        }
+                    }
+                }
+
+                if (changedTileHeights)
+                    changedHeightEntities.insert(tile.entity);
+                if (changedTilePaint)
+                {
+                    tileAsset.MarkSplatmapDirty();
+                    changedPaintEntities.insert(tile.entity);
+                }
             }
+
+            if (!changedHeightEntities.empty())
+                SynchronizeTerrainHeightEdges(tiles, changedHeightEntities);
+            if (!changedPaintEntities.empty())
+                SynchronizeTerrainPaintEdges(tiles, changedPaintEntities);
         }
 
-        if (changedHeights)
-            RebuildTerrainEntity(*selected);
+        for (Entity *entity : changedHeightEntities)
+        {
+            if (entity != nullptr)
+                RebuildTerrainEntity(*entity);
+        }
 
-        if (changedPaint)
-            (void)UploadTerrainSplatmapTexture(*asset);
+        for (Entity *entity : changedPaintEntities)
+        {
+            if (entity == nullptr || !entity->HasComponent<Terrain>())
+                continue;
+
+            TerrainAsset *changedAsset = AssetManager::GetTerrain(AssetManager::ResolvePath(entity->GetComponent<Terrain>().terrain));
+            if (changedAsset != nullptr)
+                (void)UploadTerrainSplatmapTexture(*changedAsset);
+        }
 
         if (m_terrainStrokeActive && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
         {

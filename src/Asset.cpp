@@ -91,6 +91,26 @@ namespace Canis
             return "";
         }
 
+        UUID ResolveAssetRefUUID(const std::string &_path)
+        {
+            if (_path.empty() || !FileExists(_path.c_str()))
+                return UUID(0);
+
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(_path))
+                return meta->uuid;
+
+            return UUID(0);
+        }
+
+        std::string ResolveAssetRefPath(const UUID _uuid)
+        {
+            if (_uuid == UUID(0))
+                return "";
+
+            const std::string path = AssetManager::GetPath(_uuid);
+            return path == "Path was not found in AssetLibrary" ? "" : path;
+        }
+
         std::string EncodeBase64(const std::vector<unsigned char> &_bytes)
         {
             static constexpr char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
@@ -3516,19 +3536,21 @@ namespace Canis
         for (int i = 0; i < MaxLayers; ++i)
         {
             YAML::Node layerNode(YAML::NodeType::Map);
-            if (layers[i].textureUUID != UUID(0))
-                layerNode["uuid"] = static_cast<uint64_t>(layers[i].textureUUID);
-            if (!layers[i].texturePath.empty())
-                layerNode["path"] = layers[i].texturePath;
+            const UUID textureUUID = layers[i].textureUUID != UUID(0)
+                ? layers[i].textureUUID
+                : ResolveAssetRefUUID(layers[i].texturePath);
+            if (textureUUID != UUID(0))
+                layerNode["uuid"] = static_cast<uint64_t>(textureUUID);
             layersNode.push_back(layerNode);
         }
         root["layers"] = layersNode;
 
         YAML::Node materialNode(YAML::NodeType::Map);
-        if (materialUUID != UUID(0))
-            materialNode["uuid"] = static_cast<uint64_t>(materialUUID);
-        if (!materialPath.empty())
-            materialNode["path"] = materialPath;
+        const UUID savedMaterialUUID = materialUUID != UUID(0)
+            ? materialUUID
+            : ResolveAssetRefUUID(materialPath);
+        if (savedMaterialUUID != UUID(0))
+            materialNode["uuid"] = static_cast<uint64_t>(savedMaterialUUID);
         root["material"] = materialNode;
 
         std::ofstream out(targetPath);
@@ -3604,11 +3626,16 @@ namespace Canis
                     {
                         layers[i].texturePath = layerNode.as<std::string>("");
                     }
-                    if (layers[i].texturePath.empty() && layers[i].textureUUID != UUID(0))
+
+                    if (layers[i].textureUUID != UUID(0))
                     {
-                        std::string resolvedPath = AssetManager::GetPath(layers[i].textureUUID);
-                        if (resolvedPath != "Path was not found in AssetLibrary")
+                        const std::string resolvedPath = ResolveAssetRefPath(layers[i].textureUUID);
+                        if (!resolvedPath.empty())
                             layers[i].texturePath = resolvedPath;
+                    }
+                    else
+                    {
+                        layers[i].textureUUID = ResolveAssetRefUUID(layers[i].texturePath);
                     }
                 }
             }
@@ -3647,11 +3674,15 @@ namespace Canis
                 legacySplatmapPath = resolvedPath;
         }
 
-        if (materialPath.empty() && materialUUID != UUID(0))
+        if (materialUUID != UUID(0))
         {
-            std::string resolvedPath = AssetManager::GetPath(materialUUID);
-            if (resolvedPath != "Path was not found in AssetLibrary")
+            const std::string resolvedPath = ResolveAssetRefPath(materialUUID);
+            if (!resolvedPath.empty())
                 materialPath = resolvedPath;
+        }
+        else
+        {
+            materialUUID = ResolveAssetRefUUID(materialPath);
         }
 
         const bool hasBakedSplatmap = static_cast<int>(splatmap.size()) == (m_splatmapWidth * m_splatmapHeight * 4);

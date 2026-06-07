@@ -140,9 +140,30 @@ namespace Canis
 
         struct SceneHistoryState
         {
+            struct TerrainAssetSnapshot
+            {
+                std::string path = "";
+                int version = 1;
+                Canis::Vector2 size = Canis::Vector2(32.0f, 32.0f);
+                float cellSize = 0.5f;
+                std::vector<float> heights = {};
+                std::vector<Canis::TerrainAsset::Layer> layers = {};
+                Canis::UUID materialUUID = Canis::UUID(0);
+                std::string materialPath = "";
+                int selectedTool = 0;
+                int selectedLayer = 0;
+                float brushRadius = 1.5f;
+                float brushStrength = 0.35f;
+                float flattenHeight = 0.0f;
+                int splatmapWidth = Canis::TerrainAsset::DefaultSplatmapResolution;
+                int splatmapHeight = Canis::TerrainAsset::DefaultSplatmapResolution;
+                std::vector<unsigned char> splatmap = {};
+            };
+
             std::string sceneYaml = "";
             UUID selectedEntityUUID = UUID(0);
             std::vector<UUID> hierarchyRootOrder = {};
+            std::vector<TerrainAssetSnapshot> terrainAssets = {};
         };
 
         struct PendingHotReloadAsset
@@ -199,7 +220,11 @@ namespace Canis
         bool DrawShaderGraphAssetInspector(const std::string &_shaderGraphPath);
         bool DrawTerrainAssetInspector(const std::string &_terrainPath);
         void UpdateTerrainBrush();
+        bool TryGetSceneViewMouseRay(Canis::Vector3 &_origin, Canis::Vector3 &_direction, float &_length) const;
         bool TryGetTerrainBrushHit(Canis::Entity *_entity, Canis::Vector3 &_localPoint, Canis::Vector3 &_worldPoint) const;
+        bool TryGetTerrainBrushHit(Canis::Vector3 &_worldPoint, Canis::Entity *&_hitEntity, Canis::Vector3 &_hitLocalPoint) const;
+        bool DrawTerrainExpansionGizmos(Canis::Entity *_selected, Canis::TerrainAsset *_selectedAsset);
+        bool TryCreateAdjacentTerrainTile(Canis::Entity &_sourceEntity, Canis::TerrainAsset &_sourceAsset, const std::string &_sourceTerrainPath, int _direction);
         void RebuildTerrainEntity(Canis::Entity &_entity);
         void DrawAnimationWindow(float _deltaTime);
         void DrawAnimatorWindow();
@@ -238,6 +263,14 @@ namespace Canis
         bool CanTrackSceneHistory() const;
         bool IsSceneHistoryEditInProgress() const;
         SceneHistoryState CaptureSceneHistoryState() const;
+        std::vector<SceneHistoryState::TerrainAssetSnapshot> CaptureTerrainAssetHistory() const;
+        bool TerrainAssetSnapshotEquals(
+            const SceneHistoryState::TerrainAssetSnapshot &_left,
+            const SceneHistoryState::TerrainAssetSnapshot &_right) const;
+        bool TerrainAssetHistoryEquals(
+            const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_left,
+            const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_right) const;
+        void RestoreTerrainAssetHistory(const std::vector<SceneHistoryState::TerrainAssetSnapshot> &_snapshots);
         bool SceneHistoryContentEquals(const SceneHistoryState &_left, const SceneHistoryState &_right) const;
         void PushSceneUndoState(const SceneHistoryState &_state);
         void RestoreSceneHistoryState(const SceneHistoryState &_state);
