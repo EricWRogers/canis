@@ -9,6 +9,7 @@ file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/PostProcessPipeline.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Terrain.cpp"
 )
 
 if(CANIS_ENABLE_EDITOR)

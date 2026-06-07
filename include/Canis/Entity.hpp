@@ -1094,6 +1094,22 @@ namespace Canis
         std::vector<Entity*> stayed = {};
     };
 
+    struct Terrain
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::Terrain";
+
+        Terrain() = default;
+        explicit Terrain(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+
+        void Create() {}
+
+        TerrainAssetHandle terrain = {};
+        i32 runtimeModelId = -1;
+        u64 runtimeRevision = 0u;
+    };
+
     struct Camera
     {
     public:

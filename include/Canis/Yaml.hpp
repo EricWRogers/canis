@@ -25,6 +25,8 @@ extern YAML::Node YAMLEncodeAnimationClipAssetHandle(const Canis::AnimationClipA
 extern Canis::AnimationClipAssetHandle YAMLDecodeAnimationClipAssetHandle(const YAML::Node &_node);
 extern YAML::Node YAMLEncodeAnimatorControllerAssetHandle(const Canis::AnimatorControllerAssetHandle &_animatorControllerAssetHandle);
 extern Canis::AnimatorControllerAssetHandle YAMLDecodeAnimatorControllerAssetHandle(const YAML::Node &_node);
+extern YAML::Node YAMLEncodeTerrainAssetHandle(const Canis::TerrainAssetHandle &_terrainAssetHandle);
+extern Canis::TerrainAssetHandle YAMLDecodeTerrainAssetHandle(const YAML::Node &_node);
 
 namespace YAML
 {
@@ -180,6 +182,21 @@ namespace YAML
         static bool decode(const Node &_node, Canis::AnimationClipAssetHandle &_animationClipAssetHandle)
         {
             _animationClipAssetHandle = YAMLDecodeAnimationClipAssetHandle(_node);
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::TerrainAssetHandle>
+    {
+        static Node encode(const Canis::TerrainAssetHandle &_terrainAssetHandle)
+        {
+            return YAMLEncodeTerrainAssetHandle(_terrainAssetHandle);
+        }
+
+        static bool decode(const Node &_node, Canis::TerrainAssetHandle &_terrainAssetHandle)
+        {
+            _terrainAssetHandle = YAMLDecodeTerrainAssetHandle(_node);
             return true;
         }
     };

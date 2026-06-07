@@ -91,6 +91,89 @@ namespace Canis
             return "";
         }
 
+        std::string EncodeBase64(const std::vector<unsigned char> &_bytes)
+        {
+            static constexpr char chars[] = "ABCDEFGHIJKLMNOPQRSTUVWXYZabcdefghijklmnopqrstuvwxyz0123456789+/";
+            std::string result;
+            result.reserve(((_bytes.size() + 2u) / 3u) * 4u);
+
+            for (size_t i = 0; i < _bytes.size(); i += 3u)
+            {
+                const unsigned int b0 = _bytes[i];
+                const unsigned int b1 = (i + 1u < _bytes.size()) ? _bytes[i + 1u] : 0u;
+                const unsigned int b2 = (i + 2u < _bytes.size()) ? _bytes[i + 2u] : 0u;
+                const unsigned int packed = (b0 << 16u) | (b1 << 8u) | b2;
+
+                result.push_back(chars[(packed >> 18u) & 0x3Fu]);
+                result.push_back(chars[(packed >> 12u) & 0x3Fu]);
+                result.push_back((i + 1u < _bytes.size()) ? chars[(packed >> 6u) & 0x3Fu] : '=');
+                result.push_back((i + 2u < _bytes.size()) ? chars[packed & 0x3Fu] : '=');
+            }
+
+            return result;
+        }
+
+        int DecodeBase64Value(char _value)
+        {
+            if (_value >= 'A' && _value <= 'Z')
+                return _value - 'A';
+            if (_value >= 'a' && _value <= 'z')
+                return _value - 'a' + 26;
+            if (_value >= '0' && _value <= '9')
+                return _value - '0' + 52;
+            if (_value == '+')
+                return 62;
+            if (_value == '/')
+                return 63;
+            return -1;
+        }
+
+        std::vector<unsigned char> DecodeBase64(const std::string &_text)
+        {
+            std::vector<unsigned char> result;
+            int values[4] = {0, 0, 0, 0};
+            int count = 0;
+            int padding = 0;
+
+            for (const char c : _text)
+            {
+                if (std::isspace(static_cast<unsigned char>(c)))
+                    continue;
+
+                if (c == '=')
+                {
+                    values[count++] = 0;
+                    padding++;
+                }
+                else
+                {
+                    const int value = DecodeBase64Value(c);
+                    if (value < 0)
+                        continue;
+                    values[count++] = value;
+                }
+
+                if (count == 4)
+                {
+                    const unsigned int packed =
+                        (static_cast<unsigned int>(values[0]) << 18u) |
+                        (static_cast<unsigned int>(values[1]) << 12u) |
+                        (static_cast<unsigned int>(values[2]) << 6u) |
+                        static_cast<unsigned int>(values[3]);
+                    result.push_back(static_cast<unsigned char>((packed >> 16u) & 0xFFu));
+                    if (padding < 2)
+                        result.push_back(static_cast<unsigned char>((packed >> 8u) & 0xFFu));
+                    if (padding < 1)
+                        result.push_back(static_cast<unsigned char>(packed & 0xFFu));
+
+                    count = 0;
+                    padding = 0;
+                }
+            }
+
+            return result;
+        }
+
         std::string ToLower(std::string _value)
         {
             std::transform(_value.begin(), _value.end(), _value.begin(), [](unsigned char c)
@@ -1029,6 +1112,8 @@ namespace Canis
                 return "POSTPROCESS";
             case MetaFileAsset::FileType::SHADERGRAPH:
                 return "SHADERGRAPH";
+            case MetaFileAsset::FileType::TERRAIN:
+                return "TERRAIN";
             default:
                 return "FILE_UNKNOWN";
         }
@@ -1062,6 +1147,8 @@ namespace Canis
             return MetaFileAsset::FileType::POSTPROCESS;
         else if (_type == "SHADERGRAPH")
             return MetaFileAsset::FileType::SHADERGRAPH;
+        else if (_type == "TERRAIN")
+            return MetaFileAsset::FileType::TERRAIN;
         else
             return MetaFileAsset::FileType::FILE_UNKNOWN;
     }
@@ -1102,6 +1189,8 @@ namespace Canis
                 type = FileType::POSTPROCESS;
             else if (extension == "shadergraph")
                 type = FileType::SHADERGRAPH;
+            else if (extension == "terrain")
+                type = FileType::TERRAIN;
             else
                 type = FileType::FILE_UNKNOWN;
 
@@ -3216,6 +3305,403 @@ namespace Canis
             return false;
 
         out << root;
+        return true;
+    }
+
+    int TerrainAsset::GetSampleWidth() const
+    {
+        return std::max(2, static_cast<int>(std::round(std::max(size.x, cellSize) / std::max(cellSize, 0.01f))) + 1);
+    }
+
+    int TerrainAsset::GetSampleDepth() const
+    {
+        return std::max(2, static_cast<int>(std::round(std::max(size.y, cellSize) / std::max(cellSize, 0.01f))) + 1);
+    }
+
+    int TerrainAsset::GetHeightIndex(int _x, int _z) const
+    {
+        const int width = GetSampleWidth();
+        const int depth = GetSampleDepth();
+        _x = std::clamp(_x, 0, width - 1);
+        _z = std::clamp(_z, 0, depth - 1);
+        return _z * width + _x;
+    }
+
+    int TerrainAsset::GetSplatIndex(int _x, int _z) const
+    {
+        _x = std::clamp(_x, 0, std::max(0, m_splatmapWidth - 1));
+        _z = std::clamp(_z, 0, std::max(0, m_splatmapHeight - 1));
+        return (_z * m_splatmapWidth + _x) * 4;
+    }
+
+    void TerrainAsset::SetSplatmapSize(int _width, int _height)
+    {
+        m_splatmapWidth = std::max(2, _width);
+        m_splatmapHeight = std::max(2, _height);
+        MarkSplatmapDirty();
+    }
+
+    float TerrainAsset::GetHeight(int _x, int _z) const
+    {
+        const int index = GetHeightIndex(_x, _z);
+        if (index < 0 || index >= static_cast<int>(heights.size()))
+            return 0.0f;
+        return heights[index];
+    }
+
+    void TerrainAsset::SetHeight(int _x, int _z, float _height)
+    {
+        const int index = GetHeightIndex(_x, _z);
+        if (index < 0 || index >= static_cast<int>(heights.size()))
+            return;
+        heights[index] = _height;
+    }
+
+    Vector3 TerrainAsset::GetLocalPosition(int _x, int _z) const
+    {
+        const int width = GetSampleWidth();
+        const int depth = GetSampleDepth();
+        const float minX = -static_cast<float>(width - 1) * cellSize * 0.5f;
+        const float minZ = -static_cast<float>(depth - 1) * cellSize * 0.5f;
+        return Vector3(
+            minX + static_cast<float>(_x) * cellSize,
+            GetHeight(_x, _z),
+            minZ + static_cast<float>(_z) * cellSize);
+    }
+
+    bool TerrainAsset::SampleHeightBilinear(float _localX, float _localZ, float &_height) const
+    {
+        const int width = GetSampleWidth();
+        const int depth = GetSampleDepth();
+        if (width < 2 || depth < 2)
+            return false;
+
+        const float minX = -static_cast<float>(width - 1) * cellSize * 0.5f;
+        const float minZ = -static_cast<float>(depth - 1) * cellSize * 0.5f;
+        const float gx = (_localX - minX) / cellSize;
+        const float gz = (_localZ - minZ) / cellSize;
+        if (gx < 0.0f || gz < 0.0f || gx > static_cast<float>(width - 1) || gz > static_cast<float>(depth - 1))
+            return false;
+
+        const int x0 = std::clamp(static_cast<int>(std::floor(gx)), 0, width - 1);
+        const int z0 = std::clamp(static_cast<int>(std::floor(gz)), 0, depth - 1);
+        const int x1 = std::min(x0 + 1, width - 1);
+        const int z1 = std::min(z0 + 1, depth - 1);
+        const float tx = std::clamp(gx - static_cast<float>(x0), 0.0f, 1.0f);
+        const float tz = std::clamp(gz - static_cast<float>(z0), 0.0f, 1.0f);
+        const float h00 = GetHeight(x0, z0);
+        const float h10 = GetHeight(x1, z0);
+        const float h01 = GetHeight(x0, z1);
+        const float h11 = GetHeight(x1, z1);
+        _height = glm::mix(glm::mix(h00, h10, tx), glm::mix(h01, h11, tx), tz);
+        return true;
+    }
+
+    bool TerrainAsset::EnsureDefaults()
+    {
+        cellSize = std::max(cellSize, 0.01f);
+        size.x = std::max(size.x, cellSize);
+        size.y = std::max(size.y, cellSize);
+        const int width = GetSampleWidth();
+        const int depth = GetSampleDepth();
+        const int sampleCount = width * depth;
+        if (static_cast<int>(heights.size()) != sampleCount)
+            heights.assign(sampleCount, 0.0f);
+
+        m_splatmapWidth = std::max(2, m_splatmapWidth);
+        m_splatmapHeight = std::max(2, m_splatmapHeight);
+        const int splatBytes = m_splatmapWidth * m_splatmapHeight * 4;
+        if (static_cast<int>(splatmap.size()) != splatBytes)
+        {
+            splatmap.assign(splatBytes, 0);
+            for (int i = 0; i < splatBytes; i += 4)
+                splatmap[i] = 255;
+            MarkSplatmapDirty();
+        }
+
+        selectedTool = std::clamp(selectedTool, 0, 4);
+        selectedLayer = std::clamp(selectedLayer, 0, MaxLayers - 1);
+        brushRadius = std::max(0.05f, brushRadius);
+        brushStrength = std::max(0.0f, brushStrength);
+        return true;
+    }
+
+    bool TerrainAsset::Free()
+    {
+        if (m_splatmapTexture.id != 0)
+            glDeleteTextures(1, &m_splatmapTexture.id);
+        m_splatmapTexture = {};
+        m_splatmapTextureDirty = true;
+        return true;
+    }
+
+    void TerrainAsset::MarkSplatmapDirty() const
+    {
+        m_splatmapTextureDirty = true;
+    }
+
+    GLTexture TerrainAsset::GetSplatmapTexture() const
+    {
+        if (splatmap.empty() || m_splatmapWidth <= 0 || m_splatmapHeight <= 0)
+            return {};
+
+        if (m_splatmapTexture.id == 0)
+        {
+            glGenTextures(1, &m_splatmapTexture.id);
+            m_splatmapTextureDirty = true;
+        }
+
+        if (m_splatmapTextureDirty ||
+            m_splatmapTexture.width != m_splatmapWidth ||
+            m_splatmapTexture.height != m_splatmapHeight)
+        {
+            glBindTexture(GL_TEXTURE_2D, m_splatmapTexture.id);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glTexImage2D(
+                GL_TEXTURE_2D,
+                0,
+                GL_RGBA,
+                m_splatmapWidth,
+                m_splatmapHeight,
+                0,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                splatmap.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, 0);
+            glBindTexture(GL_TEXTURE_2D, 0);
+
+            m_splatmapTexture.width = m_splatmapWidth;
+            m_splatmapTexture.height = m_splatmapHeight;
+            m_splatmapTextureDirty = false;
+        }
+
+        return m_splatmapTexture;
+    }
+
+    bool TerrainAsset::Save(const std::string &_path) const
+    {
+        const std::string targetPath = _path.empty() ? m_path : _path;
+        if (targetPath.empty())
+            return false;
+
+        YAML::Node root(YAML::NodeType::Map);
+        root["version"] = version;
+        root["size"] = size;
+        root["cellSize"] = cellSize;
+        root["selectedTool"] = selectedTool;
+        root["selectedLayer"] = selectedLayer;
+        root["brushRadius"] = brushRadius;
+        root["brushStrength"] = brushStrength;
+        root["flattenHeight"] = flattenHeight;
+        root["splatmapWidth"] = m_splatmapWidth;
+        root["splatmapHeight"] = m_splatmapHeight;
+        root["splatWeightsEncoding"] = "base64";
+        if (!splatmap.empty())
+        {
+            root["splatWeights"] = EncodeBase64(splatmap);
+        }
+
+        YAML::Node heightsNode(YAML::NodeType::Sequence);
+        heightsNode.SetStyle(YAML::EmitterStyle::Flow);
+        for (const float height : heights)
+            heightsNode.push_back(height);
+        root["heights"] = heightsNode;
+
+        YAML::Node layersNode(YAML::NodeType::Sequence);
+        for (int i = 0; i < MaxLayers; ++i)
+        {
+            YAML::Node layerNode(YAML::NodeType::Map);
+            if (layers[i].textureUUID != UUID(0))
+                layerNode["uuid"] = static_cast<uint64_t>(layers[i].textureUUID);
+            if (!layers[i].texturePath.empty())
+                layerNode["path"] = layers[i].texturePath;
+            layersNode.push_back(layerNode);
+        }
+        root["layers"] = layersNode;
+
+        YAML::Node materialNode(YAML::NodeType::Map);
+        if (materialUUID != UUID(0))
+            materialNode["uuid"] = static_cast<uint64_t>(materialUUID);
+        if (!materialPath.empty())
+            materialNode["path"] = materialPath;
+        root["material"] = materialNode;
+
+        std::ofstream out(targetPath);
+        if (!out.is_open())
+            return false;
+
+        out << root;
+        out.close();
+        return out.good();
+    }
+
+    bool TerrainAsset::Load(std::string _path)
+    {
+        m_path = _path;
+        version = 1;
+        size = Vector2(32.0f, 32.0f);
+        cellSize = 0.5f;
+        SetSplatmapSize(DefaultSplatmapResolution, DefaultSplatmapResolution);
+        heights.clear();
+        splatmap.clear();
+        materialPath.clear();
+        materialUUID = UUID(0);
+        for (Layer &layer : layers)
+            layer = Layer{};
+        UUID legacySplatmapUUID = UUID(0);
+        std::string legacySplatmapPath = "";
+
+        if (FileExists(_path.c_str()))
+        {
+            YAML::Node root = YAML::LoadFile(_path);
+            version = root["version"].as<int>(1);
+            size = root["size"].as<Vector2>(Vector2(32.0f, 32.0f));
+            cellSize = root["cellSize"].as<float>(0.5f);
+            selectedTool = root["selectedTool"].as<int>(0);
+            selectedLayer = root["selectedLayer"].as<int>(0);
+            brushRadius = root["brushRadius"].as<float>(1.5f);
+            brushStrength = root["brushStrength"].as<float>(0.35f);
+            flattenHeight = root["flattenHeight"].as<float>(0.0f);
+            SetSplatmapSize(
+                root["splatmapWidth"].as<int>(DefaultSplatmapResolution),
+                root["splatmapHeight"].as<int>(DefaultSplatmapResolution));
+
+            if (YAML::Node heightsNode = root["heights"]; heightsNode && heightsNode.IsSequence())
+            {
+                heights.reserve(heightsNode.size());
+                for (const YAML::Node &heightNode : heightsNode)
+                    heights.push_back(heightNode.as<float>(0.0f));
+            }
+
+            if (YAML::Node splatWeightsNode = root["splatWeights"]; splatWeightsNode && splatWeightsNode.IsScalar())
+            {
+                const std::string encoding = root["splatWeightsEncoding"].as<std::string>("base64");
+                if (encoding == "base64")
+                {
+                    const std::vector<unsigned char> decoded = DecodeBase64(splatWeightsNode.as<std::string>(""));
+                    const size_t expectedSize = static_cast<size_t>(m_splatmapWidth) * static_cast<size_t>(m_splatmapHeight) * 4u;
+                    if (decoded.size() == expectedSize)
+                        splatmap.assign(decoded.begin(), decoded.end());
+                }
+            }
+
+            if (YAML::Node layersNode = root["layers"]; layersNode && layersNode.IsSequence())
+            {
+                for (int i = 0; i < MaxLayers && i < static_cast<int>(layersNode.size()); ++i)
+                {
+                    YAML::Node layerNode = layersNode[i];
+                    if (layerNode.IsMap())
+                    {
+                        layers[i].textureUUID = layerNode["uuid"].as<uint64_t>(0);
+                        layers[i].texturePath = layerNode["path"].as<std::string>("");
+                    }
+                    else if (layerNode.IsScalar())
+                    {
+                        layers[i].texturePath = layerNode.as<std::string>("");
+                    }
+                    if (layers[i].texturePath.empty() && layers[i].textureUUID != UUID(0))
+                    {
+                        std::string resolvedPath = AssetManager::GetPath(layers[i].textureUUID);
+                        if (resolvedPath != "Path was not found in AssetLibrary")
+                            layers[i].texturePath = resolvedPath;
+                    }
+                }
+            }
+
+            if (YAML::Node splatNode = root["splatmap"])
+            {
+                if (splatNode.IsMap())
+                {
+                    legacySplatmapUUID = splatNode["uuid"].as<uint64_t>(0);
+                    legacySplatmapPath = splatNode["path"].as<std::string>("");
+                }
+                else if (splatNode.IsScalar())
+                {
+                    legacySplatmapPath = splatNode.as<std::string>("");
+                }
+            }
+
+            if (YAML::Node materialNode = root["material"])
+            {
+                if (materialNode.IsMap())
+                {
+                    materialUUID = materialNode["uuid"].as<uint64_t>(0);
+                    materialPath = materialNode["path"].as<std::string>("");
+                }
+                else if (materialNode.IsScalar())
+                {
+                    materialPath = materialNode.as<std::string>("");
+                }
+            }
+        }
+
+        if (legacySplatmapPath.empty() && legacySplatmapUUID != UUID(0))
+        {
+            std::string resolvedPath = AssetManager::GetPath(legacySplatmapUUID);
+            if (resolvedPath != "Path was not found in AssetLibrary")
+                legacySplatmapPath = resolvedPath;
+        }
+
+        if (materialPath.empty() && materialUUID != UUID(0))
+        {
+            std::string resolvedPath = AssetManager::GetPath(materialUUID);
+            if (resolvedPath != "Path was not found in AssetLibrary")
+                materialPath = resolvedPath;
+        }
+
+        const bool hasBakedSplatmap = static_cast<int>(splatmap.size()) == (m_splatmapWidth * m_splatmapHeight * 4);
+        EnsureDefaults();
+        if (hasBakedSplatmap)
+        {
+            MarkSplatmapDirty();
+            return true;
+        }
+
+        if (!legacySplatmapPath.empty() && FileExists(legacySplatmapPath.c_str()))
+        {
+            int imageWidth = 0;
+            int imageHeight = 0;
+            int channels = 0;
+            unsigned char *pixels = stbi_load(legacySplatmapPath.c_str(), &imageWidth, &imageHeight, &channels, 4);
+            if (pixels != nullptr && imageWidth == m_splatmapWidth && imageHeight == m_splatmapHeight)
+            {
+                splatmap.assign(pixels, pixels + (imageWidth * imageHeight * 4));
+                MarkSplatmapDirty();
+            }
+            else if (pixels != nullptr && imageWidth > 0 && imageHeight > 0)
+            {
+                const int targetBytes = m_splatmapWidth * m_splatmapHeight * 4;
+                splatmap.assign(targetBytes, 0);
+                for (int z = 0; z < m_splatmapHeight; ++z)
+                {
+                    const int sourceZ = std::clamp(
+                        static_cast<int>(std::round((static_cast<float>(z) / static_cast<float>(std::max(1, m_splatmapHeight - 1))) * static_cast<float>(imageHeight - 1))),
+                        0,
+                        imageHeight - 1);
+                    for (int x = 0; x < m_splatmapWidth; ++x)
+                    {
+                        const int sourceX = std::clamp(
+                            static_cast<int>(std::round((static_cast<float>(x) / static_cast<float>(std::max(1, m_splatmapWidth - 1))) * static_cast<float>(imageWidth - 1))),
+                            0,
+                            imageWidth - 1);
+                        const int sourceIndex = (sourceZ * imageWidth + sourceX) * 4;
+                        const int targetIndex = (z * m_splatmapWidth + x) * 4;
+                        splatmap[targetIndex + 0] = pixels[sourceIndex + 0];
+                        splatmap[targetIndex + 1] = pixels[sourceIndex + 1];
+                        splatmap[targetIndex + 2] = pixels[sourceIndex + 2];
+                        splatmap[targetIndex + 3] = pixels[sourceIndex + 3];
+                    }
+                }
+                MarkSplatmapDirty();
+            }
+            if (pixels != nullptr)
+                stbi_image_free(pixels);
+        }
         return true;
     }
 

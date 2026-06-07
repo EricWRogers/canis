@@ -21,6 +21,7 @@
 #include <Canis/ConfigHelper.hpp>
 #include <Canis/Network.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/Terrain.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -1351,6 +1352,12 @@ namespace Canis
         _editor.RegisterInspectorFieldDrawer<Canis::AnimatorControllerAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::AnimatorControllerAssetHandle& _value)
         {
             _editor.InputAnimatorControllerAsset(_label, _idSuffix, _value);
+        });
+
+        _editor.RegisterInspectorFieldDrawer<Canis::TerrainAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::TerrainAssetHandle& _value)
+        {
+            const std::string label = (_label != nullptr && _label[0] != '\0') ? _label : "Terrain Data";
+            _editor.InputTerrainAsset(label == "terrain" ? "Terrain Data" : label, _idSuffix, _value);
         });
 
         ScriptConf prefabInstanceConf = {
@@ -2819,6 +2826,150 @@ namespace Canis
         };
 
         RegisterScript(meshColliderConf);
+
+        ScriptConf terrainConf = {
+            .name = "Canis::Terrain",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+                _entity.AddComponent<Terrain>();
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<Terrain>(); },
+            .Remove = [this](Entity &_entity) -> void {
+                if (_entity.HasComponent<Terrain>())
+                {
+                    Terrain &terrain = _entity.GetComponent<Terrain>();
+                    if (terrain.runtimeModelId >= 0)
+                        AssetManager::FreeModel(terrain.runtimeModelId);
+                }
+                _entity.RemoveComponent<Terrain>();
+            },
+            .Get = [this](Entity &_entity) -> void* { return _entity.HasComponent<Terrain>() ? (void*)(&_entity.GetComponent<Terrain>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (Terrain *terrain = _entity.HasComponent<Terrain>() ? &_entity.GetComponent<Terrain>() : nullptr)
+                {
+                    YAML::Node comp;
+                    UUID terrainUUID = terrain->terrain.uuid;
+                    if (terrainUUID == UUID(0) && !terrain->terrain.path.empty())
+                    {
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(terrain->terrain.path))
+                            terrainUUID = meta->uuid;
+                    }
+                    if (terrainUUID != UUID(0))
+                        comp["TerrainAsset"] = static_cast<uint64_t>(terrainUUID);
+                    _node["Canis::Terrain"] = comp;
+                }
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                YAML::Node comp = _node["Canis::Terrain"];
+                if (!comp)
+                    return;
+
+                auto &terrain = *_entity.AddComponent<Terrain>();
+                terrain.terrain = comp["TerrainAsset"].as<TerrainAssetHandle>(TerrainAssetHandle{});
+                if (_callCreate)
+                    terrain.Create();
+                RebuildTerrainEntity(_entity);
+            },
+            .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+                Terrain *terrain = _entity.HasComponent<Terrain>() ? &_entity.GetComponent<Terrain>() : nullptr;
+                if (terrain == nullptr)
+                    return;
+
+                if (_editor.InputTerrainAsset("Terrain Data", _conf.name.c_str(), terrain->terrain))
+                    _editor.RebuildTerrainEntity(_entity);
+
+                const std::string terrainPath = AssetManager::ResolvePath(terrain->terrain);
+                TerrainAsset *asset = terrainPath.empty() ? nullptr : AssetManager::GetTerrain(terrainPath);
+                if (asset == nullptr)
+                {
+                    if (_editor.m_terrainToolEnabled)
+                    {
+                        _editor.m_terrainToolEnabled = false;
+                        _entity.scene.ClearDebugGizmoLines();
+                    }
+                    ImGui::TextDisabled("Assign terrain data to edit terrain.");
+                    return;
+                }
+
+                ImGui::Separator();
+
+                bool editTerrain = _editor.m_terrainToolEnabled;
+                if (ImGui::Checkbox("Edit Terrain", &editTerrain))
+                {
+                    _editor.m_terrainToolEnabled = editTerrain;
+                    if (!editTerrain)
+                        _entity.scene.ClearDebugGizmoLines();
+                }
+
+                const char *tools[] = {"Raise", "Lower", "Smooth", "Flatten", "Paint"};
+                ImGui::TextUnformatted("Tool");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(170.0f);
+                (void)ImGui::Combo("##TerrainComponentTool", &asset->selectedTool, tools, IM_ARRAYSIZE(tools));
+
+                ImGui::TextUnformatted("Radius");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(170.0f);
+                (void)ImGui::DragFloat("##TerrainComponentRadius", &asset->brushRadius, 0.05f, 0.05f, 12.0f, "%.2f");
+
+                ImGui::TextUnformatted("Strength");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(170.0f);
+                (void)ImGui::DragFloat("##TerrainComponentStrength", &asset->brushStrength, 0.01f, 0.0f, 4.0f, "%.2f");
+
+                if (asset->selectedTool == 3)
+                {
+                    ImGui::TextUnformatted("Flatten Height");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(170.0f);
+                    (void)ImGui::DragFloat("##TerrainComponentFlattenHeight", &asset->flattenHeight, 0.05f, -64.0f, 64.0f, "%.2f");
+                }
+                else if (asset->selectedTool == 4)
+                {
+                    std::string layerLabels[TerrainAsset::MaxLayers] = {};
+                    const char *layerItems[TerrainAsset::MaxLayers] = {};
+                    for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+                    {
+                        std::string layerName = asset->layers[i].texturePath;
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(asset->layers[i].texturePath))
+                            layerName = meta->name;
+                        if (layerName.empty())
+                            layerName = "[none]";
+
+                        layerLabels[i] = std::to_string(i) + " - " + layerName;
+                        layerItems[i] = layerLabels[i].c_str();
+                    }
+
+                    ImGui::TextUnformatted("Paint Layer");
+                    ImGui::SameLine();
+                    ImGui::SetNextItemWidth(170.0f);
+                    (void)ImGui::Combo("##TerrainComponentLayer", &asset->selectedLayer, layerItems, TerrainAsset::MaxLayers);
+
+                    if (_editor.m_terrainToolEnabled)
+                    {
+                        if (_editor.m_terrainBrushDebugValid)
+                        {
+                            ImGui::TextDisabled(
+                                "Weights %d,%d: %u %u %u %u",
+                                _editor.m_terrainBrushDebugX,
+                                _editor.m_terrainBrushDebugZ,
+                                static_cast<unsigned int>(_editor.m_terrainBrushDebugWeights[0]),
+                                static_cast<unsigned int>(_editor.m_terrainBrushDebugWeights[1]),
+                                static_cast<unsigned int>(_editor.m_terrainBrushDebugWeights[2]),
+                                static_cast<unsigned int>(_editor.m_terrainBrushDebugWeights[3]));
+                        }
+                        else
+                        {
+                            ImGui::TextDisabled("Weights --,--: -- -- -- --");
+                        }
+                    }
+                }
+            },
+        };
+
+        RegisterScript(terrainConf);
 
         ScriptConf cameraConf = {
             .name = "Canis::Camera",

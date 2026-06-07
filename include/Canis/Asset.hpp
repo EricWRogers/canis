@@ -169,6 +169,7 @@ namespace Canis
             SKYBOX,
             POSTPROCESS,
             SHADERGRAPH,
+            TERRAIN,
         };
 
         MetaFileAsset() {}
@@ -625,5 +626,59 @@ namespace Canis
         void UpdateSkinning(Pose3D &_pose) const;
         void FreePrimitives();
         bool UploadPrimitive(Primitive3D &_primitive) const;
+    };
+
+    class TerrainAsset : public Asset
+    {
+    public:
+        static constexpr int MaxLayers = 4;
+        static constexpr int DefaultSplatmapResolution = 256;
+
+        struct Layer
+        {
+            UUID textureUUID = UUID(0);
+            std::string texturePath = "";
+        };
+
+        bool Load(std::string _path) override;
+        bool Free() override;
+        bool Save(const std::string &_path = "") const;
+        bool EnsureDefaults();
+        void MarkSplatmapDirty() const;
+        GLTexture GetSplatmapTexture() const;
+
+        const std::string& GetPath() const { return m_path; }
+        int GetSampleWidth() const;
+        int GetSampleDepth() const;
+        int GetSplatmapWidth() const { return m_splatmapWidth; }
+        int GetSplatmapHeight() const { return m_splatmapHeight; }
+        void SetSplatmapSize(int _width, int _height);
+        int GetHeightIndex(int _x, int _z) const;
+        int GetSplatIndex(int _x, int _z) const;
+        float GetHeight(int _x, int _z) const;
+        void SetHeight(int _x, int _z, float _height);
+        Vector3 GetLocalPosition(int _x, int _z) const;
+        bool SampleHeightBilinear(float _localX, float _localZ, float &_height) const;
+
+        int version = 1;
+        Vector2 size = Vector2(32.0f, 32.0f);
+        float cellSize = 0.5f;
+        std::vector<float> heights = {};
+        Layer layers[MaxLayers] = {};
+        UUID materialUUID = UUID(0);
+        std::string materialPath = "";
+        int selectedTool = 0;
+        int selectedLayer = 0;
+        float brushRadius = 1.5f;
+        float brushStrength = 0.35f;
+        float flattenHeight = 0.0f;
+        std::vector<unsigned char> splatmap = {};
+
+    private:
+        std::string m_path = "";
+        int m_splatmapWidth = DefaultSplatmapResolution;
+        int m_splatmapHeight = DefaultSplatmapResolution;
+        mutable GLTexture m_splatmapTexture = {};
+        mutable bool m_splatmapTextureDirty = true;
     };
 } // end of Canis namespace

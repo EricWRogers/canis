@@ -95,6 +95,8 @@ namespace Canis
         void InputAnimatorControllerAsset(const std::string& _name, const char* _idSuffix, Canis::AnimatorControllerAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, Canis::SceneAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, const char* _idSuffix, Canis::SceneAssetHandle &_variable);
+        bool InputTerrainAsset(const std::string& _name, Canis::TerrainAssetHandle &_variable);
+        bool InputTerrainAsset(const std::string& _name, const char* _idSuffix, Canis::TerrainAssetHandle &_variable);
         //void InputScriptableEntity(const std::string& _name, const std::string& _script, );
 
         template <typename T, typename Drawer>
@@ -195,6 +197,10 @@ namespace Canis
         bool DrawAnimationClipAssetInspector(const std::string &_animationClipPath);
         bool DrawAnimatorControllerAssetInspector(const std::string &_animatorControllerPath);
         bool DrawShaderGraphAssetInspector(const std::string &_shaderGraphPath);
+        bool DrawTerrainAssetInspector(const std::string &_terrainPath);
+        void UpdateTerrainBrush();
+        bool TryGetTerrainBrushHit(Canis::Entity *_entity, Canis::Vector3 &_localPoint, Canis::Vector3 &_worldPoint) const;
+        void RebuildTerrainEntity(Canis::Entity &_entity);
         void DrawAnimationWindow(float _deltaTime);
         void DrawAnimatorWindow();
         std::string ResolveRememberedAnimationClipPath() const;
@@ -247,6 +253,7 @@ namespace Canis
         void SaveSceneCameraConfig();
         void MarkSceneCameraConfigDirty();
         void UpdateSceneCameraConfigAutosave(float _deltaTime);
+        void SaveSceneTerrainAssets();
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -356,6 +363,14 @@ namespace Canis
         bool m_vertexSnapDragActive = false;
         int m_vertexSnapAxesMask = 0;
         Vector3 m_vertexSnapDragDirection = Vector3(0.0f);
+        bool m_terrainToolEnabled = false;
+        bool m_terrainStrokeActive = false;
+        Canis::UUID m_terrainStrokeEntity = Canis::UUID(0);
+        SceneHistoryState m_terrainStrokeBeforeState = {};
+        bool m_terrainBrushDebugValid = false;
+        int m_terrainBrushDebugX = 0;
+        int m_terrainBrushDebugZ = 0;
+        unsigned char m_terrainBrushDebugWeights[4] = {0, 0, 0, 0};
         float m_assetHotReloadPollTimer = 0.0f;
         bool m_hotReloadAssets = true;
         std::vector<std::string> m_editorFontPaths = {};

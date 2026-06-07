@@ -114,4 +114,19 @@ namespace Canis
         (void)_idSuffix;
         (void)_variable;
     }
+
+    bool Editor::InputTerrainAsset(const std::string& _name, Canis::TerrainAssetHandle& _variable)
+    {
+        (void)_name;
+        (void)_variable;
+        return false;
+    }
+
+    bool Editor::InputTerrainAsset(const std::string& _name, const char* _idSuffix, Canis::TerrainAssetHandle& _variable)
+    {
+        (void)_name;
+        (void)_idSuffix;
+        (void)_variable;
+        return false;
+    }
 }

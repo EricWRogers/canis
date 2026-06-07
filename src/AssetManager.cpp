@@ -1209,6 +1209,60 @@ namespace Canis
             return true;
         }
 
+        int LoadTerrain(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            auto it = assetLibrary.assetPath.find(_path);
+            if (it != assetLibrary.assetPath.end())
+                return it->second;
+
+            TerrainAsset *terrain = new TerrainAsset();
+            if (!terrain->Load(_path))
+            {
+                delete terrain;
+                return -1;
+            }
+
+            const int id = assetLibrary.nextId++;
+            assetLibrary.assets[id] = terrain;
+            assetLibrary.assetPath[_path] = id;
+            return id;
+        }
+
+        bool ReloadTerrain(const std::string &_path)
+        {
+            auto &assetLibrary = GetAssetLibrary();
+            const int id = FindAssetIdForPath(_path);
+            if (id < 0)
+                return true;
+
+            if (!assetLibrary.assets.contains(id))
+                return false;
+
+            TerrainAsset *terrain = static_cast<TerrainAsset *>(assetLibrary.assets[id]);
+            if (terrain == nullptr)
+                return false;
+
+            return terrain->Load(_path);
+        }
+
+        TerrainAsset* GetTerrain(const std::string &_path)
+        {
+            const int id = LoadTerrain(_path);
+            if (id < 0)
+                return nullptr;
+
+            return GetTerrain(id);
+        }
+
+        TerrainAsset* GetTerrain(i32 _terrainID)
+        {
+            if (GetAssetLibrary().assets.contains(_terrainID))
+                return static_cast<TerrainAsset *>(GetAssetLibrary().assets[_terrainID]);
+
+            return nullptr;
+        }
+
         bool ReloadAsset(const std::string &_path)
         {
             const std::string path = NormalizeAssetLibraryPath(_path);
@@ -1227,6 +1281,8 @@ namespace Canis
                     return ReloadModel(path);
                 case MetaFileAsset::FileType::MATERIAL:
                     return FindAssetIdForPath(path) < 0 ? true : ReloadMaterial(path);
+                case MetaFileAsset::FileType::TERRAIN:
+                    return ReloadTerrain(path);
                 case MetaFileAsset::FileType::AUDIO:
                     return ReloadLoadedAssetInPlace<AudioClipAsset>(path);
                 case MetaFileAsset::FileType::ANIMATIONCLIP:

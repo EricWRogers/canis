@@ -19,6 +19,7 @@
 #include <Canis/ShaderGraphGraphEditor.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/PostProcessPipeline.hpp>
+#include <Canis/Terrain.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_dialog.h>
@@ -56,8 +57,12 @@
 #include <utility>
 #include <unordered_map>
 #include <unordered_set>
+#include <array>
 
 #include <stb_image.h>
+#define STB_IMAGE_WRITE_STATIC
+#define STB_IMAGE_WRITE_IMPLEMENTATION
+#include <stb_image_write.h>
 
 namespace Canis
 {
@@ -419,6 +424,7 @@ namespace Canis
                 case MetaFileAsset::FileType::MATERIAL:
                 case MetaFileAsset::FileType::SKYBOX:
                 case MetaFileAsset::FileType::POSTPROCESS:
+                case MetaFileAsset::FileType::TERRAIN:
                 case MetaFileAsset::FileType::VERTEX:
                 case MetaFileAsset::FileType::FRAGMENT:
                     return true;
@@ -822,6 +828,62 @@ namespace Canis
 
             meta.Save();
             return true;
+        }
+
+        bool WriteSolidTerrainTexture(const std::filesystem::path &_path, const unsigned char _r, const unsigned char _g, const unsigned char _b)
+        {
+            namespace fs = std::filesystem;
+            std::error_code ec;
+            fs::create_directories(_path.parent_path(), ec);
+            if (ec)
+                return false;
+
+            constexpr int size = 16;
+            unsigned char pixels[size * size * 4] = {};
+            for (int i = 0; i < size * size; ++i)
+            {
+                const int checker = ((i % size) / 4 + (i / size) / 4) % 2;
+                const float shade = checker == 0 ? 1.0f : 0.82f;
+                pixels[i * 4 + 0] = static_cast<unsigned char>(static_cast<float>(_r) * shade);
+                pixels[i * 4 + 1] = static_cast<unsigned char>(static_cast<float>(_g) * shade);
+                pixels[i * 4 + 2] = static_cast<unsigned char>(static_cast<float>(_b) * shade);
+                pixels[i * 4 + 3] = 255;
+            }
+
+            return stbi_write_png(_path.generic_string().c_str(), size, size, 4, pixels, size * 4) != 0;
+        }
+
+        std::array<std::string, TerrainAsset::MaxLayers> EnsureDefaultTerrainLayerTextures()
+        {
+            namespace fs = std::filesystem;
+            const std::array<std::string, TerrainAsset::MaxLayers> paths = {
+                "assets/defaults/textures/terrain_grass.png",
+                "assets/defaults/textures/terrain_dirt.png",
+                "assets/defaults/textures/terrain_stone.png",
+                "assets/defaults/textures/terrain_sand.png"
+            };
+            const unsigned char colors[TerrainAsset::MaxLayers][3] = {
+                {70, 142, 54},
+                {126, 85, 43},
+                {112, 118, 124},
+                {173, 154, 97}
+            };
+
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+            {
+                fs::path path(paths[i]);
+                std::error_code ec;
+                if (!fs::exists(path, ec))
+                    (void)WriteSolidTerrainTexture(path, colors[i][0], colors[i][1], colors[i][2]);
+                (void)AssetManager::GetMetaFile(paths[i]);
+            }
+
+            return paths;
+        }
+
+        bool UploadTerrainSplatmapTexture(TerrainAsset &_terrain)
+        {
+            return _terrain.GetSplatmapTexture().id != 0;
         }
 
         bool IsValidCppIdentifier(const std::string &_value)
@@ -2139,6 +2201,27 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     handle.uuid = meta->uuid;
                 }
             }
+
+            return handle;
+        }
+
+        TerrainAssetHandle MakeTerrainAssetHandleFromPath(const std::string& _path)
+        {
+            TerrainAssetHandle handle = {};
+            if (_path.empty())
+                return handle;
+
+            if (MetaFileAsset* meta = AssetManager::GetMetaFile(_path))
+            {
+                if (meta->type == MetaFileAsset::FileType::TERRAIN)
+                {
+                    handle.path = meta->path;
+                    handle.uuid = meta->uuid;
+                }
+            }
+
+            if (handle.path.empty())
+                handle.path = _path;
 
             return handle;
         }
@@ -4710,6 +4793,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             SaveSceneCameraConfig();
     }
 
+    void Editor::SaveSceneTerrainAssets()
+    {
+        if (m_scene == nullptr)
+            return;
+
+        std::unordered_set<std::string> savedTerrainPaths = {};
+        for (Entity *entity : m_scene->GetEntities())
+        {
+            if (entity == nullptr || !entity->HasComponent<Terrain>())
+                continue;
+
+            Terrain &terrainComponent = entity->GetComponent<Terrain>();
+            const std::string terrainPath = AssetManager::ResolvePath(terrainComponent.terrain);
+            if (terrainPath.empty() || !savedTerrainPaths.insert(terrainPath).second)
+                continue;
+
+            TerrainAsset *terrainAsset = AssetManager::GetTerrain(terrainPath);
+            if (terrainAsset == nullptr)
+            {
+                Debug::Warning("Scene save skipped missing terrain asset '%s'.", terrainPath.c_str());
+                continue;
+            }
+
+            if (terrainAsset->Save(terrainPath))
+            {
+                RefreshMetaFileTimestamp(terrainPath);
+            }
+            else
+            {
+                Debug::Warning("Scene save failed to write terrain asset '%s'.", terrainPath.c_str());
+            }
+        }
+    }
+
     void Editor::BeginGameRender(Window* _window)
     {
 #if CANIS_EDITOR
@@ -4869,11 +4986,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         UpdatePlayMouseCapture();
         DrawEditorPanel(); // draw last
         ProcessQueuedPrefabRebuilds();
+        UpdateTerrainBrush();
 
-        if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
-            SelectModel3D();
-        else
-            SelectSprite2D();
+        if (!m_terrainToolEnabled)
+        {
+            if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
+                SelectModel3D();
+            else
+                SelectSprite2D();
+        }
 
         EndSceneHistoryFrame();
 
@@ -7302,6 +7423,93 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         PopInspectorFieldID(_idSuffix);
     }
 
+    bool Editor::InputTerrainAsset(const std::string &_name, Canis::TerrainAssetHandle &_variable)
+    {
+        return InputTerrainAsset(_name, nullptr, _variable);
+    }
+
+    bool Editor::InputTerrainAsset(const std::string &_name, const char *_idSuffix, Canis::TerrainAssetHandle &_variable)
+    {
+        bool changed = false;
+
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        ImGui::Text("%s", _name.c_str());
+        ImGui::SameLine();
+
+        std::string resolvedPath = AssetManager::ResolvePath(_variable);
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(170, 0));
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                std::string path = AssetManager::GetPath(dropped.uuid);
+                if (path == "Path was not found in AssetLibrary" && dropped.path[0] != '\0')
+                    path = dropped.path;
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::TERRAIN)
+                    {
+                        TerrainAssetHandle next = {};
+                        next.uuid = meta->uuid;
+                        next.path = meta->path;
+
+                        if (next.uuid != _variable.uuid || next.path != _variable.path)
+                        {
+                            _variable = next;
+                            changed = true;
+                        }
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("terrain_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                if (!_variable.Empty())
+                {
+                    _variable.uuid = UUID(0);
+                    _variable.path.clear();
+                    changed = true;
+                }
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_terrain_asset"))
+        {
+            if (!_variable.Empty())
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+                changed = true;
+            }
+        }
+
+        PopInspectorFieldID(_idSuffix);
+
+        return changed;
+    }
+
     bool Editor::IsDescendantOf(Canis::Entity *_parent, Canis::Entity *_potentialChild)
     {
         if (!_parent || !_potentialChild)
@@ -8041,6 +8249,20 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             topLevel = InstantiateModelAssetHierarchyRoot(_scene, displayName, modelId, *modelAsset);
         }
+        else if (meta->type == MetaFileAsset::FileType::TERRAIN)
+        {
+            topLevel = _scene.CreateEntity(displayName);
+            if (topLevel == nullptr)
+                return false;
+
+            topLevel->AddComponent<Transform>();
+            Terrain &terrain = *topLevel->AddComponent<Terrain>();
+            terrain.terrain = MakeTerrainAssetHandleFromPath(droppedPath);
+            Rigidbody &rigidbody = topLevel->AddOrReplaceComponent<Rigidbody>();
+            rigidbody.motionType = RigidbodyMotionType::STATIC;
+            rigidbody.useGravity = false;
+            RebuildTerrainEntity(*topLevel);
+        }
         else
         {
             return false;
@@ -8579,6 +8801,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
 
             if (DrawShaderGraphAssetInspector(m_selectedAssetPath))
+            {
+                ImGui::End();
+                return;
+            }
+
+            if (DrawTerrainAssetInspector(m_selectedAssetPath))
             {
                 ImGui::End();
                 return;
@@ -9801,6 +10029,49 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (dirty)
             (void)controller->Save();
+
+        return true;
+    }
+
+    bool Editor::DrawTerrainAssetInspector(const std::string &_terrainPath)
+    {
+        MetaFileAsset *meta = AssetManager::GetMetaFile(_terrainPath);
+        if (meta == nullptr || meta->type != MetaFileAsset::FileType::TERRAIN)
+            return false;
+
+        const std::string terrainPath = meta->path.empty() ? _terrainPath : meta->path;
+        TerrainAsset *terrain = AssetManager::GetTerrain(terrainPath);
+        if (terrain == nullptr)
+            return false;
+
+        ImGui::Text("Asset: %s", meta->name.c_str());
+        ImGui::Text("Path: %s", terrainPath.c_str());
+        ImGui::Separator();
+        ImGui::Text("Size: %.2f x %.2f", terrain->size.x, terrain->size.y);
+        ImGui::Text("Cell Size: %.2f", terrain->cellSize);
+        ImGui::Text("Samples: %d x %d", terrain->GetSampleWidth(), terrain->GetSampleDepth());
+        ImGui::Text("Paint Samples: %d x %d", terrain->GetSplatmapWidth(), terrain->GetSplatmapHeight());
+        ImGui::TextDisabled("Paint weights are stored in the terrain asset.");
+        ImGui::Text("Material: %s", terrain->materialPath.empty() ? "[none]" : terrain->materialPath.c_str());
+
+        if (ImGui::CollapsingHeader("Paint Layers", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+                ImGui::Text("Layer %d: %s", i + 1, terrain->layers[i].texturePath.empty() ? "[none]" : terrain->layers[i].texturePath.c_str());
+        }
+
+        if (ImGui::Button("Rebuild Scene Terrain Instances") && m_scene != nullptr)
+        {
+            for (Entity *entity : m_scene->GetEntities())
+            {
+                if (entity == nullptr || !entity->HasComponent<Terrain>())
+                    continue;
+
+                Terrain &component = entity->GetComponent<Terrain>();
+                if (AssetManager::ResolvePath(component.terrain) == terrainPath)
+                    RebuildTerrainEntity(*entity);
+            }
+        }
 
         return true;
     }
@@ -11820,6 +12091,82 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_selectedAssetPath = targetPath.string();
         }
 
+        if (ImGui::MenuItem("Terrain"))
+        {
+            const fs::path terrainPath = BuildUniqueAssetPath(_folderPath, "new_terrain", ".terrain");
+            fs::path materialPath = terrainPath;
+            materialPath.replace_extension("");
+            materialPath = fs::path(materialPath.string() + ".material");
+
+            const auto layerPaths = EnsureDefaultTerrainLayerTextures();
+            TerrainAsset terrainAsset = {};
+            terrainAsset.size = Vector2(32.0f, 32.0f);
+            terrainAsset.cellSize = 0.5f;
+            terrainAsset.SetSplatmapSize(TerrainAsset::DefaultSplatmapResolution, TerrainAsset::DefaultSplatmapResolution);
+            terrainAsset.materialPath = materialPath.generic_string();
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+            {
+                terrainAsset.layers[i].texturePath = layerPaths[i];
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(layerPaths[i]))
+                    terrainAsset.layers[i].textureUUID = meta->uuid;
+            }
+            terrainAsset.EnsureDefaults();
+
+            YAML::Node materialRoot(YAML::NodeType::Map);
+            materialRoot["shader"] = "assets/shaders/terrain";
+            materialRoot["color"] = Vector4(1.0f);
+            materialRoot["backFaceCulling"] = false;
+            materialRoot["specularValue"] = 0.05f;
+            materialRoot["roughnessValue"] = 0.88f;
+            materialRoot["metallicValue"] = 0.0f;
+            YAML::Node uniforms(YAML::NodeType::Map);
+            for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
+            {
+                YAML::Node uniformNode(YAML::NodeType::Map);
+                uniformNode["type"] = "texture";
+                uniformNode["value"] = MakeAssetRefNode(layerPaths[i]);
+                uniforms["layer" + std::to_string(i)] = uniformNode;
+            }
+            YAML::Node tileUniform(YAML::NodeType::Map);
+            tileUniform["type"] = "float";
+            tileUniform["value"] = 8.0f;
+            uniforms["tileScale"] = tileUniform;
+            materialRoot["uniforms"] = uniforms;
+
+            {
+                std::ofstream materialOut(materialPath.string());
+                materialOut << materialRoot;
+            }
+            (void)AssetManager::GetMetaFile(materialPath.generic_string());
+            if (MetaFileAsset *materialMeta = AssetManager::GetMetaFile(materialPath.generic_string()))
+                terrainAsset.materialUUID = materialMeta->uuid;
+
+            if (terrainAsset.Save(terrainPath.generic_string()))
+            {
+                (void)AssetManager::GetMetaFile(terrainPath.generic_string());
+                m_selectedAssetPath = terrainPath.generic_string();
+
+                if (m_scene != nullptr)
+                {
+                    Entity *entity = m_scene->CreateEntity("Terrain");
+                    if (entity != nullptr)
+                    {
+                        entity->AddComponent<Transform>();
+                        Terrain &terrain = *entity->AddComponent<Terrain>();
+                        terrain.terrain = MakeTerrainAssetHandleFromPath(terrainPath.generic_string());
+                        Rigidbody &rigidbody = entity->AddOrReplaceComponent<Rigidbody>();
+                        rigidbody.motionType = RigidbodyMotionType::STATIC;
+                        rigidbody.useGravity = false;
+                        rigidbody.layer = Rigidbody::DefaultLayer;
+                        rigidbody.mask = Rigidbody::DefaultMask;
+                        RebuildTerrainEntity(*entity);
+                        FocusEntity(entity);
+                        m_terrainToolEnabled = true;
+                    }
+                }
+            }
+        }
+
         if (ImGui::MenuItem("Shader (Model3D Copy)"))
         {
             fs::path basePath = _folderPath / "new_shader";
@@ -12171,6 +12518,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                meta->type == MetaFileAsset::FileType::TERRAIN ||
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
                                 meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                 meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
@@ -12195,6 +12543,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                meta->type == MetaFileAsset::FileType::TERRAIN ||
                                 meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
                                 meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                 meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
@@ -12282,6 +12631,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     duplicatedMeta->type == MetaFileAsset::FileType::MATERIAL ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SKYBOX ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                    duplicatedMeta->type == MetaFileAsset::FileType::TERRAIN ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::SHADERGRAPH ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                     duplicatedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
@@ -12367,6 +12717,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                  meta->type == MetaFileAsset::FileType::MATERIAL ||
                                  meta->type == MetaFileAsset::FileType::SKYBOX ||
                                  meta->type == MetaFileAsset::FileType::POSTPROCESS ||
+                                 meta->type == MetaFileAsset::FileType::TERRAIN ||
                                  meta->type == MetaFileAsset::FileType::SHADERGRAPH ||
                                  meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                  meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
@@ -13701,6 +14052,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 hotKeyCoolDown = HOTKEYRESET;
                 FlushSceneHistoryPendingChange();
+                SaveSceneTerrainAssets();
                 m_scene->Save();
             }            
             ImGui::SameLine();
@@ -13920,6 +14272,397 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ImGui::End();
         DrawReloadBuildPopup();
+    }
+
+    bool Editor::TryGetTerrainBrushHit(Entity *_entity, Vector3 &_localPoint, Vector3 &_worldPoint) const
+    {
+        if (_entity == nullptr || !_entity->HasComponent<Terrain>() || !_entity->HasComponent<Transform>())
+            return false;
+
+        TerrainAsset *asset = AssetManager::GetTerrain(AssetManager::ResolvePath(_entity->GetComponent<Terrain>().terrain));
+        if (asset == nullptr)
+            return false;
+
+        if (!m_gameViewHovered || m_gameViewportDrawWidth <= 0.0f || m_gameViewportDrawHeight <= 0.0f)
+            return false;
+
+        const ImVec2 mousePos = ImGui::GetMousePos();
+        const float localX = mousePos.x - m_gameViewportPosX;
+        const float localY = mousePos.y - m_gameViewportPosY;
+        if (localX < 0.0f || localY < 0.0f || localX >= m_gameViewportDrawWidth || localY >= m_gameViewportDrawHeight)
+            return false;
+
+        const float ndcX = (localX / m_gameViewportDrawWidth) * 2.0f - 1.0f;
+        const float ndcY = 1.0f - (localY / m_gameViewportDrawHeight) * 2.0f;
+        const Matrix4 inverseViewProjection = glm::inverse(m_scene->GetEditorCamera3DProjection() * m_scene->GetEditorCamera3DView());
+        const Vector4 nearClip = inverseViewProjection * Vector4(ndcX, ndcY, -1.0f, 1.0f);
+        const Vector4 farClip = inverseViewProjection * Vector4(ndcX, ndcY, 1.0f, 1.0f);
+        if (std::abs(nearClip.w) < 0.00001f || std::abs(farClip.w) < 0.00001f)
+            return false;
+
+        const Vector3 worldNear = Vector3(nearClip) / nearClip.w;
+        const Vector3 worldFar = Vector3(farClip) / farClip.w;
+
+        const Matrix4 inverseModel = glm::inverse(_entity->GetComponent<Transform>().GetModelMatrix());
+        const Vector3 localNear = Vector3(inverseModel * Vector4(worldNear, 1.0f));
+        const Vector3 localFar = Vector3(inverseModel * Vector4(worldFar, 1.0f));
+        const Vector3 localRay = localFar - localNear;
+        const float rayLength = glm::length(localRay);
+        if (rayLength < 0.00001f)
+            return false;
+        const Vector3 localDirection = localRay / rayLength;
+
+        const float halfX = asset->size.x * 0.5f;
+        const float halfZ = asset->size.y * 0.5f;
+        float minHeight = 0.0f;
+        float maxHeight = 0.0f;
+        if (!asset->heights.empty())
+        {
+            const auto [minIt, maxIt] = std::minmax_element(asset->heights.begin(), asset->heights.end());
+            minHeight = *minIt;
+            maxHeight = *maxIt;
+        }
+
+        Vector3 boundsMin(-halfX, minHeight - 2.0f, -halfZ);
+        Vector3 boundsMax(halfX, maxHeight + 2.0f, halfZ);
+        float tEnter = 0.0f;
+        float tExit = rayLength;
+        auto intersectAxis = [&](float origin, float direction, float minValue, float maxValue) -> bool
+        {
+            if (std::abs(direction) < 0.00001f)
+                return origin >= minValue && origin <= maxValue;
+
+            float t0 = (minValue - origin) / direction;
+            float t1 = (maxValue - origin) / direction;
+            if (t0 > t1)
+                std::swap(t0, t1);
+
+            tEnter = std::max(tEnter, t0);
+            tExit = std::min(tExit, t1);
+            return tEnter <= tExit;
+        };
+
+        if (!intersectAxis(localNear.x, localDirection.x, boundsMin.x, boundsMax.x) ||
+            !intersectAxis(localNear.y, localDirection.y, boundsMin.y, boundsMax.y) ||
+            !intersectAxis(localNear.z, localDirection.z, boundsMin.z, boundsMax.z))
+            return false;
+
+        tEnter = std::clamp(tEnter, 0.0f, rayLength);
+        tExit = std::clamp(tExit, 0.0f, rayLength);
+        if (tExit < tEnter)
+            return false;
+
+        constexpr int marchSteps = 192;
+        bool hasPrevious = false;
+        float previousT = tEnter;
+        float previousDistance = 0.0f;
+
+        for (int step = 0; step <= marchSteps; ++step)
+        {
+            const float alpha = static_cast<float>(step) / static_cast<float>(marchSteps);
+            const float t = glm::mix(tEnter, tExit, alpha);
+            const Vector3 point = localNear + localDirection * t;
+
+            float terrainHeight = 0.0f;
+            if (!asset->SampleHeightBilinear(point.x, point.z, terrainHeight))
+                continue;
+
+            const float distanceToSurface = point.y - terrainHeight;
+            if (!hasPrevious)
+            {
+                hasPrevious = true;
+                previousT = t;
+                previousDistance = distanceToSurface;
+                if (std::abs(distanceToSurface) < 0.0001f)
+                {
+                    Vector3 localPoint(point.x, terrainHeight, point.z);
+                    _localPoint = localPoint;
+                    _worldPoint = Vector3(_entity->GetComponent<Transform>().GetModelMatrix() * Vector4(localPoint, 1.0f));
+                    return true;
+                }
+                continue;
+            }
+
+            if ((previousDistance >= 0.0f && distanceToSurface <= 0.0f) ||
+                (previousDistance <= 0.0f && distanceToSurface >= 0.0f))
+            {
+                float lowT = previousT;
+                float highT = t;
+                for (int refine = 0; refine < 12; ++refine)
+                {
+                    const float midT = (lowT + highT) * 0.5f;
+                    const Vector3 midPoint = localNear + localDirection * midT;
+                    float midHeight = 0.0f;
+                    if (!asset->SampleHeightBilinear(midPoint.x, midPoint.z, midHeight))
+                        break;
+
+                    const float midDistance = midPoint.y - midHeight;
+                    if ((previousDistance >= 0.0f && midDistance > 0.0f) ||
+                        (previousDistance <= 0.0f && midDistance < 0.0f))
+                    {
+                        lowT = midT;
+                    }
+                    else
+                    {
+                        highT = midT;
+                    }
+                }
+
+                const float hitT = (lowT + highT) * 0.5f;
+                Vector3 localPoint = localNear + localDirection * hitT;
+                float hitHeight = 0.0f;
+                if (!asset->SampleHeightBilinear(localPoint.x, localPoint.z, hitHeight))
+                    return false;
+
+                localPoint.y = hitHeight;
+                _localPoint = localPoint;
+                _worldPoint = Vector3(_entity->GetComponent<Transform>().GetModelMatrix() * Vector4(localPoint, 1.0f));
+                return true;
+            }
+
+            previousT = t;
+            previousDistance = distanceToSurface;
+        }
+
+        return false;
+    }
+
+    void Editor::RebuildTerrainEntity(Entity &_entity)
+    {
+        (void)Canis::RebuildTerrainEntity(_entity);
+    }
+
+    void Editor::UpdateTerrainBrush()
+    {
+        if (!m_terrainToolEnabled || m_scene == nullptr || m_mode != EditorMode::EDIT || m_sceneCameraMode != SceneCameraMode::SCENE_CAMERA_3D)
+            return;
+
+        m_scene->ClearDebugGizmoLines();
+
+        Entity *selected = nullptr;
+        if (m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()))
+            selected = m_scene->GetEntities()[m_index];
+        if (selected == nullptr || !selected->HasComponent<Terrain>())
+        {
+            m_terrainToolEnabled = false;
+            m_scene->ClearDebugGizmoLines();
+            return;
+        }
+
+        Terrain &terrainComponent = selected->GetComponent<Terrain>();
+        TerrainAsset *asset = AssetManager::GetTerrain(AssetManager::ResolvePath(terrainComponent.terrain));
+        if (asset == nullptr)
+        {
+            m_terrainToolEnabled = false;
+            m_scene->ClearDebugGizmoLines();
+            return;
+        }
+
+        Vector3 localPoint = Vector3(0.0f);
+        Vector3 worldPoint = Vector3(0.0f);
+        const bool hasHit = TryGetTerrainBrushHit(selected, localPoint, worldPoint);
+        m_terrainBrushDebugValid = false;
+        if (hasHit)
+        {
+            const int splatWidth = asset->GetSplatmapWidth();
+            const int splatHeight = asset->GetSplatmapHeight();
+            const int splatX = std::clamp(
+                static_cast<int>(std::round(((localPoint.x + asset->size.x * 0.5f) / asset->size.x) * static_cast<float>(std::max(1, splatWidth - 1)))),
+                0,
+                std::max(0, splatWidth - 1));
+            const int splatZ = std::clamp(
+                static_cast<int>(std::round(((localPoint.z + asset->size.y * 0.5f) / asset->size.y) * static_cast<float>(std::max(1, splatHeight - 1)))),
+                0,
+                std::max(0, splatHeight - 1));
+            const int splatIndex = asset->GetSplatIndex(splatX, splatZ);
+            if (splatIndex >= 0 && splatIndex + 3 < static_cast<int>(asset->splatmap.size()))
+            {
+                m_terrainBrushDebugValid = true;
+                m_terrainBrushDebugX = splatX;
+                m_terrainBrushDebugZ = splatZ;
+                m_terrainBrushDebugWeights[0] = asset->splatmap[splatIndex + 0];
+                m_terrainBrushDebugWeights[1] = asset->splatmap[splatIndex + 1];
+                m_terrainBrushDebugWeights[2] = asset->splatmap[splatIndex + 2];
+                m_terrainBrushDebugWeights[3] = asset->splatmap[splatIndex + 3];
+            }
+        }
+
+        if (hasHit)
+        {
+            constexpr int segments = 32;
+            Vector3 previous = Vector3(0.0f);
+            bool hasPrevious = false;
+            const Matrix4 modelMatrix = selected->GetComponent<Transform>().GetModelMatrix();
+            for (int i = 0; i <= segments; ++i)
+            {
+                const float angle = (static_cast<float>(i) / static_cast<float>(segments)) * 6.28318530718f;
+                Vector3 ringLocal(
+                    localPoint.x + std::cos(angle) * asset->brushRadius,
+                    0.0f,
+                    localPoint.z + std::sin(angle) * asset->brushRadius);
+                float ringHeight = 0.0f;
+                if (!asset->SampleHeightBilinear(ringLocal.x, ringLocal.z, ringHeight))
+                    continue;
+                ringLocal.y = ringHeight + 0.03f;
+                const Vector3 ringWorld = Vector3(modelMatrix * Vector4(ringLocal, 1.0f));
+                if (hasPrevious)
+                    m_scene->DrawDebugGizmoLine(previous, ringWorld, Color(0.2f, 0.75f, 1.0f, 1.0f));
+                previous = ringWorld;
+                hasPrevious = true;
+            }
+        }
+
+        const bool mouseDown = hasHit && ImGui::IsMouseDown(ImGuiMouseButton_Left);
+        const bool mouseClicked = hasHit && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
+        if (mouseClicked && !m_terrainStrokeActive)
+        {
+            m_terrainStrokeActive = true;
+            m_terrainStrokeEntity = selected->uuid;
+            m_terrainStrokeBeforeState = CaptureSceneHistoryState();
+        }
+
+        bool changedHeights = false;
+        bool changedPaint = false;
+        if (mouseDown)
+        {
+            const int width = asset->GetSampleWidth();
+            const int depth = asset->GetSampleDepth();
+            const float radius = std::max(asset->brushRadius, 0.05f);
+            const float strength = std::max(asset->brushStrength, 0.0f);
+            const float cellSize = std::max(asset->cellSize, 0.01f);
+            const int minX = std::clamp(static_cast<int>(std::floor((localPoint.x + asset->size.x * 0.5f - radius) / cellSize)), 0, width - 1);
+            const int maxX = std::clamp(static_cast<int>(std::ceil((localPoint.x + asset->size.x * 0.5f + radius) / cellSize)), 0, width - 1);
+            const int minZ = std::clamp(static_cast<int>(std::floor((localPoint.z + asset->size.y * 0.5f - radius) / cellSize)), 0, depth - 1);
+            const int maxZ = std::clamp(static_cast<int>(std::ceil((localPoint.z + asset->size.y * 0.5f + radius) / cellSize)), 0, depth - 1);
+
+            for (int z = minZ; z <= maxZ; ++z)
+            {
+                for (int x = minX; x <= maxX; ++x)
+                {
+                    const Vector3 sample = asset->GetLocalPosition(x, z);
+                    const float distance = glm::distance(Vector2(sample.x, sample.z), Vector2(localPoint.x, localPoint.z));
+                    if (distance > radius)
+                        continue;
+
+                    const float falloff = 1.0f - (distance / radius);
+                    const float amount = strength * falloff * 0.08f;
+                    if (asset->selectedTool == 0 || asset->selectedTool == 1)
+                    {
+                        const float direction = (asset->selectedTool == 1 || ImGui::GetIO().KeyShift) ? -1.0f : 1.0f;
+                        asset->SetHeight(x, z, asset->GetHeight(x, z) + direction * amount);
+                        changedHeights = true;
+                    }
+                    else if (asset->selectedTool == 2)
+                    {
+                        float total = 0.0f;
+                        int count = 0;
+                        for (int oz = -1; oz <= 1; ++oz)
+                        {
+                            for (int ox = -1; ox <= 1; ++ox)
+                            {
+                                total += asset->GetHeight(x + ox, z + oz);
+                                count++;
+                            }
+                        }
+                        const float average = total / static_cast<float>(std::max(count, 1));
+                        asset->SetHeight(x, z, glm::mix(asset->GetHeight(x, z), average, std::min(amount, 1.0f)));
+                        changedHeights = true;
+                    }
+                    else if (asset->selectedTool == 3)
+                    {
+                        asset->SetHeight(x, z, glm::mix(asset->GetHeight(x, z), asset->flattenHeight, std::min(amount, 1.0f)));
+                        changedHeights = true;
+                    }
+                }
+            }
+
+            if (asset->selectedTool == 4)
+            {
+                const int splatWidth = asset->GetSplatmapWidth();
+                const int splatHeight = asset->GetSplatmapHeight();
+                const int layer = std::clamp(asset->selectedLayer, 0, TerrainAsset::MaxLayers - 1);
+                for (int z = 0; z < splatHeight; ++z)
+                {
+                    for (int x = 0; x < splatWidth; ++x)
+                    {
+                        const float px = -asset->size.x * 0.5f + (static_cast<float>(x) / static_cast<float>(std::max(1, splatWidth - 1))) * asset->size.x;
+                        const float pz = -asset->size.y * 0.5f + (static_cast<float>(z) / static_cast<float>(std::max(1, splatHeight - 1))) * asset->size.y;
+                        const float distance = glm::distance(Vector2(px, pz), Vector2(localPoint.x, localPoint.z));
+                        if (distance > radius)
+                            continue;
+
+                        const float falloff = 1.0f - (distance / radius);
+                        const float gain = std::clamp(strength * falloff * 0.35f, 0.0f, 1.0f);
+                        if (gain <= 0.0f)
+                            continue;
+
+                        const int index = asset->GetSplatIndex(x, z);
+                        float weights[TerrainAsset::MaxLayers] = {
+                            asset->splatmap[index + 0] / 255.0f,
+                            asset->splatmap[index + 1] / 255.0f,
+                            asset->splatmap[index + 2] / 255.0f,
+                            asset->splatmap[index + 3] / 255.0f
+                        };
+
+                        float total = 0.0f;
+                        for (float weight : weights)
+                            total += weight;
+
+                        if (total <= 0.0001f)
+                        {
+                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                                weights[channel] = 0.0f;
+                            weights[0] = 1.0f;
+                            total = 1.0f;
+                        }
+                        else
+                        {
+                            for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                                weights[channel] /= total;
+                        }
+
+                        const float selectedBefore = weights[layer];
+                        const float appliedGain = std::min(gain, 1.0f - selectedBefore);
+                        const float otherTotal = std::max(1.0f - selectedBefore, 0.0f);
+                        if (appliedGain <= 0.0f || otherTotal <= 0.0001f)
+                            continue;
+
+                        for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                        {
+                            if (channel == layer)
+                                continue;
+
+                            weights[channel] = std::max(0.0f, weights[channel] - appliedGain * (weights[channel] / otherTotal));
+                        }
+                        weights[layer] = std::min(1.0f, selectedBefore + appliedGain);
+
+                        total = 0.0f;
+                        for (float weight : weights)
+                            total += weight;
+                        total = std::max(total, 0.0001f);
+                        for (int channel = 0; channel < TerrainAsset::MaxLayers; ++channel)
+                            asset->splatmap[index + channel] = static_cast<unsigned char>(std::round(std::clamp(weights[channel] / total, 0.0f, 1.0f) * 255.0f));
+                        changedPaint = true;
+                    }
+                }
+                if (changedPaint)
+                    asset->MarkSplatmapDirty();
+            }
+        }
+
+        if (changedHeights)
+            RebuildTerrainEntity(*selected);
+
+        if (changedPaint)
+            (void)UploadTerrainSplatmapTexture(*asset);
+
+        if (m_terrainStrokeActive && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+        {
+            m_terrainStrokeActive = false;
+            m_terrainStrokeEntity = UUID(0);
+            CommitSceneHistoryImmediateChange(m_terrainStrokeBeforeState);
+            m_terrainStrokeBeforeState = {};
+        }
     }
 
     void Editor::SelectSprite2D()

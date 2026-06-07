@@ -1244,6 +1244,7 @@ namespace Canis
             float metallicValue = 0.0f;
 
             glDisable(GL_CULL_FACE);
+            int nextCustomTextureUnit = 5;
             if (materialAsset != nullptr)
             {
                 if ((materialAsset->info & MATERIAL_HAS_COLOR) != 0u)
@@ -1273,17 +1274,27 @@ namespace Canis
                     glCullFace(GL_FRONT);
                 }
 
-                int nextCustomTextureUnit = 5;
                 nextCustomTextureUnit = materialAsset->materialFields.Use(*currentShader, nextCustomTextureUnit);
 
                 if (material != nullptr)
                     nextCustomTextureUnit = material->materialFields.Use(*currentShader, nextCustomTextureUnit);
-
-                (void)nextCustomTextureUnit;
             }
             else if (material != nullptr)
             {
-                (void)material->materialFields.Use(*currentShader, 5);
+                nextCustomTextureUnit = material->materialFields.Use(*currentShader, nextCustomTextureUnit);
+            }
+
+            if (Terrain *terrainComponent = _registry.try_get<Terrain>(entityHandle))
+            {
+                TerrainAsset *terrainAsset = AssetManager::GetTerrain(AssetManager::ResolvePath(terrainComponent->terrain));
+                if (terrainAsset != nullptr)
+                {
+                    const GLTexture splatTexture = terrainAsset->GetSplatmapTexture();
+                    currentShader->SetInt("splatMap", nextCustomTextureUnit);
+                    glActiveTexture(GL_TEXTURE0 + nextCustomTextureUnit);
+                    glBindTexture(GL_TEXTURE_2D, splatTexture.id);
+                    nextCustomTextureUnit++;
+                }
             }
 
             if (material != nullptr)
