@@ -183,6 +183,15 @@ namespace Canis
         void DrawEnvironment();
         void DrawAssetsPanel();
         void DrawDirectoryRecursive(const std::string &_dirPath);
+        bool DrawAssetPreviewCard(
+            const std::string &_assetPath,
+            const std::string &_displayName,
+            MetaFileAsset *_meta,
+            bool _selected,
+            float _cardWidth,
+            float _cardHeight);
+        bool GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId);
+        void DestroyAssetPreviewCache();
         void DrawScriptsPanel();
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
@@ -293,6 +302,13 @@ namespace Canis
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
         std::string m_assetSearch = {};
+        struct MaterialPreviewCacheEntry
+        {
+            RenderTarget renderTarget = {};
+            std::filesystem::file_time_type writeTime = std::filesystem::file_time_type::min();
+            double lastRenderSeconds = -1.0;
+        };
+        std::unordered_map<std::string, MaterialPreviewCacheEntry> m_materialPreviewCache = {};
         std::string m_selectedScriptPath = {};
         std::string m_animationClipStatePath = {};
         std::string m_animatorStatePath = {};

@@ -4303,6 +4303,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_reloadBuildThread.joinable())
             m_reloadBuildThread.join();
 
+        DestroyAssetPreviewCache();
         DestroyGameRenderTarget();
         DestroyGamePickingRenderTarget();
         DestroyPlayRenderTarget();
@@ -11119,6 +11120,294 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_renamingPath.clear();
     }
 
+    bool Editor::GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId)
+    {
+        _textureId = 0;
+
+        MaterialAsset *material = AssetManager::GetMaterial(_materialPath);
+        ModelAsset *sphere = AssetManager::GetModel("assets/defaults/models/sphere.glb");
+        if (material == nullptr || sphere == nullptr || material->shaderId < 0)
+            return false;
+
+        ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(material->shaderId);
+        if (shaderAsset == nullptr || shaderAsset->GetShader() == nullptr)
+            return false;
+
+        Shader *shader = shaderAsset->GetShader();
+        if (!shader->IsLinked())
+            shader->Link();
+        if (!shader->IsLinked())
+            return false;
+
+        MaterialPreviewCacheEntry &cache = m_materialPreviewCache[_materialPath];
+        std::error_code timestampError = {};
+        const std::filesystem::file_time_type writeTime =
+            std::filesystem::exists(_materialPath)
+                ? std::filesystem::last_write_time(_materialPath, timestampError)
+                : std::filesystem::file_time_type::min();
+        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        const bool needsRefresh =
+            cache.renderTarget.colorTexture == 0 ||
+            (!timestampError && cache.writeTime != writeTime) ||
+            cache.lastRenderSeconds < 0.0 ||
+            (nowSeconds - cache.lastRenderSeconds) >= 1.0;
+
+        constexpr int previewSize = 128;
+        EnsureRenderTarget(cache.renderTarget, previewSize, previewSize);
+        if (cache.renderTarget.framebuffer == 0)
+            return false;
+
+        if (!needsRefresh)
+        {
+            _textureId = cache.renderTarget.colorTexture;
+            return true;
+        }
+
+        GLint previousFramebuffer = 0;
+        GLint previousViewport[4] = { 0, 0, 0, 0 };
+        GLint previousActiveTexture = GL_TEXTURE0;
+        GLfloat previousClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        GLboolean previousDepthMask = GL_TRUE;
+        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
+        glGetIntegerv(GL_VIEWPORT, previousViewport);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, cache.renderTarget.framebuffer);
+        glViewport(0, 0, cache.renderTarget.width, cache.renderTarget.height);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_BLEND);
+        glClearColor(0.055f, 0.067f, 0.086f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        if ((material->info & MATERIAL_BACK_FACE_CULLING) != 0u)
+        {
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_BACK);
+        }
+        else if ((material->info & MATERIAL_FRONT_FACE_CULLING) != 0u)
+        {
+            glEnable(GL_CULL_FACE);
+            glCullFace(GL_FRONT);
+        }
+        else
+        {
+            glDisable(GL_CULL_FACE);
+        }
+
+        Vector3 minBounds(-0.5f);
+        Vector3 maxBounds(0.5f);
+        (void)sphere->GetLocalBounds(minBounds, maxBounds);
+        const Vector3 center = (minBounds + maxBounds) * 0.5f;
+        const Vector3 size = glm::max(maxBounds - minBounds, Vector3(0.001f));
+        const float maxDimension = std::max(size.x, std::max(size.y, size.z));
+        const float fitScale = (maxDimension > 0.0001f) ? (1.65f / maxDimension) : 1.0f;
+
+        Matrix4 modelMatrix(1.0f);
+        modelMatrix = glm::rotate(modelMatrix, DEG2RAD * -12.0f, Vector3(1.0f, 0.0f, 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, DEG2RAD * 28.0f, Vector3(0.0f, 1.0f, 0.0f));
+        modelMatrix = glm::translate(modelMatrix, -center);
+        modelMatrix = glm::scale(modelMatrix, Vector3(fitScale));
+
+        const Vector3 cameraPosition(0.0f, 0.1f, 2.7f);
+        const Matrix4 projection = glm::perspective(DEG2RAD * 35.0f, 1.0f, 0.05f, 32.0f);
+        const Matrix4 view = glm::lookAt(cameraPosition, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f));
+
+        shader->Use();
+        shader->SetMat4("P", projection);
+        shader->SetMat4("V", view);
+        shader->SetVec3("cameraPosition", cameraPosition);
+        shader->SetVec3("ambientLightColor", 0.22f, 0.25f, 0.31f);
+        shader->SetFloat("ambientLightIntensity", 1.0f);
+        shader->SetBool("useDirectionalLight", true);
+        shader->SetVec3("directionalLightDirection", -0.45f, -0.8f, -0.35f);
+        shader->SetVec3("directionalLightColor", 1.0f, 0.93f, 0.82f);
+        shader->SetFloat("directionalLightIntensity", 2.0f);
+        shader->SetBool("useDirectionalShadow", false);
+        shader->SetInt("pointLightCount", 0);
+        shader->SetFloat("TIME", static_cast<float>(nowSeconds));
+        shader->SetFloat("specularValue", material->specularValue);
+        shader->SetFloat("roughnessValue", material->roughnessValue);
+        shader->SetFloat("metallicValue", material->metallicValue);
+        shader->SetBool("useSpecularMap", material->specularId >= 0);
+        shader->SetBool("useRoughnessMap", material->roughnessId >= 0);
+        shader->SetBool("useMetallicMap", material->metallicId >= 0);
+        shader->SetInt("specularMap", 1);
+        shader->SetInt("roughnessMap", 2);
+        shader->SetInt("metallicMap", 3);
+        (void)material->materialFields.Use(*shader, 5);
+
+        auto bindMaterialTexture = [](const GLenum _textureUnit, const int _assetId)
+        {
+            glActiveTexture(_textureUnit);
+            TextureAsset *texture = (_assetId >= 0) ? AssetManager::GetTexture(_assetId) : nullptr;
+            glBindTexture(GL_TEXTURE_2D, texture != nullptr ? texture->GetGLTexture().id : 0);
+        };
+        bindMaterialTexture(GL_TEXTURE1, material->specularId);
+        bindMaterialTexture(GL_TEXTURE2, material->roughnessId);
+        bindMaterialTexture(GL_TEXTURE3, material->metallicId);
+        glActiveTexture(GL_TEXTURE0);
+
+        const Color baseColor =
+            ((material->info & MATERIAL_HAS_COLOR) != 0u) ? material->color : Color(1.0f);
+        sphere->Draw(*shader, modelMatrix, nullptr, material->albedoId, baseColor, nullptr);
+        shader->UnUse();
+
+        glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+        glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
+        glDepthMask(previousDepthMask);
+        depthWasEnabled ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
+        blendWasEnabled ? glEnable(GL_BLEND) : glDisable(GL_BLEND);
+        cullWasEnabled ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
+        glActiveTexture(previousActiveTexture);
+
+        cache.writeTime = timestampError ? std::filesystem::file_time_type::min() : writeTime;
+        cache.lastRenderSeconds = nowSeconds;
+        _textureId = cache.renderTarget.colorTexture;
+        return _textureId != 0;
+    }
+
+    void Editor::DestroyAssetPreviewCache()
+    {
+        for (auto &entry : m_materialPreviewCache)
+            DestroyRenderTarget(entry.second.renderTarget);
+        m_materialPreviewCache.clear();
+    }
+
+    bool Editor::DrawAssetPreviewCard(
+        const std::string &_assetPath,
+        const std::string &_displayName,
+        MetaFileAsset *_meta,
+        const bool _selected,
+        const float _cardWidth,
+        const float _cardHeight)
+    {
+        ImGui::PushID(_assetPath.c_str());
+        const bool clicked = ImGui::InvisibleButton("##AssetCard", ImVec2(_cardWidth, _cardHeight));
+        const bool hovered = ImGui::IsItemHovered();
+        const bool visible = ImGui::IsItemVisible();
+        const ImVec2 cardMin = ImGui::GetItemRectMin();
+        const ImVec2 cardMax = ImGui::GetItemRectMax();
+        ImDrawList *drawList = ImGui::GetWindowDrawList();
+
+        const ImU32 cardColor = ImGui::GetColorU32(
+            _selected ? ImGuiCol_HeaderActive : (hovered ? ImGuiCol_HeaderHovered : ImGuiCol_FrameBg));
+        const ImU32 borderColor = ImGui::GetColorU32(
+            _selected ? ImGuiCol_SliderGrabActive : ImGuiCol_Border);
+        drawList->AddRectFilled(cardMin, cardMax, cardColor, 5.0f);
+        drawList->AddRect(cardMin, cardMax, borderColor, 5.0f, 0, _selected ? 2.0f : 1.0f);
+
+        const float padding = 7.0f;
+        const float labelHeight = ImGui::GetTextLineHeightWithSpacing() * 1.55f;
+        const ImVec2 previewMin(cardMin.x + padding, cardMin.y + padding);
+        const ImVec2 previewMax(cardMax.x - padding, cardMax.y - labelHeight - padding);
+        drawList->AddRectFilled(previewMin, previewMax, IM_COL32(14, 18, 25, 255), 3.0f);
+
+        unsigned int textureId = 0;
+        bool flipVertically = false;
+        int sourceWidth = 1;
+        int sourceHeight = 1;
+        if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::TEXTURE)
+        {
+            if (TextureAsset *textureAsset = AssetManager::GetTexture(_assetPath))
+            {
+                const GLTexture texture = textureAsset->GetGLTexture();
+                textureId = texture.id;
+                sourceWidth = std::max(texture.width, 1);
+                sourceHeight = std::max(texture.height, 1);
+            }
+        }
+        else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::MATERIAL)
+        {
+            flipVertically = GetMaterialPreviewTexture(_assetPath, textureId);
+        }
+
+        if (textureId != 0)
+        {
+            const float availableWidth = std::max(previewMax.x - previewMin.x, 1.0f);
+            const float availableHeight = std::max(previewMax.y - previewMin.y, 1.0f);
+            const float scale = std::min(
+                availableWidth / static_cast<float>(sourceWidth),
+                availableHeight / static_cast<float>(sourceHeight));
+            const ImVec2 imageSize(
+                static_cast<float>(sourceWidth) * scale,
+                static_cast<float>(sourceHeight) * scale);
+            const ImVec2 imageMin(
+                previewMin.x + (availableWidth - imageSize.x) * 0.5f,
+                previewMin.y + (availableHeight - imageSize.y) * 0.5f);
+            const ImVec2 imageMax(imageMin.x + imageSize.x, imageMin.y + imageSize.y);
+            drawList->AddImage(
+                (ImTextureID)(intptr_t)textureId,
+                imageMin,
+                imageMax,
+                flipVertically ? ImVec2(0.0f, 1.0f) : ImVec2(0.0f, 0.0f),
+                flipVertically ? ImVec2(1.0f, 0.0f) : ImVec2(1.0f, 1.0f));
+        }
+        else
+        {
+            const ImU32 typeColors[] =
+            {
+                IM_COL32(102, 116, 145, 255),
+                IM_COL32(122, 100, 190, 255),
+                IM_COL32(122, 100, 190, 255),
+                IM_COL32(54, 160, 132, 255),
+                IM_COL32(67, 145, 198, 255),
+                IM_COL32(66, 129, 191, 255),
+                IM_COL32(204, 142, 64, 255),
+                IM_COL32(204, 142, 64, 255),
+                IM_COL32(205, 103, 127, 255),
+                IM_COL32(75, 151, 195, 255),
+                IM_COL32(184, 119, 72, 255),
+                IM_COL32(88, 142, 184, 255),
+                IM_COL32(164, 104, 193, 255),
+                IM_COL32(104, 164, 206, 255),
+            };
+            const int typeIndex = (_meta != nullptr) ? static_cast<int>(_meta->type) : 0;
+            const int safeIndex = std::clamp(typeIndex, 0, static_cast<int>(std::size(typeColors)) - 1);
+            const ImVec2 center(
+                (previewMin.x + previewMax.x) * 0.5f,
+                (previewMin.y + previewMax.y) * 0.5f);
+            const float radius = std::max(12.0f, std::min(previewMax.x - previewMin.x, previewMax.y - previewMin.y) * 0.28f);
+            drawList->AddCircleFilled(center, radius, typeColors[safeIndex], 32);
+
+            std::string extension = std::filesystem::path(_assetPath).extension().string();
+            if (!extension.empty() && extension.front() == '.')
+                extension.erase(extension.begin());
+            std::transform(extension.begin(), extension.end(), extension.begin(), [](const unsigned char c) { return static_cast<char>(std::toupper(c)); });
+            if (extension.size() > 6)
+                extension.resize(6);
+            const ImVec2 typeTextSize = ImGui::CalcTextSize(extension.c_str());
+            drawList->AddText(
+                ImVec2(center.x - typeTextSize.x * 0.5f, center.y - typeTextSize.y * 0.5f),
+                IM_COL32(244, 247, 252, 255),
+                extension.c_str());
+        }
+
+        const std::string label = std::filesystem::path(_displayName).stem().string();
+        const ImVec2 labelMin(cardMin.x + padding, previewMax.y + 5.0f);
+        const ImVec2 labelMax(cardMax.x - padding, cardMax.y - 3.0f);
+        const ImVec4 labelClipRect(labelMin.x, labelMin.y, labelMax.x, labelMax.y);
+        drawList->AddText(
+            nullptr,
+            0.0f,
+            labelMin,
+            ImGui::GetColorU32(ImGuiCol_Text),
+            label.c_str(),
+            nullptr,
+            std::max(labelMax.x - labelMin.x, 1.0f),
+            &labelClipRect);
+
+        ImGui::PopID();
+        return clicked;
+    }
+
     void Editor::DrawDirectoryRecursive(const std::string &_dirPath)
     {
         namespace fs = std::filesystem;
@@ -11129,6 +11418,18 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         std::vector<fs::directory_entry> entries = {};
         for (const auto &entry : fs::directory_iterator(path))
             entries.push_back(entry);
+
+        std::sort(entries.begin(), entries.end(), [](const fs::directory_entry &_a, const fs::directory_entry &_b)
+        {
+            if (_a.is_directory() != _b.is_directory())
+                return _a.is_directory();
+            return _a.path().filename().string() < _b.path().filename().string();
+        });
+
+        int assetCardIndex = 0;
+        int assetCardColumns = 0;
+        float assetCardWidth = 112.0f;
+        float assetCardHeight = 116.0f;
 
         for (const auto &entry : entries)
         {
@@ -11438,22 +11739,44 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (searchActive && !AssetPathMatchesSearch(entry.path(), searchQuery))
                     continue;
 
+                if (assetCardColumns == 0)
+                {
+                    const float availableWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
+                    const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                    const float desiredWidth = std::max(108.0f, ImGui::GetFontSize() * 7.0f);
+                    assetCardColumns = std::max(1, static_cast<int>((availableWidth + spacing) / (desiredWidth + spacing)));
+                    assetCardWidth =
+                        (availableWidth - spacing * static_cast<float>(assetCardColumns - 1)) /
+                        static_cast<float>(assetCardColumns);
+                    assetCardHeight = std::max(112.0f, assetCardWidth * 0.96f);
+                }
+
+                const int cardSlot = assetCardIndex++;
+                if ((cardSlot % assetCardColumns) != 0)
+                    ImGui::SameLine();
+
                 const bool isRenamingThis = m_isRenamingAsset && (m_renamingPath == fullPath);
 
                 if (isRenamingThis)
                 {
                     const std::string extension = entry.path().extension().string();
+                    const ImVec2 cardStart = ImGui::GetCursorScreenPos();
+                    MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath);
+                    (void)DrawAssetPreviewCard(fullPath, name, meta, true, assetCardWidth, assetCardHeight);
+                    ImGui::SetCursorScreenPos(ImVec2(
+                        cardStart.x + 6.0f,
+                        cardStart.y + assetCardHeight - ImGui::GetFrameHeight() - 5.0f));
 
                     // rename input
                     ImGui::PushID(fullPath.c_str());
                     if (!extension.empty())
                     {
                         const float extensionWidth = ImGui::CalcTextSize(extension.c_str()).x + ImGui::GetStyle().ItemSpacing.x;
-                        ImGui::SetNextItemWidth(-extensionWidth);
+                        ImGui::SetNextItemWidth(std::max(30.0f, assetCardWidth - extensionWidth - 12.0f));
                     }
                     else
                     {
-                        ImGui::SetNextItemWidth(-1.0f);
+                        ImGui::SetNextItemWidth(std::max(30.0f, assetCardWidth - 12.0f));
                     }
 
                     ImGuiInputTextFlags flags =
@@ -11490,10 +11813,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     bool deleteThisAsset = false;
                     bool duplicateThisAsset = false;
                     const bool selected = (m_selectedAssetPath == fullPath);
-                    const bool clicked = ImGui::Selectable(name.c_str(), selected, ImGuiSelectableFlags_SpanAllColumns);
+                    MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath);
+                    const bool clicked = DrawAssetPreviewCard(
+                        fullPath,
+                        name,
+                        meta,
+                        selected,
+                        assetCardWidth,
+                        assetCardHeight);
                     if (clicked)
                     {
-                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
+                        if (meta != nullptr)
                         {
                             if (meta->type == MetaFileAsset::FileType::MODEL ||
                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
