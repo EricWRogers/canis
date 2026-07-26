@@ -216,6 +216,7 @@ namespace Canis
             float _cardHeight);
         bool GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId);
         void DestroyAssetPreviewCache();
+        void CacheSceneCameraFrameIfNeeded();
         void DrawScriptsPanel();
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
@@ -353,8 +354,11 @@ namespace Canis
             RenderTarget renderTarget = {};
             std::filesystem::file_time_type writeTime = std::filesystem::file_time_type::min();
             double lastRenderSeconds = -1.0;
+            double lastSourceCheckSeconds = -1.0;
+            bool diskCacheChecked = false;
         };
         std::unordered_map<std::string, MaterialPreviewCacheEntry> m_materialPreviewCache = {};
+        double m_lastSceneCameraCacheSeconds = -1.0;
         std::string m_selectedScriptPath = {};
         std::string m_animationClipStatePath = {};
         std::string m_animatorStatePath = {};

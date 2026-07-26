@@ -60,8 +60,6 @@
 #include <array>
 
 #include <stb_image.h>
-#define STB_IMAGE_WRITE_STATIC
-#define STB_IMAGE_WRITE_IMPLEMENTATION
 #include <stb_image_write.h>
 
 namespace Canis
@@ -80,6 +78,156 @@ namespace Canis
             ImGui::PopID();
 
         ImGui::PopID();
+    }
+
+    static std::filesystem::path GetMaterialPreviewCachePath(const std::string &_materialPath)
+    {
+        uint64_t cacheId = static_cast<uint64_t>(std::hash<std::string>{}(_materialPath));
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(_materialPath))
+        {
+            if (static_cast<uint64_t>(meta->uuid) != 0u)
+                cacheId = static_cast<uint64_t>(meta->uuid);
+        }
+
+        return std::filesystem::path("cache") /
+            "editor" /
+            "material_previews" /
+            (std::to_string(cacheId) + ".png");
+    }
+
+    static std::filesystem::file_time_type GetAssetWriteTime(const std::string &_path)
+    {
+        if (_path.empty() || _path == "Path was not found in AssetLibrary")
+            return std::filesystem::file_time_type::min();
+
+        std::error_code ec = {};
+        const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(_path, ec);
+        return ec ? std::filesystem::file_time_type::min() : writeTime;
+    }
+
+    static std::filesystem::file_time_type GetMaterialPreviewSourceWriteTime(
+        const std::string &_materialPath,
+        const MaterialAsset &_material)
+    {
+        std::filesystem::file_time_type newestWriteTime = GetAssetWriteTime(_materialPath);
+        const int textureIds[] =
+        {
+            _material.albedoId,
+            _material.specularId,
+            _material.roughnessId,
+            _material.metallicId,
+            _material.emissionId,
+        };
+
+        for (const int textureId : textureIds)
+        {
+            if (textureId < 0)
+                continue;
+            newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(AssetManager::GetPath(textureId)));
+        }
+
+        if (_material.shaderId >= 0)
+        {
+            const std::string shaderBasePath = AssetManager::GetPath(_material.shaderId);
+            newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(shaderBasePath));
+            newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(shaderBasePath + ".vs"));
+            newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(shaderBasePath + ".fs"));
+        }
+
+        return newestWriteTime;
+    }
+
+    static bool WriteFramebufferToPng(
+        const unsigned int _framebuffer,
+        const int _width,
+        const int _height,
+        const std::filesystem::path &_outputPath)
+    {
+        if (_framebuffer == 0 || _width <= 0 || _height <= 0)
+            return false;
+
+        std::error_code directoryError = {};
+        std::filesystem::create_directories(_outputPath.parent_path(), directoryError);
+        if (directoryError)
+        {
+            Debug::Warning(
+                "Failed to create editor cache directory '%s': %s",
+                _outputPath.parent_path().string().c_str(),
+                directoryError.message().c_str());
+            return false;
+        }
+
+        GLint previousReadFramebuffer = 0;
+        GLint previousReadBuffer = GL_BACK;
+        GLint previousPackAlignment = 4;
+        glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+        glGetIntegerv(GL_READ_BUFFER, &previousReadBuffer);
+        glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
+        glReadBuffer(GL_COLOR_ATTACHMENT0);
+        glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+        const size_t rowBytes = static_cast<size_t>(_width) * 4u;
+        std::vector<unsigned char> pixels(rowBytes * static_cast<size_t>(_height));
+        glReadPixels(0, 0, _width, _height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+        glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+        glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer);
+        glReadBuffer(previousReadBuffer);
+
+        std::vector<unsigned char> topDownPixels(pixels.size());
+        for (int row = 0; row < _height; ++row)
+        {
+            const size_t sourceOffset = static_cast<size_t>(_height - row - 1) * rowBytes;
+            const size_t destinationOffset = static_cast<size_t>(row) * rowBytes;
+            std::copy_n(pixels.data() + sourceOffset, rowBytes, topDownPixels.data() + destinationOffset);
+        }
+
+        return stbi_write_png(
+            _outputPath.string().c_str(),
+            _width,
+            _height,
+            4,
+            topDownPixels.data(),
+            static_cast<int>(rowBytes)) != 0;
+    }
+
+    static bool LoadPngIntoRenderTarget(
+        const std::filesystem::path &_cachePath,
+        RenderTarget &_target)
+    {
+        if (_target.colorTexture == 0)
+            return false;
+
+        int width = 0;
+        int height = 0;
+        int channels = 0;
+        stbi_set_flip_vertically_on_load(true);
+        unsigned char *pixels = stbi_load(_cachePath.string().c_str(), &width, &height, &channels, 4);
+        if (pixels == nullptr)
+            return false;
+
+        const bool dimensionsMatch = width == _target.width && height == _target.height;
+        if (dimensionsMatch)
+        {
+            GLint previousTexture = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+            glBindTexture(GL_TEXTURE_2D, _target.colorTexture);
+            glTexSubImage2D(
+                GL_TEXTURE_2D,
+                0,
+                0,
+                0,
+                width,
+                height,
+                GL_RGBA,
+                GL_UNSIGNED_BYTE,
+                pixels);
+            glBindTexture(GL_TEXTURE_2D, previousTexture);
+        }
+
+        stbi_image_free(pixels);
+        return dimensionsMatch;
     }
 
     static bool ExportHierarchyRootsToPrefabAsset(
@@ -5495,6 +5643,36 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 #endif
     }
 
+    void Editor::CacheSceneCameraFrameIfNeeded()
+    {
+#if CANIS_EDITOR
+        if (m_gameFramebuffer == 0 || m_gameTextureWidth <= 0 || m_gameTextureHeight <= 0)
+            return;
+
+        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        constexpr double cacheIntervalSeconds = 5.0;
+        if (m_lastSceneCameraCacheSeconds >= 0.0 &&
+            (nowSeconds - m_lastSceneCameraCacheSeconds) < cacheIntervalSeconds)
+        {
+            return;
+        }
+
+        m_lastSceneCameraCacheSeconds = nowSeconds;
+        const std::filesystem::path cachePath =
+            std::filesystem::path("cache") / "editor" / "scene_camera.png";
+        if (!WriteFramebufferToPng(
+                m_gameFramebuffer,
+                m_gameTextureWidth,
+                m_gameTextureHeight,
+                cachePath))
+        {
+            Debug::Warning(
+                "Failed to cache Scene camera image '%s'.",
+                cachePath.string().c_str());
+        }
+#endif
+    }
+
     void Editor::Draw(Scene *_scene, Window *_window, App *_app, GameCodeObject *_gameSharedLib, float _deltaTime)
     {
 #if CANIS_EDITOR
@@ -5532,6 +5710,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_scene->Render(_deltaTime);
         m_gameRenderProjection = m_scene->GetLastRenderProjection();
         RenderGameDebug();
+        CacheSceneCameraFrameIfNeeded();
         EndGameRender(m_window);
         m_scene->ClearEditorCameraOverrides();
         UpdateSceneCameraConfigAutosave(_deltaTime);
@@ -13109,22 +13288,49 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return false;
 
         MaterialPreviewCacheEntry &cache = m_materialPreviewCache[_materialPath];
-        std::error_code timestampError = {};
-        const std::filesystem::file_time_type writeTime =
-            std::filesystem::exists(_materialPath)
-                ? std::filesystem::last_write_time(_materialPath, timestampError)
-                : std::filesystem::file_time_type::min();
         const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
-        const bool needsRefresh =
-            cache.renderTarget.colorTexture == 0 ||
-            (!timestampError && cache.writeTime != writeTime) ||
-            cache.lastRenderSeconds < 0.0 ||
-            (nowSeconds - cache.lastRenderSeconds) >= 1.0;
+        std::filesystem::file_time_type sourceWriteTime = cache.writeTime;
+        if (!cache.diskCacheChecked ||
+            cache.lastSourceCheckSeconds < 0.0 ||
+            (nowSeconds - cache.lastSourceCheckSeconds) >= 1.0)
+        {
+            sourceWriteTime = GetMaterialPreviewSourceWriteTime(_materialPath, *material);
+            cache.lastSourceCheckSeconds = nowSeconds;
+        }
+        const std::filesystem::path cachePath = GetMaterialPreviewCachePath(_materialPath);
 
         constexpr int previewSize = 128;
         EnsureRenderTarget(cache.renderTarget, previewSize, previewSize);
         if (cache.renderTarget.framebuffer == 0)
             return false;
+
+        bool shouldPersistRenderedPreview = false;
+        if (!cache.diskCacheChecked)
+        {
+            cache.diskCacheChecked = true;
+
+            std::error_code cacheTimeError = {};
+            const std::filesystem::file_time_type cacheWriteTime =
+                std::filesystem::last_write_time(cachePath, cacheTimeError);
+            if (!cacheTimeError &&
+                cacheWriteTime >= sourceWriteTime &&
+                LoadPngIntoRenderTarget(cachePath, cache.renderTarget))
+            {
+                cache.writeTime = sourceWriteTime;
+                cache.lastRenderSeconds = nowSeconds;
+            }
+            else
+            {
+                shouldPersistRenderedPreview = true;
+            }
+        }
+
+        const bool sourceChanged = cache.writeTime != sourceWriteTime;
+        shouldPersistRenderedPreview |= sourceChanged;
+        const bool needsRefresh =
+            cache.lastRenderSeconds < 0.0 ||
+            sourceChanged ||
+            (nowSeconds - cache.lastRenderSeconds) >= 1.0;
 
         if (!needsRefresh)
         {
@@ -13228,6 +13434,18 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         sphere->Draw(*shader, modelMatrix, nullptr, material->albedoId, baseColor, nullptr);
         shader->UnUse();
 
+        if (shouldPersistRenderedPreview &&
+            !WriteFramebufferToPng(
+                cache.renderTarget.framebuffer,
+                cache.renderTarget.width,
+                cache.renderTarget.height,
+                cachePath))
+        {
+            Debug::Warning(
+                "Failed to cache material preview '%s'.",
+                cachePath.string().c_str());
+        }
+
         glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
         glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
         glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
@@ -13237,7 +13455,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         cullWasEnabled ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
         glActiveTexture(previousActiveTexture);
 
-        cache.writeTime = timestampError ? std::filesystem::file_time_type::min() : writeTime;
+        cache.writeTime = sourceWriteTime;
         cache.lastRenderSeconds = nowSeconds;
         _textureId = cache.renderTarget.colorTexture;
         return _textureId != 0;
