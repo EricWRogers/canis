@@ -359,6 +359,7 @@ namespace Canis
         };
         std::unordered_map<std::string, MaterialPreviewCacheEntry> m_materialPreviewCache = {};
         double m_lastSceneCameraCacheSeconds = -1.0;
+        std::string m_lastSceneCameraCachePath = {};
         std::string m_selectedScriptPath = {};
         std::string m_animationClipStatePath = {};
         std::string m_animatorStatePath = {};

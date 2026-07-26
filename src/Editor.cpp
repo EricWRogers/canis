@@ -95,6 +95,25 @@ namespace Canis
             (std::to_string(cacheId) + ".png");
     }
 
+    static std::filesystem::path GetScenePreviewCachePath(const std::string &_scenePath)
+    {
+        uint64_t cacheId = static_cast<uint64_t>(std::hash<std::string>{}(_scenePath));
+        std::error_code metaExistsError = {};
+        if (std::filesystem::exists(_scenePath + ".meta", metaExistsError))
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(_scenePath))
+            {
+                if (static_cast<uint64_t>(meta->uuid) != 0u)
+                    cacheId = static_cast<uint64_t>(meta->uuid);
+            }
+        }
+
+        return std::filesystem::path("cache") /
+            "editor" /
+            "scene_previews" /
+            (std::to_string(cacheId) + ".png");
+    }
+
     static std::filesystem::file_time_type GetAssetWriteTime(const std::string &_path)
     {
         if (_path.empty() || _path == "Path was not found in AssetLibrary")
@@ -5646,20 +5665,26 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::CacheSceneCameraFrameIfNeeded()
     {
 #if CANIS_EDITOR
-        if (m_gameFramebuffer == 0 || m_gameTextureWidth <= 0 || m_gameTextureHeight <= 0)
+        if (m_scene == nullptr ||
+            m_gameFramebuffer == 0 ||
+            m_gameTextureWidth <= 0 ||
+            m_gameTextureHeight <= 0)
             return;
 
+        const std::filesystem::path cachePath = GetScenePreviewCachePath(m_scene->m_path);
+        const std::string cachePathString = cachePath.generic_string();
+        const bool sceneChanged = cachePathString != m_lastSceneCameraCachePath;
         const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
         constexpr double cacheIntervalSeconds = 5.0;
-        if (m_lastSceneCameraCacheSeconds >= 0.0 &&
+        if (!sceneChanged &&
+            m_lastSceneCameraCacheSeconds >= 0.0 &&
             (nowSeconds - m_lastSceneCameraCacheSeconds) < cacheIntervalSeconds)
         {
             return;
         }
 
         m_lastSceneCameraCacheSeconds = nowSeconds;
-        const std::filesystem::path cachePath =
-            std::filesystem::path("cache") / "editor" / "scene_camera.png";
+        m_lastSceneCameraCachePath = cachePathString;
         if (!WriteFramebufferToPng(
                 m_gameFramebuffer,
                 m_gameTextureWidth,
