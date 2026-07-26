@@ -11520,11 +11520,54 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return _textureId != 0;
     }
 
+    bool Editor::GetScenePreviewTexture(
+        const std::string &_scenePath,
+        unsigned int &_textureId,
+        int &_width,
+        int &_height)
+    {
+        _textureId = 0;
+        _width = 1;
+        _height = 1;
+
+        const std::filesystem::path cachePath = GetScenePreviewCachePath(_scenePath);
+        std::error_code writeTimeError = {};
+        const std::filesystem::file_time_type writeTime =
+            std::filesystem::last_write_time(cachePath, writeTimeError);
+        if (writeTimeError)
+            return false;
+
+        ScenePreviewCacheEntry &cache = m_scenePreviewCache[_scenePath];
+        if (cache.texture.id == 0 || cache.writeTime != writeTime)
+        {
+            GLTexture replacement = LoadImageToGLTexture(cachePath.string(), GL_RGBA, GL_RGBA);
+            if (replacement.id == 0)
+                return false;
+
+            if (cache.texture.id != 0)
+                glDeleteTextures(1, &cache.texture.id);
+            cache.texture = replacement;
+            cache.writeTime = writeTime;
+        }
+
+        _textureId = cache.texture.id;
+        _width = std::max(cache.texture.width, 1);
+        _height = std::max(cache.texture.height, 1);
+        return _textureId != 0;
+    }
+
     void Editor::DestroyAssetPreviewCache()
     {
         for (auto &entry : m_materialPreviewCache)
             DestroyRenderTarget(entry.second.renderTarget);
         m_materialPreviewCache.clear();
+
+        for (auto &entry : m_scenePreviewCache)
+        {
+            if (entry.second.texture.id != 0)
+                glDeleteTextures(1, &entry.second.texture.id);
+        }
+        m_scenePreviewCache.clear();
     }
 
     bool Editor::DrawAssetPreviewCard(
@@ -11573,6 +11616,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::MATERIAL)
         {
             flipVertically = GetMaterialPreviewTexture(_assetPath, textureId);
+        }
+        else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::SCENE)
+        {
+            (void)GetScenePreviewTexture(
+                _assetPath,
+                textureId,
+                sourceWidth,
+                sourceHeight);
         }
 
         if (textureId != 0)

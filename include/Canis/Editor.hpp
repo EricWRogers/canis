@@ -191,6 +191,11 @@ namespace Canis
             float _cardWidth,
             float _cardHeight);
         bool GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId);
+        bool GetScenePreviewTexture(
+            const std::string &_scenePath,
+            unsigned int &_textureId,
+            int &_width,
+            int &_height);
         void DestroyAssetPreviewCache();
         void CacheSceneCameraFrameIfNeeded();
         void DrawScriptsPanel();
@@ -312,6 +317,12 @@ namespace Canis
             bool diskCacheChecked = false;
         };
         std::unordered_map<std::string, MaterialPreviewCacheEntry> m_materialPreviewCache = {};
+        struct ScenePreviewCacheEntry
+        {
+            GLTexture texture = {};
+            std::filesystem::file_time_type writeTime = std::filesystem::file_time_type::min();
+        };
+        std::unordered_map<std::string, ScenePreviewCacheEntry> m_scenePreviewCache = {};
         double m_lastSceneCameraCacheSeconds = -1.0;
         std::string m_lastSceneCameraCachePath = {};
         std::string m_selectedScriptPath = {};
