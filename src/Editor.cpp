@@ -5481,6 +5481,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         DestroyGamePickingRenderTarget();
         DestroyPlayRenderTarget();
         DestroyRenderTarget(m_gameViewPostProcessTarget);
+        DestroyRenderTarget(m_sceneThumbnailTarget);
         DestroyRenderTarget(m_playViewPostProcessTarget);
     }
 
@@ -5666,9 +5667,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
 #if CANIS_EDITOR
         if (m_scene == nullptr ||
-            m_gameFramebuffer == 0 ||
-            m_gameTextureWidth <= 0 ||
-            m_gameTextureHeight <= 0)
+            m_window == nullptr ||
+            m_mode == EditorMode::HIDDEN)
             return;
 
         const std::filesystem::path cachePath = GetScenePreviewCachePath(m_scene->m_path);
@@ -5685,16 +5685,91 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         m_lastSceneCameraCacheSeconds = nowSeconds;
         m_lastSceneCameraCachePath = cachePathString;
+
+        constexpr int thumbnailSize = 256;
+        EnsureRenderTarget(m_sceneThumbnailTarget, thumbnailSize, thumbnailSize);
+        if (m_sceneThumbnailTarget.framebuffer == 0)
+            return;
+
+        const bool hadLastRenderCamera = m_scene->HasLastRenderCamera();
+        const Matrix4 previousLastView = m_scene->GetLastRenderView();
+        const Matrix4 previousLastProjection = m_scene->GetLastRenderProjection();
+        const Vector3 previousLastCameraPosition = m_scene->GetLastRenderCameraPosition();
+        const float previousLastNearClip = m_scene->GetLastRenderCameraNearClip();
+        const float previousLastFarClip = m_scene->GetLastRenderCameraFarClip();
+
+        const Matrix4 previousEditor3DView = m_scene->GetEditorCamera3DView();
+        const Matrix4 previousEditor3DProjection = m_scene->GetEditorCamera3DProjection();
+        const Matrix4 previousEditor2DMatrix = m_scene->GetEditorCamera2DMatrix();
+        const Vector2 previousEditor2DPosition = m_scene->GetEditorCamera2DPosition();
+
+        if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
+        {
+            const Matrix4 thumbnailProjection = glm::perspective(
+                DEG2RAD * m_editorCamera3DFovDegrees,
+                1.0f,
+                0.05f,
+                2000.0f);
+            m_scene->SetEditorCamera3DOverride(previousEditor3DView, thumbnailProjection);
+        }
+        else
+        {
+            const float size = static_cast<float>(thumbnailSize);
+            Matrix4 projection = glm::ortho(0.0f, size, 0.0f, size, 0.0f, 100.0f);
+            Matrix4 view(1.0f);
+            view = glm::translate(
+                view,
+                Vector3(
+                    -m_editorCamera2DPosition.x + size * 0.5f,
+                    -m_editorCamera2DPosition.y + size * 0.5f,
+                    0.0f));
+            view = glm::scale(view, Vector3(m_editorCamera2DScale, m_editorCamera2DScale, 0.0f));
+            m_scene->SetEditorCamera2DOverride(projection * view, m_editorCamera2DPosition);
+        }
+
+        m_window->SetRenderSize(thumbnailSize, thumbnailSize);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_sceneThumbnailTarget.framebuffer);
+        glViewport(0, 0, thumbnailSize, thumbnailSize);
+        const Color clear = m_window->GetClearColor();
+        glClearColor(clear.r, clear.g, clear.b, clear.a);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        m_scene->Render(0.0f);
+
         if (!WriteFramebufferToPng(
-                m_gameFramebuffer,
-                m_gameTextureWidth,
-                m_gameTextureHeight,
+                m_sceneThumbnailTarget.framebuffer,
+                thumbnailSize,
+                thumbnailSize,
                 cachePath))
         {
             Debug::Warning(
                 "Failed to cache Scene camera image '%s'.",
                 cachePath.string().c_str());
         }
+
+        if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
+            m_scene->SetEditorCamera3DOverride(previousEditor3DView, previousEditor3DProjection);
+        else
+            m_scene->SetEditorCamera2DOverride(previousEditor2DMatrix, previousEditor2DPosition);
+
+        if (hadLastRenderCamera)
+        {
+            m_scene->SetLastRenderCamera(
+                previousLastView,
+                previousLastProjection,
+                previousLastCameraPosition,
+                previousLastNearClip,
+                previousLastFarClip);
+        }
+        else
+        {
+            m_scene->ClearLastRenderCamera();
+        }
+
+        const int sceneWidth = std::max(1, m_gameTextureWidth);
+        const int sceneHeight = std::max(1, m_gameTextureHeight);
+        m_window->SetRenderSize(sceneWidth, sceneHeight);
+        glBindFramebuffer(GL_FRAMEBUFFER, m_gameFramebuffer);
+        glViewport(0, 0, sceneWidth, sceneHeight);
 #endif
     }
 
