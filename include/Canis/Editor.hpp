@@ -424,6 +424,7 @@ namespace Canis
         unsigned int m_gameColorTexture = 0;
         unsigned int m_gameDepthRbo = 0;
         RenderTarget m_gameViewPostProcessTarget = {};
+        RenderTarget m_sceneThumbnailTarget = {};
         unsigned int m_gamePickingFramebuffer = 0;
         unsigned int m_gamePickingColorTexture = 0;
         unsigned int m_gamePickingDepthRbo = 0;
