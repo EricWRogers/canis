@@ -82,6 +82,13 @@ namespace Canis
         float receivedTime = 0.0f;
     };
 
+    struct NetworkGameAction
+    {
+        NetworkClientId senderClientId = 0;
+        std::string action = {};
+        std::string payload = {};
+    };
+
     struct NetworkIdentity
     {
         static constexpr const char* ScriptName = "Canis::NetworkIdentity";
@@ -153,6 +160,10 @@ namespace Canis
         bool TryGetRigidbody(const std::string &_key, NetworkRigidbodyState &_outState) const;
         void PublishCombat(const std::string &_key, const NetworkCombatState &_state);
         bool TryGetCombat(const std::string &_key, NetworkCombatState &_outState) const;
+        void PublishGameState(const std::string &_key, const std::string &_value);
+        bool TryGetGameState(const std::string &_key, std::string &_outValue) const;
+        void SendGameAction(const std::string &_action, const std::string &_payload = "");
+        std::vector<NetworkGameAction> ConsumeGameActions();
 
     private:
         struct Impl;
@@ -175,6 +186,8 @@ namespace Canis
         std::unordered_map<std::string, NetworkInputState> m_inputStates = {};
         std::unordered_map<std::string, NetworkRigidbodyState> m_rigidbodyStates = {};
         std::unordered_map<std::string, NetworkCombatState> m_combatStates = {};
+        std::unordered_map<std::string, std::string> m_gameStates = {};
+        std::vector<NetworkGameAction> m_gameActions = {};
 
         NetworkPlayer* FindPlayer(NetworkClientId _id);
         const NetworkPlayer* FindPlayer(NetworkClientId _id) const;

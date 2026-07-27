@@ -239,10 +239,14 @@ namespace Canis
         m_inputStates.clear();
         m_rigidbodyStates.clear();
         m_combatStates.clear();
+        m_gameStates.clear();
+        m_gameActions.clear();
         m_players.push_back(NetworkPlayer{ .id = 1, .name = m_playerName, .ready = true, .host = true, .connected = true });
 
         if (!m_impl->Open(_port))
             Debug::Warning("NetworkSession host could not open UDP port %u through SDL3_net. Continuing as local host.", static_cast<unsigned int>(_port));
+        else
+            Debug::Log("Hosting network session on UDP port %u.", static_cast<unsigned int>(_port));
 
         LoadLobbyScene();
         return true;
@@ -263,6 +267,8 @@ namespace Canis
         m_inputStates.clear();
         m_rigidbodyStates.clear();
         m_combatStates.clear();
+        m_gameStates.clear();
+        m_gameActions.clear();
 
         const std::string address = _address.empty() ? "127.0.0.1" : _address;
 
@@ -280,11 +286,22 @@ namespace Canis
         }
 
         SendMessageToServer("HELLO|" + m_playerName + "|" + m_lobbyScenePath);
+        Debug::Log(
+            "Connecting to network host %s:%u.",
+            address.c_str(),
+            static_cast<unsigned int>(_port));
         return true;
     }
 
     void NetworkSession::Disconnect()
     {
+        if (m_impl != nullptr && m_impl->socket != nullptr)
+        {
+            if (m_mode == NetworkMode::Client && m_localClientId != 0)
+                SendMessageToServer("BYE|" + std::to_string(m_localClientId));
+            else if (m_mode == NetworkMode::Host)
+                BroadcastMessage("CLOSED");
+        }
         if (m_impl != nullptr)
             m_impl->Close();
 
@@ -299,6 +316,8 @@ namespace Canis
         m_inputStates.clear();
         m_rigidbodyStates.clear();
         m_combatStates.clear();
+        m_gameStates.clear();
+        m_gameActions.clear();
         m_broadcastTimer = 0.0f;
     }
 
@@ -381,6 +400,8 @@ namespace Canis
         m_inputStates.clear();
         m_rigidbodyStates.clear();
         m_combatStates.clear();
+        m_gameStates.clear();
+        m_gameActions.clear();
 
         BroadcastMessage("START|" + m_matchScenePath + "|" + FormatFloat(m_matchDurationSeconds));
         m_app.LoadScene(m_matchScenePath);
@@ -398,6 +419,8 @@ namespace Canis
         m_inputStates.clear();
         m_rigidbodyStates.clear();
         m_combatStates.clear();
+        m_gameStates.clear();
+        m_gameActions.clear();
 
         if (m_mode == NetworkMode::Host)
             BroadcastMessage("LOBBY|" + m_lobbyScenePath);
@@ -548,6 +571,54 @@ namespace Canis
         return true;
     }
 
+    void NetworkSession::PublishGameState(const std::string &_key, const std::string &_value)
+    {
+        if (_key.empty() || !IsHost())
+            return;
+
+        const std::string key = SanitizeToken(_key);
+        const std::string value = SanitizeToken(_value);
+        m_gameStates[key] = value;
+        BroadcastMessage("GAMESTATE|" + key + "|" + value);
+    }
+
+    bool NetworkSession::TryGetGameState(const std::string &_key, std::string &_outValue) const
+    {
+        const auto it = m_gameStates.find(_key);
+        if (it == m_gameStates.end())
+            return false;
+
+        _outValue = it->second;
+        return true;
+    }
+
+    void NetworkSession::SendGameAction(const std::string &_action, const std::string &_payload)
+    {
+        if (_action.empty() || IsOffline())
+            return;
+
+        const std::string action = SanitizeToken(_action);
+        const std::string payload = SanitizeToken(_payload);
+        if (IsHost())
+        {
+            m_gameActions.push_back(NetworkGameAction{
+                .senderClientId = m_localClientId,
+                .action = action,
+                .payload = payload });
+            return;
+        }
+
+        if (m_localClientId != 0)
+            SendMessageToServer("GAMEACTION|" + action + "|" + payload);
+    }
+
+    std::vector<NetworkGameAction> NetworkSession::ConsumeGameActions()
+    {
+        std::vector<NetworkGameAction> actions = {};
+        actions.swap(m_gameActions);
+        return actions;
+    }
+
     NetworkPlayer* NetworkSession::FindPlayer(NetworkClientId _id)
     {
         for (NetworkPlayer &player : m_players)
@@ -618,11 +689,22 @@ namespace Canis
 
                 if (clientId == 0)
                 {
+                    if (m_players.size() >= 4u)
+                    {
+                        if (auto peerIt = m_impl->peers.find(_peerKey); peerIt != m_impl->peers.end())
+                            m_impl->SendTo(peerIt->second, "REJECT|Lobby_full");
+                        return;
+                    }
                     clientId = m_nextClientId++;
                     m_impl->clientPeerKeys[clientId] = _peerKey;
                 }
 
                 AddOrUpdatePlayer(NetworkPlayer{ .id = clientId, .name = parts[1], .ready = true, .host = false, .connected = true });
+                Debug::Log(
+                    "Network client %u ('%s') joined; lobby now has %zu/4 players.",
+                    static_cast<unsigned int>(clientId),
+                    parts[1].c_str(),
+                    m_players.size());
 
                 if (auto peerIt = m_impl->peers.find(_peerKey); peerIt != m_impl->peers.end())
                     m_impl->SendTo(peerIt->second, "WELCOME|" + std::to_string(clientId) + "|" + m_lobbyScenePath);
@@ -679,6 +761,50 @@ namespace Canis
                 m_combatStates[parts[1]] = state;
                 BroadcastMessage(_message);
             }
+            else if (type == "GAMEACTION" && parts.size() >= 2u)
+            {
+                NetworkClientId senderClientId = 0;
+                for (const auto &entry : m_impl->clientPeerKeys)
+                {
+                    if (entry.second == _peerKey)
+                    {
+                        senderClientId = entry.first;
+                        break;
+                    }
+                }
+
+                if (senderClientId != 0)
+                {
+                    m_gameActions.push_back(NetworkGameAction{
+                        .senderClientId = senderClientId,
+                        .action = parts[1],
+                        .payload = parts.size() >= 3u ? parts[2] : "" });
+                }
+            }
+            else if (type == "BYE")
+            {
+                NetworkClientId departingId = 0;
+                for (const auto &entry : m_impl->clientPeerKeys)
+                {
+                    if (entry.second == _peerKey)
+                    {
+                        departingId = entry.first;
+                        break;
+                    }
+                }
+                if (departingId != 0)
+                {
+                    m_players.erase(
+                        std::remove_if(
+                            m_players.begin(),
+                            m_players.end(),
+                            [&](const NetworkPlayer &player) { return player.id == departingId; }),
+                        m_players.end());
+                    m_impl->clientPeerKeys.erase(departingId);
+                    m_impl->peers.erase(_peerKey);
+                    BroadcastPlayers();
+                }
+            }
 
             return;
         }
@@ -690,6 +816,9 @@ namespace Canis
                 m_localClientId = ParseNumber<NetworkClientId>(parts[1], 0);
                 m_lobbyScenePath = parts[2];
                 m_phase = NetworkPhase::Lobby;
+                Debug::Log(
+                    "Joined network session as client %u.",
+                    static_cast<unsigned int>(m_localClientId));
                 LoadLobbyScene();
             }
             else if (type == "PLAYERS" && parts.size() >= 2u)
@@ -768,6 +897,14 @@ namespace Canis
                 }
                 state.receivedTime = m_timeSeconds;
                 m_inputStates[parts[1]] = state;
+            }
+            else if (type == "GAMESTATE" && parts.size() >= 3u)
+            {
+                m_gameStates[parts[1]] = parts[2];
+            }
+            else if (type == "REJECT" || type == "CLOSED")
+            {
+                Disconnect();
             }
             else if (type == "COMBAT" && parts.size() >= 9u)
             {
