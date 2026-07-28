@@ -20,6 +20,7 @@
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
+#include <unordered_set>
 #include <SDL3/SDL_timer.h>
 
 namespace Canis
@@ -248,16 +249,22 @@ namespace Canis
         ClearDebugGizmoLines();
         m_isUpdating = true;
 
+        const auto updateSystem = [&](System* _system)
+        {
+            const Uint64 start = SDL_GetTicksNS();
+            _system->Update(m_registry, _deltaTime);
+            const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
+            if (SystemTiming* timing = GetSystemTiming(_system))
+                timing->updateMs = elapsedMs;
+        };
+
         for (System* system : m_updateSystems)
         {
-            if (m_paused && !system->UpdateWhenPaused())
+            if (system->UpdateAfterScripts() ||
+                (m_paused && !system->UpdateWhenPaused()))
                 continue;
 
-            const Uint64 start = SDL_GetTicksNS();
-            system->Update(m_registry, _deltaTime);
-            const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
-            if (SystemTiming* timing = GetSystemTiming(system))
-                timing->updateMs = elapsedMs;
+            updateSystem(system);
         }
         // Run Ready only on entities created since the last frame.
         for (size_t i = 0; i < m_entitiesToReady.size(); ++i)
@@ -301,6 +308,18 @@ namespace Canis
                     se->Update(_deltaTime);
                 }
             }
+        }
+
+        // Animation state and model assets are commonly selected by scripts.
+        // Evaluate post-script systems before rendering so a newly selected
+        // skinned model never reaches the renderer with an invalid/old pose.
+        for (System* system : m_updateSystems)
+        {
+            if (!system->UpdateAfterScripts() ||
+                (m_paused && !system->UpdateWhenPaused()))
+                continue;
+
+            updateSystem(system);
         }
 
         m_isUpdating = false;
@@ -540,15 +559,21 @@ namespace Canis
                     }
 
                     auto& rectChildren = transform.children;
+                    std::unordered_set<Canis::Entity*> seenRectChildren = {};
                     rectChildren.erase(std::remove_if(rectChildren.begin(), rectChildren.end(),
-                        [entity](Canis::Entity* child) -> bool
+                        [entity, &seenRectChildren](Canis::Entity* child) -> bool
                         {
                             if (child == nullptr || !child->HasComponent<RectTransform>())
                                 return true;
 
                             RectTransform& childTransform = child->GetComponent<RectTransform>();
-                            childTransform.parent = entity;
-                            return false;
+                            // The child's encoded parent is authoritative. Only
+                            // infer it from a children list for legacy data that
+                            // did not encode a parent.
+                            if (childTransform.parent == nullptr)
+                                childTransform.parent = entity;
+                            return childTransform.parent != entity ||
+                                !seenRectChildren.insert(child).second;
                         }), rectChildren.end());
                 }
 
@@ -571,15 +596,18 @@ namespace Canis
                     }
 
                     auto& transformChildren = transform.children;
+                    std::unordered_set<Canis::Entity*> seenTransformChildren = {};
                     transformChildren.erase(std::remove_if(transformChildren.begin(), transformChildren.end(),
-                        [entity](Canis::Entity* child) -> bool
+                        [entity, &seenTransformChildren](Canis::Entity* child) -> bool
                         {
                             if (child == nullptr || !child->HasComponent<Transform>())
                                 return true;
 
                             Transform& childTransform = child->GetComponent<Transform>();
-                            childTransform.parent = entity;
-                            return false;
+                            if (childTransform.parent == nullptr)
+                                childTransform.parent = entity;
+                            return childTransform.parent != entity ||
+                                !seenTransformChildren.insert(child).second;
                         }), transformChildren.end());
                 }
             }

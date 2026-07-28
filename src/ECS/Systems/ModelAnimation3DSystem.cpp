@@ -47,6 +47,7 @@ namespace Canis
                 modelAnimation.poseInitialized = false;
                 modelAnimation.lastEvaluatedAnimationIndex = -1;
                 modelAnimation.lastEvaluatedAnimationTime = 0.0f;
+                modelAnimation.lastEvaluatedRootMotionMask = Vector3(0.0f);
             }
 
             const i32 animationCount = model->GetAnimationCount();
@@ -83,16 +84,25 @@ namespace Canis
 
             const bool animationChanged =
                 (modelAnimation.lastEvaluatedAnimationIndex != modelAnimation.animationIndex) ||
-                (std::fabs(modelAnimation.lastEvaluatedAnimationTime - modelAnimation.animationTime) > 1e-6f);
+                (std::fabs(modelAnimation.lastEvaluatedAnimationTime - modelAnimation.animationTime) > 1e-6f) ||
+                (glm::length(
+                    modelAnimation.lastEvaluatedRootMotionMask -
+                    modelAnimation.rootMotionMask) > 1e-6f);
 
             if (!modelAnimation.poseInitialized || animationChanged)
             {
-                if (!model->UpdateAnimation(modelAnimation.pose, modelAnimation.animationIndex, modelAnimation.animationTime))
+                if (!model->UpdateAnimation(
+                        modelAnimation.pose,
+                        modelAnimation.animationIndex,
+                        modelAnimation.animationTime,
+                        modelAnimation.rootMotionMask))
                     model->ResetPose(modelAnimation.pose);
 
                 modelAnimation.poseInitialized = true;
                 modelAnimation.lastEvaluatedAnimationIndex = modelAnimation.animationIndex;
                 modelAnimation.lastEvaluatedAnimationTime = modelAnimation.animationTime;
+                modelAnimation.lastEvaluatedRootMotionMask =
+                    modelAnimation.rootMotionMask;
             }
         }
     }

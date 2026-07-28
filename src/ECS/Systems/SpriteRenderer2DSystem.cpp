@@ -630,6 +630,7 @@ namespace Canis
 
                     if (sprite != nullptr &&
                         (_renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
+                         _renderMode == CanvasRenderMode::WORLD_SPACE ||
                          (position.x > camPos.x - size.x - halfWidth  &&
                           position.x < camPos.x + size.x + halfWidth  &&
                           position.y > camPos.y - size.y - halfHeight &&
@@ -665,6 +666,7 @@ namespace Canis
             auto canvasView = _registry.view<Canvas, RectTransform>();
             for (const entt::entity entityHandle : canvasView)
             {
+                Canvas &canvas = canvasView.get<Canvas>(entityHandle);
                 RectTransform &transform = canvasView.get<RectTransform>(entityHandle);
                 Entity *entity = transform.entity;
                 if (entity == nullptr || wasVisited(entity))
@@ -673,30 +675,57 @@ namespace Canis
                 if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
                     continue;
 
+                const unsigned int firstCanvasGlyph = glyphsCurrentIndex;
                 renderRootTree(entity);
+
+                if (_renderMode == CanvasRenderMode::WORLD_SPACE &&
+                    canvas.renderMode == CanvasRenderMode::WORLD_SPACE &&
+                    entity->HasComponent<Transform>())
+                {
+                    const Matrix4 model = entity->GetComponent<Transform>().GetModelMatrix();
+                    auto transformVertex = [&](SpriteVertex &_vertex)
+                    {
+                        const Vector4 world = model * Vector4(_vertex.position, 1.0f);
+                        _vertex.position = Vector3(world);
+                    };
+
+                    for (unsigned int glyphIndex = firstCanvasGlyph;
+                         glyphIndex < glyphsCurrentIndex;
+                         ++glyphIndex)
+                    {
+                        Glyph *glyph = glyphs[glyphIndex];
+                        transformVertex(glyph->topLeft);
+                        transformVertex(glyph->bottomLeft);
+                        transformVertex(glyph->bottomRight);
+                        transformVertex(glyph->topRight);
+                    }
+                }
             }
 
-            for (const entt::entity entityHandle : renderView)
+            if (_renderMode != CanvasRenderMode::WORLD_SPACE)
             {
-                RectTransform &transform = renderView.get<RectTransform>(entityHandle);
-                Entity *entity = transform.entity;
-                if (entity == nullptr || wasVisited(entity))
-                    continue;
+                for (const entt::entity entityHandle : renderView)
+                {
+                    RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                    Entity *entity = transform.entity;
+                    if (entity == nullptr || wasVisited(entity))
+                        continue;
 
-                if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
-                    continue;
+                    if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
+                        continue;
 
-                renderRootTree(entity);
-            }
+                    renderRootTree(entity);
+                }
 
-            for (const entt::entity entityHandle : renderView)
-            {
-                RectTransform &transform = renderView.get<RectTransform>(entityHandle);
-                Entity *entity = transform.entity;
-                if (entity == nullptr || wasVisited(entity))
-                    continue;
+                for (const entt::entity entityHandle : renderView)
+                {
+                    RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                    Entity *entity = transform.entity;
+                    if (entity == nullptr || wasVisited(entity))
+                        continue;
 
-                renderRootTree(entity);
+                    renderRootTree(entity);
+                }
             }
 
             End();
@@ -726,7 +755,27 @@ namespace Canis
             renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
 
         if (renderWorldSpaceUi)
-            renderPass(Canis::CanvasRenderMode::WORLD_SPACE, cameraProjectionOverride, useCameraProjection);
+        {
+            Matrix4 worldProjection = Matrix4(1.0f);
+            bool hasWorldProjection = false;
+            if (scene->HasEditorCamera3DOverride())
+            {
+                worldProjection =
+                    scene->GetEditorCamera3DProjection() *
+                    scene->GetEditorCamera3DView();
+                hasWorldProjection = true;
+            }
+            else if (scene->HasLastRenderCamera())
+            {
+                worldProjection =
+                    scene->GetLastRenderProjection() *
+                    scene->GetLastRenderView();
+                hasWorldProjection = true;
+            }
+
+            if (hasWorldProjection)
+                renderPass(Canis::CanvasRenderMode::WORLD_SPACE, &worldProjection, false);
+        }
 
         glDisable(GL_DEPTH_TEST);
         glDisable(GL_BLEND);

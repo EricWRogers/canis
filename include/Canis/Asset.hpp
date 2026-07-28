@@ -559,6 +559,7 @@ namespace Canis
             std::vector<Vector4> rotationsScratch = {};
             std::vector<Vector3> scalesScratch = {};
             std::vector<bool> trsChangedScratch = {};
+            std::vector<bool> rootMotionRootsScratch = {};
             std::vector<bool> visitedScratch = {};
         };
 
@@ -569,7 +570,11 @@ namespace Canis
             const std::vector<std::string> &_materialSlotNames = {});
 
         bool UpdateAnimation(i32 _clipIndex, float _timeSeconds);
-        bool UpdateAnimation(Pose3D &_pose, i32 _clipIndex, float _timeSeconds) const;
+        bool UpdateAnimation(
+            Pose3D &_pose,
+            i32 _clipIndex,
+            float _timeSeconds,
+            const Vector3 &_rootMotionMask = Vector3(0.0f)) const;
         void ResetPose();
         void ResetPose(Pose3D &_pose) const;
         void Draw(

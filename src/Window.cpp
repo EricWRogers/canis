@@ -9,8 +9,9 @@
 
 namespace Canis
 {
-    Window::Window(const char *title, int width, int height)
+    Window::Window(const char *title, int width, int height, bool _offscreen)
     {
+        m_offscreen = _offscreen;
         // if linux
 #ifdef __linux__
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
@@ -40,10 +41,10 @@ namespace Canis
         m_renderWidth = width;
         m_renderHeight = height;
 
-        m_window = SDL_CreateWindow(title,
-                                    width,
-                                    height,
-                                    SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE);
+        SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+        if (m_offscreen)
+            windowFlags |= SDL_WINDOW_HIDDEN;
+        m_window = SDL_CreateWindow(title, width, height, windowFlags);
         if (!m_window)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "Failed to create window: %s", SDL_GetError());
@@ -95,6 +96,9 @@ namespace Canis
     {
         if (m_window == nullptr || m_screenWidth <= 0 || m_screenHeight <= 0)
             return false;
+
+        if (m_offscreen)
+            return true;
 
         const Uint64 flags = SDL_GetWindowFlags(static_cast<SDL_Window*>(m_window));
         return (flags & (SDL_WINDOW_HIDDEN | SDL_WINDOW_MINIMIZED | SDL_WINDOW_OCCLUDED)) == 0u;

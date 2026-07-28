@@ -2,6 +2,7 @@
 #include <Canis/Math.hpp>
 #include <vector>
 #include <string>
+#include <unordered_map>
 #include <Canis/Data/Key.hpp>
 
 
@@ -71,6 +72,16 @@ namespace Canis
         ~InputManager();
 
         bool Update(void* _window);
+        void BeginSyntheticInputFrame();
+        void SetSyntheticKey(unsigned int _keyID, bool _down);
+        void SetSyntheticMouseButton(unsigned int _button, bool _down);
+        void AddSyntheticMouseDelta(Vector2 _delta);
+        void SetSyntheticMousePosition(Vector2 _position);
+        void AddSyntheticMouseWheel(int _amount);
+        void SetSyntheticGamepadButton(unsigned int _button, bool _down);
+        void SetSyntheticGamepadLeftStick(Vector2 _value);
+        void SetSyntheticGamepadRightStick(Vector2 _value);
+        void SetSyntheticGamepadTriggers(float _left, float _right);
         bool ConsumeResumeFrameResetRequest()
         {
             const bool requested = m_resumeFrameResetRequested;
@@ -95,15 +106,17 @@ namespace Canis
         float GetLeftTrigger(unsigned int _gameControllerId);
         float GetRightTrigger(unsigned int _gameControllerId);
 
-        int VerticalScroll() { return (active) ? m_scrollVertical : 0; }
+        int VerticalScroll() { return (active) ? m_scrollVertical + m_syntheticScrollVertical : 0; }
 
-        bool GetLeftClick() { return  m_leftClick && active; }
-        bool LeftClickReleased() { return  m_leftClick == false && m_wasLeftClick == true && active; }
-        bool JustLeftClicked() { return  m_leftClick == true && m_wasLeftClick == false && active; }
+        bool GetLeftClick();
+        bool LeftClickReleased();
+        bool JustLeftClicked();
 
-        bool GetRightClick() { return  m_rightClick && active; }
-        bool RightClickReleased() { return  m_rightClick == false && m_wasRightClick == true && active; }
-        bool JustRightClicked() { return  m_rightClick == true && m_wasRightClick == false && active; }
+        bool GetRightClick();
+        bool RightClickReleased();
+        bool JustRightClicked();
+        bool GetUnfilteredRightClick() const { return m_unfilteredRightClick; }
+        Vector2 GetUnfilteredMouseDelta() const { return m_unfilteredMouseRel; }
         
         InputDevice GetLastDeviceType() { return m_lastInputDeviceType; }
 
@@ -150,6 +163,8 @@ namespace Canis
         bool m_rightClick = false;
         bool m_wasLeftClick = false;
         bool m_wasRightClick = false;
+        bool m_unfilteredRightClick = false;
+        Vector2 m_unfilteredMouseRel = Vector2(0.0f);
 
         int m_scrollVertical = 0;
 
@@ -167,5 +182,16 @@ namespace Canis
         std::string m_textInput = "";
         bool m_windowWasBackgrounded = false;
         bool m_resumeFrameResetRequested = false;
+
+        std::unordered_map<unsigned int, bool> m_syntheticKeys = {};
+        std::unordered_map<unsigned int, bool> m_previousSyntheticKeys = {};
+        bool m_syntheticLeftClick = false;
+        bool m_previousSyntheticLeftClick = false;
+        bool m_syntheticRightClick = false;
+        bool m_previousSyntheticRightClick = false;
+        int m_syntheticScrollVertical = 0;
+        GameControllerData m_syntheticGamepad = {};
+        GameControllerData m_previousSyntheticGamepad = {};
+        bool m_syntheticGamepadEnabled = false;
     };
 } // end of Canis namespace

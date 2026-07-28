@@ -2245,7 +2245,11 @@ namespace Canis
         return UpdateAnimation(m_sharedPose, _clipIndex, _timeSeconds);
     }
 
-    bool ModelAsset::UpdateAnimation(Pose3D &_pose, i32 _clipIndex, float _timeSeconds) const
+    bool ModelAsset::UpdateAnimation(
+        Pose3D &_pose,
+        i32 _clipIndex,
+        float _timeSeconds,
+        const Vector3 &_rootMotionMask) const
     {
         if (_clipIndex < 0 || _clipIndex >= (i32)m_animations.size())
             return false;
@@ -2276,6 +2280,31 @@ namespace Canis
         std::copy(m_bindRotations.begin(), m_bindRotations.end(), rotations.begin());
         std::copy(m_bindScales.begin(), m_bindScales.end(), scales.begin());
 
+        const Vector3 rootMotionMask = glm::clamp(
+            _rootMotionMask, Vector3(0.0f), Vector3(1.0f));
+        std::vector<bool> &skeletonRoots = _pose.rootMotionRootsScratch;
+        if (skeletonRoots.size() != m_nodes.size())
+            skeletonRoots.resize(m_nodes.size(), false);
+        else
+            std::fill(skeletonRoots.begin(), skeletonRoots.end(), false);
+        if (glm::dot(rootMotionMask, rootMotionMask) > 0.0f)
+        {
+            for (const Skin3D &skin : m_skins)
+            {
+                for (const i32 joint : skin.joints)
+                {
+                    if (joint < 0 || joint >= static_cast<i32>(m_nodes.size()))
+                        continue;
+                    const i32 parent = m_nodes[joint].parent;
+                    if (std::find(skin.joints.begin(), skin.joints.end(), parent) ==
+                        skin.joints.end())
+                    {
+                        skeletonRoots[joint] = true;
+                    }
+                }
+            }
+        }
+
         for (const AnimationChannel3D &channel : clip.channels)
         {
             if (channel.targetNode < 0 || channel.targetNode >= (i32)m_nodes.size())
@@ -2291,9 +2320,21 @@ namespace Canis
             switch (channel.path)
             {
                 case AnimationPath3D::TRANSLATION:
-                    translations[channel.targetNode] = Vector3(sampled.x, sampled.y, sampled.z);
+                {
+                    Vector3 translation(sampled.x, sampled.y, sampled.z);
+                    if (skeletonRoots[channel.targetNode])
+                    {
+                        const Vector4 firstFrame =
+                            EvaluateAnimationSampler(sampler, 0.0f, false);
+                        const Vector3 rootOrigin(
+                            firstFrame.x, firstFrame.y, firstFrame.z);
+                        translation = glm::mix(
+                            translation, rootOrigin, rootMotionMask);
+                    }
+                    translations[channel.targetNode] = translation;
                     trsChanged[channel.targetNode] = true;
                     break;
+                }
                 case AnimationPath3D::ROTATION:
                 {
                     const glm::quat q = glm::normalize(glm::quat(sampled.w, sampled.x, sampled.y, sampled.z));

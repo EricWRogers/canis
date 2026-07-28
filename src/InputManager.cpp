@@ -55,6 +55,8 @@ namespace Canis
         m_rightClick = false;
         m_wasLeftClick = false;
         m_wasRightClick = false;
+        m_unfilteredRightClick = false;
+        m_unfilteredMouseRel = Vector2(0.0f);
 
         for (GameController &controller : m_gameControllers)
         {
@@ -71,6 +73,80 @@ namespace Canis
             SDL_CloseGamepad((SDL_Gamepad*)(m_gameControllers.begin()->controller));
             m_gameControllers.erase( m_gameControllers.begin() );
         }
+    }
+
+    void InputManager::BeginSyntheticInputFrame()
+    {
+        m_previousSyntheticKeys = m_syntheticKeys;
+        m_previousSyntheticLeftClick = m_syntheticLeftClick;
+        m_previousSyntheticRightClick = m_syntheticRightClick;
+        m_previousSyntheticGamepad = m_syntheticGamepad;
+        m_syntheticScrollVertical = 0;
+    }
+
+    void InputManager::SetSyntheticKey(unsigned int _keyID, bool _down)
+    {
+        m_syntheticKeys[_keyID] = _down;
+        m_lastInputDeviceType = InputDevice::KEYBOARD;
+    }
+
+    void InputManager::SetSyntheticMouseButton(unsigned int _button, bool _down)
+    {
+        if (_button == 1u)
+            m_syntheticLeftClick = _down;
+        else if (_button == 3u)
+            m_syntheticRightClick = _down;
+        m_lastInputDeviceType = InputDevice::MOUSE;
+    }
+
+    void InputManager::AddSyntheticMouseDelta(Vector2 _delta)
+    {
+        mouseRel += _delta;
+        m_lastInputDeviceType = InputDevice::MOUSE;
+    }
+
+    void InputManager::SetSyntheticMousePosition(Vector2 _position)
+    {
+        mouse = _position;
+        m_lastInputDeviceType = InputDevice::MOUSE;
+    }
+
+    void InputManager::AddSyntheticMouseWheel(int _amount)
+    {
+        m_syntheticScrollVertical += _amount;
+        m_lastInputDeviceType = InputDevice::MOUSE;
+    }
+
+    void InputManager::SetSyntheticGamepadButton(unsigned int _button, bool _down)
+    {
+        m_syntheticGamepadEnabled = true;
+        if (_down)
+            m_syntheticGamepad.buttons |= _button;
+        else
+            m_syntheticGamepad.buttons &= ~_button;
+        m_lastInputDeviceType = InputDevice::GAMEPAD;
+    }
+
+    void InputManager::SetSyntheticGamepadLeftStick(Vector2 _value)
+    {
+        m_syntheticGamepadEnabled = true;
+        m_syntheticGamepad.leftStick = glm::clamp(_value, Vector2(-1.0f), Vector2(1.0f));
+        m_lastInputDeviceType = InputDevice::GAMEPAD;
+    }
+
+    void InputManager::SetSyntheticGamepadRightStick(Vector2 _value)
+    {
+        m_syntheticGamepadEnabled = true;
+        m_syntheticGamepad.rightStick = glm::clamp(_value, Vector2(-1.0f), Vector2(1.0f));
+        m_lastInputDeviceType = InputDevice::GAMEPAD;
+    }
+
+    void InputManager::SetSyntheticGamepadTriggers(float _left, float _right)
+    {
+        m_syntheticGamepadEnabled = true;
+        m_syntheticGamepad.leftTrigger = glm::clamp(_left, 0.0f, 1.0f);
+        m_syntheticGamepad.rightTrigger = glm::clamp(_right, 0.0f, 1.0f);
+        m_lastInputDeviceType = InputDevice::GAMEPAD;
     }
 
     bool InputManager::GameViewportContainsPoint(float _x, float _y) const
@@ -126,6 +202,7 @@ namespace Canis
     {
         SwapMaps();
         mouseRel = Vector2(0.0f);
+        m_unfilteredMouseRel = Vector2(0.0f);
         m_scrollVertical = 0;
         m_textInput.clear();
 
@@ -165,6 +242,7 @@ namespace Canis
             case SDL_EVENT_WINDOW_MINIMIZED:
             case SDL_EVENT_WINDOW_OCCLUDED:
             case SDL_EVENT_WINDOW_FOCUS_LOST:
+                m_unfilteredRightClick = false;
                 if (eventWindowID == mainWindowID)
                 {
                     ResetState();
@@ -195,6 +273,8 @@ namespace Canis
                 }
                 break;
             case SDL_EVENT_MOUSE_MOTION:
+                    m_unfilteredMouseRel.x += event.motion.xrel;
+                    m_unfilteredMouseRel.y += event.motion.yrel;
                 #if CANIS_EDITOR
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
@@ -247,6 +327,8 @@ namespace Canis
                 }
                 break;
             case SDL_EVENT_MOUSE_BUTTON_DOWN:
+                if (event.button.button == SDL_BUTTON_RIGHT)
+                    m_unfilteredRightClick = true;
                 #if CANIS_EDITOR
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
@@ -260,6 +342,8 @@ namespace Canis
                     m_rightClick = true;
                 break;
             case SDL_EVENT_MOUSE_BUTTON_UP:
+                if (event.button.button == SDL_BUTTON_RIGHT)
+                    m_unfilteredRightClick = false;
                 #if CANIS_EDITOR
                 if (imguiWantsMouse && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
                     continue;
@@ -441,11 +525,17 @@ namespace Canis
     bool InputManager::GetKey(unsigned int _keyID)
     {
         const bool *keystate = SDL_GetKeyboardState(NULL);
-        return keystate[_keyID] && active;
+        const auto synthetic = m_syntheticKeys.find(_keyID);
+        return active && (keystate[_keyID] ||
+            (synthetic != m_syntheticKeys.end() && synthetic->second));
     }
 
     bool InputManager::GetButton(unsigned int _gameControllerId, unsigned int _buttonId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled &&
+            (m_syntheticGamepad.buttons & _buttonId) != 0u)
+            return active;
+
         if (m_gameControllers.size() > _gameControllerId)
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0) && active;
@@ -456,6 +546,11 @@ namespace Canis
 
     bool InputManager::JustPressedButton(unsigned int _gameControllerId, unsigned int _buttonId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled &&
+            (m_syntheticGamepad.buttons & _buttonId) != 0u &&
+            (m_previousSyntheticGamepad.buttons & _buttonId) == 0u)
+            return active;
+
         if (m_gameControllers.size() > _gameControllerId)
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) > 0 &&
@@ -467,6 +562,11 @@ namespace Canis
 
     bool InputManager::JustReleasedButton(unsigned int _gameControllerId, unsigned int _buttonId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled &&
+            (m_syntheticGamepad.buttons & _buttonId) == 0u &&
+            (m_previousSyntheticGamepad.buttons & _buttonId) != 0u)
+            return active;
+
         if (m_gameControllers.size() > _gameControllerId)
         {
             return ((m_gameControllers[_gameControllerId].currentData.buttons & _buttonId) == 0 &&
@@ -488,6 +588,9 @@ namespace Canis
 
     Vector2 InputManager::GetLeftStick(unsigned int _gameControllerId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled && active)
+            return m_syntheticGamepad.leftStick;
+
         if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.leftStick;
@@ -498,6 +601,9 @@ namespace Canis
 
     Vector2 InputManager::GetRightStick(unsigned int _gameControllerId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled && active)
+            return m_syntheticGamepad.rightStick;
+
         if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.rightStick;
@@ -508,6 +614,9 @@ namespace Canis
 
     float InputManager::GetLeftTrigger(unsigned int _gameControllerId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled && active)
+            return m_syntheticGamepad.leftTrigger;
+
         if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.leftTrigger;
@@ -518,6 +627,9 @@ namespace Canis
 
     float InputManager::GetRightTrigger(unsigned int _gameControllerId)
     {
+        if (_gameControllerId == 0u && m_syntheticGamepadEnabled && active)
+            return m_syntheticGamepad.rightTrigger;
+
         if (m_gameControllers.size() > _gameControllerId && active)
         {
             return m_gameControllers[_gameControllerId].currentData.rightTrigger;
@@ -528,6 +640,12 @@ namespace Canis
 
     bool InputManager::JustPressedKey(unsigned int _keyID)
     {
+        const bool syntheticCurrent = m_syntheticKeys.contains(_keyID) && m_syntheticKeys[_keyID];
+        const bool syntheticPrevious =
+            m_previousSyntheticKeys.contains(_keyID) && m_previousSyntheticKeys[_keyID];
+        if (syntheticCurrent && !syntheticPrevious && active)
+            return true;
+
         bool currentValue = IsKeyDownInVec(&m_keyVec, _keyID);
 
         bool lastKnownValue = false;
@@ -546,7 +664,49 @@ namespace Canis
 
     bool InputManager::JustReleasedKey(unsigned int _keyID)
     {
-        return IsKeyUpInVec(&m_keyVec, _keyID) && active;
+        const bool syntheticCurrent = m_syntheticKeys.contains(_keyID) && m_syntheticKeys[_keyID];
+        const bool syntheticPrevious =
+            m_previousSyntheticKeys.contains(_keyID) && m_previousSyntheticKeys[_keyID];
+        return active && ((!syntheticCurrent && syntheticPrevious) ||
+            IsKeyUpInVec(&m_keyVec, _keyID));
+    }
+
+    bool InputManager::GetLeftClick()
+    {
+        return active && (m_leftClick || m_syntheticLeftClick);
+    }
+
+    bool InputManager::LeftClickReleased()
+    {
+        return active &&
+            ((!m_leftClick && m_wasLeftClick) ||
+             (!m_syntheticLeftClick && m_previousSyntheticLeftClick));
+    }
+
+    bool InputManager::JustLeftClicked()
+    {
+        return active &&
+            ((m_leftClick && !m_wasLeftClick) ||
+             (m_syntheticLeftClick && !m_previousSyntheticLeftClick));
+    }
+
+    bool InputManager::GetRightClick()
+    {
+        return active && (m_rightClick || m_syntheticRightClick);
+    }
+
+    bool InputManager::RightClickReleased()
+    {
+        return active &&
+            ((!m_rightClick && m_wasRightClick) ||
+             (!m_syntheticRightClick && m_previousSyntheticRightClick));
+    }
+
+    bool InputManager::JustRightClicked()
+    {
+        return active &&
+            ((m_rightClick && !m_wasRightClick) ||
+             (m_syntheticRightClick && !m_previousSyntheticRightClick));
     }
 
     bool InputManager::IsKeyUpInVec(std::vector<InputData> *_arr, unsigned int _value)

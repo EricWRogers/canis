@@ -11,7 +11,5 @@ int main(int argc, char *argv[])
     Canis::App app;
 #endif
 
-    app.Run();
-
-    return 0;
+    return app.Run(argc, argv);
 }

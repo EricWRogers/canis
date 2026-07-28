@@ -277,6 +277,8 @@ namespace Canis
         unsigned int renderMode = CanvasRenderMode::SCREEN_SPACE_OVERLAY;
         unsigned int scaleMode = CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
         Vector2 screenSize = Vector2(1280.0f, 800.0f);
+        bool receivesEvents = true;
+        float interactionDistance = 3.0f;
     };
 
     struct RectTransform
@@ -315,6 +317,7 @@ namespace Canis
         Vector2 GetRectMin() const;
 
         unsigned int GetCanvasRenderMode() const;
+        const Canvas* GetCanvas() const { return FindCanvas(); }
 
         bool IsActiveInHierarchy() const;
 
@@ -1224,6 +1227,9 @@ namespace Canis
         float animationSpeed = 1.0f;
         float animationTime = 0.0f;
         i32 animationIndex = 0;
+        // Locks selected animated skeleton-root translation axes to their
+        // first-frame values. A value of 1 removes motion on that axis.
+        Vector3 rootMotionMask = Vector3(0.0f);
 
         // Runtime pose cache for this entity's model instance.
         i32 poseModelId = -1;
@@ -1234,6 +1240,7 @@ namespace Canis
         bool poseInitialized = false;
         i32 lastEvaluatedAnimationIndex = -1;
         float lastEvaluatedAnimationTime = 0.0f;
+        Vector3 lastEvaluatedRootMotionMask = Vector3(0.0f);
     };
 
     struct AnimationPlayer

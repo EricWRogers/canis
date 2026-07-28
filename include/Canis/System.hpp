@@ -27,6 +27,7 @@ namespace Canis
         virtual void Update(entt::registry &_registry, float _deltaTime) {}
         virtual void OnDestroy() {}
         virtual bool UpdateWhenPaused() const { return false; }
+        virtual bool UpdateAfterScripts() const { return false; }
 
         bool IsCreated() { return m_isCreated; }
         std::string GetName() { return m_name; }

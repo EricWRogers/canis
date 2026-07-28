@@ -6000,7 +6000,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const float previousCamera2DScale = m_editorCamera2DScale;
 
         InputManager& input = m_scene->GetInputManager();
-        const bool rightClickNavigation = m_gameViewHovered && input.GetRightClick();
+        // Gameplay mouse events are scoped to the Game viewport. Scene navigation
+        // must use the unfiltered editor mouse stream or right-drag is discarded
+        // whenever the cursor is over the Scene viewport.
+        const bool rightClickNavigation =
+            m_gameViewHovered && input.GetUnfilteredRightClick();
+        const Vector2 sceneMouseRel = input.GetUnfilteredMouseDelta();
 
         const int renderWidth = std::max(1, (m_gameViewportWidth > 0) ? m_gameViewportWidth : m_window->GetWindowWidth());
         const int renderHeight = std::max(1, (m_gameViewportHeight > 0) ? m_gameViewportHeight : m_window->GetWindowHeight());
@@ -6009,8 +6014,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             if (rightClickNavigation)
             {
-                m_editorCamera3DYaw += input.mouseRel.x * m_editorCamera3DLookSensitivity;
-                m_editorCamera3DPitch -= input.mouseRel.y * m_editorCamera3DLookSensitivity;
+                m_editorCamera3DYaw += sceneMouseRel.x * m_editorCamera3DLookSensitivity;
+                m_editorCamera3DPitch -= sceneMouseRel.y * m_editorCamera3DLookSensitivity;
                 m_editorCamera3DPitch = std::clamp(m_editorCamera3DPitch, -89.0f, 89.0f);
             }
 
@@ -6057,8 +6062,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             if (rightClickNavigation)
             {
-                m_editorCamera2DPosition.x -= input.mouseRel.x;
-                m_editorCamera2DPosition.y += input.mouseRel.y;
+                m_editorCamera2DPosition.x -= sceneMouseRel.x;
+                m_editorCamera2DPosition.y += sceneMouseRel.y;
             }
 
             Matrix4 projection = glm::ortho(0.0f, static_cast<float>(renderWidth), 0.0f,

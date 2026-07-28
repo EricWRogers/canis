@@ -14,7 +14,7 @@ class App
 public:
     Scene scene;
     ~App();
-    void Run();
+    int Run(int _argc = 0, char **_argv = nullptr);
 
     // Time
     float FPS();
@@ -81,5 +81,8 @@ private:
     float m_renderTimeMs = 0.0f;
     bool m_registeringGameCodeScripts = false;
     std::string m_pendingScenePath = "";
+    std::vector<std::string> m_commandLineArguments = {};
+    std::string m_invocationWorkingDirectory = "";
+    int m_exitCode = 0;
 };
 }

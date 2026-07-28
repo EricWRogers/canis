@@ -11,6 +11,7 @@
 #include <SDL3/SDL_keyboard.h>
 
 #include <cfloat>
+#include <cmath>
 
 namespace Canis
 {
@@ -52,6 +53,78 @@ namespace Canis
                 _point.x <= (min.x + size.x) &&
                 _point.y >= min.y &&
                 _point.y <= (min.y + size.y);
+        }
+
+        bool TryGetWorldCanvasPointer(
+            entt::registry &_registry,
+            Scene &_scene,
+            const RectTransform &_rect,
+            Vector2 &_pointerPosition)
+        {
+            const Canvas *canvas = _rect.GetCanvas();
+            if (canvas == nullptr ||
+                !canvas->active ||
+                !canvas->receivesEvents ||
+                canvas->entity == nullptr ||
+                !canvas->entity->HasComponent<Transform>())
+            {
+                return false;
+            }
+
+            Entity *cameraEntity = nullptr;
+            auto cameraView = _registry.view<Camera, Transform>();
+            for (const entt::entity cameraHandle : cameraView)
+            {
+                Camera &camera = cameraView.get<Camera>(cameraHandle);
+                Transform &cameraTransform = cameraView.get<Transform>(cameraHandle);
+                Entity *candidate = camera.entity != nullptr
+                    ? camera.entity
+                    : cameraTransform.entity;
+                if (candidate == nullptr || !cameraTransform.IsActiveInHierarchy())
+                    continue;
+                if (camera.primary)
+                {
+                    cameraEntity = candidate;
+                    break;
+                }
+                if (cameraEntity == nullptr)
+                    cameraEntity = candidate;
+            }
+
+            if (cameraEntity == nullptr)
+                return false;
+
+            Ray ray = {};
+            const Vector2 rayPosition = _scene.GetWindow().IsMouseLocked()
+                ? Vector2(
+                    _scene.GetWindow().GetScreenWidth() * 0.5f,
+                    _scene.GetWindow().GetScreenHeight() * 0.5f)
+                : _scene.GetInputManager().mouse;
+            if (!_scene.TryGetRayFromCamera(*cameraEntity, rayPosition, ray))
+                return false;
+
+            const Matrix4 model =
+                canvas->entity->GetComponent<Transform>().GetModelMatrix();
+            const Vector3 planePoint = Vector3(model * Vector4(0.0f, 0.0f, 0.0f, 1.0f));
+            const Vector3 planeNormal = glm::normalize(
+                Vector3(model * Vector4(0.0f, 0.0f, 1.0f, 0.0f)));
+            const float denominator = glm::dot(ray.direction, planeNormal);
+            if (std::abs(denominator) <= 0.000001f)
+                return false;
+
+            const float distance =
+                glm::dot(planePoint - ray.origin, planeNormal) / denominator;
+            if (distance < 0.0f ||
+                (canvas->interactionDistance > 0.0f &&
+                 distance > canvas->interactionDistance))
+            {
+                return false;
+            }
+
+            const Vector3 hitPoint = ray.origin + ray.direction * distance;
+            const Vector4 localPoint = glm::inverse(model) * Vector4(hitPoint, 1.0f);
+            _pointerPosition = Vector2(localPoint.x, localPoint.y);
+            return true;
         }
 
         void SetRectUniformScale(RectTransform& _rect, float _scale)
@@ -308,7 +381,6 @@ namespace Canis
 
             setFocusedInputField(nullptr);
             m_hoveredDropTarget = nullptr;
-            return;
         }
 
         for (auto [entityHandle, rect, button] : _registry.view<RectTransform, UIButton>().each())
@@ -391,12 +463,27 @@ namespace Canis
                 return;
 
             const unsigned int renderMode = _rect.GetCanvasRenderMode();
+            if (window->IsMouseLocked() &&
+                renderMode != CanvasRenderMode::WORLD_SPACE)
+            {
+                return;
+            }
             if (renderMode == CanvasRenderMode::WORLD_SPACE)
-                return;
-
-            const Vector2 pointerPosition = GetMousePositionForRenderMode(_registry, *scene, renderMode);
-            if (!IsPointInsideRect(_rect, pointerPosition))
-                return;
+            {
+                Vector2 pointerPosition = Vector2(0.0f);
+                if (!TryGetWorldCanvasPointer(_registry, *scene, _rect, pointerPosition) ||
+                    !IsPointInsideRect(_rect, pointerPosition))
+                {
+                    return;
+                }
+            }
+            else
+            {
+                const Vector2 pointerPosition =
+                    GetMousePositionForRenderMode(_registry, *scene, renderMode);
+                if (!IsPointInsideRect(_rect, pointerPosition))
+                    return;
+            }
 
             const float depth = _rect.GetDepth();
             if (_bestEntity == nullptr || depth < _bestDepth)

@@ -16,7 +16,7 @@ namespace Canis
             ADAPTIVE = -1
         } Sync;
 
-        Window(const char *title, int width, int height);
+        Window(const char *title, int width, int height, bool _offscreen = false);
         ~Window();
 
         // Gameplay/render surface size (current game view target).
@@ -69,6 +69,7 @@ namespace Canis
         int m_renderHeight = 0;
 
         bool m_mouseLock = false;
+        bool m_offscreen = false;
 
         void InitGL();
     };

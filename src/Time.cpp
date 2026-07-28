@@ -17,6 +17,7 @@ namespace Canis::Time
         float unscaledDeltaTime = 0.0f;
         float fps = 0.0f;
         float targetFPS = 120.0f;
+        float fixedDelta = 0.0f;
         float timeScale = 1.0f;
         Uint64 startFrameTicks = 0;
         Uint64 nanoSecondsDeltaTime = 0;
@@ -74,6 +75,16 @@ namespace Canis::Time
         if (timeData)
         {
             const Uint64 currentTicks = SDL_GetTicksNS();
+            if (timeData->fixedDelta > 0.0f)
+            {
+                timeData->unscaledDeltaTime = timeData->fixedDelta;
+                timeData->deltaTime = timeData->fixedDelta * timeData->timeScale;
+                timeData->nanoSecondsDeltaTime = static_cast<Uint64>(
+                    static_cast<double>(timeData->fixedDelta) * 1000000000.0);
+                timeData->startFrameTicks = currentTicks;
+                return timeData->deltaTime;
+            }
+
             timeData->nanoSecondsDeltaTime = currentTicks - timeData->startFrameTicks;
             timeData->unscaledDeltaTime = timeData->nanoSecondsDeltaTime / 1000000000.0f;
 
@@ -186,6 +197,17 @@ namespace Canis::Time
         {
             // error
         }
+    }
+
+    void SetFixedDelta(float _fixedDeltaSeconds)
+    {
+        if (timeData)
+            timeData->fixedDelta = std::max(0.0f, _fixedDeltaSeconds);
+    }
+
+    float GetFixedDelta()
+    {
+        return timeData ? timeData->fixedDelta : 0.0f;
     }
 
     void SetTimeScale(float _timeScale)

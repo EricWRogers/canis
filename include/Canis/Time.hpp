@@ -22,6 +22,10 @@ namespace Canis::Time {
   // set target fps
   void SetTargetFPS(float _targetFPS);
 
+  // Use an exact simulation delta. Pass zero to return to wall-clock deltas.
+  void SetFixedDelta(float _fixedDeltaSeconds);
+  float GetFixedDelta();
+
   // set time scale used by StartFrame() / DeltaTime()
   void SetTimeScale(float _timeScale);
 

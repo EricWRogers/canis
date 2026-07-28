@@ -32,8 +32,14 @@
 #include <cctype>
 #include <filesystem>
 #include <fstream>
+#include <iomanip>
+#include <iostream>
 #include <memory>
 #include <optional>
+#include <sstream>
+#include <unordered_map>
+
+#include <stb_image_write.h>
 
 #if defined(__EMSCRIPTEN__)
 #include <emscripten/emscripten.h>
@@ -41,6 +47,42 @@
 
 namespace Canis
 {
+    struct RuntimeTimelineEvent
+    {
+        double time = 0.0;
+        YAML::Node data = {};
+    };
+
+    struct RuntimeCaptureRecord
+    {
+        double time = 0.0;
+        std::string label = {};
+        std::string path = {};
+    };
+
+    struct RuntimeInteractiveCommand
+    {
+        uint64_t frames = 1u;
+        std::string captureLabel = {};
+        bool stop = false;
+        std::vector<RuntimeTimelineEvent> events = {};
+    };
+
+    struct RuntimeLaunchOptions
+    {
+        bool active = false;
+        bool interactive = false;
+        std::optional<bool> editorRuntimeOverride = std::nullopt;
+        bool offscreen = false;
+        bool captureFinal = true;
+        std::string launchScene = {};
+        std::string inputScript = {};
+        std::filesystem::path captureDirectory = {};
+        float forcedFPS = 0.0f;
+        float fixedDelta = 0.0f;
+        double stopAt = -1.0;
+    };
+
     struct App::RuntimeContext
     {
         std::unique_ptr<Window> window;
@@ -50,11 +92,672 @@ namespace Canis
         bool editorRuntimeEnabled = false;
         RenderTarget runtimeRenderTarget = {};
         RenderTarget runtimePostProcessTarget = {};
+        RuntimeLaunchOptions launch = {};
+        std::vector<RuntimeTimelineEvent> timeline = {};
+        size_t nextTimelineEvent = 0u;
+        double simulationTime = 0.0;
+        uint64_t simulationFrame = 0u;
+        bool stopAfterFrame = false;
+        bool harnessCompleted = false;
+        bool timeInitialized = false;
+        bool gameCodeInitialized = false;
+        std::string exitReason = "window-closed";
+        std::vector<std::string> pendingCaptures = {};
+        std::vector<RuntimeCaptureRecord> captures = {};
+        std::vector<unsigned int> pulseKeys = {};
+        std::vector<unsigned int> pulseMouseButtons = {};
+        std::vector<unsigned int> pulseGamepadButtons = {};
+        bool interactiveWaitingForCommand = false;
+        uint64_t interactiveFramesRemaining = 0u;
+        std::string interactiveCaptureLabel = "initial";
+        size_t interactiveStep = 0u;
     };
 
     namespace
     {
         namespace fs = std::filesystem;
+
+        std::string ToLower(std::string _value)
+        {
+            std::transform(_value.begin(), _value.end(), _value.begin(), [](unsigned char c)
+            {
+                return static_cast<char>(std::tolower(c));
+            });
+            return _value;
+        }
+
+        std::string SanitizeFileName(std::string _value)
+        {
+            if (_value.empty())
+                _value = "capture";
+            for (char &character : _value)
+            {
+                if (!std::isalnum(static_cast<unsigned char>(character)) &&
+                    character != '-' && character != '_')
+                    character = '_';
+            }
+            return _value;
+        }
+
+        std::string EscapeJson(const std::string &_value)
+        {
+            std::string escaped = {};
+            escaped.reserve(_value.size() + 8u);
+            for (const char character : _value)
+            {
+                switch (character)
+                {
+                    case '\\': escaped += "\\\\"; break;
+                    case '"': escaped += "\\\""; break;
+                    case '\n': escaped += "\\n"; break;
+                    case '\r': escaped += "\\r"; break;
+                    case '\t': escaped += "\\t"; break;
+                    default: escaped += character; break;
+                }
+            }
+            return escaped;
+        }
+
+        bool ParsePositiveFloat(const std::string &_value, float &_outValue)
+        {
+            try
+            {
+                size_t parsed = 0u;
+                const float value = std::stof(_value, &parsed);
+                if (parsed != _value.size() || !std::isfinite(value) || value <= 0.0f)
+                    return false;
+                _outValue = value;
+                return true;
+            }
+            catch (const std::exception&)
+            {
+                return false;
+            }
+        }
+
+        bool ParseNonNegativeDouble(const std::string &_value, double &_outValue)
+        {
+            try
+            {
+                size_t parsed = 0u;
+                const double value = std::stod(_value, &parsed);
+                if (parsed != _value.size() || !std::isfinite(value) || value < 0.0)
+                    return false;
+                _outValue = value;
+                return true;
+            }
+            catch (const std::exception&)
+            {
+                return false;
+            }
+        }
+
+        bool ParseRuntimeLaunchOptions(
+            const std::vector<std::string> &_arguments,
+            const fs::path &_invocationDirectory,
+            RuntimeLaunchOptions &_outOptions,
+            std::string &_outError)
+        {
+            auto readValue = [&](size_t &_index, const std::string &_argument, const std::string &_name) -> std::optional<std::string>
+            {
+                const std::string prefix = _name + "=";
+                if (_argument.rfind(prefix, 0u) == 0u)
+                    return _argument.substr(prefix.size());
+                if (_argument == _name && _index + 1u < _arguments.size())
+                    return _arguments[++_index];
+                return std::nullopt;
+            };
+            auto setEditorRuntimeOverride =
+                [&](const bool _enabled, const std::string &_argument) -> bool
+            {
+                if (_outOptions.editorRuntimeOverride.has_value() &&
+                    _outOptions.editorRuntimeOverride.value() != _enabled)
+                {
+                    _outError =
+                        "Conflicting editor launch mode option: " + _argument;
+                    return false;
+                }
+                _outOptions.editorRuntimeOverride = _enabled;
+                return true;
+            };
+
+            for (size_t index = 0u; index < _arguments.size(); ++index)
+            {
+                const std::string &argument = _arguments[index];
+                if (argument == "--editor")
+                {
+                    if (!setEditorRuntimeOverride(true, argument))
+                        return false;
+                    continue;
+                }
+                if (argument == "--force-game-only" || argument == "--game-only")
+                {
+                    _outOptions.active = true;
+                    if (!setEditorRuntimeOverride(false, argument))
+                        return false;
+                    continue;
+                }
+                if (argument == "--interactive-test")
+                {
+                    _outOptions.active = true;
+                    _outOptions.interactive = true;
+                    if (!setEditorRuntimeOverride(false, argument))
+                        return false;
+                    continue;
+                }
+                if (argument == "--offscreen")
+                {
+                    _outOptions.active = true;
+                    _outOptions.offscreen = true;
+                    continue;
+                }
+                if (argument == "--no-final-capture")
+                {
+                    _outOptions.active = true;
+                    _outOptions.captureFinal = false;
+                    continue;
+                }
+                if (argument == "--capture-final")
+                {
+                    _outOptions.active = true;
+                    _outOptions.captureFinal = true;
+                    continue;
+                }
+
+                if (auto value = readValue(index, argument, "--launch-scene"))
+                {
+                    _outOptions.active = true;
+                    _outOptions.launchScene = *value;
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--input-script"))
+                {
+                    _outOptions.active = true;
+                    fs::path path(*value);
+                    if (path.is_relative())
+                        path = _invocationDirectory / path;
+                    _outOptions.inputScript = path.lexically_normal().generic_string();
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--capture-dir"))
+                {
+                    _outOptions.active = true;
+                    fs::path path(*value);
+                    if (path.is_relative())
+                        path = _invocationDirectory / path;
+                    _outOptions.captureDirectory = path.lexically_normal();
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--force-fps"))
+                {
+                    _outOptions.active = true;
+                    if (!ParsePositiveFloat(*value, _outOptions.forcedFPS))
+                    {
+                        _outError = "--force-fps requires a positive number.";
+                        return false;
+                    }
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--fixed-delta"))
+                {
+                    _outOptions.active = true;
+                    if (!ParsePositiveFloat(*value, _outOptions.fixedDelta))
+                    {
+                        _outError = "--fixed-delta requires a positive number of seconds.";
+                        return false;
+                    }
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--stop-at"))
+                {
+                    _outOptions.active = true;
+                    if (!ParseNonNegativeDouble(*value, _outOptions.stopAt))
+                    {
+                        _outError = "--stop-at requires a non-negative number of seconds.";
+                        return false;
+                    }
+                    continue;
+                }
+
+                if (argument.rfind("--", 0u) == 0u && argument != "--help" && argument != "-h")
+                {
+                    _outError = "Unknown option: " + argument;
+                    return false;
+                }
+            }
+
+            if (_outOptions.forcedFPS > 0.0f && _outOptions.fixedDelta <= 0.0f)
+                _outOptions.fixedDelta = 1.0f / _outOptions.forcedFPS;
+            if (_outOptions.interactive && _outOptions.fixedDelta <= 0.0f)
+                _outOptions.fixedDelta = 1.0f / 60.0f;
+            if (_outOptions.interactive && !_outOptions.inputScript.empty())
+            {
+                _outError = "--interactive-test cannot be combined with --input-script.";
+                return false;
+            }
+
+            if (_outOptions.active && _outOptions.captureDirectory.empty())
+                _outOptions.captureDirectory = _invocationDirectory / "artifacts" / "runtime_test";
+            return true;
+        }
+
+        unsigned int ResolveSyntheticKey(const std::string &_name)
+        {
+            const std::string normalized = ToLower(_name);
+            static const std::unordered_map<std::string, SDL_Scancode> aliases = {
+                {"lshift", SDL_SCANCODE_LSHIFT}, {"rshift", SDL_SCANCODE_RSHIFT},
+                {"lctrl", SDL_SCANCODE_LCTRL}, {"rctrl", SDL_SCANCODE_RCTRL},
+                {"lalt", SDL_SCANCODE_LALT}, {"ralt", SDL_SCANCODE_RALT},
+                {"return", SDL_SCANCODE_RETURN}, {"enter", SDL_SCANCODE_RETURN},
+                {"escape", SDL_SCANCODE_ESCAPE}, {"esc", SDL_SCANCODE_ESCAPE},
+                {"space", SDL_SCANCODE_SPACE}, {"backspace", SDL_SCANCODE_BACKSPACE},
+                {"up", SDL_SCANCODE_UP}, {"down", SDL_SCANCODE_DOWN},
+                {"left", SDL_SCANCODE_LEFT}, {"right", SDL_SCANCODE_RIGHT},
+            };
+            const auto alias = aliases.find(normalized);
+            if (alias != aliases.end())
+                return static_cast<unsigned int>(alias->second);
+
+            const SDL_Scancode scancode = SDL_GetScancodeFromName(_name.c_str());
+            return static_cast<unsigned int>(scancode);
+        }
+
+        unsigned int ResolveSyntheticGamepadButton(const std::string &_name)
+        {
+            const std::string normalized = ToLower(_name);
+            static const std::unordered_map<std::string, unsigned int> buttons = {
+                {"a", ControllerButton::A}, {"b", ControllerButton::B},
+                {"x", ControllerButton::X}, {"y", ControllerButton::Y},
+                {"back", ControllerButton::BACK}, {"guide", ControllerButton::GUIDE},
+                {"start", ControllerButton::START},
+                {"leftstick", ControllerButton::LEFTSTICK},
+                {"rightstick", ControllerButton::RIGHTSTICK},
+                {"leftshoulder", ControllerButton::LEFTSHOULDER},
+                {"rightshoulder", ControllerButton::RIGHTSHOULDER},
+                {"dpad_up", ControllerButton::DPAD_UP},
+                {"dpad_down", ControllerButton::DPAD_DOWN},
+                {"dpad_left", ControllerButton::DPAD_LEFT},
+                {"dpad_right", ControllerButton::DPAD_RIGHT},
+            };
+            const auto button = buttons.find(normalized);
+            return button == buttons.end() ? 0u : button->second;
+        }
+
+        bool IsDownAction(const std::string &_action)
+        {
+            const std::string action = ToLower(_action);
+            return action == "down" || action == "press" || action == "pressed" ||
+                action == "true" || action == "1";
+        }
+
+        bool IsPulseAction(const std::string &_action)
+        {
+            const std::string action = ToLower(_action);
+            return action == "press" || action == "pressed";
+        }
+
+        bool ReadVector2(const YAML::Node &_node, Vector2 &_outValue)
+        {
+            if (!_node || !_node.IsSequence() || _node.size() < 2u)
+                return false;
+            _outValue.x = _node[0].as<float>(0.0f);
+            _outValue.y = _node[1].as<float>(0.0f);
+            return true;
+        }
+
+        bool LoadRuntimeTimeline(
+            const std::string &_path,
+            std::vector<RuntimeTimelineEvent> &_outEvents,
+            std::string &_outError)
+        {
+            if (_path.empty())
+                return true;
+            try
+            {
+                YAML::Node root = YAML::LoadFile(_path);
+                const YAML::Node events = root["events"];
+                if (!events || !events.IsSequence())
+                {
+                    _outError = "Input script must contain an events array: " + _path;
+                    return false;
+                }
+                double previousTime = -1.0;
+                for (const YAML::Node &event : events)
+                {
+                    if (!event.IsMap())
+                    {
+                        _outError = "Every input event must be an object.";
+                        return false;
+                    }
+                    const double time = event["time"].as<double>(-1.0);
+                    if (!std::isfinite(time) || time < 0.0)
+                    {
+                        _outError = "Every input event requires a non-negative time.";
+                        return false;
+                    }
+                    if (time < previousTime)
+                    {
+                        _outError = "Input events must be ordered by ascending time.";
+                        return false;
+                    }
+                    previousTime = time;
+                    _outEvents.push_back({time, YAML::Clone(event)});
+                }
+                return true;
+            }
+            catch (const YAML::Exception &_exception)
+            {
+                _outError = "Failed to parse input script '" + _path + "': " + _exception.what();
+                return false;
+            }
+        }
+
+        bool ParseRuntimeInteractiveCommand(
+            const std::string &_line,
+            double _simulationTime,
+            float _fixedDelta,
+            RuntimeInteractiveCommand &_outCommand,
+            std::string &_outError)
+        {
+            try
+            {
+                const YAML::Node command = YAML::Load(_line);
+                if (!command || !command.IsMap())
+                {
+                    _outError = "Interactive commands must be JSON objects.";
+                    return false;
+                }
+
+                _outCommand.stop = command["stop"].as<bool>(false);
+                _outCommand.captureLabel = command["capture"].as<std::string>("");
+
+                const double stepDelta = (_fixedDelta > 0.0f)
+                    ? static_cast<double>(_fixedDelta)
+                    : (1.0 / 60.0);
+                bool explicitAdvance = false;
+                if (command["frames"])
+                {
+                    const long long frames = command["frames"].as<long long>(0);
+                    if (frames <= 0)
+                    {
+                        _outError = "Interactive command frames must be positive.";
+                        return false;
+                    }
+                    _outCommand.frames = static_cast<uint64_t>(frames);
+                    explicitAdvance = true;
+                }
+                else if (command["duration"])
+                {
+                    const double duration = command["duration"].as<double>(0.0);
+                    if (!std::isfinite(duration) || duration <= 0.0)
+                    {
+                        _outError = "Interactive command duration must be positive.";
+                        return false;
+                    }
+                    _outCommand.frames = std::max<uint64_t>(
+                        1u,
+                        static_cast<uint64_t>(std::ceil(duration / stepDelta)));
+                    explicitAdvance = true;
+                }
+
+                double latestRelativeEventTime = 0.0;
+                if (const YAML::Node events = command["events"]; events)
+                {
+                    if (!events.IsSequence())
+                    {
+                        _outError = "Interactive command events must be an array.";
+                        return false;
+                    }
+                    double previousTime = -1.0;
+                    for (const YAML::Node &event : events)
+                    {
+                        const double relativeTime = event["time"].as<double>(-1.0);
+                        if (!event.IsMap() || !std::isfinite(relativeTime) ||
+                            relativeTime < 0.0 || relativeTime < previousTime)
+                        {
+                            _outError = "Interactive events require ascending non-negative times.";
+                            return false;
+                        }
+                        previousTime = relativeTime;
+                        latestRelativeEventTime = relativeTime;
+                        YAML::Node absoluteEvent = YAML::Clone(event);
+                        absoluteEvent["time"] = _simulationTime + relativeTime;
+                        _outCommand.events.push_back({
+                            _simulationTime + relativeTime,
+                            YAML::Clone(absoluteEvent)});
+                    }
+                }
+
+                YAML::Node immediateEvent(YAML::NodeType::Map);
+                immediateEvent["time"] = _simulationTime;
+                bool hasImmediateInput = false;
+                for (const char *field : {"keyboard", "mouse", "gamepad"})
+                {
+                    if (command[field])
+                    {
+                        immediateEvent[field] = YAML::Clone(command[field]);
+                        hasImmediateInput = true;
+                    }
+                }
+                if (hasImmediateInput)
+                {
+                    _outCommand.events.insert(
+                        _outCommand.events.begin(),
+                        {_simulationTime, YAML::Clone(immediateEvent)});
+                }
+
+                if (!explicitAdvance && latestRelativeEventTime > 0.0)
+                {
+                    _outCommand.frames = std::max<uint64_t>(
+                        1u,
+                        static_cast<uint64_t>(std::ceil(latestRelativeEventTime / stepDelta)) + 1u);
+                }
+                if (_outCommand.stop)
+                    _outCommand.captureLabel =
+                        _outCommand.captureLabel.empty() ? "final" : _outCommand.captureLabel;
+                return true;
+            }
+            catch (const YAML::Exception &_exception)
+            {
+                _outError = std::string("Invalid interactive JSON command: ") + _exception.what();
+                return false;
+            }
+        }
+
+        bool WriteRuntimeFramebuffer(
+            unsigned int _framebuffer,
+            int _width,
+            int _height,
+            const fs::path &_outputPath)
+        {
+            if (_framebuffer == 0u || _width <= 0 || _height <= 0)
+                return false;
+
+            std::error_code error = {};
+            fs::create_directories(_outputPath.parent_path(), error);
+            if (error)
+                return false;
+
+            GLint previousReadFramebuffer = 0;
+            GLint previousReadBuffer = GL_BACK;
+            GLint previousPackAlignment = 4;
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &previousReadFramebuffer);
+            glGetIntegerv(GL_READ_BUFFER, &previousReadBuffer);
+            glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
+            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glPixelStorei(GL_PACK_ALIGNMENT, 1);
+
+            const size_t rowBytes = static_cast<size_t>(_width) * 4u;
+            std::vector<unsigned char> pixels(rowBytes * static_cast<size_t>(_height));
+            glReadPixels(0, 0, _width, _height, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+
+            glPixelStorei(GL_PACK_ALIGNMENT, previousPackAlignment);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, previousReadFramebuffer);
+            glReadBuffer(previousReadBuffer);
+
+            std::vector<unsigned char> topDownPixels(pixels.size());
+            for (int row = 0; row < _height; ++row)
+            {
+                const size_t sourceOffset = static_cast<size_t>(_height - row - 1) * rowBytes;
+                const size_t destinationOffset = static_cast<size_t>(row) * rowBytes;
+                std::copy_n(pixels.data() + sourceOffset, rowBytes, topDownPixels.data() + destinationOffset);
+            }
+
+            return stbi_write_png(
+                _outputPath.generic_string().c_str(),
+                _width,
+                _height,
+                4,
+                topDownPixels.data(),
+                static_cast<int>(rowBytes)) != 0;
+        }
+
+        void ApplyRuntimeTimelineEvent(
+            const RuntimeTimelineEvent &_event,
+            InputManager &_input,
+            std::vector<unsigned int> &_pulseKeys,
+            std::vector<unsigned int> &_pulseMouseButtons,
+            std::vector<unsigned int> &_pulseGamepadButtons,
+            std::vector<std::string> &_pendingCaptures,
+            bool &_stopAfterFrame)
+        {
+            const YAML::Node &data = _event.data;
+
+            if (const YAML::Node keyboard = data["keyboard"]; keyboard && keyboard.IsMap())
+            {
+                for (const auto &entry : keyboard)
+                {
+                    const std::string name = entry.first.as<std::string>("");
+                    const std::string action = entry.second.as<std::string>("");
+                    const unsigned int key = ResolveSyntheticKey(name);
+                    if (key == static_cast<unsigned int>(SDL_SCANCODE_UNKNOWN))
+                    {
+                        Debug::Warning("Runtime input script ignored unknown key '%s'.", name.c_str());
+                        continue;
+                    }
+                    _input.SetSyntheticKey(key, IsDownAction(action));
+                    if (IsPulseAction(action))
+                        _pulseKeys.push_back(key);
+                }
+            }
+
+            if (const YAML::Node mouse = data["mouse"]; mouse && mouse.IsMap())
+            {
+                Vector2 value = {};
+                if (ReadVector2(mouse["delta"], value))
+                    _input.AddSyntheticMouseDelta(value);
+                if (ReadVector2(mouse["position"], value))
+                    _input.SetSyntheticMousePosition(value);
+                if (mouse["wheel"])
+                    _input.AddSyntheticMouseWheel(mouse["wheel"].as<int>(0));
+
+                if (const YAML::Node buttons = mouse["buttons"]; buttons && buttons.IsMap())
+                {
+                    for (const auto &entry : buttons)
+                    {
+                        const std::string name = ToLower(entry.first.as<std::string>(""));
+                        const std::string action = entry.second.as<std::string>("");
+                        const unsigned int button = (name == "left") ? 1u : ((name == "right") ? 3u : 0u);
+                        if (button == 0u)
+                        {
+                            Debug::Warning("Runtime input script ignored unknown mouse button '%s'.", name.c_str());
+                            continue;
+                        }
+                        _input.SetSyntheticMouseButton(button, IsDownAction(action));
+                        if (IsPulseAction(action))
+                            _pulseMouseButtons.push_back(button);
+                    }
+                }
+            }
+
+            if (const YAML::Node gamepad = data["gamepad"]; gamepad && gamepad.IsMap())
+            {
+                Vector2 value = {};
+                if (ReadVector2(gamepad["leftStick"], value))
+                    _input.SetSyntheticGamepadLeftStick(value);
+                if (ReadVector2(gamepad["rightStick"], value))
+                    _input.SetSyntheticGamepadRightStick(value);
+
+                float leftTrigger = gamepad["leftTrigger"].as<float>(0.0f);
+                float rightTrigger = gamepad["rightTrigger"].as<float>(0.0f);
+                if (gamepad["leftTrigger"] || gamepad["rightTrigger"])
+                    _input.SetSyntheticGamepadTriggers(leftTrigger, rightTrigger);
+
+                if (const YAML::Node buttons = gamepad["buttons"]; buttons && buttons.IsMap())
+                {
+                    for (const auto &entry : buttons)
+                    {
+                        const std::string name = entry.first.as<std::string>("");
+                        const std::string action = entry.second.as<std::string>("");
+                        const unsigned int button = ResolveSyntheticGamepadButton(name);
+                        if (button == 0u)
+                        {
+                            Debug::Warning("Runtime input script ignored unknown gamepad button '%s'.", name.c_str());
+                            continue;
+                        }
+                        _input.SetSyntheticGamepadButton(button, IsDownAction(action));
+                        if (IsPulseAction(action))
+                            _pulseGamepadButtons.push_back(button);
+                    }
+                }
+            }
+
+            if (const YAML::Node capture = data["capture"]; capture)
+                _pendingCaptures.push_back(capture.as<std::string>("capture"));
+            if (data["stop"].as<bool>(false))
+                _stopAfterFrame = true;
+        }
+
+        bool WriteRuntimeManifest(
+            const RuntimeLaunchOptions &_options,
+            const std::string &_reason,
+            double _simulationTime,
+            uint64_t _simulationFrame,
+            const std::vector<RuntimeCaptureRecord> &_captures,
+            int _exitCode)
+        {
+            if (!_options.active)
+                return true;
+
+            std::error_code error = {};
+            fs::create_directories(_options.captureDirectory, error);
+            if (error)
+                return false;
+
+            const fs::path manifestPath = _options.captureDirectory / "manifest.json";
+            std::ofstream output(manifestPath);
+            if (!output.is_open())
+                return false;
+
+            output << "{\n"
+                   << "  \"exitReason\": \"" << EscapeJson(_reason) << "\",\n"
+                   << "  \"exitCode\": " << _exitCode << ",\n"
+                   << "  \"simulationTime\": " << _simulationTime << ",\n"
+                   << "  \"simulationFrame\": " << _simulationFrame << ",\n"
+                   << "  \"fixedDelta\": " << _options.fixedDelta << ",\n"
+                   << "  \"forcedFPS\": " << _options.forcedFPS << ",\n"
+                   << "  \"scene\": \"" << EscapeJson(_options.launchScene) << "\",\n"
+                   << "  \"frames\": [\n";
+            for (size_t index = 0u; index < _captures.size(); ++index)
+            {
+                const RuntimeCaptureRecord &capture = _captures[index];
+                output << "    {\"time\": " << capture.time
+                       << ", \"label\": \"" << EscapeJson(capture.label)
+                       << "\", \"path\": \"" << EscapeJson(capture.path) << "\"}";
+                if (index + 1u < _captures.size())
+                    output << ",";
+                output << "\n";
+            }
+            output << "  ]\n}\n";
+            output.close();
+
+            std::cout << "CANIS_TEST_RESULT {\"manifest\":\""
+                      << EscapeJson(fs::absolute(manifestPath).generic_string())
+                      << "\",\"exitReason\":\"" << EscapeJson(_reason)
+                      << "\",\"exitCode\":" << _exitCode << "}" << std::endl;
+            return true;
+        }
 
         const char *GetGameCodeSharedObjectPath()
         {
@@ -266,6 +969,20 @@ namespace Canis
             {
                 return false;
             }
+        }
+
+        std::string ResolveExplicitScenePath(const std::string &_requestedPath)
+        {
+            const fs::path requestedPath(_requestedPath);
+            if (IsLoadableSceneFile(requestedPath))
+                return requestedPath.generic_string();
+            if (!requestedPath.is_absolute() && requestedPath.parent_path().empty())
+            {
+                const fs::path scenesCandidate = fs::path("assets/scenes") / requestedPath;
+                if (IsLoadableSceneFile(scenesCandidate))
+                    return scenesCandidate.generic_string();
+            }
+            return "";
         }
 
         std::string FindFallbackScenePath()
@@ -790,6 +1507,13 @@ namespace Canis
             if (IsLoadableSceneFile(requestedPath))
                 return requestedPath.generic_string();
 
+            if (!requestedPath.is_absolute() && requestedPath.parent_path().empty())
+            {
+                const fs::path scenesCandidate = fs::path("assets/scenes") / requestedPath;
+                if (IsLoadableSceneFile(scenesCandidate))
+                    return scenesCandidate.generic_string();
+            }
+
             Debug::Warning("Scene load requested for missing or invalid scene: %s", _requestedPath.c_str());
 
             const std::string fallbackScenePath = FindFallbackScenePath();
@@ -975,14 +1699,57 @@ namespace Canis
         m_runtime = new RuntimeContext();
         RuntimeContext &runtime = *m_runtime;
 
+        std::string launchError = {};
+        const fs::path invocationDirectory = m_invocationWorkingDirectory.empty()
+            ? fs::current_path()
+            : fs::path(m_invocationWorkingDirectory);
+        if (!ParseRuntimeLaunchOptions(
+                m_commandLineArguments,
+                invocationDirectory,
+                runtime.launch,
+                launchError))
+        {
+            Debug::Error("%s", launchError.c_str());
+            runtime.exitReason = "invalid-command-line";
+            runtime.launch.active = false;
+            m_exitCode = 2;
+            return;
+        }
+        if (!LoadRuntimeTimeline(runtime.launch.inputScript, runtime.timeline, launchError))
+        {
+            Debug::Error("%s", launchError.c_str());
+            runtime.exitReason = "input-script-error";
+            m_exitCode = 3;
+            return;
+        }
+
 #if CANIS_EDITOR
         runtime.editorRuntimeEnabled = Canis::GetProjectConfig().editor;
-        bool editorRuntimeOverride = runtime.editorRuntimeEnabled;
-        if (TryParseEnvironmentBool(std::getenv("CANIS_EDITOR_RUNTIME"), editorRuntimeOverride) ||
-            TryParseEnvironmentBool(std::getenv("CANIS_EDITOR"), editorRuntimeOverride))
+        const char *editorModeSource = "project.canis";
+        if (runtime.launch.editorRuntimeOverride.has_value())
         {
-            runtime.editorRuntimeEnabled = editorRuntimeOverride;
+            runtime.editorRuntimeEnabled =
+                runtime.launch.editorRuntimeOverride.value();
+            editorModeSource = "command line";
         }
+        else
+        {
+            bool editorRuntimeOverride = runtime.editorRuntimeEnabled;
+            if (TryParseEnvironmentBool(
+                    std::getenv("CANIS_EDITOR_RUNTIME"),
+                    editorRuntimeOverride) ||
+                TryParseEnvironmentBool(
+                    std::getenv("CANIS_EDITOR"),
+                    editorRuntimeOverride))
+            {
+                runtime.editorRuntimeEnabled = editorRuntimeOverride;
+                editorModeSource = "environment";
+            }
+        }
+        Debug::Log(
+            "Editor runtime %s (%s).",
+            runtime.editorRuntimeEnabled ? "enabled" : "disabled",
+            editorModeSource);
 #endif
         Canis::SetEditorRuntimeEnabled(runtime.editorRuntimeEnabled);
 
@@ -990,7 +1757,8 @@ namespace Canis
                                                                              : GetProjectConfig().targetGameWidth);
         const int startupHeight = std::max(240, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowHeight
                                                                               : GetProjectConfig().targetGameHeight);
-        runtime.window = std::make_unique<Window>("Canis Beta", startupWidth, startupHeight);
+        runtime.window = std::make_unique<Window>(
+            "Canis Beta", startupWidth, startupHeight, runtime.launch.offscreen);
         runtime.window->SetClearColor(Color(1.0f));
         runtime.window->SetSync(static_cast<Window::Sync>(GetProjectConfig().syncMode));
         AudioManager::Initialize();
@@ -1024,19 +1792,33 @@ namespace Canis
             Time::Init(Canis::GetProjectConfig().frameLimit + 0.0f);
         else
             Time::Init(100000.0f);
+        runtime.timeInitialized = true;
 
 #if CANIS_EDITOR
         if (runtime.editorRuntimeEnabled)
             Time::SetTargetFPS(Canis::GetProjectConfig().frameLimitEditor + 0.0f);
 #endif
+        if (runtime.launch.forcedFPS > 0.0f)
+            Time::SetTargetFPS(runtime.launch.forcedFPS);
+        if (runtime.launch.fixedDelta > 0.0f)
+            Time::SetFixedDelta(runtime.launch.fixedDelta);
 
         const char* startupSceneOverride = std::getenv("CANIS_START_SCENE");
-        const std::string requestedStartupScenePath = (startupSceneOverride != nullptr && startupSceneOverride[0] != '\0')
-            ? std::string(startupSceneOverride)
-            : GetConfiguredStartupScenePath(runtime.editorRuntimeEnabled);
-        const std::string startupScenePath = ResolvePendingSceneLoadPath(requestedStartupScenePath, runtime.window->GetClearColor());
+        const std::string requestedStartupScenePath = !runtime.launch.launchScene.empty()
+            ? runtime.launch.launchScene
+            : ((startupSceneOverride != nullptr && startupSceneOverride[0] != '\0')
+                ? std::string(startupSceneOverride)
+                : GetConfiguredStartupScenePath(runtime.editorRuntimeEnabled));
+        const std::string startupScenePath = runtime.launch.launchScene.empty()
+            ? ResolvePendingSceneLoadPath(requestedStartupScenePath, runtime.window->GetClearColor())
+            : ResolveExplicitScenePath(requestedStartupScenePath);
         if (startupScenePath.empty())
-            Debug::FatalError("Failed to resolve startup scene from '%s'.", requestedStartupScenePath.c_str());
+        {
+            Debug::Error("Failed to resolve startup scene from '%s'.", requestedStartupScenePath.c_str());
+            runtime.exitReason = "scene-load-error";
+            m_exitCode = 3;
+            return;
+        }
 
         if (runtime.editorRuntimeEnabled)
         {
@@ -1053,8 +1835,26 @@ namespace Canis
         BeginGameCodeRegistration();
         GameCodeObjectInitFunction(&runtime.gameCodeObject, this);
         EndGameCodeRegistration();
+        runtime.gameCodeInitialized = true;
 
         scene.Load(startupScenePath);
+        runtime.launch.launchScene = startupScenePath;
+        if (runtime.launch.interactive)
+        {
+            runtime.interactiveFramesRemaining = 1u;
+            runtime.interactiveCaptureLabel = "initial";
+        }
+
+        if (runtime.launch.active)
+        {
+            Debug::Log(
+                "Runtime test harness active: scene=%s fixedDelta=%.6f forceFPS=%.2f events=%zu offscreen=%s",
+                startupScenePath.c_str(),
+                runtime.launch.fixedDelta,
+                runtime.launch.forcedFPS,
+                runtime.timeline.size(),
+                runtime.launch.offscreen ? "true" : "false");
+        }
     }
 
     bool App::RunFrame()
@@ -1063,11 +1863,62 @@ namespace Canis
             return false;
 
         RuntimeContext &runtime = *m_runtime;
+        if (runtime.window == nullptr || runtime.inputManager == nullptr ||
+            runtime.editor == nullptr || !runtime.gameCodeInitialized)
+            return false;
+
         Window &window = *runtime.window;
         Editor &editor = *runtime.editor;
         InputManager &inputManager = *runtime.inputManager;
         GameCodeObject &gameCodeObject = runtime.gameCodeObject;
 
+        if (runtime.launch.interactive && runtime.interactiveWaitingForCommand)
+        {
+            while (true)
+            {
+                std::string commandLine = {};
+                if (!std::getline(std::cin, commandLine))
+                {
+                    runtime.exitReason = "interactive-stdin-closed";
+                    return false;
+                }
+                if (commandLine.empty())
+                    continue;
+
+                RuntimeInteractiveCommand command = {};
+                std::string commandError = {};
+                if (!ParseRuntimeInteractiveCommand(
+                        commandLine,
+                        runtime.simulationTime,
+                        runtime.launch.fixedDelta,
+                        command,
+                        commandError))
+                {
+                    std::cout << "CANIS_INTERACTIVE_ERROR {\"message\":\""
+                              << EscapeJson(commandError) << "\"}" << std::endl;
+                    continue;
+                }
+
+                runtime.interactiveWaitingForCommand = false;
+                runtime.interactiveFramesRemaining = command.frames;
+                runtime.interactiveCaptureLabel = command.captureLabel.empty()
+                    ? "step_" + std::to_string(++runtime.interactiveStep)
+                    : command.captureLabel;
+                runtime.stopAfterFrame = command.stop;
+                for (RuntimeTimelineEvent &event : command.events)
+                    runtime.timeline.push_back(std::move(event));
+
+                std::cout << "CANIS_INTERACTIVE_ACK {\"frames\":"
+                          << runtime.interactiveFramesRemaining
+                          << ",\"capture\":\""
+                          << EscapeJson(runtime.interactiveCaptureLabel)
+                          << "\",\"stop\":" << (command.stop ? "true" : "false")
+                          << "}" << std::endl;
+                break;
+            }
+        }
+
+        inputManager.BeginSyntheticInputFrame();
         if (!inputManager.Update((void *)&window))
             return false;
 
@@ -1092,6 +1943,43 @@ namespace Canis
             Time::ResetFrameClock();
 
         f32 deltaTime = Time::StartFrame();
+
+        for (const unsigned int key : runtime.pulseKeys)
+            inputManager.SetSyntheticKey(key, false);
+        runtime.pulseKeys.clear();
+        for (const unsigned int button : runtime.pulseMouseButtons)
+            inputManager.SetSyntheticMouseButton(button, false);
+        runtime.pulseMouseButtons.clear();
+        for (const unsigned int button : runtime.pulseGamepadButtons)
+            inputManager.SetSyntheticGamepadButton(button, false);
+        runtime.pulseGamepadButtons.clear();
+
+        constexpr double timelineEpsilon = 1e-7;
+        while (runtime.nextTimelineEvent < runtime.timeline.size() &&
+               runtime.timeline[runtime.nextTimelineEvent].time <=
+                   runtime.simulationTime + timelineEpsilon)
+        {
+            Debug::Log(
+                "Applying runtime event %zu at %.3fs (simulation %.3fs).",
+                runtime.nextTimelineEvent,
+                runtime.timeline[runtime.nextTimelineEvent].time,
+                runtime.simulationTime);
+            ApplyRuntimeTimelineEvent(
+                runtime.timeline[runtime.nextTimelineEvent],
+                inputManager,
+                runtime.pulseKeys,
+                runtime.pulseMouseButtons,
+                runtime.pulseGamepadButtons,
+                runtime.pendingCaptures,
+                runtime.stopAfterFrame);
+            ++runtime.nextTimelineEvent;
+        }
+        if (runtime.launch.stopAt >= 0.0 &&
+            runtime.simulationTime + timelineEpsilon >= runtime.launch.stopAt)
+        {
+            runtime.stopAfterFrame = true;
+            runtime.exitReason = "stop-time-reached";
+        }
 
         bool runGameTick = true;
 #if CANIS_EDITOR
@@ -1163,6 +2051,9 @@ namespace Canis
         }
 
         Uint64 renderStart = SDL_GetTicksNS();
+        unsigned int captureFramebuffer = 0u;
+        int captureWidth = 0;
+        int captureHeight = 0;
         window.Clear();
 #if CANIS_EDITOR
         if (runtime.editorRuntimeEnabled)
@@ -1193,6 +2084,9 @@ namespace Canis
                 runtime.runtimeRenderTarget.width,
                 runtime.runtimeRenderTarget.height,
                 &runtime.runtimePostProcessTarget);
+            captureFramebuffer = postProcessResult.framebuffer;
+            captureWidth = runtime.runtimeRenderTarget.width;
+            captureHeight = runtime.runtimeRenderTarget.height;
 
             BlitFramebuffer(
                 postProcessResult.framebuffer,
@@ -1204,10 +2098,101 @@ namespace Canis
 
             inputManager.SetGameInputWindowID(SDL_GetWindowID((SDL_Window*)window.GetSDLWindow()));
         }
+
+        if (runtime.launch.interactive &&
+            runtime.interactiveFramesRemaining == 1u &&
+            !runtime.interactiveCaptureLabel.empty())
+        {
+            runtime.pendingCaptures.push_back(runtime.interactiveCaptureLabel);
+        }
+
+        if (runtime.stopAfterFrame && runtime.launch.active &&
+            runtime.launch.captureFinal && !runtime.launch.interactive)
+        {
+            if (std::find(runtime.pendingCaptures.begin(), runtime.pendingCaptures.end(), "final") ==
+                runtime.pendingCaptures.end())
+                runtime.pendingCaptures.push_back("final");
+        }
+
+        for (const std::string &requestedLabel : runtime.pendingCaptures)
+        {
+            const std::string label = requestedLabel.empty() ? "capture" : requestedLabel;
+            std::ostringstream timestamp = {};
+            timestamp << std::fixed << std::setprecision(3) << runtime.simulationTime;
+            const std::string fileName =
+                std::to_string(runtime.captures.size()) + "_" +
+                SanitizeFileName(label) + "_" +
+                SanitizeFileName(timestamp.str()) + ".png";
+            const fs::path outputPath = runtime.launch.captureDirectory / fileName;
+            if (!WriteRuntimeFramebuffer(
+                    captureFramebuffer,
+                    captureWidth,
+                    captureHeight,
+                    outputPath))
+            {
+                Debug::Error("Failed to capture runtime framebuffer to %s.", outputPath.generic_string().c_str());
+                m_exitCode = 4;
+                runtime.exitReason = "capture-error";
+                runtime.stopAfterFrame = true;
+                continue;
+            }
+            runtime.captures.push_back({
+                runtime.simulationTime,
+                label,
+                fs::absolute(outputPath).generic_string()});
+            Debug::Log(
+                "Captured runtime framebuffer '%s' at %.3fs.",
+                label.c_str(),
+                runtime.simulationTime);
+        }
+        runtime.pendingCaptures.clear();
+
         window.SwapBuffer();
         m_renderTimeMs = static_cast<float>(SDL_GetTicksNS() - renderStart) / 1000000.0f;
 
         Time::EndFrame();
+        ++runtime.simulationFrame;
+
+        if (runtime.launch.interactive && runtime.interactiveFramesRemaining > 0u)
+        {
+            --runtime.interactiveFramesRemaining;
+            if (runtime.interactiveFramesRemaining == 0u)
+            {
+                const RuntimeCaptureRecord *capture =
+                    runtime.captures.empty() ? nullptr : &runtime.captures.back();
+                std::cout << "CANIS_INTERACTIVE_FRAME {\"time\":"
+                          << runtime.simulationTime
+                          << ",\"frame\":" << runtime.simulationFrame
+                          << ",\"label\":\""
+                          << EscapeJson(capture != nullptr ? capture->label : "")
+                          << "\",\"path\":\""
+                          << EscapeJson(capture != nullptr ? capture->path : "")
+                          << "\"}" << std::endl;
+                if (!runtime.stopAfterFrame)
+                    runtime.interactiveWaitingForCommand = true;
+            }
+        }
+
+        if (runtime.stopAfterFrame)
+        {
+            if (runtime.exitReason == "window-closed")
+                runtime.exitReason = "timeline-complete";
+            if (!WriteRuntimeManifest(
+                    runtime.launch,
+                    runtime.exitReason,
+                    runtime.simulationTime,
+                    runtime.simulationFrame,
+                    runtime.captures,
+                    m_exitCode))
+            {
+                Debug::Error("Failed to write runtime test manifest.");
+                m_exitCode = 5;
+            }
+            runtime.harnessCompleted = true;
+            return false;
+        }
+
+        runtime.simulationTime += static_cast<double>(deltaTime);
 
         return true;
     }
@@ -1243,6 +2228,22 @@ namespace Canis
         RuntimeContext *runtime = m_runtime;
         m_runtime = nullptr;
 
+        if (runtime->launch.active && !runtime->harnessCompleted)
+        {
+            if (!WriteRuntimeManifest(
+                    runtime->launch,
+                    runtime->exitReason,
+                    runtime->simulationTime,
+                    runtime->simulationFrame,
+                    runtime->captures,
+                    m_exitCode))
+            {
+                Debug::Error("Failed to write runtime test manifest.");
+                if (m_exitCode == 0)
+                    m_exitCode = 5;
+            }
+        }
+
         if (runtime->window != nullptr)
         {
             if (runtime->editorRuntimeEnabled)
@@ -1259,9 +2260,12 @@ namespace Canis
             SaveProjectConfig();
         }
 
-        scene.Unload();
-        Time::Quit();
-        GameCodeObjectShutdownFunction(&runtime->gameCodeObject, this);
+        if (runtime->window != nullptr)
+            scene.Unload();
+        if (runtime->timeInitialized)
+            Time::Quit();
+        if (runtime->gameCodeInitialized)
+            GameCodeObjectShutdownFunction(&runtime->gameCodeObject, this);
         m_network.reset();
 
         // Destroy any remaining std::function state while the game shared object is still loaded.
@@ -1269,8 +2273,10 @@ namespace Canis
         m_systemRegistry.clear();
         m_scriptRegistry.clear();
 
-        AudioManager::Shutdown();
-        GameCodeObjectDestroy(&runtime->gameCodeObject);
+        if (runtime->window != nullptr)
+            AudioManager::Shutdown();
+        if (runtime->gameCodeInitialized)
+            GameCodeObjectDestroy(&runtime->gameCodeObject);
         DestroyRenderTarget(runtime->runtimeRenderTarget);
         DestroyRenderTarget(runtime->runtimePostProcessTarget);
         m_editor = nullptr;
@@ -1292,15 +2298,47 @@ namespace Canis
     }
 #endif
 
-    void App::Run()
+    int App::Run(int _argc, char **_argv)
     {
+        m_exitCode = 0;
+        m_commandLineArguments.clear();
+        m_invocationWorkingDirectory = std::filesystem::current_path().generic_string();
+        for (int index = 1; index < _argc; ++index)
+        {
+            if (_argv[index] != nullptr)
+                m_commandLineArguments.emplace_back(_argv[index]);
+        }
+
+        if (std::find(m_commandLineArguments.begin(), m_commandLineArguments.end(), "--help") !=
+                m_commandLineArguments.end() ||
+            std::find(m_commandLineArguments.begin(), m_commandLineArguments.end(), "-h") !=
+                m_commandLineArguments.end())
+        {
+            std::cout
+                << "Canis runtime options:\n"
+                << "  --editor                    Force the editor runtime on.\n"
+                << "  --force-game-only           Bypass the editor and run the game directly.\n"
+                << "  --game-only                 Alias for --force-game-only.\n"
+                << "  --launch-scene PATH         Launch a scene path or a name under assets/scenes.\n"
+                << "  --input-script PATH         Replay timestamped JSON/YAML input events.\n"
+                << "  --interactive-test          Pause after each input batch and return a framebuffer.\n"
+                << "  --force-fps NUMBER          Fix simulation delta to 1/FPS and pace rendering.\n"
+                << "  --fixed-delta SECONDS       Use an exact simulation delta without changing pacing.\n"
+                << "  --stop-at SECONDS           Stop after rendering at the requested simulation time.\n"
+                << "  --capture-dir PATH          Write PNG captures and manifest.json here.\n"
+                << "  --capture-final             Capture the final rendered frame (default).\n"
+                << "  --no-final-capture          Disable automatic final-frame capture.\n"
+                << "  --offscreen                 Create a hidden OpenGL window for automated runs.\n";
+            return 0;
+        }
+
 #if CANIS_EDITOR && !defined(__EMSCRIPTEN__)
         std::optional<std::filesystem::path> environmentProject = ResolveProjectFromEnvironment();
         const char *environmentProjectPath = std::getenv("CANIS_PROJECT");
         if (!environmentProject.has_value() && environmentProjectPath != nullptr && environmentProjectPath[0] != '\0')
         {
             Debug::Error("CANIS_PROJECT is not a valid project folder: %s", environmentProjectPath);
-            return;
+            return 2;
         }
 
         if (environmentProject.has_value())
@@ -1310,7 +2348,7 @@ namespace Canis
             if (ec)
             {
                 Debug::Error("Failed to open project from CANIS_PROJECT: %s", environmentProject->generic_string().c_str());
-                return;
+                return 2;
             }
         }
 #endif
@@ -1325,6 +2363,7 @@ namespace Canis
         }
         ShutdownRuntime();
 #endif
+        return m_exitCode;
     }
 
     void App::RegisterDefaults(Editor& _editor)
@@ -1470,6 +2509,8 @@ namespace Canis
                     comp["renderMode"] = canvas.renderMode;
                     comp["scaleMode"] = canvas.scaleMode;
                     comp["screenSize"] = canvas.screenSize;
+                    comp["receivesEvents"] = canvas.receivesEvents;
+                    comp["interactionDistance"] = canvas.interactionDistance;
                     _node["Canis::Canvas"] = comp;
                 }
             },
@@ -1482,6 +2523,9 @@ namespace Canis
                     canvas.renderMode = canvasNode["renderMode"].as<unsigned int>(CanvasRenderMode::SCREEN_SPACE_OVERLAY);
                     canvas.scaleMode = canvasNode["scaleMode"].as<unsigned int>(CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH);
                     canvas.screenSize = canvasNode["screenSize"].as<Vector2>(defaultScreenSize);
+                    canvas.receivesEvents = canvasNode["receivesEvents"].as<bool>(true);
+                    canvas.interactionDistance = std::max(
+                        0.0f, canvasNode["interactionDistance"].as<float>(3.0f));
                     canvas.screenSize.x = std::max(1.0f, canvas.screenSize.x);
                     canvas.screenSize.y = std::max(1.0f, canvas.screenSize.y);
 
@@ -1508,6 +2552,12 @@ namespace Canis
                         DrawInspectorField(_editor, "screenSize", _conf.name.c_str(), canvas->screenSize);
                         canvas->screenSize.x = std::max(1.0f, canvas->screenSize.x);
                         canvas->screenSize.y = std::max(1.0f, canvas->screenSize.y);
+                    }
+                    else if (canvas->renderMode == CanvasRenderMode::WORLD_SPACE)
+                    {
+                        DrawInspectorField(_editor, "receivesEvents", _conf.name.c_str(), canvas->receivesEvents);
+                        DrawInspectorField(_editor, "interactionDistance", _conf.name.c_str(), canvas->interactionDistance);
+                        canvas->interactionDistance = std::max(0.0f, canvas->interactionDistance);
                     }
                 }
             },
@@ -3857,6 +4907,7 @@ namespace Canis
                     comp["animationSpeed"] = animation.animationSpeed;
                     comp["animationTime"] = animation.animationTime;
                     comp["animationIndex"] = animation.animationIndex;
+                    comp["rootMotionMask"] = animation.rootMotionMask;
                     _node["Canis::ModelAnimation"] = comp;
                 }
             },
@@ -3873,6 +4924,8 @@ namespace Canis
                     animation.animationSpeed = comp["animationSpeed"].as<float>(1.0f);
                     animation.animationTime = comp["animationTime"].as<float>(0.0f);
                     animation.animationIndex = comp["animationIndex"].as<i32>(0);
+                    animation.rootMotionMask =
+                        comp["rootMotionMask"].as<Vector3>(Vector3(0.0f));
 
                     if (_callCreate)
                         animation.Create();
@@ -3886,6 +4939,7 @@ namespace Canis
                     DrawInspectorField(_editor, "loop", _conf.name.c_str(), animation->loop);
                     DrawInspectorField(_editor, "animationSpeed", _conf.name.c_str(), animation->animationSpeed);
                     DrawInspectorField(_editor, "animationTime", _conf.name.c_str(), animation->animationTime);
+                    DrawInspectorField(_editor, "rootMotionMask", _conf.name.c_str(), animation->rootMotionMask);
 
                     ModelAsset* modelAsset = nullptr;
                     if (Model* model = _entity.HasComponent<Model>() ? &_entity.GetComponent<Model>() : nullptr)
