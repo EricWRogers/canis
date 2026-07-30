@@ -2373,6 +2373,91 @@ namespace Canis
         return true;
     }
 
+    bool ModelAsset::BlendPoseFromLocalMatrices(
+        Pose3D &_pose,
+        const std::vector<Matrix4> &_sourceLocalMatrices,
+        float _targetWeight) const
+    {
+        if (_sourceLocalMatrices.size() != m_nodes.size() ||
+            _pose.localNodeMatrices.size() != m_nodes.size())
+            return false;
+
+        const float weight = glm::clamp(_targetWeight, 0.0f, 1.0f);
+        auto decomposeTrs = [](
+            const Matrix4 &_matrix,
+            Vector3 &_scale,
+            glm::quat &_rotation,
+            Vector3 &_translation) -> bool
+        {
+            _translation = Vector3(_matrix[3]);
+            Vector3 xAxis(_matrix[0]);
+            Vector3 yAxis(_matrix[1]);
+            Vector3 zAxis(_matrix[2]);
+            _scale = Vector3(
+                glm::length(xAxis),
+                glm::length(yAxis),
+                glm::length(zAxis));
+            if (_scale.x <= 0.000001f ||
+                _scale.y <= 0.000001f ||
+                _scale.z <= 0.000001f)
+                return false;
+            xAxis /= _scale.x;
+            yAxis /= _scale.y;
+            zAxis /= _scale.z;
+            if (glm::dot(glm::cross(xAxis, yAxis), zAxis) < 0.0f)
+            {
+                _scale.x = -_scale.x;
+                xAxis = -xAxis;
+            }
+            glm::mat3 rotationMatrix(1.0f);
+            rotationMatrix[0] = xAxis;
+            rotationMatrix[1] = yAxis;
+            rotationMatrix[2] = zAxis;
+            _rotation = glm::normalize(glm::quat_cast(rotationMatrix));
+            return true;
+        };
+        for (std::size_t index = 0; index < m_nodes.size(); ++index)
+        {
+            Vector3 sourceScale(1.0f);
+            glm::quat sourceRotation(1.0f, 0.0f, 0.0f, 0.0f);
+            Vector3 sourceTranslation(0.0f);
+            Vector3 targetScale(1.0f);
+            glm::quat targetRotation(1.0f, 0.0f, 0.0f, 0.0f);
+            Vector3 targetTranslation(0.0f);
+            if (!decomposeTrs(
+                    _sourceLocalMatrices[index],
+                    sourceScale,
+                    sourceRotation,
+                    sourceTranslation) ||
+                !decomposeTrs(
+                    _pose.localNodeMatrices[index],
+                    targetScale,
+                    targetRotation,
+                    targetTranslation))
+                return false;
+
+            sourceRotation = glm::normalize(sourceRotation);
+            targetRotation = glm::normalize(targetRotation);
+            const Vector3 translation =
+                glm::mix(sourceTranslation, targetTranslation, weight);
+            const Vector3 scale =
+                glm::mix(sourceScale, targetScale, weight);
+            const glm::quat rotation =
+                glm::normalize(glm::slerp(
+                    sourceRotation,
+                    targetRotation,
+                    weight));
+            _pose.localNodeMatrices[index] =
+                glm::translate(Matrix4(1.0f), translation) *
+                glm::mat4_cast(rotation) *
+                glm::scale(Matrix4(1.0f), scale);
+        }
+
+        UpdateGlobalMatrices(_pose);
+        UpdateSkinning(_pose);
+        return true;
+    }
+
     void ModelAsset::ResetPose()
     {
         ResetPose(m_sharedPose);
@@ -2426,7 +2511,19 @@ namespace Canis
                 continue;
 
             Matrix4 model = _modelMatrix;
-            if (applyPrimitiveNodeTransform && primitive.nodeIndex >= 0 && primitive.nodeIndex < (i32)m_nodes.size())
+            const bool hasSkinnedPose =
+                primitive.hasSkinning &&
+                pose != nullptr &&
+                primitiveIndex < pose->skinnedVertices.size() &&
+                pose->skinnedVertices[primitiveIndex].size() ==
+                    primitive.bindVertices.size();
+            // CPU-skinned vertices are already in the model's global node
+            // space. Applying the mesh node transform a second time moves
+            // animated characters away from their entity/collider.
+            if (!hasSkinnedPose &&
+                applyPrimitiveNodeTransform &&
+                primitive.nodeIndex >= 0 &&
+                primitive.nodeIndex < (i32)m_nodes.size())
             {
                 if (pose != nullptr && pose->globalNodeMatrices.size() == m_nodes.size())
                     model = _modelMatrix * pose->globalNodeMatrices[primitive.nodeIndex];

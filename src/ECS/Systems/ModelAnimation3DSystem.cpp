@@ -89,7 +89,11 @@ namespace Canis
                     modelAnimation.lastEvaluatedRootMotionMask -
                     modelAnimation.rootMotionMask) > 1e-6f);
 
-            if (!modelAnimation.poseInitialized || animationChanged)
+            const bool transitionActive =
+                modelAnimation.transitionDuration > 0.0f &&
+                !modelAnimation.transitionLocalNodeMatrices.empty();
+            if (!modelAnimation.poseInitialized || animationChanged ||
+                transitionActive)
             {
                 if (!model->UpdateAnimation(
                         modelAnimation.pose,
@@ -97,6 +101,27 @@ namespace Canis
                         modelAnimation.animationTime,
                         modelAnimation.rootMotionMask))
                     model->ResetPose(modelAnimation.pose);
+
+                if (transitionActive)
+                {
+                    modelAnimation.transitionElapsed +=
+                        std::max(deltaTime, 0.0f);
+                    const float targetWeight = std::clamp(
+                        modelAnimation.transitionElapsed /
+                            modelAnimation.transitionDuration,
+                        0.0f,
+                        1.0f);
+                    if (!model->BlendPoseFromLocalMatrices(
+                            modelAnimation.pose,
+                            modelAnimation.transitionLocalNodeMatrices,
+                            targetWeight) ||
+                        targetWeight >= 1.0f)
+                    {
+                        modelAnimation.transitionLocalNodeMatrices.clear();
+                        modelAnimation.transitionDuration = 0.0f;
+                        modelAnimation.transitionElapsed = 0.0f;
+                    }
+                }
 
                 modelAnimation.poseInitialized = true;
                 modelAnimation.lastEvaluatedAnimationIndex = modelAnimation.animationIndex;

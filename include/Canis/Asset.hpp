@@ -575,6 +575,10 @@ namespace Canis
             i32 _clipIndex,
             float _timeSeconds,
             const Vector3 &_rootMotionMask = Vector3(0.0f)) const;
+        bool BlendPoseFromLocalMatrices(
+            Pose3D &_pose,
+            const std::vector<Matrix4> &_sourceLocalMatrices,
+            float _targetWeight) const;
         void ResetPose();
         void ResetPose(Pose3D &_pose) const;
         void Draw(

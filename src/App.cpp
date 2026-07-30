@@ -113,6 +113,17 @@ namespace Canis
         size_t interactiveStep = 0u;
     };
 
+    void App::FailRuntimeTest(const std::string &_message)
+    {
+        Debug::Error("Runtime test assertion failed: %s", _message.c_str());
+        if (m_runtime == nullptr || !m_runtime->launch.active)
+            return;
+        m_exitCode = 6;
+        m_runtime->exitReason = "assertion-failed";
+        m_runtime->stopAfterFrame = true;
+        m_runtime->pendingCaptures.push_back("assertion_failure");
+    }
+
     namespace
     {
         namespace fs = std::filesystem;

@@ -20,6 +20,7 @@ public:
     float FPS();
     float DeltaTime();
     void SetTargetFPS(float _targetFPS);
+    void FailRuntimeTest(const std::string &_message);
     float UpdateTimeMs() const { return m_updateTimeMs; }
     float SceneUpdateTimeMs() const { return m_sceneUpdateTimeMs; }
     float GameCodeUpdateTimeMs() const { return m_gameCodeUpdateTimeMs; }

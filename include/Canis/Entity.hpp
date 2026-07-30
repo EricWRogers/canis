@@ -1230,6 +1230,11 @@ namespace Canis
         // Locks selected animated skeleton-root translation axes to their
         // first-frame values. A value of 1 removes motion on that axis.
         Vector3 rootMotionMask = Vector3(0.0f);
+        // Optional short crossfade from a previously sampled compatible
+        // skeleton pose into the current animation.
+        std::vector<Matrix4> transitionLocalNodeMatrices = {};
+        float transitionDuration = 0.0f;
+        float transitionElapsed = 0.0f;
 
         // Runtime pose cache for this entity's model instance.
         i32 poseModelId = -1;
