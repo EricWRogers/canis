@@ -223,15 +223,131 @@ static void FitNodes(Delegate& delegate, ViewState& viewState, const ImVec2 view
     viewState.mPosition = ImVec2(-nodeCenter.x, -nodeCenter.y) + (viewSize * 0.5f) / viewState.mFactorTarget;
 }
 
-static void DisplayLinks(Delegate& delegate,
-                         ImDrawList* drawList,
-                         const ImVec2 offset,
-                         const float factor,
-                         const ImRect regionRect,
-                         NodeIndex hoveredNode,
-                         const Options& options)
+static float DistanceToSegmentSquared(const ImVec2 point, const ImVec2 start, const ImVec2 end)
 {
+    const ImVec2 segment = end - start;
+    const float lengthSquared = segment.x * segment.x + segment.y * segment.y;
+    if (lengthSquared <= 0.0001f)
+    {
+        const ImVec2 delta = point - start;
+        return delta.x * delta.x + delta.y * delta.y;
+    }
+
+    const ImVec2 fromStart = point - start;
+    const float projection = ImClamp(
+        (fromStart.x * segment.x + fromStart.y * segment.y) / lengthSquared,
+        0.0f,
+        1.0f);
+    const ImVec2 closest = start + segment * projection;
+    const ImVec2 delta = point - closest;
+    return delta.x * delta.x + delta.y * delta.y;
+}
+
+static ImVec2 CubicBezierPoint(
+    const ImVec2 start,
+    const ImVec2 control1,
+    const ImVec2 control2,
+    const ImVec2 end,
+    const float t)
+{
+    const float inverseT = 1.0f - t;
+    return
+        start * (inverseT * inverseT * inverseT) +
+        control1 * (3.0f * inverseT * inverseT * t) +
+        control2 * (3.0f * inverseT * t * t) +
+        end * (t * t * t);
+}
+
+static LinkIndex DisplayLinks(Delegate& delegate,
+                              ImDrawList* drawList,
+                              const ImVec2 offset,
+                              const float factor,
+                              const ImRect regionRect,
+                              NodeIndex hoveredNode,
+                              const Options& options)
+{
+    constexpr LinkIndex invalidLinkIndex = static_cast<LinkIndex>(-1);
+    const auto drawArrow = [&](
+        const ImVec2 center,
+        ImVec2 direction,
+        const ImU32 color) -> void
+    {
+        const float directionLength = sqrtf(
+            direction.x * direction.x +
+            direction.y * direction.y);
+        if (directionLength <= 0.0001f)
+            return;
+
+        direction = direction / directionLength;
+        const ImVec2 normal(-direction.y, direction.x);
+        const float size = options.mLinkArrowSize * factor;
+        const ImVec2 tip = center + direction * size;
+        const ImVec2 back = center - direction * (size * 0.72f);
+        const ImVec2 wing = normal * (size * 0.68f);
+
+        drawList->AddTriangleFilled(
+            tip + direction * (2.0f * factor),
+            back + wing + normal * (1.5f * factor),
+            back - wing - normal * (1.5f * factor),
+            IM_COL32(0, 0, 0, 230));
+        drawList->AddTriangleFilled(
+            tip,
+            back + wing,
+            back - wing,
+            color);
+    };
+
     const size_t linkCount = delegate.GetLinkCount();
+    LinkIndex hoveredLinkIndex = invalidLinkIndex;
+    if (options.mLinksSelectable && regionRect.Contains(ImGui::GetIO().MousePos))
+    {
+        const ImVec2 mousePosition = ImGui::GetIO().MousePos;
+        const float hitRadius = ImMax(7.0f, options.mLineThickness * factor * 2.5f);
+        const float hitRadiusSquared = hitRadius * hitRadius;
+        float closestDistanceSquared = hitRadiusSquared;
+
+        for (LinkIndex linkIndex = 0; linkIndex < linkCount; ++linkIndex)
+        {
+            const auto link = delegate.GetLink(linkIndex);
+            const auto nodeInput = delegate.GetNode(link.mInputNodeIndex);
+            const auto nodeOutput = delegate.GetNode(link.mOutputNodeIndex);
+            const ImVec2 p1 = offset + GetOutputSlotPos(delegate, nodeInput, link.mInputSlotIndex, factor);
+            const ImVec2 p2 = offset + GetInputSlotPos(delegate, nodeOutput, link.mOutputSlotIndex, factor);
+
+            float linkDistanceSquared = hitRadiusSquared;
+            if (options.mDisplayLinksAsCurves)
+            {
+                const ImVec2 control1 = p1 + ImVec2(50, 0) * factor;
+                const ImVec2 control2 = p2 + ImVec2(-50, 0) * factor;
+                ImVec2 previousPoint = p1;
+                constexpr int sampleCount = 32;
+                for (int sampleIndex = 1; sampleIndex <= sampleCount; ++sampleIndex)
+                {
+                    const ImVec2 point = CubicBezierPoint(
+                        p1,
+                        control1,
+                        control2,
+                        p2,
+                        static_cast<float>(sampleIndex) / static_cast<float>(sampleCount));
+                    linkDistanceSquared = ImMin(
+                        linkDistanceSquared,
+                        DistanceToSegmentSquared(mousePosition, previousPoint, point));
+                    previousPoint = point;
+                }
+            }
+            else
+            {
+                linkDistanceSquared = DistanceToSegmentSquared(mousePosition, p1, p2);
+            }
+
+            if (linkDistanceSquared <= closestDistanceSquared)
+            {
+                closestDistanceSquared = linkDistanceSquared;
+                hoveredLinkIndex = linkIndex;
+            }
+        }
+    }
+
     for (LinkIndex linkIndex = 0; linkIndex < linkCount; linkIndex++)
     {
         const auto link = delegate.GetLink(linkIndex);
@@ -245,13 +361,37 @@ static void DisplayLinks(Delegate& delegate,
             (p1.x < 0.f && p2.x < 0.f) || (p1.x > regionRect.Max.x && p2.x > regionRect.Max.x))
             continue;
 
-        bool highlightCons = hoveredNode == link.mInputNodeIndex || hoveredNode == link.mOutputNodeIndex;
+        const bool selectedLink = options.mLinksSelectable && delegate.IsLinkSelected(linkIndex);
+        const bool hoveredLink = options.mLinksSelectable && hoveredLinkIndex == linkIndex;
+        const bool highlightCons = hoveredNode == link.mInputNodeIndex || hoveredNode == link.mOutputNodeIndex;
         uint32_t col = delegate.GetTemplate(nodeInput.mTemplateIndex).mHeaderColor | (highlightCons ? 0xF0F0F0 : 0);
+        if (hoveredLink)
+            col = IM_COL32(255, 211, 128, 255);
+        if (selectedLink)
+            col = IM_COL32(255, 145, 48, 255);
+        const float selectionThickness = selectedLink ? 1.9f : (hoveredLink ? 1.45f : 1.0f);
         if (options.mDisplayLinksAsCurves)
         {
             // curves
-             drawList->AddBezierCubic(p1, p1 + ImVec2(50, 0) * factor, p2 + ImVec2(-50, 0) * factor, p2, 0xFF000000, options.mLineThickness * 1.5f * factor);
-             drawList->AddBezierCubic(p1, p1 + ImVec2(50, 0) * factor, p2 + ImVec2(-50, 0) * factor, p2, col, options.mLineThickness * 1.5f * factor);
+             const ImVec2 control1 = p1 + ImVec2(50, 0) * factor;
+             const ImVec2 control2 = p2 + ImVec2(-50, 0) * factor;
+             drawList->AddBezierCubic(p1, control1, control2, p2, 0xFF000000, options.mLineThickness * 2.0f * selectionThickness * factor);
+             drawList->AddBezierCubic(p1, control1, control2, p2, col, options.mLineThickness * 1.5f * selectionThickness * factor);
+             if (options.mDrawLinkArrows)
+             {
+                 constexpr float arrowT = 0.64f;
+                 constexpr float inverseArrowT = 1.0f - arrowT;
+                 const ImVec2 arrowCenter =
+                     p1 * (inverseArrowT * inverseArrowT * inverseArrowT) +
+                     control1 * (3.0f * inverseArrowT * inverseArrowT * arrowT) +
+                     control2 * (3.0f * inverseArrowT * arrowT * arrowT) +
+                     p2 * (arrowT * arrowT * arrowT);
+                 const ImVec2 arrowDirection =
+                     (control1 - p1) * (3.0f * inverseArrowT * inverseArrowT) +
+                     (control2 - control1) * (6.0f * inverseArrowT * arrowT) +
+                     (p2 - control2) * (3.0f * arrowT * arrowT);
+                 drawArrow(arrowCenter, arrowDirection, col);
+             }
              /*
             ImVec2 p10 = p1 + ImVec2(20.f * factor, 0.f);
             ImVec2 p20 = p2 - ImVec2(20.f * factor, 0.f);
@@ -337,13 +477,15 @@ static void DisplayLinks(Delegate& delegate,
                     ptCount = 4;
                 }
             }
-            float highLightFactor = factor * (highlightCons ? 2.0f : 1.f);
+            float highLightFactor = factor * (highlightCons ? 2.0f : 1.f) * selectionThickness;
             for (int pass = 0; pass < 2; pass++)
             {
                 drawList->AddPolyline(pts.data(), ptCount, pass ? col : 0xFF000000, false, (pass ? options.mLineThickness : (options.mLineThickness * 1.5f)) * highLightFactor);
             }
         }
     }
+
+    return hoveredLinkIndex;
 }
 
 static void HandleQuadSelection(Delegate& delegate, ImDrawList* drawList, const ImVec2 offset, const float factor, ImRect contentRect, const Options& options)
@@ -401,7 +543,9 @@ static void HandleQuadSelection(Delegate& delegate, ImDrawList* drawList, const 
             }
         }
     }
-    else if (nodeOperation == NO_None && io.MouseDown[0] && ImGui::IsWindowFocused() &&
+    else if (nodeOperation == NO_None &&
+             ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+             ImGui::IsWindowFocused() &&
              contentRect.Contains(io.MousePos))
     {
         nodeOperation = NO_QuadSelecting;
@@ -1015,7 +1159,14 @@ void Show(Delegate& delegate, const Options& options, ViewState& viewState, bool
         drawList->ChannelsSetCurrent(1); // Background
 
         // Links
-        DisplayLinks(delegate, drawList, offset, viewState.mFactor, regionRect, hoveredNode, options);
+        const LinkIndex hoveredLink = DisplayLinks(
+            delegate,
+            drawList,
+            offset,
+            viewState.mFactor,
+            regionRect,
+            hoveredNode,
+            options);
 
         // edit node link
         if (nodeOperation == NO_EditingLink)
@@ -1117,8 +1268,20 @@ void Show(Delegate& delegate, const Options& options, ViewState& viewState, bool
 
         drawList->ChannelsSetCurrent(0);
 
+        constexpr LinkIndex invalidLinkIndex = static_cast<LinkIndex>(-1);
+        const bool linkUnderMouse =
+            options.mLinksSelectable &&
+            hoveredLink != invalidLinkIndex &&
+            hoveredNode == static_cast<NodeIndex>(-1);
+        if (!inMinimap &&
+            linkUnderMouse &&
+            nodeOperation == NO_None &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left))
+        {
+            delegate.SelectLink(hoveredLink);
+        }
         // quad selection
-        if (!inMinimap)
+        if (!inMinimap && !linkUnderMouse)
         {
             HandleQuadSelection(delegate, drawList, offset, viewState.mFactor, regionRect, options);
         }

@@ -3030,6 +3030,67 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return _left.uuid != _right.uuid || _left.path != _right.path;
         }
 
+        bool DrawAnimatorModelMotionField(
+            const char* _label,
+            const char* _idSuffix,
+            std::string& _modelPath)
+        {
+            namespace fs = std::filesystem;
+
+            bool changed = false;
+            std::string label = "[ drop a .glb/.gltf model ]";
+            if (!_modelPath.empty())
+            {
+                label = fs::path(_modelPath).stem().string();
+                if (MetaFileAsset* meta = AssetManager::GetMetaFile(_modelPath))
+                {
+                    if (!meta->name.empty())
+                        label = meta->name;
+                }
+            }
+
+            ImGui::TextUnformatted(_label);
+            ImGui::SameLine();
+            ImGui::PushID(_idSuffix);
+            ImGui::Button(label.c_str(), ImVec2(210.0f, 0.0f));
+            if (ImGui::IsItemHovered())
+            {
+                ImGui::SetTooltip(
+                    "%s\nDrop an imported model containing a compatible skeleton animation.",
+                    _modelPath.empty() ? "No 3D motion assigned" : _modelPath.c_str());
+            }
+
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped =
+                        *static_cast<const AssetDragData*>(payload->Data);
+                    const std::string path = AssetManager::GetPath(dropped.uuid);
+                    if (MetaFileAsset* meta = AssetManager::GetMetaFile(path);
+                        meta != nullptr &&
+                        meta->type == MetaFileAsset::FileType::MODEL)
+                    {
+                        _modelPath = meta->path.empty() ? path : meta->path;
+                        changed = true;
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (!_modelPath.empty())
+            {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("Clear"))
+                {
+                    _modelPath.clear();
+                    changed = true;
+                }
+            }
+            ImGui::PopID();
+            return changed;
+        }
+
         constexpr float kAnimationEditorFramesPerSecond = 60.0f;
         constexpr float kAnimationEditorKeyTimeEpsilon = 0.0001f;
 
@@ -3327,6 +3388,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             GraphEditor::Options options = {};
             GraphEditor::ViewState viewState = {};
             ImVec2 contextMousePos = ImVec2(0.0f, 0.0f);
+            int contextStateIndex = -1;
         };
 
         std::unordered_map<std::string, AnimatorGraphViewState> g_animatorGraphViewStates = {};
@@ -3495,25 +3557,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        void RemoveAnimatorStateReferences(
+        bool RemoveAnimatorStateAtIndex(
             AnimatorControllerAsset &_controller,
-            const std::string &_removedStateName)
+            int _stateIndex,
+            int &_selectedStateIndex,
+            int &_selectedTransitionIndex)
         {
-            if (_controller.entryState == _removedStateName)
-                _controller.entryState.clear();
-
-            for (AnimatorState &state : _controller.states)
+            if (_stateIndex < 0 ||
+                _stateIndex >= static_cast<int>(_controller.states.size()))
             {
-                state.transitions.erase(
-                    std::remove_if(
-                        state.transitions.begin(),
-                        state.transitions.end(),
-                        [&](const AnimatorTransition &_transition)
-                        {
-                            return _transition.toState == _removedStateName;
-                        }),
-                    state.transitions.end());
+                return false;
             }
+
+            if (!RemoveAnimatorState(
+                    _controller,
+                    static_cast<std::size_t>(_stateIndex)))
+                return false;
+
+            if (_controller.states.empty())
+            {
+                _selectedStateIndex = -1;
+            }
+            else if (_selectedStateIndex == _stateIndex)
+            {
+                _selectedStateIndex = std::min(
+                    _stateIndex,
+                    static_cast<int>(_controller.states.size()) - 1);
+            }
+            else if (_selectedStateIndex > _stateIndex)
+            {
+                --_selectedStateIndex;
+            }
+
+            _selectedTransitionIndex = -1;
+            return true;
         }
 
         AnimatorParameterType FindAnimatorParameterType(
@@ -3586,10 +3663,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             AnimatorGraphDelegate(
                 AnimatorControllerAsset &_controller,
                 int &_selectedStateIndex,
+                int &_selectedTransitionIndex,
                 bool &_controllerChanged,
                 const std::string &_activeStateName)
                 : m_controller(_controller)
                 , m_selectedStateIndex(_selectedStateIndex)
+                , m_selectedTransitionIndex(_selectedTransitionIndex)
                 , m_controllerChanged(_controllerChanged)
                 , m_activeStateName(_activeStateName)
             {
@@ -3605,10 +3684,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (_selected)
                 {
                     m_selectedStateIndex = static_cast<int>(_nodeIndex);
+                    m_selectedTransitionIndex = -1;
                 }
                 else if (m_selectedStateIndex == static_cast<int>(_nodeIndex))
                 {
                     m_selectedStateIndex = -1;
+                    m_selectedTransitionIndex = -1;
                 }
             }
 
@@ -3648,6 +3729,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 transition.toState = targetStateName;
                 sourceState.transitions.push_back(transition);
                 m_selectedStateIndex = static_cast<int>(_sourceNodeIndex);
+                m_selectedTransitionIndex = static_cast<int>(sourceState.transitions.size()) - 1;
                 m_controllerChanged = true;
             }
 
@@ -3669,7 +3751,37 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     return;
 
                 state.transitions.erase(state.transitions.begin() + linkInfo.transitionIndex);
+                if (m_selectedStateIndex == linkInfo.fromStateIndex)
+                {
+                    if (m_selectedTransitionIndex == linkInfo.transitionIndex)
+                        m_selectedTransitionIndex = -1;
+                    else if (m_selectedTransitionIndex > linkInfo.transitionIndex)
+                        --m_selectedTransitionIndex;
+                }
                 m_controllerChanged = true;
+            }
+
+            void SelectLink(GraphEditor::LinkIndex _linkIndex) override
+            {
+                const std::vector<AnimatorGraphLinkInfo> links = BuildLinks();
+                if (_linkIndex >= links.size())
+                    return;
+
+                const AnimatorGraphLinkInfo &linkInfo = links[_linkIndex];
+                m_selectedStateIndex = linkInfo.fromStateIndex;
+                m_selectedTransitionIndex = linkInfo.transitionIndex;
+            }
+
+            bool IsLinkSelected(GraphEditor::LinkIndex _linkIndex) const override
+            {
+                const std::vector<AnimatorGraphLinkInfo> links = BuildLinks();
+                if (_linkIndex >= links.size())
+                    return false;
+
+                const AnimatorGraphLinkInfo &linkInfo = links[_linkIndex];
+                return
+                    m_selectedStateIndex == linkInfo.fromStateIndex &&
+                    m_selectedTransitionIndex == linkInfo.transitionIndex;
             }
 
             void CustomDraw(ImDrawList *_drawList, ImRect _rectangle, GraphEditor::NodeIndex _nodeIndex, float) override
@@ -3679,12 +3791,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 const AnimatorState &state = m_controller.states[_nodeIndex];
                 const std::string clipPath = AssetManager::ResolvePath(state.clip);
-                std::string clipLabel = clipPath.empty()
-                    ? "[ no clip ]"
-                    : std::filesystem::path(clipPath).stem().string();
-                if (!clipPath.empty())
+                const std::string motionPath =
+                    state.modelPath.empty() ? clipPath : state.modelPath;
+                std::string clipLabel = motionPath.empty()
+                    ? "[ no motion ]"
+                    : std::filesystem::path(motionPath).stem().string();
+                if (!motionPath.empty())
                 {
-                    if (MetaFileAsset *meta = AssetManager::GetMetaFile(clipPath))
+                    if (MetaFileAsset *meta = AssetManager::GetMetaFile(motionPath))
                         clipLabel = meta->name;
                 }
 
@@ -3701,7 +3815,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     cursor.y += ImGui::GetFontSize() + 4.0f;
                 };
 
-                drawLine(clipLabel, IM_COL32(236, 238, 244, 255));
+                drawLine(
+                    (state.modelPath.empty() ? std::string{} : std::string("3D: ")) + clipLabel,
+                    IM_COL32(236, 238, 244, 255));
                 drawLine(std::string("Speed ") + std::to_string(state.speed).substr(0, 4) + (state.loop ? "  Loop" : "  Once"), IM_COL32(186, 198, 215, 255));
                 if (isEntryState)
                     drawLine("Entry State", IM_COL32(186, 255, 208, 255));
@@ -3718,7 +3834,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 const AnimatorState &state = m_controller.states[_nodeIndex];
                 const std::string clipPath = AssetManager::ResolvePath(state.clip);
                 m_tooltipCache = state.name;
-                if (!clipPath.empty())
+                if (!state.modelPath.empty())
+                    m_tooltipCache += "\n3D Motion: " + state.modelPath;
+                else if (!clipPath.empty())
                     m_tooltipCache += "\nClip: " + clipPath;
                 if (!state.transitions.empty())
                     m_tooltipCache += "\nTransitions: " + std::to_string(state.transitions.size());
@@ -3731,6 +3849,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 GraphEditor::SlotIndex) override
             {
                 m_contextNodeIndex = _nodeIndex;
+                if (_nodeIndex < m_controller.states.size())
+                    m_selectedStateIndex = static_cast<int>(_nodeIndex);
                 m_contextMenuRequested = true;
                 m_contextMenuScreenPos = ImGui::GetMousePos();
             }
@@ -3832,6 +3952,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             AnimatorControllerAsset &m_controller;
             int &m_selectedStateIndex;
+            int &m_selectedTransitionIndex;
             bool &m_controllerChanged;
             const std::string &m_activeStateName;
             GraphEditor::NodeIndex m_contextNodeIndex = kInvalidAnimatorGraphNodeIndex;
@@ -9948,6 +10069,59 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::Text("Path: %s", modelPath.c_str());
         ImGui::Separator();
 
+        ModelAsset* model =
+            AssetManager::GetModel(AssetManager::LoadModel(modelPath));
+        const int animationCount =
+            model != nullptr ? model->GetAnimationCount() : 0;
+        ImGui::Text("Animations: %d", animationCount);
+        if (animationCount > 0)
+        {
+            if (ImGui::Button(
+                    "Create Animator Controller",
+                    ImVec2(240.0f, 0.0f)))
+            {
+                namespace fs = std::filesystem;
+                const fs::path modelFsPath = fs::path(modelPath);
+                fs::path controllerPath =
+                    modelFsPath.parent_path() /
+                    (modelFsPath.stem().string() + ".animator");
+                int suffix = 1;
+                while (fs::exists(controllerPath))
+                {
+                    controllerPath =
+                        modelFsPath.parent_path() /
+                        (modelFsPath.stem().string() + "_" +
+                         std::to_string(suffix) + ".animator");
+                    ++suffix;
+                }
+
+                AnimatorControllerAsset controller = {};
+                AnimatorState state = {};
+                state.name = model->GetAnimationName(0);
+                if (state.name.empty())
+                    state.name = modelFsPath.stem().string();
+                state.modelPath = modelPath;
+                state.modelAnimationIndex = 0;
+                state.editorPosition = GetDefaultAnimatorStatePosition(0);
+                controller.entryState = state.name;
+                controller.states.push_back(state);
+                if (controller.Save(controllerPath.generic_string()))
+                {
+                    (void)AssetManager::GetMetaFile(
+                        controllerPath.generic_string());
+                    m_selectedAssetPath = controllerPath.generic_string();
+                    m_animatorStatePath = controllerPath.generic_string();
+                }
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Creates a ready-to-edit state machine using this model's first animation.");
+        }
+        else
+        {
+            ImGui::TextDisabled(
+                "This model has no embedded animations to use as animator motion.");
+        }
+
         const bool canExportMaterials = IsGltfModelAssetPath(modelPath);
         if (!canExportMaterials)
             ImGui::BeginDisabled();
@@ -10904,13 +11078,89 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
 
                     AnimationClipAssetHandle previousClip = state.clip;
-                    InputAnimationClipAsset("clip", "animator_state_clip", state.clip);
+                    if (DrawAnimatorModelMotionField(
+                            "3D Motion",
+                            "animator_inspector_state_model",
+                            state.modelPath))
+                    {
+                        dirty = true;
+                    }
+                    if (!state.modelPath.empty())
+                    {
+                        ModelAsset* stateModel = AssetManager::GetModel(
+                            AssetManager::LoadModel(state.modelPath));
+                        const int animationCount =
+                            stateModel != nullptr
+                                ? stateModel->GetAnimationCount()
+                                : 0;
+                        if (animationCount > 0)
+                        {
+                            state.modelAnimationIndex = std::clamp(
+                                state.modelAnimationIndex,
+                                0,
+                                animationCount - 1);
+                            if (ImGui::InputInt(
+                                    "animation index",
+                                    &state.modelAnimationIndex))
+                            {
+                                state.modelAnimationIndex = std::clamp(
+                                    state.modelAnimationIndex,
+                                    0,
+                                    animationCount - 1);
+                                dirty = true;
+                            }
+                        }
+                    }
+                    InputAnimationClipAsset(
+                        "property clip",
+                        "animator_state_clip",
+                        state.clip);
                     if (AnimationClipAssetHandleChanged(previousClip, state.clip))
                         dirty = true;
                     if (ImGui::Checkbox("loop", &state.loop))
                         dirty = true;
                     if (ImGui::InputFloat("speed", &state.speed, 0.0f, 0.0f, "%.3f"))
                         dirty = true;
+                    if (ImGui::BeginCombo(
+                            "speed multiplier",
+                            state.speedParameter.empty()
+                                ? "[ none ]"
+                                : state.speedParameter.c_str()))
+                    {
+                        if (ImGui::Selectable(
+                                "[ none ]",
+                                state.speedParameter.empty()))
+                        {
+                            state.speedParameter.clear();
+                            dirty = true;
+                        }
+                        for (const AnimatorParameterDefinition& parameter :
+                             controller->parameters)
+                        {
+                            if (parameter.type != AnimatorParameterType::FLOAT)
+                                continue;
+                            if (ImGui::Selectable(
+                                    parameter.name.c_str(),
+                                    parameter.name == state.speedParameter))
+                            {
+                                state.speedParameter = parameter.name;
+                                dirty = true;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                    if (!state.modelPath.empty() &&
+                        ImGui::InputFloat3(
+                            "lock root motion",
+                            &state.rootMotionMask.x,
+                            "%.2f"))
+                    {
+                        state.rootMotionMask = glm::clamp(
+                            state.rootMotionMask,
+                            Vector3(0.0f),
+                            Vector3(1.0f));
+                        dirty = true;
+                    }
 
                     if (ImGui::CollapsingHeader("Transitions", ImGuiTreeNodeFlags_DefaultOpen))
                     {
@@ -10933,6 +11183,23 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 if (transition.hasExitTime && ImGui::InputFloat("exitTimeNormalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
                                 {
                                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
+                                    dirty = true;
+                                }
+                                if (ImGui::InputFloat(
+                                        "crossfade duration",
+                                        &transition.duration,
+                                        0.01f,
+                                        0.05f,
+                                        "%.3f s"))
+                                {
+                                    transition.duration =
+                                        std::max(transition.duration, 0.0f);
+                                    dirty = true;
+                                }
+                                if (ImGui::Checkbox(
+                                        "match loop phase",
+                                        &transition.preserveNormalizedTime))
+                                {
                                     dirty = true;
                                 }
 
@@ -11046,12 +11313,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (ImGui::SmallButton("Delete State"))
                     {
-                        const std::string removedStateName = state.name;
-                        RemoveAnimatorStateReferences(*controller, removedStateName);
-                        controller->states.erase(controller->states.begin() + static_cast<long>(stateIndex));
-                        if (controller->entryState.empty() && !controller->states.empty())
-                            controller->entryState = controller->states.front().name;
-                        dirty = true;
+                        dirty = RemoveAnimatorState(
+                            *controller,
+                            stateIndex) || dirty;
                         ImGui::TreePop();
                         ImGui::PopID();
                         break;
@@ -11255,7 +11519,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         viewState.options.mDrawIONameOnHover = false;
         viewState.options.mDrawIONameInsideNode = true;
         viewState.options.mNodeSlotRadius = 7.0f;
-        viewState.options.mLineThickness = 4.0f;
+        viewState.options.mLineThickness = 2.5f;
+        viewState.options.mDrawLinkArrows = true;
+        viewState.options.mLinkArrowSize = 7.5f;
+        viewState.options.mLinksSelectable = true;
         GraphEditor::FitOnScreen fitRequest = fitGraphRequested ? GraphEditor::Fit_AllNodes : GraphEditor::Fit_None;
 
         ImGui::BeginChild("##animator_graph", graphAreaSize, true);
@@ -11263,16 +11530,35 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const ImVec2 canvasScreenPos = ImGui::GetCursorScreenPos();
         const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
         const ImRect canvasRect(canvasScreenPos, ImVec2(canvasScreenPos.x + canvasSize.x, canvasScreenPos.y + canvasSize.y));
-        const int stateSelectionBeforeGraph = m_animatorSelectedState;
-
+        const int selectedStateBeforeGraph = m_animatorSelectedState;
+        const int selectedTransitionBeforeGraph = m_animatorSelectedTransition;
         AnimatorGraphDelegate delegate(
             *controller,
             m_animatorSelectedState,
+            m_animatorSelectedTransition,
             dirty,
             (boundAnimator != nullptr) ? boundAnimator->currentState : std::string{});
         GraphEditor::Show(delegate, viewState.options, viewState.viewState, true, &fitRequest);
-        if (m_animatorSelectedState != stateSelectionBeforeGraph)
-            m_animatorSelectedTransition = -1;
+        const bool selectedTransitionFromGraph =
+            m_animatorSelectedTransition >= 0 &&
+            (m_animatorSelectedState != selectedStateBeforeGraph ||
+             m_animatorSelectedTransition != selectedTransitionBeforeGraph);
+
+        const bool removeSelectedWithKeyboard =
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_ChildWindows) &&
+            !ImGui::GetIO().WantTextInput &&
+            !ImGui::IsAnyItemActive() &&
+            !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId) &&
+            ImGui::IsKeyPressed(ImGuiKey_Delete, false);
+        if (removeSelectedWithKeyboard &&
+            RemoveAnimatorStateAtIndex(
+                *controller,
+                m_animatorSelectedState,
+                m_animatorSelectedState,
+                m_animatorSelectedTransition))
+        {
+            dirty = true;
+        }
 
         if (ImGui::BeginDragDropTargetCustom(canvasRect, ImGui::GetID("AnimatorGraphDropTarget")))
         {
@@ -11281,12 +11567,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
                 const std::string droppedPath = AssetManager::GetPath(dropped.uuid);
                 MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(droppedPath);
-                if (droppedMeta != nullptr && droppedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
+                if (droppedMeta != nullptr &&
+                    (droppedMeta->type == MetaFileAsset::FileType::ANIMATIONCLIP ||
+                     droppedMeta->type == MetaFileAsset::FileType::MODEL))
                 {
                     AnimatorState state = {};
                     const std::string baseName = droppedMeta->name.empty() ? fs::path(droppedPath).stem().string() : droppedMeta->name;
                     state.name = MakeUniqueAnimatorStateName(*controller, baseName);
-                    state.clip = MakeAnimationClipAssetHandleFromPath(droppedPath);
+                    if (droppedMeta->type == MetaFileAsset::FileType::MODEL)
+                        state.modelPath = droppedMeta->path.empty() ? droppedPath : droppedMeta->path;
+                    else
+                        state.clip = MakeAnimationClipAssetHandleFromPath(droppedPath);
                     state.editorPosition = ScreenToAnimatorGraphPosition(ImGui::GetMousePos(), canvasScreenPos, viewState.viewState);
                     controller->states.push_back(state);
                     if (controller->entryState.empty())
@@ -11305,12 +11596,23 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (delegate.ConsumeContextMenuRequest(delegatePopupScreenPos))
         {
             popupScreenPos = delegatePopupScreenPos;
+            const GraphEditor::NodeIndex contextNodeIndex =
+                delegate.GetContextNodeIndex();
+            viewState.contextStateIndex =
+                (contextNodeIndex != kInvalidAnimatorGraphNodeIndex &&
+                 contextNodeIndex < controller->states.size())
+                    ? static_cast<int>(contextNodeIndex)
+                    : -1;
             openContextMenu = true;
         }
 
-        if (!openContextMenu && canvasRect.Contains(ImGui::GetMousePos()) && ImGui::IsMouseReleased(ImGuiMouseButton_Right))
+        if (!openContextMenu &&
+            !ImGui::IsPopupOpen("AnimatorContextMenu") &&
+            canvasRect.Contains(ImGui::GetMousePos()) &&
+            ImGui::IsMouseReleased(ImGuiMouseButton_Right))
         {
             popupScreenPos = ImGui::GetMousePos();
+            viewState.contextStateIndex = -1;
             openContextMenu = true;
         }
 
@@ -11323,11 +11625,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (ImGui::BeginPopup("AnimatorContextMenu"))
         {
-            const GraphEditor::NodeIndex contextNodeIndex = delegate.GetContextNodeIndex();
             const int contextStateIndex =
-                (contextNodeIndex != kInvalidAnimatorGraphNodeIndex && contextNodeIndex < controller->states.size())
-                ? static_cast<int>(contextNodeIndex)
-                : -1;
+                viewState.contextStateIndex >= 0 &&
+                viewState.contextStateIndex <
+                    static_cast<int>(controller->states.size())
+                    ? viewState.contextStateIndex
+                    : -1;
             const Vector2 popupGraphPos = ScreenToAnimatorGraphPosition(
                 viewState.contextMousePos,
                 canvasScreenPos,
@@ -11354,17 +11657,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     dirty = true;
                 }
 
-                if (ImGui::MenuItem("Delete State"))
+                if (ImGui::MenuItem("Remove State", "Delete"))
                 {
-                    const std::string removedStateName = state.name;
-                    RemoveAnimatorStateReferences(*controller, removedStateName);
-                    controller->states.erase(controller->states.begin() + contextStateIndex);
-                    if (controller->entryState.empty() && !controller->states.empty())
-                        controller->entryState = controller->states.front().name;
-                    if (m_animatorSelectedState >= static_cast<int>(controller->states.size()))
-                        m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
-                    m_animatorSelectedTransition = -1;
-                    dirty = true;
+                    dirty = RemoveAnimatorStateAtIndex(
+                        *controller,
+                        contextStateIndex,
+                        m_animatorSelectedState,
+                        m_animatorSelectedTransition) ||
+                        dirty;
+                    viewState.contextStateIndex = -1;
                 }
             }
             else
@@ -11398,6 +11699,31 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (controller->entryState.empty())
                         controller->entryState = state.name;
                     m_animatorSelectedState = static_cast<int>(controller->states.size()) - 1;
+                    m_animatorSelectedTransition = -1;
+                    dirty = true;
+                }
+
+                MetaFileAsset *selectedModelMeta = AssetManager::GetMetaFile(m_selectedAssetPath);
+                const bool selectedModel =
+                    selectedModelMeta != nullptr &&
+                    selectedModelMeta->type == MetaFileAsset::FileType::MODEL;
+                if (selectedModel && ImGui::MenuItem("Add State From Selected 3D Animation"))
+                {
+                    AnimatorState state = {};
+                    const std::string modelPath = selectedModelMeta->path.empty()
+                        ? m_selectedAssetPath
+                        : selectedModelMeta->path;
+                    const std::string baseName = selectedModelMeta->name.empty()
+                        ? fs::path(modelPath).stem().string()
+                        : selectedModelMeta->name;
+                    state.name = MakeUniqueAnimatorStateName(*controller, baseName);
+                    state.modelPath = modelPath;
+                    state.editorPosition = popupGraphPos;
+                    controller->states.push_back(state);
+                    if (controller->entryState.empty())
+                        controller->entryState = state.name;
+                    m_animatorSelectedState =
+                        static_cast<int>(controller->states.size()) - 1;
                     m_animatorSelectedTransition = -1;
                     dirty = true;
                 }
@@ -11495,13 +11821,74 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
+            ImGui::TextDisabled(
+                "Drop a model animation here or use a property clip. A state uses the 3D motion when both are assigned.");
+            if (DrawAnimatorModelMotionField(
+                    "3D Motion",
+                    "animator_window_state_model",
+                    state.modelPath))
+            {
+                dirty = true;
+            }
+
+            if (!state.modelPath.empty())
+            {
+                ModelAsset* stateModel =
+                    AssetManager::GetModel(AssetManager::LoadModel(state.modelPath));
+                const int animationCount =
+                    stateModel != nullptr ? stateModel->GetAnimationCount() : 0;
+                if (animationCount <= 0)
+                {
+                    ImGui::TextColored(
+                        ImVec4(1.0f, 0.55f, 0.4f, 1.0f),
+                        "This model contains no animations.");
+                }
+                else
+                {
+                    state.modelAnimationIndex = std::clamp(
+                        state.modelAnimationIndex,
+                        0,
+                        animationCount - 1);
+                    std::string animationLabel =
+                        stateModel->GetAnimationName(state.modelAnimationIndex);
+                    if (animationLabel.empty())
+                        animationLabel =
+                            "Animation " + std::to_string(state.modelAnimationIndex);
+                    if (ImGui::BeginCombo("Animation", animationLabel.c_str()))
+                    {
+                        for (int animationIndex = 0;
+                             animationIndex < animationCount;
+                             ++animationIndex)
+                        {
+                            std::string candidateLabel =
+                                stateModel->GetAnimationName(animationIndex);
+                            if (candidateLabel.empty())
+                                candidateLabel =
+                                    "Animation " + std::to_string(animationIndex);
+                            if (ImGui::Selectable(
+                                    candidateLabel.c_str(),
+                                    state.modelAnimationIndex == animationIndex))
+                            {
+                                state.modelAnimationIndex = animationIndex;
+                                dirty = true;
+                            }
+                        }
+                        ImGui::EndCombo();
+                    }
+                }
+            }
+
             AnimationClipAssetHandle previousClip = state.clip;
-            InputAnimationClipAsset("Clip", "animator_window_state_clip", state.clip);
+            InputAnimationClipAsset(
+                "Property Clip",
+                "animator_window_state_clip",
+                state.clip);
             if (AnimationClipAssetHandleChanged(previousClip, state.clip))
                 dirty = true;
 
-            const std::string stateClipPath = AssetManager::ResolvePath(state.clip);
-            if (!stateClipPath.empty())
+            const std::string stateClipPath =
+                AssetManager::ResolvePath(state.clip);
+            if (state.modelPath.empty() && !stateClipPath.empty())
             {
                 if (ImGui::SmallButton("Open Clip In Animation Window"))
                 {
@@ -11514,6 +11901,48 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 dirty = true;
             if (ImGui::InputFloat("Speed", &state.speed, 0.0f, 0.0f, "%.3f"))
                 dirty = true;
+            if (ImGui::BeginCombo(
+                    "Speed Multiplier",
+                    state.speedParameter.empty()
+                        ? "[ none ]"
+                        : state.speedParameter.c_str()))
+            {
+                if (ImGui::Selectable("[ none ]", state.speedParameter.empty()))
+                {
+                    state.speedParameter.clear();
+                    dirty = true;
+                }
+                for (const AnimatorParameterDefinition& parameter :
+                     controller->parameters)
+                {
+                    if (parameter.type != AnimatorParameterType::FLOAT)
+                        continue;
+                    if (ImGui::Selectable(
+                            parameter.name.c_str(),
+                            parameter.name == state.speedParameter))
+                    {
+                        state.speedParameter = parameter.name;
+                        dirty = true;
+                    }
+                }
+                ImGui::EndCombo();
+            }
+            if (!state.modelPath.empty())
+            {
+                if (ImGui::InputFloat3(
+                        "Lock Root Motion XYZ",
+                        &state.rootMotionMask.x,
+                        "%.2f"))
+                {
+                    state.rootMotionMask = glm::clamp(
+                        state.rootMotionMask,
+                        Vector3(0.0f),
+                        Vector3(1.0f));
+                    dirty = true;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("1 locks authored root translation on that axis; 0 keeps it.");
+            }
 
             bool isEntryState = controller->entryState == state.name;
             if (ImGui::Checkbox("Entry State", &isEntryState))
@@ -11561,6 +11990,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 AnimatorTransition &transition = state.transitions[static_cast<std::size_t>(m_animatorSelectedTransition)];
                 ImGui::Separator();
+                ImGui::Text(
+                    "Selected Transition: %s -> %s",
+                    state.name.c_str(),
+                    transition.toState.empty() ? "[ none ]" : transition.toState.c_str());
+                if (selectedTransitionFromGraph)
+                    ImGui::SetScrollHereY(0.15f);
 
                 if (ImGui::BeginCombo("To State", transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
                 {
@@ -11586,6 +12021,26 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
                     dirty = true;
                 }
+                if (ImGui::InputFloat(
+                        "Blend Duration",
+                        &transition.duration,
+                        0.01f,
+                        0.05f,
+                        "%.3f s"))
+                {
+                    transition.duration = std::max(transition.duration, 0.0f);
+                    dirty = true;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Time in seconds spent crossfading from the source animation to the destination.");
+                if (ImGui::Checkbox(
+                        "Match Loop Phase",
+                        &transition.preserveNormalizedTime))
+                {
+                    dirty = true;
+                }
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Preserves normalized time when entering a looping state.");
 
                 ImGui::TextUnformatted("Conditions");
                 for (std::size_t conditionIndex = 0; conditionIndex < transition.conditions.size(); ++conditionIndex)

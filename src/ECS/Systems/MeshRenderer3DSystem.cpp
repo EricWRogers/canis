@@ -814,8 +814,17 @@ namespace Canis
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
             {
-                if (animation->poseModelId == modelRenderer.modelId &&
-                    animation->poseGeometryRevision == model->GetGeometryRevision())
+                const bool attachedModelPose =
+                    animation->poseModelId == modelRenderer.modelId &&
+                    animation->poseGeometryRevision ==
+                        model->GetGeometryRevision();
+                const bool compatibleSourcePose =
+                    animation->sourceModelId >= 0 &&
+                    animation->poseModelId == animation->sourceModelId &&
+                    animation->pose.localNodeMatrices.size() ==
+                        static_cast<std::size_t>(model->GetNodeCount());
+                if (animation->poseInitialized &&
+                    (attachedModelPose || compatibleSourcePose))
                     pose = &animation->pose;
             }
 
@@ -1229,8 +1238,17 @@ namespace Canis
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
             {
-                if (animation->poseModelId == modelRenderer.modelId &&
-                    animation->poseGeometryRevision == model->GetGeometryRevision())
+                const bool attachedModelPose =
+                    animation->poseModelId == modelRenderer.modelId &&
+                    animation->poseGeometryRevision ==
+                        model->GetGeometryRevision();
+                const bool compatibleSourcePose =
+                    animation->sourceModelId >= 0 &&
+                    animation->poseModelId == animation->sourceModelId &&
+                    animation->pose.localNodeMatrices.size() ==
+                        static_cast<std::size_t>(model->GetNodeCount());
+                if (animation->poseInitialized &&
+                    (attachedModelPose || compatibleSourcePose))
                     pose = &animation->pose;
             }
 

@@ -3338,8 +3338,13 @@ namespace Canis
                 AnimatorState state = {};
                 state.name = stateNode["name"].as<std::string>(state.name);
                 state.clip = stateNode["clip"].as<AnimationClipAssetHandle>(state.clip);
+                state.modelPath = stateNode["modelPath"].as<std::string>("");
+                state.modelAnimationIndex = stateNode["modelAnimationIndex"].as<i32>(0);
                 state.loop = stateNode["loop"].as<bool>(true);
                 state.speed = stateNode["speed"].as<float>(1.0f);
+                state.speedParameter = stateNode["speedParameter"].as<std::string>("");
+                state.rootMotionMask =
+                    stateNode["rootMotionMask"].as<Vector3>(Vector3(0.0f));
                 if (YAML::Node editorPositionNode = stateNode["editorPosition"])
                     state.editorPosition = editorPositionNode.as<Vector2>(state.editorPosition);
 
@@ -3351,6 +3356,11 @@ namespace Canis
                         transition.toState = transitionNode["toState"].as<std::string>("");
                         transition.hasExitTime = transitionNode["hasExitTime"].as<bool>(false);
                         transition.exitTimeNormalized = transitionNode["exitTimeNormalized"].as<float>(1.0f);
+                        transition.duration = std::max(
+                            transitionNode["duration"].as<float>(0.15f),
+                            0.0f);
+                        transition.preserveNormalizedTime =
+                            transitionNode["preserveNormalizedTime"].as<bool>(false);
 
                         if (YAML::Node conditionsNode = transitionNode["conditions"]; conditionsNode && conditionsNode.IsSequence())
                         {
@@ -3426,8 +3436,14 @@ namespace Canis
             YAML::Node stateNode(YAML::NodeType::Map);
             stateNode["name"] = state.name;
             stateNode["clip"] = state.clip;
+            if (!state.modelPath.empty())
+                stateNode["modelPath"] = state.modelPath;
+            stateNode["modelAnimationIndex"] = state.modelAnimationIndex;
             stateNode["loop"] = state.loop;
             stateNode["speed"] = state.speed;
+            if (!state.speedParameter.empty())
+                stateNode["speedParameter"] = state.speedParameter;
+            stateNode["rootMotionMask"] = state.rootMotionMask;
             stateNode["editorPosition"] = state.editorPosition;
 
             YAML::Node transitionsNode(YAML::NodeType::Sequence);
@@ -3437,6 +3453,9 @@ namespace Canis
                 transitionNode["toState"] = transition.toState;
                 transitionNode["hasExitTime"] = transition.hasExitTime;
                 transitionNode["exitTimeNormalized"] = transition.exitTimeNormalized;
+                transitionNode["duration"] = transition.duration;
+                transitionNode["preserveNormalizedTime"] =
+                    transition.preserveNormalizedTime;
 
                 YAML::Node conditionsNode(YAML::NodeType::Sequence);
                 for (const AnimatorTransitionCondition &condition : transition.conditions)
@@ -3463,6 +3482,42 @@ namespace Canis
             return false;
 
         out << root;
+        return true;
+    }
+
+    bool RemoveAnimatorState(
+        AnimatorControllerAsset& _controller,
+        std::size_t _stateIndex)
+    {
+        if (_stateIndex >= _controller.states.size())
+            return false;
+
+        const std::string removedStateName =
+            _controller.states[_stateIndex].name;
+        _controller.states.erase(
+            _controller.states.begin() +
+            static_cast<std::ptrdiff_t>(_stateIndex));
+
+        for (AnimatorState& state : _controller.states)
+        {
+            state.transitions.erase(
+                std::remove_if(
+                    state.transitions.begin(),
+                    state.transitions.end(),
+                    [&](const AnimatorTransition& _transition)
+                    {
+                        return _transition.toState == removedStateName;
+                    }),
+                state.transitions.end());
+        }
+
+        if (_controller.entryState == removedStateName)
+        {
+            _controller.entryState = _controller.states.empty()
+                ? std::string{}
+                : _controller.states.front().name;
+        }
+
         return true;
     }
 

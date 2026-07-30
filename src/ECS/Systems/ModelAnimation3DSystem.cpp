@@ -35,14 +35,18 @@ namespace Canis
             if (modelRenderer.modelId < 0)
                 continue;
 
-            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            const i32 animationModelId =
+                modelAnimation.sourceModelId >= 0
+                    ? modelAnimation.sourceModelId
+                    : modelRenderer.modelId;
+            ModelAsset *model = AssetManager::GetModel(animationModelId);
             if (model == nullptr)
                 continue;
 
-            if (modelAnimation.poseModelId != modelRenderer.modelId ||
+            if (modelAnimation.poseModelId != animationModelId ||
                 modelAnimation.poseGeometryRevision != model->GetGeometryRevision())
             {
-                modelAnimation.poseModelId = modelRenderer.modelId;
+                modelAnimation.poseModelId = animationModelId;
                 modelAnimation.poseGeometryRevision = model->GetGeometryRevision();
                 modelAnimation.poseInitialized = false;
                 modelAnimation.lastEvaluatedAnimationIndex = -1;
@@ -64,7 +68,12 @@ namespace Canis
             modelAnimation.animationIndex = std::clamp(modelAnimation.animationIndex, 0, animationCount - 1);
             const float animationDuration = model->GetAnimationDuration(modelAnimation.animationIndex);
 
-            if (modelAnimation.playAnimation && animationDuration > 0.0f)
+            const bool animatorOwnsPlayback =
+                entity->HasComponent<Animator>() &&
+                entity->GetComponent<Animator>().drivesModelAnimation;
+            if (!animatorOwnsPlayback &&
+                modelAnimation.playAnimation &&
+                animationDuration > 0.0f)
             {
                 modelAnimation.animationTime += deltaTime * modelAnimation.animationSpeed;
 

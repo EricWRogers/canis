@@ -297,6 +297,8 @@ namespace Canis
         std::string toState = "";
         bool hasExitTime = false;
         float exitTimeNormalized = 1.0f;
+        float duration = 0.15f;
+        bool preserveNormalizedTime = false;
         std::vector<AnimatorTransitionCondition> conditions = {};
     };
 
@@ -304,8 +306,15 @@ namespace Canis
     {
         std::string name = "State";
         AnimationClipAssetHandle clip = {};
+        // A state can drive either a regular property clip or an imported 3D
+        // model animation. Imported animations keep the entity's material and
+        // renderer configuration while swapping the compatible animation source.
+        std::string modelPath = "";
+        i32 modelAnimationIndex = 0;
         bool loop = true;
         float speed = 1.0f;
+        std::string speedParameter = "";
+        Vector3 rootMotionMask = Vector3(0.0f);
         Vector2 editorPosition = Vector2(0.0f);
         std::vector<AnimatorTransition> transitions = {};
     };
@@ -326,6 +335,12 @@ namespace Canis
         std::vector<AnimatorParameterDefinition> parameters = {};
         std::vector<AnimatorState> states = {};
     };
+
+    // Removes a state and every transition targeting it. If the removed state
+    // was the entry state, the first remaining state becomes the new entry.
+    bool RemoveAnimatorState(
+        AnimatorControllerAsset& _controller,
+        std::size_t _stateIndex);
 
     enum MaterialInfo : u32
     {

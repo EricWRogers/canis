@@ -76,6 +76,9 @@ struct Options
     bool mRenderGrid{ true }; // grid or nothing
     bool mDrawIONameOnHover{ true }; // only draw node input/output when hovering
     bool mDrawIONameInsideNode{ false }; // draw pin labels inside the node body instead of outside
+    bool mDrawLinkArrows{ false }; // draw a direction arrow along every link
+    float mLinkArrowSize{ 8.0f }; // arrow size in pixels when zoom value is 1
+    bool mLinksSelectable{ false }; // allow links to be clicked and selected
 };
 
 // View state: scroll position and zoom factor
@@ -125,6 +128,8 @@ struct Delegate
     virtual void AddLink(NodeIndex inputNodeIndex, SlotIndex inputSlotIndex, NodeIndex outputNodeIndex, SlotIndex outputSlotIndex) = 0;
     virtual void DelLink(LinkIndex linkIndex) = 0;
     virtual void DropLink(NodeIndex nodeIndex, SlotIndex slotIndex, bool startedFromInput, const ImVec2& graphPos) {}
+    virtual void SelectLink(LinkIndex linkIndex) {}
+    virtual bool IsLinkSelected(LinkIndex linkIndex) const { return false; }
     
     // user is responsible for clipping
     virtual void CustomDraw(ImDrawList* drawList, ImRect rectangle, NodeIndex nodeIndex, float zoom) = 0;

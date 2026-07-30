@@ -1236,6 +1236,11 @@ namespace Canis
         float transitionDuration = 0.0f;
         float transitionElapsed = 0.0f;
 
+        // Animator controllers may sample a compatible animation from another
+        // imported model while the renderer keeps its original mesh/material.
+        // A negative value samples animations from the attached Model.
+        i32 sourceModelId = -1;
+
         // Runtime pose cache for this entity's model instance.
         i32 poseModelId = -1;
         u64 poseGeometryRevision = 0u;
@@ -1308,30 +1313,53 @@ namespace Canis
             return nullptr;
         }
 
-        void SetFloat(const std::string& _name, float _value)
+        AnimatorParameterRuntime& GetOrCreateParameter(const std::string& _name)
         {
             if (AnimatorParameterRuntime* parameter = GetParameter(_name))
-                parameter->value = AnimationValue::Float(_value);
+                return *parameter;
+
+            AnimatorParameterRuntime parameter = {};
+            parameter.name = _name;
+            parameters.push_back(parameter);
+            return parameters.back();
+        }
+
+        void SetFloat(const std::string& _name, float _value)
+        {
+            if (_name.empty())
+                return;
+            GetOrCreateParameter(_name).value = AnimationValue::Float(_value);
         }
 
         void SetInt(const std::string& _name, int _value)
         {
-            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
-                parameter->value = AnimationValue::Int(_value);
+            if (_name.empty())
+                return;
+            GetOrCreateParameter(_name).value = AnimationValue::Int(_value);
         }
 
         void SetBool(const std::string& _name, bool _value)
         {
-            if (AnimatorParameterRuntime* parameter = GetParameter(_name))
-                parameter->value = AnimationValue::Bool(_value);
+            if (_name.empty())
+                return;
+            GetOrCreateParameter(_name).value = AnimationValue::Bool(_value);
         }
 
         void SetTrigger(const std::string& _name)
         {
+            if (_name.empty())
+                return;
+            AnimatorParameterRuntime& parameter = GetOrCreateParameter(_name);
+            parameter.triggerActive = true;
+            parameter.value = AnimationValue::Bool(true);
+        }
+
+        void ResetTrigger(const std::string& _name)
+        {
             if (AnimatorParameterRuntime* parameter = GetParameter(_name))
             {
-                parameter->triggerActive = true;
-                parameter->value = AnimationValue::Bool(true);
+                parameter->triggerActive = false;
+                parameter->value = AnimationValue::Bool(false);
             }
         }
 
@@ -1366,6 +1394,8 @@ namespace Canis
         std::vector<AnimatorParameterRuntime> parameters = {};
 
         bool parametersInitialized = false;
+        bool drivesModelAnimation = false;
+        std::string appliedState = "";
         float lastEventSampleTime = 0.0f;
         bool lastEventSampleValid = false;
         std::string lastEventClipPath = "";
