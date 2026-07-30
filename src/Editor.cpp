@@ -5990,6 +5990,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             m_gameViewHovered = false;
             m_sceneViewClicked = false;
+            m_sceneViewFocused = false;
         }
 
         if (m_showGamePanel)
@@ -6014,6 +6015,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 SelectSprite2D();
         }
 
+        (void)HandleSceneViewDeleteShortcut();
         EndSceneHistoryFrame();
 
         // find camera and verfy target entity
@@ -7161,10 +7163,84 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return false;
     }
 
+    bool Editor::RemoveSceneEntity(Canis::Entity *_entity)
+    {
+        if (!CanTrackSceneHistory() || _entity == nullptr)
+            return false;
+
+        std::vector<Entity*> &entities = m_scene->GetEntities();
+        const int entityIndex = _entity->id;
+        if (entityIndex < 0 ||
+            entityIndex >= static_cast<int>(entities.size()) ||
+            entities[entityIndex] != _entity)
+        {
+            return false;
+        }
+
+        const UUID removedUUID = _entity->uuid;
+        const SceneHistoryState beforeRemoveState = CaptureSceneHistoryState();
+        m_scene->Destroy(entityIndex);
+
+        m_hierarchyRootOrder.erase(
+            std::remove(
+                m_hierarchyRootOrder.begin(),
+                m_hierarchyRootOrder.end(),
+                removedUUID),
+            m_hierarchyRootOrder.end());
+
+        if (m_index < 0 ||
+            m_index >= static_cast<int>(entities.size()) ||
+            entities[m_index] == nullptr)
+        {
+            m_index = -1;
+        }
+
+        const bool revealTargetStillExists =
+            std::any_of(
+                entities.begin(),
+                entities.end(),
+                [&](Entity *_candidate)
+                {
+                    return _candidate != nullptr &&
+                        _candidate->uuid == m_hierarchyRevealTargetUUID;
+                });
+        if (!revealTargetStillExists)
+        {
+            m_hierarchyRevealTargetUUID = UUID(0);
+            m_hierarchyRevealPath.clear();
+        }
+
+        CommitSceneHistoryImmediateChange(beforeRemoveState);
+        m_forceRefresh = true;
+        return true;
+    }
+
+    bool Editor::HandleSceneViewDeleteShortcut()
+    {
+        if (!m_sceneViewFocused ||
+            !CanTrackSceneHistory() ||
+            m_index < 0 ||
+            ImGui::GetIO().WantTextInput ||
+            ImGui::IsAnyItemActive() ||
+            ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) ||
+            !ImGui::IsKeyPressed(ImGuiKey_Delete, false))
+        {
+            return false;
+        }
+
+        std::vector<Entity*> &entities = m_scene->GetEntities();
+        if (m_index >= static_cast<int>(entities.size()))
+            return false;
+
+        return RemoveSceneEntity(entities[m_index]);
+    }
+
     void Editor::DrawSceneView()
     {
         ImGui::Begin("Scene", &m_showScenePanel);
         m_sceneViewClicked = false;
+        m_sceneViewFocused =
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
 
         ImVec2 avail = ImGui::GetContentRegionAvail();
         int nextWidth = static_cast<int>(avail.x);
@@ -9601,23 +9677,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (idx >= 0 && ImGui::MenuItem("Remove"))
             {
-                const SceneHistoryState beforeRemoveState = CaptureSceneHistoryState();
-                const UUID removedUUID = _entity->uuid;
-                m_scene->Destroy(idx);
-                if (m_index == idx)
-                    m_index = -1;
-                m_hierarchyRootOrder.erase(
-                    std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), removedUUID),
-                    m_hierarchyRootOrder.end());
-                CommitSceneHistoryImmediateChange(beforeRemoveState);
-                _refresh = true;
-                removeRequested = true;
+                removeRequested = RemoveSceneEntity(_entity);
+                _refresh = removeRequested;
             }
 
-            for (auto &item : m_app->GetInspectorItemRegistry())
+            if (!removeRequested)
             {
-                if (ImGui::MenuItem((item.name + "##").c_str()))
-                    item.Func(*m_app, *this, *_entity, m_app->GetScriptRegistry());
+                for (auto &item : m_app->GetInspectorItemRegistry())
+                {
+                    if (ImGui::MenuItem((item.name + "##").c_str()))
+                        item.Func(*m_app, *this, *_entity, m_app->GetScriptRegistry());
+                }
             }
 
             ImGui::EndPopup();

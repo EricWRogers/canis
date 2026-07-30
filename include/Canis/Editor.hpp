@@ -275,6 +275,8 @@ namespace Canis
         bool CanUndoSceneEdit() const;
         bool CanRedoSceneEdit() const;
         bool HandleSceneHistoryShortcuts(float &_hotKeyCoolDown, float _hotKeyReset);
+        bool RemoveSceneEntity(Canis::Entity *_entity);
+        bool HandleSceneViewDeleteShortcut();
         bool CanTrackSceneHistory() const;
         bool IsSceneHistoryEditInProgress() const;
         SceneHistoryState CaptureSceneHistoryState() const;
@@ -422,6 +424,7 @@ namespace Canis
         bool m_playViewHovered = false;
         bool m_playMouseCaptured = false;
         bool m_sceneViewClicked = false;
+        bool m_sceneViewFocused = false;
         bool m_sceneCameraConfigDirty = false;
         float m_sceneCameraConfigSaveDelay = 0.0f;
         bool m_vertexSnappingEnabled = false;
