@@ -35,6 +35,7 @@
 #include <iomanip>
 #include <iostream>
 #include <memory>
+#include <limits>
 #include <optional>
 #include <sstream>
 #include <unordered_map>
@@ -80,6 +81,7 @@ namespace Canis
         std::filesystem::path captureDirectory = {};
         float forcedFPS = 0.0f;
         float fixedDelta = 0.0f;
+        std::optional<unsigned int> randomSeed = std::nullopt;
         double stopAt = -1.0;
     };
 
@@ -231,6 +233,23 @@ namespace Canis
                 _outOptions.editorRuntimeOverride = _enabled;
                 return true;
             };
+            auto parseSeed = [&](const std::string &_value) -> bool
+            {
+                try
+                {
+                    size_t parsed = 0u;
+                    const unsigned long long value = std::stoull(_value, &parsed, 10);
+                    if (parsed != _value.size() ||
+                        value > std::numeric_limits<unsigned int>::max())
+                        return false;
+                    _outOptions.randomSeed = static_cast<unsigned int>(value);
+                    return true;
+                }
+                catch (const std::exception&)
+                {
+                    return false;
+                }
+            };
 
             for (size_t index = 0u; index < _arguments.size(); ++index)
             {
@@ -315,6 +334,16 @@ namespace Canis
                     if (!ParsePositiveFloat(*value, _outOptions.fixedDelta))
                     {
                         _outError = "--fixed-delta requires a positive number of seconds.";
+                        return false;
+                    }
+                    continue;
+                }
+                if (auto value = readValue(index, argument, "--seed"))
+                {
+                    _outOptions.active = true;
+                    if (!parseSeed(*value))
+                    {
+                        _outError = "--seed requires an unsigned 32-bit integer.";
                         return false;
                     }
                     continue;
@@ -748,6 +777,12 @@ namespace Canis
                    << "  \"simulationFrame\": " << _simulationFrame << ",\n"
                    << "  \"fixedDelta\": " << _options.fixedDelta << ",\n"
                    << "  \"forcedFPS\": " << _options.forcedFPS << ",\n"
+                   << "  \"randomSeed\": ";
+            if (_options.randomSeed.has_value())
+                output << _options.randomSeed.value();
+            else
+                output << "null";
+            output << ",\n"
                    << "  \"scene\": \"" << EscapeJson(_options.launchScene) << "\",\n"
                    << "  \"frames\": [\n";
             for (size_t index = 0u; index < _captures.size(); ++index)
@@ -1733,6 +1768,14 @@ namespace Canis
             m_exitCode = 3;
             return;
         }
+        if (runtime.launch.randomSeed.has_value())
+        {
+            Canis::GetProjectConfig().overrideSeed = true;
+            Canis::GetProjectConfig().seed = runtime.launch.randomSeed.value();
+            Debug::Log(
+                "Random seed set from command line: %u",
+                runtime.launch.randomSeed.value());
+        }
 
 #if CANIS_EDITOR
         runtime.editorRuntimeEnabled = Canis::GetProjectConfig().editor;
@@ -2335,6 +2378,7 @@ namespace Canis
                 << "  --interactive-test          Pause after each input batch and return a framebuffer.\n"
                 << "  --force-fps NUMBER          Fix simulation delta to 1/FPS and pace rendering.\n"
                 << "  --fixed-delta SECONDS       Use an exact simulation delta without changing pacing.\n"
+                << "  --seed NUMBER               Seed runtime randomness with an unsigned 32-bit integer.\n"
                 << "  --stop-at SECONDS           Stop after rendering at the requested simulation time.\n"
                 << "  --capture-dir PATH          Write PNG captures and manifest.json here.\n"
                 << "  --capture-final             Capture the final rendered frame (default).\n"

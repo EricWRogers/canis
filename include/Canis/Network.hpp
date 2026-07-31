@@ -25,6 +25,12 @@ namespace Canis
         Client
     };
 
+    enum class NetworkTransport
+    {
+        Direct,
+        Relay
+    };
+
     enum class NetworkPhase
     {
         None,
@@ -122,6 +128,18 @@ namespace Canis
             std::uint16_t _port = 7777,
             const std::string &_playerName = "Player",
             const std::string &_lobbyScenePath = "assets/scenes/boat_lobby.scene");
+        bool HostRelay(
+            const std::string &_relayAddress,
+            std::uint16_t _relayPort = 7777,
+            const std::string &_playerName = "Host",
+            const std::string &_lobbyScenePath = "assets/scenes/boat_lobby.scene",
+            std::uint8_t _capacity = 4);
+        bool JoinRelay(
+            const std::string &_relayAddress,
+            std::uint32_t _lobbyCode,
+            std::uint16_t _relayPort = 7777,
+            const std::string &_playerName = "Player",
+            const std::string &_lobbyScenePath = "assets/scenes/boat_lobby.scene");
         void Disconnect();
 
         void Update(float _deltaTime);
@@ -133,6 +151,10 @@ namespace Canis
         bool IsMine(NetworkClientId _ownerClientId) const;
 
         NetworkMode GetMode() const { return m_mode; }
+        NetworkTransport GetTransport() const { return m_transport; }
+        bool IsRelay() const { return m_transport == NetworkTransport::Relay; }
+        std::uint32_t GetLobbyCode() const { return m_relayLobbyCode; }
+        const std::string& GetLastNetworkError() const { return m_lastNetworkError; }
         NetworkPhase GetPhase() const { return m_phase; }
         NetworkClientId GetLocalClientId() const { return m_localClientId; }
         const std::vector<NetworkPlayer>& GetPlayers() const { return m_players; }
@@ -171,6 +193,7 @@ namespace Canis
         App &m_app;
         Impl *m_impl = nullptr;
         NetworkMode m_mode = NetworkMode::Offline;
+        NetworkTransport m_transport = NetworkTransport::Direct;
         NetworkPhase m_phase = NetworkPhase::None;
         NetworkClientId m_localClientId = 0;
         NetworkClientId m_nextClientId = 2;
@@ -182,6 +205,13 @@ namespace Canis
         float m_matchRemainingSeconds = 0.0f;
         float m_timeSeconds = 0.0f;
         float m_broadcastTimer = 0.0f;
+        float m_relayControlTimer = 0.0f;
+        float m_relayKeepAliveTimer = 0.0f;
+        std::uint32_t m_relayLobbyCode = 0;
+        std::uint32_t m_relayRequestId = 0;
+        unsigned int m_relayControlAttempts = 0;
+        std::uint8_t m_relayCapacity = 4;
+        std::string m_lastNetworkError = {};
         std::unordered_map<std::string, NetworkTransformState> m_transformStates = {};
         std::unordered_map<std::string, NetworkInputState> m_inputStates = {};
         std::unordered_map<std::string, NetworkRigidbodyState> m_rigidbodyStates = {};

@@ -335,7 +335,7 @@ namespace Canis
         projectConfig.frameLimit = node["frameLimit"].as<float>(projectConfig.frameLimit);
         projectConfig.frameLimitEditor = node["frameLimitEditor"].as<float>(projectConfig.frameLimitEditor);
         projectConfig.overrideSeed = node["overrideSeed"].as<bool>(projectConfig.overrideSeed);
-        projectConfig.seed = node["useFrameLimit"].as<unsigned int>(projectConfig.seed);
+        projectConfig.seed = node["seed"].as<unsigned int>(projectConfig.seed);
         projectConfig.volume = NormalizeVolume(node["volume"].as<float>(node["masterVolume"].as<float>(projectConfig.volume)));
         projectConfig.musicVolume = NormalizeVolume(node["musicVolume"].as<float>(projectConfig.musicVolume));
         projectConfig.sfxVolume = NormalizeVolume(node["sfxVolume"].as<float>(projectConfig.sfxVolume));

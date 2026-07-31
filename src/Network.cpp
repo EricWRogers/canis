@@ -8,6 +8,7 @@
 
 #include <algorithm>
 #include <charconv>
+#include <cstdint>
 #include <sstream>
 #include <utility>
 
@@ -83,6 +84,90 @@ namespace Canis
             }
             return _value;
         }
+
+        constexpr std::size_t RelayHeaderLength = 36;
+        constexpr std::size_t RelayMaxDatagram = 1200;
+        constexpr std::size_t RelayMaxPayload = RelayMaxDatagram - RelayHeaderLength;
+        constexpr std::uint16_t RelayBroadcastFlag = 0x0001;
+
+        enum class RelayPacketKind : std::uint8_t
+        {
+            Create = 1,
+            Created = 2,
+            Join = 3,
+            Joined = 4,
+            Data = 5,
+            KeepAlive = 6,
+            Leave = 7,
+            Error = 8,
+            LobbyClosed = 9
+        };
+
+        void AppendU16(std::vector<std::uint8_t> &_bytes, std::uint16_t _value)
+        {
+            _bytes.push_back(static_cast<std::uint8_t>(_value >> 8));
+            _bytes.push_back(static_cast<std::uint8_t>(_value));
+        }
+
+        void AppendU32(std::vector<std::uint8_t> &_bytes, std::uint32_t _value)
+        {
+            for (int shift = 24; shift >= 0; shift -= 8)
+                _bytes.push_back(static_cast<std::uint8_t>(_value >> shift));
+        }
+
+        void AppendU64(std::vector<std::uint8_t> &_bytes, std::uint64_t _value)
+        {
+            for (int shift = 56; shift >= 0; shift -= 8)
+                _bytes.push_back(static_cast<std::uint8_t>(_value >> shift));
+        }
+
+        std::uint16_t ReadU16(const std::uint8_t *_bytes)
+        {
+            return (static_cast<std::uint16_t>(_bytes[0]) << 8) |
+                static_cast<std::uint16_t>(_bytes[1]);
+        }
+
+        std::uint32_t ReadU32(const std::uint8_t *_bytes)
+        {
+            std::uint32_t value = 0;
+            for (int index = 0; index < 4; ++index)
+                value = (value << 8) | _bytes[index];
+            return value;
+        }
+
+        std::uint64_t ReadU64(const std::uint8_t *_bytes)
+        {
+            std::uint64_t value = 0;
+            for (int index = 0; index < 8; ++index)
+                value = (value << 8) | _bytes[index];
+            return value;
+        }
+
+        std::vector<std::uint8_t> BuildRelayPacket(
+            RelayPacketKind _kind,
+            std::uint16_t _flags,
+            std::uint32_t _requestId,
+            std::uint32_t _lobbyCode,
+            std::uint32_t _participantId,
+            std::uint32_t _targetId,
+            std::uint64_t _sessionToken,
+            const std::string &_payload)
+        {
+            if (_payload.size() > RelayMaxPayload)
+                return {};
+            std::vector<std::uint8_t> bytes = {'C', 'R', 'L', 'Y', 1, static_cast<std::uint8_t>(_kind)};
+            bytes.reserve(RelayHeaderLength + _payload.size());
+            AppendU16(bytes, _flags);
+            AppendU32(bytes, _requestId);
+            AppendU32(bytes, _lobbyCode);
+            AppendU32(bytes, _participantId);
+            AppendU32(bytes, _targetId);
+            AppendU64(bytes, _sessionToken);
+            AppendU16(bytes, static_cast<std::uint16_t>(_payload.size()));
+            AppendU16(bytes, 0);
+            bytes.insert(bytes.end(), _payload.begin(), _payload.end());
+            return bytes;
+        }
     }
 
     struct NetworkSession::Impl
@@ -92,6 +177,19 @@ namespace Canis
         NetworkEndpoint serverEndpoint = {};
         std::unordered_map<std::string, NetworkEndpoint> peers = {};
         std::unordered_map<NetworkClientId, std::string> clientPeerKeys = {};
+        bool relayTransport = false;
+        bool relayReady = false;
+        std::uint32_t relayLobbyCode = 0;
+        std::uint32_t relayParticipantId = 0;
+        std::uint64_t relaySessionToken = 0;
+        std::uint32_t nextRelayMessageId = 1;
+
+        struct RelayFragments
+        {
+            std::vector<std::string> chunks = {};
+            std::size_t received = 0;
+        };
+        std::unordered_map<std::string, RelayFragments> relayFragments = {};
 
         ~Impl()
         {
@@ -136,6 +234,13 @@ namespace Canis
                 ResetEndpoint(peer);
             peers.clear();
             clientPeerKeys.clear();
+            relayTransport = false;
+            relayReady = false;
+            relayLobbyCode = 0;
+            relayParticipantId = 0;
+            relaySessionToken = 0;
+            nextRelayMessageId = 1;
+            relayFragments.clear();
         }
 
         bool IsOpen() const
@@ -180,6 +285,104 @@ namespace Canis
             }
         }
 
+        void SendBytes(const NetworkEndpoint &_endpoint, const std::vector<std::uint8_t> &_bytes)
+        {
+            if (socket == nullptr || _endpoint.address == nullptr || _bytes.empty())
+                return;
+            NET_SendDatagram(socket, _endpoint.address, _endpoint.port, _bytes.data(), static_cast<int>(_bytes.size()));
+        }
+
+        void SendRelayControl(RelayPacketKind _kind, std::uint32_t _requestId, std::uint32_t _lobbyCode, std::uint8_t _capacity = 0)
+        {
+            const std::string payload = _kind == RelayPacketKind::Create
+                ? std::string(1, static_cast<char>(_capacity)) : std::string();
+            SendBytes(serverEndpoint, BuildRelayPacket(
+                _kind, 0, _requestId, _lobbyCode, 0, 0, 0, payload));
+        }
+
+        void SendRelaySessionPacket(RelayPacketKind _kind)
+        {
+            if (!relayReady)
+                return;
+            SendBytes(serverEndpoint, BuildRelayPacket(
+                _kind, 0, 0, relayLobbyCode, relayParticipantId, 0,
+                relaySessionToken, {}));
+        }
+
+        void SendRelayData(std::uint32_t _targetId, bool _broadcast, const std::string &_message)
+        {
+            if (!relayReady || _message.empty())
+                return;
+
+            const std::string messagePrefix = "@F|" + std::to_string(nextRelayMessageId++) + "|";
+            const std::size_t maximumChunk = RelayMaxPayload > messagePrefix.size() + 24u
+                ? RelayMaxPayload - messagePrefix.size() - 24u : 512u;
+            const std::size_t count = std::max<std::size_t>(1u, (_message.size() + maximumChunk - 1u) / maximumChunk);
+            for (std::size_t index = 0; index < count; ++index)
+            {
+                const std::string payload = count == 1u
+                    ? _message
+                    : messagePrefix + std::to_string(index) + "|" + std::to_string(count) + "|" +
+                        _message.substr(index * maximumChunk, maximumChunk);
+                SendBytes(serverEndpoint, BuildRelayPacket(
+                    RelayPacketKind::Data,
+                    _broadcast ? RelayBroadcastFlag : 0,
+                    0,
+                    relayLobbyCode,
+                    relayParticipantId,
+                    _broadcast ? 0 : _targetId,
+                    relaySessionToken,
+                    payload));
+            }
+        }
+
+        void SendToPeer(const std::string &_peerKey, const std::string &_message)
+        {
+            if (relayTransport && _peerKey.rfind("relay:", 0) == 0)
+            {
+                SendRelayData(ParseNumber<std::uint32_t>(_peerKey.substr(6), 0), false, _message);
+                return;
+            }
+            if (auto peerIt = peers.find(_peerKey); peerIt != peers.end())
+                SendTo(peerIt->second, _message);
+        }
+
+        std::optional<std::string> AcceptRelayFragment(
+            std::uint32_t _senderId,
+            const std::string &_payload)
+        {
+            if (_payload.rfind("@F|", 0) != 0)
+                return _payload;
+            const std::size_t idEnd = _payload.find('|', 3);
+            const std::size_t indexEnd = idEnd == std::string::npos ? idEnd : _payload.find('|', idEnd + 1);
+            const std::size_t countEnd = indexEnd == std::string::npos ? indexEnd : _payload.find('|', indexEnd + 1);
+            if (idEnd == std::string::npos || indexEnd == std::string::npos || countEnd == std::string::npos)
+                return std::nullopt;
+            const std::uint32_t messageId = ParseNumber<std::uint32_t>(_payload.substr(3, idEnd - 3), 0);
+            const std::size_t index = ParseNumber<std::size_t>(_payload.substr(idEnd + 1, indexEnd - idEnd - 1), 0);
+            const std::size_t count = ParseNumber<std::size_t>(_payload.substr(indexEnd + 1, countEnd - indexEnd - 1), 0);
+            if (messageId == 0 || count == 0 || count > 256 || index >= count)
+                return std::nullopt;
+            const std::string key = std::to_string(_senderId) + ":" + std::to_string(messageId);
+            RelayFragments &fragments = relayFragments[key];
+            if (fragments.chunks.empty())
+                fragments.chunks.resize(count);
+            if (fragments.chunks.size() != count)
+                return std::nullopt;
+            if (fragments.chunks[index].empty())
+            {
+                fragments.chunks[index] = _payload.substr(countEnd + 1);
+                ++fragments.received;
+            }
+            if (fragments.received != count)
+                return std::nullopt;
+            std::string message;
+            for (const std::string &chunk : fragments.chunks)
+                message += chunk;
+            relayFragments.erase(key);
+            return message;
+        }
+
         std::vector<std::pair<std::string, std::string>> Poll()
         {
             std::vector<std::pair<std::string, std::string>> packets = {};
@@ -198,9 +401,54 @@ namespace Canis
                 if (datagram == nullptr)
                     break;
 
-                const std::string key = AddressKey(datagram->addr, datagram->port);
-                RememberPeer(key, datagram->addr, datagram->port);
-                packets.push_back({ std::string(reinterpret_cast<const char *>(datagram->buf), static_cast<std::size_t>(datagram->buflen)), key });
+                const std::uint8_t *bytes = reinterpret_cast<const std::uint8_t *>(datagram->buf);
+                if (relayTransport)
+                {
+                    const bool fromRelay = datagram->port == serverEndpoint.port &&
+                        AddressKey(datagram->addr, datagram->port) ==
+                            AddressKey(serverEndpoint.address, serverEndpoint.port);
+                    if (fromRelay && datagram->buflen >= static_cast<int>(RelayHeaderLength) &&
+                        bytes[0] == 'C' && bytes[1] == 'R' && bytes[2] == 'L' && bytes[3] == 'Y' && bytes[4] == 1)
+                    {
+                        const RelayPacketKind kind = static_cast<RelayPacketKind>(bytes[5]);
+                        const std::uint32_t requestId = ReadU32(bytes + 8);
+                        const std::uint32_t lobbyCode = ReadU32(bytes + 12);
+                        const std::uint32_t participantId = ReadU32(bytes + 16);
+                        const std::uint64_t token = ReadU64(bytes + 24);
+                        const std::uint16_t payloadLength = ReadU16(bytes + 32);
+                        if (RelayHeaderLength + payloadLength == static_cast<std::size_t>(datagram->buflen))
+                        {
+                            const std::string payload(reinterpret_cast<const char *>(bytes + RelayHeaderLength), payloadLength);
+                            if (kind == RelayPacketKind::Created || kind == RelayPacketKind::Joined)
+                            {
+                                relayReady = true;
+                                relayLobbyCode = lobbyCode;
+                                relayParticipantId = participantId;
+                                relaySessionToken = token;
+                                packets.push_back({
+                                    kind == RelayPacketKind::Created
+                                        ? "@RELAY_CREATED|" + std::to_string(lobbyCode)
+                                        : "@RELAY_JOINED|" + std::to_string(lobbyCode),
+                                    "relay" });
+                            }
+                            else if (kind == RelayPacketKind::Data)
+                            {
+                                if (std::optional<std::string> message = AcceptRelayFragment(participantId, payload))
+                                    packets.push_back({*message, "relay:" + std::to_string(participantId)});
+                            }
+                            else if (kind == RelayPacketKind::Error)
+                                packets.push_back({"@RELAY_ERROR|" + std::to_string(requestId) + "|" + (payload.empty() ? "0" : std::to_string(static_cast<unsigned char>(payload[0]))), "relay"});
+                            else if (kind == RelayPacketKind::LobbyClosed)
+                                packets.push_back({"@RELAY_CLOSED", "relay"});
+                        }
+                    }
+                }
+                else
+                {
+                    const std::string key = AddressKey(datagram->addr, datagram->port);
+                    RememberPeer(key, datagram->addr, datagram->port);
+                    packets.push_back({ std::string(reinterpret_cast<const char *>(datagram->buf), static_cast<std::size_t>(datagram->buflen)), key });
+                }
                 NET_DestroyDatagram(datagram);
             }
 
@@ -226,6 +474,7 @@ namespace Canis
     bool NetworkSession::Host(std::uint16_t _port, const std::string &_playerName, const std::string &_lobbyScenePath)
     {
         Disconnect();
+        m_lastNetworkError.clear();
 
         m_playerName = SanitizeToken(_playerName.empty() ? "Host" : _playerName);
         if (!_lobbyScenePath.empty())
@@ -255,6 +504,7 @@ namespace Canis
     bool NetworkSession::Join(const std::string &_address, std::uint16_t _port, const std::string &_playerName, const std::string &_lobbyScenePath)
     {
         Disconnect();
+        m_lastNetworkError.clear();
 
         m_playerName = SanitizeToken(_playerName.empty() ? "Player" : _playerName);
         if (!_lobbyScenePath.empty())
@@ -293,11 +543,83 @@ namespace Canis
         return true;
     }
 
+    bool NetworkSession::HostRelay(
+        const std::string &_relayAddress,
+        std::uint16_t _relayPort,
+        const std::string &_playerName,
+        const std::string &_lobbyScenePath,
+        std::uint8_t _capacity)
+    {
+        Disconnect();
+        m_lastNetworkError.clear();
+        m_transport = NetworkTransport::Relay;
+        m_playerName = SanitizeToken(_playerName.empty() ? "Host" : _playerName);
+        if (!_lobbyScenePath.empty())
+            m_lobbyScenePath = _lobbyScenePath;
+        m_mode = NetworkMode::Host;
+        m_phase = NetworkPhase::Start;
+        m_localClientId = 1;
+        m_nextClientId = 2;
+        m_relayRequestId = 1;
+        m_relayControlAttempts = 1;
+        m_relayCapacity = std::clamp<std::uint8_t>(_capacity, 2, 64);
+        m_players = {NetworkPlayer{ .id = 1, .name = m_playerName, .ready = true, .host = true, .connected = true }};
+
+        if (!m_impl->Open(0) || !m_impl->ResolveServer(_relayAddress.empty() ? "127.0.0.1" : _relayAddress, _relayPort))
+        {
+            m_lastNetworkError = "Could not connect to relay";
+            Disconnect();
+            return false;
+        }
+        m_impl->relayTransport = true;
+        m_impl->SendRelayControl(RelayPacketKind::Create, m_relayRequestId, 0, m_relayCapacity);
+        Debug::Log("Creating relay lobby through %s:%u.", _relayAddress.c_str(), static_cast<unsigned int>(_relayPort));
+        return true;
+    }
+
+    bool NetworkSession::JoinRelay(
+        const std::string &_relayAddress,
+        std::uint32_t _lobbyCode,
+        std::uint16_t _relayPort,
+        const std::string &_playerName,
+        const std::string &_lobbyScenePath)
+    {
+        if (_lobbyCode < 100000 || _lobbyCode > 999999)
+        {
+            m_lastNetworkError = "Relay lobby code must be six digits";
+            return false;
+        }
+        Disconnect();
+        m_lastNetworkError.clear();
+        m_transport = NetworkTransport::Relay;
+        m_playerName = SanitizeToken(_playerName.empty() ? "Player" : _playerName);
+        if (!_lobbyScenePath.empty())
+            m_lobbyScenePath = _lobbyScenePath;
+        m_mode = NetworkMode::Client;
+        m_phase = NetworkPhase::Start;
+        m_relayLobbyCode = _lobbyCode;
+        m_relayRequestId = 1;
+        m_relayControlAttempts = 1;
+
+        if (!m_impl->Open(0) || !m_impl->ResolveServer(_relayAddress.empty() ? "127.0.0.1" : _relayAddress, _relayPort))
+        {
+            m_lastNetworkError = "Could not connect to relay";
+            Disconnect();
+            return false;
+        }
+        m_impl->relayTransport = true;
+        m_impl->SendRelayControl(RelayPacketKind::Join, m_relayRequestId, _lobbyCode);
+        Debug::Log("Joining relay lobby %06u through %s:%u.", _lobbyCode, _relayAddress.c_str(), static_cast<unsigned int>(_relayPort));
+        return true;
+    }
+
     void NetworkSession::Disconnect()
     {
         if (m_impl != nullptr && m_impl->socket != nullptr)
         {
-            if (m_mode == NetworkMode::Client && m_localClientId != 0)
+            if (m_transport == NetworkTransport::Relay)
+                m_impl->SendRelaySessionPacket(RelayPacketKind::Leave);
+            else if (m_mode == NetworkMode::Client && m_localClientId != 0)
                 SendMessageToServer("BYE|" + std::to_string(m_localClientId));
             else if (m_mode == NetworkMode::Host)
                 BroadcastMessage("CLOSED");
@@ -319,6 +641,12 @@ namespace Canis
         m_gameStates.clear();
         m_gameActions.clear();
         m_broadcastTimer = 0.0f;
+        m_relayControlTimer = 0.0f;
+        m_relayKeepAliveTimer = 0.0f;
+        m_relayLobbyCode = 0;
+        m_relayRequestId = 0;
+        m_relayControlAttempts = 0;
+        m_transport = NetworkTransport::Direct;
     }
 
     void NetworkSession::Update(float _deltaTime)
@@ -331,7 +659,38 @@ namespace Canis
                 HandlePacket(packet.first, packet.second);
         }
 
-        if (m_mode == NetworkMode::Client && m_localClientId == 0)
+        if (m_transport == NetworkTransport::Relay && m_impl != nullptr)
+        {
+            if (!m_impl->relayReady)
+            {
+                m_relayControlTimer += _deltaTime;
+                if (m_relayControlTimer >= 0.5f)
+                {
+                    m_relayControlTimer = 0.0f;
+                    if (m_relayControlAttempts >= 6u)
+                    {
+                        m_lastNetworkError = "Relay timed out";
+                        Disconnect();
+                        return;
+                    }
+                    ++m_relayControlAttempts;
+                    m_impl->SendRelayControl(
+                        m_mode == NetworkMode::Host ? RelayPacketKind::Create : RelayPacketKind::Join,
+                        m_relayRequestId,
+                        m_relayLobbyCode,
+                        m_relayCapacity);
+                }
+                return;
+            }
+            m_relayKeepAliveTimer += _deltaTime;
+            if (m_relayKeepAliveTimer >= 5.0f)
+            {
+                m_relayKeepAliveTimer = 0.0f;
+                m_impl->SendRelaySessionPacket(RelayPacketKind::KeepAlive);
+            }
+        }
+
+        if (m_transport == NetworkTransport::Direct && m_mode == NetworkMode::Client && m_localClientId == 0)
         {
             m_broadcastTimer += _deltaTime;
             if (m_broadcastTimer >= 0.5f)
@@ -384,7 +743,12 @@ namespace Canis
         else if (m_phase == NetworkPhase::Match)
             phase = "Match";
 
-        return std::string(mode) + " / " + phase + " / players: " + std::to_string(m_players.size());
+        std::string status = std::string(mode) + " / " + phase + " / players: " + std::to_string(m_players.size());
+        if (m_transport == NetworkTransport::Relay)
+            status += m_relayLobbyCode != 0 ? " / relay: " + std::to_string(m_relayLobbyCode) : " / relay: connecting";
+        if (!m_lastNetworkError.empty())
+            status += " / " + m_lastNetworkError;
+        return status;
     }
 
     bool NetworkSession::StartMatch(const std::string &_scenePath, float _durationSeconds)
@@ -667,6 +1031,39 @@ namespace Canis
 
     void NetworkSession::HandlePacket(const std::string &_message, const std::string &_peerKey)
     {
+        if (_message.rfind("@RELAY_CREATED|", 0) == 0)
+        {
+            m_relayLobbyCode = ParseNumber<std::uint32_t>(_message.substr(15), 0);
+            m_phase = NetworkPhase::Lobby;
+            m_lastNetworkError.clear();
+            Debug::Log("Relay lobby created with code %06u.", m_relayLobbyCode);
+            LoadLobbyScene();
+            return;
+        }
+        if (_message.rfind("@RELAY_JOINED|", 0) == 0)
+        {
+            m_relayLobbyCode = ParseNumber<std::uint32_t>(_message.substr(14), m_relayLobbyCode);
+            m_lastNetworkError.clear();
+            SendMessageToServer("HELLO|" + m_playerName + "|" + m_lobbyScenePath);
+            return;
+        }
+        if (_message.rfind("@RELAY_ERROR|", 0) == 0)
+        {
+            const std::vector<std::string> errorParts = Split(_message, '|');
+            const int errorCode = errorParts.size() >= 3u ? ParseNumber(errorParts[2], 0) : 0;
+            const char *messages[] = {"Relay error", "Bad relay request", "Relay protocol mismatch", "Lobby not found", "Lobby full", "Relay authorization failed", "Relay rate limit reached", "Relay server full", "Relay packet too large", "Relay internal error"};
+            m_lastNetworkError = messages[std::clamp(errorCode, 0, 9)];
+            Debug::Warning("%s.", m_lastNetworkError.c_str());
+            Disconnect();
+            return;
+        }
+        if (_message == "@RELAY_CLOSED")
+        {
+            m_lastNetworkError = "Relay lobby closed";
+            Disconnect();
+            return;
+        }
+
         const std::vector<std::string> parts = Split(_message, '|');
         if (parts.empty())
             return;
@@ -691,8 +1088,7 @@ namespace Canis
                 {
                     if (m_players.size() >= 4u)
                     {
-                        if (auto peerIt = m_impl->peers.find(_peerKey); peerIt != m_impl->peers.end())
-                            m_impl->SendTo(peerIt->second, "REJECT|Lobby_full");
+                        m_impl->SendToPeer(_peerKey, "REJECT|Lobby_full");
                         return;
                     }
                     clientId = m_nextClientId++;
@@ -706,8 +1102,7 @@ namespace Canis
                     parts[1].c_str(),
                     m_players.size());
 
-                if (auto peerIt = m_impl->peers.find(_peerKey); peerIt != m_impl->peers.end())
-                    m_impl->SendTo(peerIt->second, "WELCOME|" + std::to_string(clientId) + "|" + m_lobbyScenePath);
+                m_impl->SendToPeer(_peerKey, "WELCOME|" + std::to_string(clientId) + "|" + m_lobbyScenePath);
                 BroadcastPlayers();
                 if (m_phase == NetworkPhase::Match)
                     BroadcastMessage("START|" + m_matchScenePath + "|" + FormatFloat(m_matchRemainingSeconds));
@@ -945,6 +1340,11 @@ namespace Canis
         if (m_impl == nullptr || !m_impl->IsOpen())
             return;
 
+        if (m_transport == NetworkTransport::Relay)
+        {
+            m_impl->SendRelayData(0, true, _message);
+            return;
+        }
         for (const auto &entry : m_impl->clientPeerKeys)
         {
             if (auto peerIt = m_impl->peers.find(entry.second); peerIt != m_impl->peers.end())
@@ -954,7 +1354,11 @@ namespace Canis
 
     void NetworkSession::SendMessageToServer(const std::string &_message)
     {
-        if (m_impl != nullptr && m_impl->IsOpen())
+        if (m_impl == nullptr || !m_impl->IsOpen())
+            return;
+        if (m_transport == NetworkTransport::Relay)
+            m_impl->SendRelayData(1, false, _message);
+        else
             m_impl->SendTo(m_impl->serverEndpoint, _message);
     }
 }

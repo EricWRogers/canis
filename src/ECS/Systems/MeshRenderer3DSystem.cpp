@@ -1262,6 +1262,11 @@ namespace Canis
             float metallicValue = 0.0f;
 
             glDisable(GL_CULL_FACE);
+            // Material uniforms live on the shared shader program. Restore
+            // shader defaults before applying this entity's overrides so a
+            // tiled surface (for example, the dining floor's uvScale) cannot
+            // leak into models rendered afterward.
+            currentShader->SetVec2("uvScale", Vector2(1.0f));
             int nextCustomTextureUnit = 5;
             if (materialAsset != nullptr)
             {
@@ -1425,6 +1430,9 @@ namespace Canis
             float metallicValue = 0.0f;
 
             glDisable(GL_CULL_FACE);
+            // Static batches use the same shader as regular model draws and
+            // therefore need the same per-draw uniform reset.
+            currentShader->SetVec2("uvScale", Vector2(1.0f));
             if (materialAsset != nullptr)
             {
                 if ((materialAsset->info & MATERIAL_HAS_COLOR) != 0u)

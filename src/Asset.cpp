@@ -570,7 +570,12 @@ namespace Canis
                     float u = 0.0f;
                     float v = 0.0f;
                     if (lineStream >> u >> v)
-                        texcoords.emplace_back(u, v);
+                    {
+                        // OBJ UVs use a bottom-left origin, while Canis uploads
+                        // image rows from the top. Flip V once during import so
+                        // converted OBJ textures retain their authored layout.
+                        texcoords.emplace_back(u, 1.0f - v);
+                    }
                 }
                 else if (prefix == "vn")
                 {
