@@ -47,6 +47,25 @@ namespace Canis
         (void)_entity;
     }
 
+    void Editor::RebuildPrefabInstance(Canis::Entity* _entity)
+    {
+        (void)_entity;
+    }
+
+    void Editor::RebuildAllPrefabInstances()
+    {
+    }
+
+    void Editor::ApplyPrefabInstanceOverrides(Canis::Entity* _entity)
+    {
+        (void)_entity;
+    }
+
+    void Editor::RebuildTerrainEntity(Canis::Entity& _entity)
+    {
+        (void)_entity;
+    }
+
     void Editor::NotifyAnimationPropertyEdited(
         Canis::Entity& _entity,
         const std::string& _componentName,
@@ -113,6 +132,40 @@ namespace Canis
         (void)_name;
         (void)_idSuffix;
         (void)_variable;
+    }
+
+    void Editor::InputAudioAsset(const std::string& _name, Canis::AudioAssetHandle& _variable)
+    {
+        InputAudioAsset(_name, nullptr, _variable);
+    }
+
+    void Editor::InputAudioAsset(const std::string& _name, const char* _idSuffix, Canis::AudioAssetHandle& _variable)
+    {
+        (void)_name;
+        (void)_idSuffix;
+        (void)_variable;
+    }
+
+    void Editor::InputAnimatorControllerAsset(const std::string& _name, Canis::AnimatorControllerAssetHandle& _variable)
+    {
+        InputAnimatorControllerAsset(_name, nullptr, _variable);
+    }
+
+    void Editor::InputAnimatorControllerAsset(const std::string& _name, const char* _idSuffix, Canis::AnimatorControllerAssetHandle& _variable)
+    {
+        (void)_name;
+        (void)_idSuffix;
+        (void)_variable;
+    }
+
+    std::string Editor::ResolveRememberedShaderGraphPath() const
+    {
+        return {};
+    }
+
+    void Editor::RememberLastShaderGraphAssetPath(const std::string& _path)
+    {
+        (void)_path;
     }
 
     bool Editor::InputTerrainAsset(const std::string& _name, Canis::TerrainAssetHandle& _variable)

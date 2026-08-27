@@ -45,6 +45,11 @@ public:
     void LoadScene(const std::string& _path);
     void LoadScene(const SceneAssetHandle& _sceneAssetHandle);
     const std::string& GetPendingScenePath() const { return m_pendingScenePath; }
+    // Opaque lifetime-owned state returned by the loaded GameCode module.
+    // Game projects may cast this to their own root data type; the engine does
+    // not own or inspect its contents.
+    void* GetGameCodeData();
+    const void* GetGameCodeData() const;
     NetworkSession& GetNetwork();
     const NetworkSession& GetNetwork() const;
 

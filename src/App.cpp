@@ -811,7 +811,8 @@ namespace Canis
 
 #if defined(__EMSCRIPTEN__)
             return "";
-#elif defined(_WIN32)
+#else
+#if defined(_WIN32)
             constexpr const char *libraryName = "libGameCode.dll";
 #elif defined(__APPLE__)
             constexpr const char *libraryName = "libGameCode.dylib";
@@ -839,6 +840,7 @@ namespace Canis
 
             resolvedPath = std::string("./") + libraryName;
             return resolvedPath.c_str();
+#endif
         }
 
         bool HasAssetsFolder(const fs::path &_path)
@@ -903,6 +905,21 @@ namespace Canis
             }
 
             return false;
+        }
+
+        int EnvironmentDimension(const char *_name, int _fallback, int _minimum)
+        {
+            const char *value = std::getenv(_name);
+            if (value == nullptr || value[0] == '\0')
+                return _fallback;
+            char *end = nullptr;
+            const long parsed = std::strtol(value, &end, 10);
+            if (end == value || *end != '\0' || parsed < _minimum || parsed > 16384)
+            {
+                Debug::Warning("Ignoring invalid %s='%s'.", _name, value);
+                return _fallback;
+            }
+            return static_cast<int>(parsed);
         }
 
         Vector3 MaxVector3(const Vector3 &_left, const Vector3 &_right)
@@ -1732,6 +1749,16 @@ namespace Canis
         ShutdownRuntime();
     }
 
+    void* App::GetGameCodeData()
+    {
+        return m_runtime != nullptr ? m_runtime->gameCodeObject.gameData : nullptr;
+    }
+
+    const void* App::GetGameCodeData() const
+    {
+        return m_runtime != nullptr ? m_runtime->gameCodeObject.gameData : nullptr;
+    }
+
     void App::InitializeRuntime()
     {
         if (m_runtime != nullptr)
@@ -1807,10 +1834,14 @@ namespace Canis
 #endif
         Canis::SetEditorRuntimeEnabled(runtime.editorRuntimeEnabled);
 
-        const int startupWidth = std::max(320, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowWidth
-                                                                             : GetProjectConfig().targetGameWidth);
-        const int startupHeight = std::max(240, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowHeight
-                                                                              : GetProjectConfig().targetGameHeight);
+        const int configuredWidth = std::max(320, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowWidth
+                                                                                : GetProjectConfig().targetGameWidth);
+        const int configuredHeight = std::max(240, runtime.editorRuntimeEnabled ? GetProjectConfig().editorWindowHeight
+                                                                                 : GetProjectConfig().targetGameHeight);
+        const int startupWidth = EnvironmentDimension("CANIS_WINDOW_WIDTH", configuredWidth, 320);
+        const int startupHeight = EnvironmentDimension("CANIS_WINDOW_HEIGHT", configuredHeight, 240);
+        if (startupWidth != configuredWidth || startupHeight != configuredHeight)
+            Debug::Log("Runtime window override: %dx%d.", startupWidth, startupHeight);
         runtime.window = std::make_unique<Window>(
             "Canis Beta", startupWidth, startupHeight, runtime.launch.offscreen);
         runtime.window->SetClearColor(Color(1.0f));
@@ -4757,6 +4788,8 @@ namespace Canis
                         comp["applyNodeTransform"] = model.applyNodeTransform;
                     if (model.staticModel)
                         comp["static"] = model.staticModel;
+                    if (!model.castShadow)
+                        comp["castShadow"] = model.castShadow;
 
                     if (model.modelId > -1)
                     {
@@ -4785,6 +4818,7 @@ namespace Canis
                     model.nodeIndex = comp["nodeIndex"].as<i32>(-1);
                     model.applyNodeTransform = comp["applyNodeTransform"].as<bool>(true);
                     model.staticModel = comp["static"].as<bool>(false);
+                    model.castShadow = comp["castShadow"].as<bool>(true);
 
                     std::string path = "";
                     if (auto modelAsset = comp["ModelAsset"])
@@ -4838,6 +4872,7 @@ namespace Canis
                 {
                     DrawInspectorColorField("color", _conf.name.c_str(), model->color);
                     DrawInspectorField(_editor, "static", _conf.name.c_str(), model->staticModel);
+                    DrawInspectorField(_editor, "castShadow", _conf.name.c_str(), model->castShadow);
 
                     std::string modelLabel = "[ empty ]";
                     ModelAsset* modelAsset = nullptr;

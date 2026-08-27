@@ -132,10 +132,13 @@ if(CANIS_PLATFORM_WEB)
         "SHELL:-sALLOW_MEMORY_GROWTH=1"
         "SHELL:-sDECLARE_ASM_MODULE_EXPORTS=0"
         "SHELL:-sFORCE_FILESYSTEM=1"
+        "SHELL:-lidbfs.js"
         "SHELL:-sNO_EXIT_RUNTIME=1"
         "SHELL:-sSTACK_SIZE=${CANIS_WEB_STACK_SIZE}"
         "SHELL:-sMIN_WEBGL_VERSION=2"
         "SHELL:-sMAX_WEBGL_VERSION=2"
+        "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/project/web/shell.html"
+        "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/project/web/persistence.js"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/assets@/assets"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/project_settings/project.canis@/project_settings/project.canis"
     )

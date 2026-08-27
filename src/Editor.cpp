@@ -51,6 +51,7 @@
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
+#include <functional>
 #include <cctype>
 #include <limits>
 #include <sstream>
@@ -1234,6 +1235,17 @@ namespace Canis
 
         std::filesystem::path GetDefaultStandaloneExecutablePath()
         {
+            // The editor is compiled into the product executable. Launching
+            // that same binary with CANIS_EDITOR_RUNTIME=0 is the most reliable
+            // default for renamed projects and cannot select a stale template
+            // executable left in the runtime directory.
+#if defined(__linux__)
+            std::error_code executablePathError = {};
+            const std::filesystem::path runningExecutable =
+                std::filesystem::read_symlink("/proc/self/exe", executablePathError);
+            if (!executablePathError && !runningExecutable.empty())
+                return runningExecutable;
+#endif
 #if defined(_WIN32)
             return GetEditorRuntimeBasePath() / "c-engine.exe";
 #else
@@ -1295,7 +1307,11 @@ namespace Canis
             for (const fs::path &candidate : candidates)
             {
                 if (IsRegularFilePath(candidate))
-                    return candidate.lexically_normal();
+                {
+                    std::error_code absoluteError = {};
+                    const fs::path absoluteCandidate = fs::absolute(candidate, absoluteError);
+                    return (absoluteError ? candidate : absoluteCandidate).lexically_normal();
+                }
             }
 
             return {};
@@ -1307,12 +1323,17 @@ namespace Canis
 
             if (_configuredPath.empty())
             {
+                // Standalone products load their project settings, assets, and
+                // game-code library relative to the executable directory.  The
+                // editor itself is often started from the repository root, so
+                // inheriting its current directory makes the launched process
+                // start and then immediately exit before opening a window.
+                if (!_executablePath.empty() && IsDirectoryPath(_executablePath.parent_path()))
+                    return _executablePath.parent_path();
+
                 const fs::path currentDirectory = fs::current_path();
                 if (IsDirectoryPath(currentDirectory))
                     return currentDirectory;
-
-                if (!_executablePath.empty() && IsDirectoryPath(_executablePath.parent_path()))
-                    return _executablePath.parent_path();
 
                 return GetEditorRuntimeBasePath();
             }
@@ -1485,8 +1506,15 @@ namespace Canis
                 return false;
             }
 
+            const SDL_PropertiesID processProperties = SDL_GetProcessProperties(process);
+            const Sint64 processId = processProperties != 0
+                ? SDL_GetNumberProperty(processProperties, SDL_PROP_PROCESS_PID_NUMBER, 0)
+                : 0;
             SDL_DestroyProcess(process);
-            _outMessage = "Launched standalone game: " + executablePath.generic_string();
+            _outMessage = "Launched standalone game";
+            if (processId > 0)
+                _outMessage += " (PID " + std::to_string(processId) + ")";
+            _outMessage += ": " + executablePath.generic_string();
             return true;
         }
 
@@ -8215,14 +8243,33 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!m_rebuildAllPrefabInstancesRequested && m_queuedPrefabInstanceRebuilds.empty())
             return;
 
+        const bool rebuildAll = m_rebuildAllPrefabInstancesRequested;
         std::vector<Canis::UUID> targets = {};
         targets.reserve(m_queuedPrefabInstanceRebuilds.size() + m_scene->GetEntities().size());
 
-        if (m_rebuildAllPrefabInstancesRequested)
+        if (rebuildAll)
         {
             for (Canis::Entity *entity : m_scene->GetEntities())
             {
-                if (entity != nullptr && entity->HasComponent<PrefabInstance>())
+                if (entity == nullptr || !entity->HasComponent<PrefabInstance>())
+                    continue;
+
+                // Rebuild only the outermost instances in the first pass. A
+                // parent rebuild destroys and recreates its expanded children,
+                // so rebuilding nested instances first would immediately lose
+                // those changes.
+                bool hasPrefabAncestor = false;
+                for (Canis::Entity *parent = GetHierarchyParent(entity);
+                     parent != nullptr;
+                     parent = GetHierarchyParent(parent))
+                {
+                    if (parent->HasComponent<PrefabInstance>())
+                    {
+                        hasPrefabAncestor = true;
+                        break;
+                    }
+                }
+                if (!hasPrefabAncestor)
                     targets.push_back(entity->uuid);
             }
         }
@@ -8252,6 +8299,52 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::Entity *rebuilt = RebuildPrefabInstanceNow(entity, focusSelection);
             if (rebuilt != nullptr && uuid == selectedUuid)
                 selectedUuid = rebuilt->uuid;
+
+            if (rebuildAll && rebuilt != nullptr)
+            {
+                // The rebuilt parent may contain nested prefab instances with
+                // fresh UUIDs. Re-discover them from the new hierarchy and
+                // rebuild parent-to-child so a single action fully propagates
+                // edits to nested UI prefabs such as gameplay HUD cards.
+                std::function<void(Canis::Entity*)> rebuildNested;
+                rebuildNested = [&](Canis::Entity *parent)
+                {
+                    std::vector<Canis::UUID> nestedRoots = {};
+                    std::function<void(Canis::Entity*)> collectNested;
+                    collectNested = [&](Canis::Entity *candidate)
+                    {
+                        if (candidate == nullptr)
+                            return;
+                        if (candidate->HasComponent<PrefabInstance>())
+                        {
+                            nestedRoots.push_back(candidate->uuid);
+                            return;
+                        }
+                        if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(candidate))
+                        {
+                            for (Canis::Entity *child : *children)
+                                collectNested(child);
+                        }
+                    };
+
+                    if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(parent))
+                    {
+                        for (Canis::Entity *child : *children)
+                            collectNested(child);
+                    }
+
+                    for (Canis::UUID nestedUuid : nestedRoots)
+                    {
+                        Canis::Entity *nested = m_scene->GetEntityWithUUID(nestedUuid);
+                        if (nested == nullptr || !nested->HasComponent<PrefabInstance>())
+                            continue;
+                        Canis::Entity *nestedRebuilt = RebuildPrefabInstanceNow(nested, false);
+                        if (nestedRebuilt != nullptr)
+                            rebuildNested(nestedRebuilt);
+                    }
+                };
+                rebuildNested(rebuilt);
+            }
         }
     }
 

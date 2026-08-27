@@ -697,12 +697,22 @@ namespace Canis
             nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_NEAREST);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
+        #if defined(__EMSCRIPTEN__)
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+        #else
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_BORDER);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_BORDER);
         const float borderColor[] = { 1.0f, 1.0f, 1.0f, 1.0f };
         glTexParameterfv(GL_TEXTURE_2D, GL_TEXTURE_BORDER_COLOR, borderColor);
+        #endif
         glFramebufferTexture2D(GL_FRAMEBUFFER, GL_DEPTH_ATTACHMENT, GL_TEXTURE_2D, m_shadowDepthTexture, 0);
+        #if defined(__EMSCRIPTEN__)
+        const GLenum drawBuffer = GL_NONE;
+        glDrawBuffers(1, &drawBuffer);
+        #else
         glDrawBuffer(GL_NONE);
+        #endif
         glReadBuffer(GL_NONE);
 
         if (glCheckFramebufferStatus(GL_FRAMEBUFFER) != GL_FRAMEBUFFER_COMPLETE)
@@ -804,7 +814,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
+            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0 || !modelRenderer.castShadow)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);

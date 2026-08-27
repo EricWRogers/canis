@@ -143,6 +143,11 @@ namespace Canis
                 Sprite2D& sprite = _entity.GetComponent<Sprite2D>();
                 sprite.color = pressed ? _button.pressedColor : (hovered ? _button.hoverColor : _button.baseColor);
             }
+            else if (_entity.HasComponent<Text>())
+            {
+                Text& text = _entity.GetComponent<Text>();
+                text.color = pressed ? _button.pressedColor : (hovered ? _button.hoverColor : _button.baseColor);
+            }
 
             SetRectUniformScale(_rect, pressed ? _button.pressedScale : (hovered ? _button.hoverScale : _button.baseScale));
         }
@@ -397,6 +402,8 @@ namespace Canis
 
                 if (entity->HasComponent<Sprite2D>())
                     button.baseColor = entity->GetComponent<Sprite2D>().color;
+                else if (entity->HasComponent<Text>())
+                    button.baseColor = entity->GetComponent<Text>().color;
             }
 
             const bool visible = rect.IsActiveInHierarchy();
