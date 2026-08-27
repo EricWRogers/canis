@@ -1842,8 +1842,10 @@ namespace Canis
         const int startupHeight = EnvironmentDimension("CANIS_WINDOW_HEIGHT", configuredHeight, 240);
         if (startupWidth != configuredWidth || startupHeight != configuredHeight)
             Debug::Log("Runtime window override: %dx%d.", startupWidth, startupHeight);
+        const std::string windowTitle = GetProjectConfig().gameName.empty()
+            ? std::string("Canis Game") : GetProjectConfig().gameName;
         runtime.window = std::make_unique<Window>(
-            "Canis Beta", startupWidth, startupHeight, runtime.launch.offscreen);
+            windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen);
         runtime.window->SetClearColor(Color(1.0f));
         runtime.window->SetSync(static_cast<Window::Sync>(GetProjectConfig().syncMode));
         AudioManager::Initialize();

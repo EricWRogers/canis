@@ -173,6 +173,27 @@ namespace Canis
             return std::clamp(_value, 0.0f, 1.0f);
         }
 
+        bool WriteProjectConfigNode(const fs::path &_path, const YAML::Node &_node)
+        {
+            std::error_code ec;
+            fs::create_directories(_path.parent_path(), ec);
+            if (ec)
+            {
+                Debug::Error("Failed to create project settings directory for %s", _path.generic_string().c_str());
+                return false;
+            }
+
+            std::ofstream output(_path);
+            if (!output.is_open())
+            {
+                Debug::Error("Failed to save project config to %s", _path.generic_string().c_str());
+                return false;
+            }
+
+            output << _node;
+            return output.good();
+        }
+
         std::string GetReadableProjectConfigPath()
         {
             if (FileExists(kProjectConfigPath))
@@ -218,12 +239,35 @@ namespace Canis
         g_editorRuntimeEnabled = _enabled;
     }
 
+    bool IsValidProjectExecutableName(const std::string &_name)
+    {
+        if (_name.empty())
+            return false;
+
+        return std::all_of(_name.begin(), _name.end(), [](unsigned char _character)
+        {
+            return (_character >= 'a' && _character <= 'z') ||
+                   (_character >= 'A' && _character <= 'Z') ||
+                   (_character >= '0' && _character <= '9') ||
+                   _character == '_' || _character == '.' ||
+                   _character == '+' || _character == '-';
+        });
+    }
+
     bool SaveProjectConfig()
     {
         ProjectConfig projectConfig = GetProjectConfig();
 
+        if (!IsValidProjectExecutableName(projectConfig.executableName))
+        {
+            Debug::Error("Executable name must contain only letters, numbers, _, ., +, or -.");
+            return false;
+        }
+
         YAML::Node node;
 
+        node["gameName"] = projectConfig.gameName;
+        node["executableName"] = projectConfig.executableName;
         node["useFrameLimit"] = projectConfig.useFrameLimit;
         node["frameLimit"] = projectConfig.frameLimit;
         node["frameLimitEditor"] = projectConfig.frameLimitEditor;
@@ -245,24 +289,48 @@ namespace Canis
         node["targetGameWidth"] = projectConfig.targetGameWidth;
         node["targetGameHeight"] = projectConfig.targetGameHeight;
 
+        const fs::path runtimeConfigPath = kProjectConfigPath;
+        if (!WriteProjectConfigNode(runtimeConfigPath, node))
+            return false;
+
+        // Editor builds run from the nested project directory, while root
+        // CMake reads the source copy one directory above it. Keep both copies
+        // synchronized in a source workspace. Packaged games have no parent
+        // CMakeLists.txt and only write their local runtime settings.
+        const fs::path workspaceCMakePath = fs::path("..") / "CMakeLists.txt";
+        const fs::path sourceConfigPath = fs::path("..") / kProjectConfigPath;
         std::error_code ec;
-        fs::create_directories(fs::path(kProjectConfigPath).parent_path(), ec);
-        if (ec)
+        if (g_editorRuntimeEnabled && fs::is_regular_file(workspaceCMakePath, ec))
         {
-            Debug::Error("Failed to create project settings directory for %s", kProjectConfigPath);
-            return false;
+            ec.clear();
+            const fs::path canonicalRuntimePath = fs::weakly_canonical(runtimeConfigPath, ec);
+            ec.clear();
+            const fs::path canonicalSourcePath = fs::weakly_canonical(sourceConfigPath, ec);
+            if (canonicalSourcePath != canonicalRuntimePath)
+            {
+                YAML::Node sourceNode;
+                try
+                {
+                    if (FileExists(sourceConfigPath.generic_string().c_str()))
+                        sourceNode = YAML::LoadFile(sourceConfigPath.generic_string());
+                }
+                catch (const YAML::Exception &_exception)
+                {
+                    Debug::Error("Failed to load source project config: %s", _exception.what());
+                    return false;
+                }
+
+                // Runtime-only values such as the current editor window size
+                // may intentionally differ. Only mirror the two identity
+                // fields that also control the root CMake configuration.
+                sourceNode["gameName"] = projectConfig.gameName;
+                sourceNode["executableName"] = projectConfig.executableName;
+                if (!WriteProjectConfigNode(sourceConfigPath, sourceNode))
+                    return false;
+            }
         }
 
-        std::ofstream fout(kProjectConfigPath);
-        if (!fout.is_open())
-        {
-            Debug::Error("Failed to save project config to %s", kProjectConfigPath);
-            return false;
-        }
-
-        fout << node;
-
-        return fout.good();
+        return true;
     }
 
     bool SaveEditorConfig()
@@ -331,6 +399,8 @@ namespace Canis
         if (FileExists(editorConfigPath.c_str()))
             editorNode = YAML::LoadFile(editorConfigPath);
 
+        projectConfig.gameName = node["gameName"].as<std::string>(projectConfig.gameName);
+        projectConfig.executableName = node["executableName"].as<std::string>(projectConfig.executableName);
         projectConfig.useFrameLimit = node["useFrameLimit"].as<bool>(projectConfig.useFrameLimit);
         projectConfig.frameLimit = node["frameLimit"].as<float>(projectConfig.frameLimit);
         projectConfig.frameLimitEditor = node["frameLimitEditor"].as<float>(projectConfig.frameLimitEditor);

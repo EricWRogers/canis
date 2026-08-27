@@ -22,6 +22,11 @@ namespace Canis
 
     struct ProjectConfig
     {
+        // Human-facing title and build-target identity are deliberately
+        // separate: game names may contain spaces while executable names must
+        // remain suitable for the host platform and build system.
+        std::string gameName = "Canis Game";
+        std::string executableName = "c-engine";
         //bool fullscreen = false;
         //bool borderless = false;
         //bool resizeable = false;
@@ -83,6 +88,7 @@ namespace Canis
     };
 
     ProjectConfig& GetProjectConfig();
+    bool IsValidProjectExecutableName(const std::string &_name);
     EditorConfig& GetEditorConfig();
     bool IsEditorRuntimeEnabled();
     void SetEditorRuntimeEnabled(bool _enabled);

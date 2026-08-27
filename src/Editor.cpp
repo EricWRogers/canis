@@ -15644,6 +15644,27 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::SaveEditorConfig();
         }
 
+        std::string &gameName = Canis::GetProjectConfig().gameName;
+        ImGui::Text("game name");
+        ImGui::SameLine();
+        if (ImGui::InputText("##gameName", &gameName))
+            Canis::SaveProjectConfig();
+        ImGui::TextDisabled("Window title shown to players.");
+
+        std::string &executableName = Canis::GetProjectConfig().executableName;
+        ImGui::Text("executable name");
+        ImGui::SameLine();
+        if (ImGui::InputText("##executableName", &executableName) &&
+            Canis::IsValidProjectExecutableName(executableName))
+        {
+            Canis::SaveProjectConfig();
+        }
+        if (Canis::IsValidProjectExecutableName(executableName))
+            ImGui::TextDisabled("CMake output name; reconfigure after changing it.");
+        else
+            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
+                "Use only letters, numbers, _, ., +, or -.");
+
         bool editorEnabled = Canis::GetProjectConfig().editor;
         ImGui::Text("editor mode");
         ImGui::SameLine();
