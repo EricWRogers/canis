@@ -4155,7 +4155,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Transform &transform = _entity->GetComponent<Transform>();
                 transform.SetParent(_parent);
                 transform.position = Vector3(0.0f);
-                transform.rotation = Vector3(0.0f);
+                transform.rotation = Quaternion(Vector3(0.0f));
             }
         }
 
@@ -7571,14 +7571,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     {
                         Transform& parentTransform = transform3D->parent->GetComponent<Transform>();
                         const Vector3 parentWorldPosition = parentTransform.GetGlobalPosition();
-                        const Vector3 parentWorldRotation = parentTransform.GetGlobalRotation();
+                        const Quaternion parentWorldRotation = parentTransform.GetGlobalRotation();
                         const Vector3 parentWorldScale = parentTransform.GetGlobalScale();
 
                         const Vector3 parentSpacePosition = worldPosition - parentWorldPosition;
-                        Matrix4 inverseParentRotation = Matrix4(1.0f);
-                        inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.x, Vector3(1.0f, 0.0f, 0.0f));
-                        inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.y, Vector3(0.0f, 1.0f, 0.0f));
-                        inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.z, Vector3(0.0f, 0.0f, 1.0f));
+                        const Matrix4 inverseParentRotation = glm::mat4_cast(glm::inverse(parentWorldRotation));
                         const Vector4 localPosition4 = inverseParentRotation * Vector4(
                             parentSpacePosition.x,
                             parentSpacePosition.y,
@@ -7589,7 +7586,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         transform3D->position.y = (parentWorldScale.y != 0.0f) ? (localPosition4.y / parentWorldScale.y) : localPosition4.y;
                         transform3D->position.z = (parentWorldScale.z != 0.0f) ? (localPosition4.z / parentWorldScale.z) : localPosition4.z;
 
-                        transform3D->rotation = worldRotation - parentWorldRotation;
+                        transform3D->rotation = glm::normalize(glm::inverse(parentWorldRotation) * Quaternion(worldRotation));
                         transform3D->scale.x = (parentWorldScale.x != 0.0f) ? (worldScale.x / parentWorldScale.x) : worldScale.x;
                         transform3D->scale.y = (parentWorldScale.y != 0.0f) ? (worldScale.y / parentWorldScale.y) : worldScale.y;
                         transform3D->scale.z = (parentWorldScale.z != 0.0f) ? (worldScale.z / parentWorldScale.z) : worldScale.z;
@@ -7597,14 +7594,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     else
                     {
                         transform3D->position = worldPosition;
-                        transform3D->rotation = worldRotation;
+                        transform3D->rotation = glm::normalize(Quaternion(worldRotation));
                         transform3D->scale = worldScale;
                     }
                 }
                 else
                 {
                     transform3D->position = worldPosition;
-                    transform3D->rotation = worldRotation;
+                    transform3D->rotation = glm::normalize(Quaternion(worldRotation));
                     transform3D->scale = worldScale;
                 }
             }
@@ -8066,7 +8063,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             bool valid = false;
             Vector3 position = Vector3(0.0f);
-            Vector3 rotation = Vector3(0.0f);
+            Quaternion rotation = Quaternion(Vector3(0.0f));
             Vector3 scale = Vector3(1.0f);
         };
 
@@ -9085,7 +9082,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 return false;
 
             const Vector3 localPosition = childTransform->position;
-            const Vector3 localRotation = childTransform->rotation;
+            const Quaternion localRotation = childTransform->rotation;
             const Vector3 localScale = childTransform->scale;
             childTransform->SetParentAtIndex(_parent, _index);
             childTransform->position = localPosition;
@@ -9431,7 +9428,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         Transform &transform = _entity.GetComponent<Transform>();
         transform.position = _node.translation;
         transform.scale = _node.scale;
-        transform.rotation = glm::eulerAngles(glm::quat(_node.rotation.w, _node.rotation.x, _node.rotation.y, _node.rotation.z));
+        transform.rotation = glm::normalize(Quaternion(_node.rotation.w, _node.rotation.x, _node.rotation.y, _node.rotation.z));
 
         if (_node.hasMatrix)
         {
@@ -9446,7 +9443,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 orientation = glm::normalize(orientation);
                 transform.position = translation;
                 transform.scale = scale;
-                transform.rotation = glm::eulerAngles(orientation);
+                transform.rotation = orientation;
             }
         }
     }

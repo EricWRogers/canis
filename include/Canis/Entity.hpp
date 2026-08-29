@@ -664,18 +664,26 @@ namespace Canis
 
         bool active = true;
         Vector3 position = Vector3(0.0f);
-        Vector3 rotation = Vector3(0.0f);
+        Quaternion rotation = Quaternion(Vector3(0.0f));
         Vector3 scale = Vector3(1.0f);
         Entity* parent = nullptr;
         std::vector<Entity*> children = {};
+
+        void Rotate(const Vector3 &_eulerRadians)
+        {
+            Canis::Rotate(*this, _eulerRadians);
+        }
+
+        void LookAt(const Vector3 &_target, const Vector3 &_up = Vector3(0.0f, 1.0f, 0.0f))
+        {
+            Canis::LookAt(*this, _target, _up);
+        }
 
         Matrix4 GetLocalMatrix() const
         {
             Matrix4 matrix = Matrix4(1.0f);
             matrix = glm::translate(matrix, position);
-            matrix = glm::rotate(matrix, rotation.z, Vector3(0.0f, 0.0f, 1.0f));
-            matrix = glm::rotate(matrix, rotation.y, Vector3(0.0f, 1.0f, 0.0f));
-            matrix = glm::rotate(matrix, rotation.x, Vector3(1.0f, 0.0f, 0.0f));
+            matrix *= glm::mat4_cast(glm::normalize(rotation));
             matrix = glm::scale(matrix, scale);
             return matrix;
         }
@@ -703,14 +711,14 @@ namespace Canis
             return Vector3(world.x, world.y, world.z);
         }
 
-        Vector3 GetGlobalRotation() const
+        Quaternion GetGlobalRotation() const
         {
             if (parent != nullptr)
             {
                 if (parent->HasComponent<Transform>())
                 {
                     const Transform& parentTransform = parent->GetComponent<Transform>();
-                    return rotation + parentTransform.GetGlobalRotation();
+                    return glm::normalize(parentTransform.GetGlobalRotation() * rotation);
                 }
             }
 
@@ -803,7 +811,7 @@ namespace Canis
             }
 
             const Vector3 oldWorldPosition = GetGlobalPosition();
-            const Vector3 oldWorldRotation = GetGlobalRotation();
+            const Quaternion oldWorldRotation = GetGlobalRotation();
             const Vector3 oldWorldScale = GetGlobalScale();
 
             if (parent)
@@ -828,14 +836,11 @@ namespace Canis
                     list.insert(list.begin() + index, self);
 
                     const Vector3 parentWorldPosition = newParentTransform.GetGlobalPosition();
-                    const Vector3 parentWorldRotation = newParentTransform.GetGlobalRotation();
+                    const Quaternion parentWorldRotation = newParentTransform.GetGlobalRotation();
                     const Vector3 parentWorldScale = newParentTransform.GetGlobalScale();
 
                     Vector3 parentSpacePosition = oldWorldPosition - parentWorldPosition;
-                    Matrix4 inverseParentRotation = Matrix4(1.0f);
-                    inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.x, Vector3(1.0f, 0.0f, 0.0f));
-                    inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.y, Vector3(0.0f, 1.0f, 0.0f));
-                    inverseParentRotation = glm::rotate(inverseParentRotation, -parentWorldRotation.z, Vector3(0.0f, 0.0f, 1.0f));
+                    const Matrix4 inverseParentRotation = glm::mat4_cast(glm::inverse(parentWorldRotation));
                     Vector4 localPosition4 = inverseParentRotation * Vector4(
                         parentSpacePosition.x,
                         parentSpacePosition.y,
@@ -845,7 +850,7 @@ namespace Canis
                     position.x = (parentWorldScale.x != 0.0f) ? (localPosition4.x / parentWorldScale.x) : localPosition4.x;
                     position.y = (parentWorldScale.y != 0.0f) ? (localPosition4.y / parentWorldScale.y) : localPosition4.y;
                     position.z = (parentWorldScale.z != 0.0f) ? (localPosition4.z / parentWorldScale.z) : localPosition4.z;
-                    rotation = oldWorldRotation - parentWorldRotation;
+                    rotation = glm::normalize(glm::inverse(parentWorldRotation) * oldWorldRotation);
                     scale.x = (parentWorldScale.x != 0.0f) ? (oldWorldScale.x / parentWorldScale.x) : oldWorldScale.x;
                     scale.y = (parentWorldScale.y != 0.0f) ? (oldWorldScale.y / parentWorldScale.y) : oldWorldScale.y;
                     scale.z = (parentWorldScale.z != 0.0f) ? (oldWorldScale.z / parentWorldScale.z) : oldWorldScale.z;

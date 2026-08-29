@@ -3470,7 +3470,7 @@ namespace Canis
                     auto &transform = *_entity.AddComponent<Transform>();
                     transform.active = comp["active"].as<bool>(true);
                     transform.position = comp["position"].as<Vector3>(Vector3(0.0f));
-                    transform.rotation = comp["rotation"].as<Vector3>(Vector3(0.0f));
+                    transform.rotation = comp["rotation"].as<Quaternion>(Quaternion(Vector3(0.0f)));
                     transform.scale = comp["scale"].as<Vector3>(Vector3(1.0f));
 
                     if (comp["parent"].as<Canis::UUID>(0) != Canis::UUID(0))
@@ -3500,15 +3500,15 @@ namespace Canis
                 {
                     const bool beforeActive = transform->active;
                     const Vector3 beforePosition = transform->position;
-                    const Vector3 beforeRotation = transform->rotation;
+                    const Quaternion beforeRotation = transform->rotation;
                     const Vector3 beforeScale = transform->scale;
 
                     DrawInspectorField(_editor, "active", _conf.name.c_str(), transform->active);
                     DrawInspectorField(_editor, "position", _conf.name.c_str(), transform->position);
 
-                    Vector3 degrees = transform->rotation * RAD2DEG;
+                    Vector3 degrees = glm::degrees(glm::eulerAngles(glm::normalize(transform->rotation)));
                     DrawInspectorField(_editor, "rotation", _conf.name.c_str(), degrees);
-                    transform->rotation = degrees * DEG2RAD;
+                    transform->rotation = glm::normalize(Quaternion(glm::radians(degrees)));
 
                     DrawInspectorField(_editor, "scale", _conf.name.c_str(), transform->scale);
 
@@ -3527,8 +3527,8 @@ namespace Canis
                         _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "active", AnimationValueType::BOOL, AnimationInterpolation::STEP, AnimationValue::Bool(transform->active));
                     if (beforePosition != transform->position)
                         _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "position", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->position));
-                    if (beforeRotation != transform->rotation)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotation", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->rotation));
+                    if (1.0f - std::fabs(glm::dot(beforeRotation, transform->rotation)) > 0.00001f)
+                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotation", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(glm::eulerAngles(transform->rotation)));
                     if (beforeScale != transform->scale)
                         _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "scale", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(transform->scale));
                 }

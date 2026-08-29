@@ -1,4 +1,5 @@
 #include <Canis/Math.hpp>
+#include <Canis/Entity.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -238,6 +239,127 @@ namespace Canis
             return _fallback;
 
         return _value * glm::inversesqrt(lengthSquared);
+    }
+
+    Quaternion RotationBetweenVectors(Vector3 _start, Vector3 _destination)
+    {
+        _start = SafeNormalize(_start, Vector3(0.0f, 0.0f, -1.0f));
+        _destination = SafeNormalize(_destination, _start);
+
+        const float cosine = glm::clamp(glm::dot(_start, _destination), -1.0f, 1.0f);
+        if (cosine > 0.999999f)
+            return Quaternion(Vector3(0.0f));
+
+        if (cosine < -0.999999f)
+        {
+            Vector3 axis = glm::cross(Vector3(0.0f, 0.0f, 1.0f), _start);
+            if (glm::dot(axis, axis) < 0.000001f)
+                axis = glm::cross(Vector3(1.0f, 0.0f, 0.0f), _start);
+            return glm::angleAxis(PI, glm::normalize(axis));
+        }
+
+        const Vector3 axis = glm::cross(_start, _destination);
+        const float scale = std::sqrt((1.0f + cosine) * 2.0f);
+        const float inverseScale = 1.0f / scale;
+        return glm::normalize(Quaternion(
+            scale * 0.5f,
+            axis.x * inverseScale,
+            axis.y * inverseScale,
+            axis.z * inverseScale));
+    }
+
+    Quaternion RotateTowards(Quaternion _from, Quaternion _to, float _maxAngleRadians)
+    {
+        _from = glm::normalize(_from);
+        _to = glm::normalize(_to);
+
+        if (_maxAngleRadians <= 0.0f)
+            return _from;
+
+        float cosine = glm::dot(_from, _to);
+        if (cosine < 0.0f)
+        {
+            _to = -_to;
+            cosine = -cosine;
+        }
+
+        cosine = glm::clamp(cosine, -1.0f, 1.0f);
+        const float angle = 2.0f * std::acos(cosine);
+        if (angle <= _maxAngleRadians || angle <= 0.000001f)
+            return _to;
+
+        return glm::normalize(glm::slerp(_from, _to, _maxAngleRadians / angle));
+    }
+
+    void Rotate(Transform &_transform, const Vector3 &_eulerRadians)
+    {
+        _transform.rotation = glm::normalize(Quaternion(_eulerRadians) * _transform.rotation);
+    }
+
+    void SetTransformRotation(Transform &_transform, const Vector3 &_eulerRadians)
+    {
+        _transform.rotation = glm::normalize(Quaternion(_eulerRadians));
+    }
+
+    void SetTransformRotation(Transform &_transform, const Quaternion &_rotation)
+    {
+        _transform.rotation = glm::normalize(_rotation);
+    }
+
+    Vector3 GetTransformForward(const Transform &_transform)
+    {
+        return _transform.GetForward();
+    }
+
+    Vector3 GetTransformRight(const Transform &_transform)
+    {
+        return _transform.GetRight();
+    }
+
+    namespace
+    {
+        Quaternion WorldLookRotation(const Transform &_transform, const Vector3 &_target, const Vector3 &_up, bool _flattenY)
+        {
+            Vector3 direction = _target - _transform.GetGlobalPosition();
+            if (_flattenY)
+                direction.y = 0.0f;
+            direction = SafeNormalize(direction, _transform.GetForward());
+
+            Quaternion worldRotation = glm::normalize(glm::quatLookAt(direction, SafeNormalize(_up, Vector3(0.0f, 1.0f, 0.0f))));
+            if (_transform.parent != nullptr && _transform.parent->HasComponent<Transform>())
+            {
+                const Quaternion parentRotation = _transform.parent->GetComponent<Transform>().GetGlobalRotation();
+                return glm::normalize(glm::inverse(parentRotation) * worldRotation);
+            }
+
+            return worldRotation;
+        }
+    }
+
+    void LookAt(Transform &_transform, const Vector3 &_target, const Vector3 &_up)
+    {
+        _transform.rotation = WorldLookRotation(_transform, _target, _up, false);
+    }
+
+    void LookAtZeroY(Transform &_transform, const Vector3 &_target, const Vector3 &_up)
+    {
+        _transform.rotation = WorldLookRotation(_transform, _target, _up, true);
+    }
+
+    void RotateTowardsLookAt(Transform &_transform, const Vector3 &_target, const Vector3 &_up, float _maxAngleRadians)
+    {
+        _transform.rotation = RotateTowards(
+            _transform.rotation,
+            WorldLookRotation(_transform, _target, _up, false),
+            _maxAngleRadians);
+    }
+
+    void RotateTowardsLookAtYAxis(Transform &_transform, const Vector3 &_target, const Vector3 &_up, float _maxAngleRadians)
+    {
+        _transform.rotation = RotateTowards(
+            _transform.rotation,
+            WorldLookRotation(_transform, _target, _up, true),
+            _maxAngleRadians);
     }
 }
 

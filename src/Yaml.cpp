@@ -508,4 +508,9 @@ namespace YAML
         _out << BeginSeq << _vector.x << _vector.y << _vector.z << _vector.w << EndSeq;
         return _out;
     }
+
+    Emitter &operator<<(Emitter &_out, const Canis::Quaternion &_quaternion)
+    {
+        return _out << glm::eulerAngles(glm::normalize(_quaternion));
+    }
 }

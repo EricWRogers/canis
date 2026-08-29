@@ -134,6 +134,8 @@ inline constexpr AnimationValueType GetRegisteredAnimationValueType()
         return AnimationValueType::VEC3;
     else if constexpr (std::is_same_v<ValueType, Vector4>)
         return AnimationValueType::VEC4;
+    else if constexpr (std::is_same_v<ValueType, Quaternion>)
+        return AnimationValueType::VEC3;
     else
         return AnimationValueType::NONE;
 }
@@ -163,6 +165,8 @@ inline AnimationValue GetRegisteredAnimationValue(const PropertyType &_value)
         return AnimationValue::Vec3(_value);
     else if constexpr (std::is_same_v<ValueType, Vector4>)
         return AnimationValue::Vec4(_value);
+    else if constexpr (std::is_same_v<ValueType, Quaternion>)
+        return AnimationValue::Vec3(glm::eulerAngles(glm::normalize(_value)));
     else
         return {};
 }
@@ -186,6 +190,8 @@ inline void SetRegisteredAnimationValue(PropertyType &_property, const Animation
         _property = _value.AsVec3(_property);
     else if constexpr (std::is_same_v<ValueType, Vector4>)
         _property = _value.AsVec4(_property);
+    else if constexpr (std::is_same_v<ValueType, Quaternion>)
+        _property = glm::normalize(Quaternion(_value.AsVec3(glm::eulerAngles(_property))));
 }
 
 template <typename PropertyType>
@@ -214,6 +220,8 @@ inline bool RegisteredAnimationValuesDiffer(const PropertyType &_left, const Pro
                std::fabs(_left.y - _right.y) > 0.00001f ||
                std::fabs(_left.z - _right.z) > 0.00001f ||
                std::fabs(_left.w - _right.w) > 0.00001f;
+    else if constexpr (std::is_same_v<ValueType, Quaternion>)
+        return 1.0f - std::fabs(glm::dot(glm::normalize(_left), glm::normalize(_right))) > 0.00001f;
     else
         return false;
 }
@@ -332,6 +340,14 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
         DrawInspectorFieldLabel(_label);
         SetNextInspectorFieldItemWidth();
         ImGui::InputFloat4(fullLabel, &_value.x);
+    }
+    else if constexpr (std::is_same_v<T, Quaternion>)
+    {
+        Vector3 degrees = glm::degrees(glm::eulerAngles(glm::normalize(_value)));
+        DrawInspectorFieldLabel(_label);
+        SetNextInspectorFieldItemWidth();
+        if (ImGui::InputFloat3(fullLabel, &degrees.x))
+            _value = glm::normalize(Quaternion(glm::radians(degrees)));
     }
     else if constexpr (std::is_same_v<T, Canis::Color>)
     {

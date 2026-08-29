@@ -100,13 +100,13 @@ namespace Canis
             {
                 particleTransform->SetParent(_emitter.entity);
                 particleTransform->position = randomOffset;
-                particleTransform->rotation = Vector3(0.0f);
+                particleTransform->rotation = Quaternion(Vector3(0.0f));
                 particleTransform->scale = startScale;
             }
             else
             {
                 particleTransform->position = _emitterTransform.GetGlobalPosition() + randomOffset;
-                particleTransform->rotation = Vector3(0.0f);
+                particleTransform->rotation = Quaternion(Vector3(0.0f));
                 particleTransform->scale = startScale;
             }
 

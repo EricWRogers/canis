@@ -36,6 +36,8 @@ namespace YAML
 
 	Emitter &operator<<(Emitter &_out, const Canis::Vector4 &_vector);
 
+    Emitter &operator<<(Emitter &_out, const Canis::Quaternion &_quaternion);
+
     template <>
     struct convert<Canis::Vector2>
     {
@@ -108,6 +110,41 @@ namespace YAML
             rhs.z = node[2].as<float>();
             rhs.w = node[3].as<float>();
             return true;
+        }
+    };
+
+    // Transform rotations remain serialized as Euler radians for compatibility
+    // with existing scene and prefab assets. Runtime rotation uses quaternions.
+    template <>
+    struct convert<Canis::Quaternion>
+    {
+        static Node encode(const Canis::Quaternion &rhs)
+        {
+            return Node(glm::eulerAngles(glm::normalize(rhs)));
+        }
+
+        static bool decode(const Node &node, Canis::Quaternion &rhs)
+        {
+            if (!node.IsSequence())
+                return false;
+
+            if (node.size() == 3)
+            {
+                rhs = glm::normalize(Canis::Quaternion(node.as<Canis::Vector3>()));
+                return true;
+            }
+
+            if (node.size() == 4)
+            {
+                rhs = glm::normalize(Canis::Quaternion(
+                    node[3].as<float>(),
+                    node[0].as<float>(),
+                    node[1].as<float>(),
+                    node[2].as<float>()));
+                return true;
+            }
+
+            return false;
         }
     };
 

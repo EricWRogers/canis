@@ -7,11 +7,14 @@
 
 #include <glm/glm.hpp>
 #include <glm/gtc/matrix_transform.hpp>
+#include <glm/gtc/quaternion.hpp>
 
 #include <Canis/Data/Types.hpp>
 
 namespace Canis
 {
+    struct Transform;
+
     inline constexpr float PI = 3.14159265f;
     inline constexpr float TAU = 6.28318530718f;
     inline constexpr float RAD2DEG = 180.0f / PI;
@@ -21,6 +24,7 @@ namespace Canis
     using Vector3 = glm::vec3;
     using Vector4 = glm::vec4;
     using Matrix4 = glm::mat4;
+    using Quaternion = glm::quat;
     using Color = Vector4;
 
     inline const Vector2 VECTOR2_ZERO = Vector2(0.0f);
@@ -65,6 +69,19 @@ namespace Canis
 
     Vector3 FlattenY(const Vector3 &_value);
     Vector3 SafeNormalize(const Vector3 &_value, const Vector3 &_fallback = Vector3(0.0f));
+
+    Quaternion RotationBetweenVectors(Vector3 _start, Vector3 _destination);
+    Quaternion RotateTowards(Quaternion _from, Quaternion _to, float _maxAngleRadians);
+
+    void Rotate(Transform &_transform, const Vector3 &_eulerRadians);
+    void SetTransformRotation(Transform &_transform, const Vector3 &_eulerRadians);
+    void SetTransformRotation(Transform &_transform, const Quaternion &_rotation);
+    Vector3 GetTransformForward(const Transform &_transform);
+    Vector3 GetTransformRight(const Transform &_transform);
+    void LookAt(Transform &_transform, const Vector3 &_target, const Vector3 &_up = Vector3(0.0f, 1.0f, 0.0f));
+    void LookAtZeroY(Transform &_transform, const Vector3 &_target, const Vector3 &_up = Vector3(0.0f, 1.0f, 0.0f));
+    void RotateTowardsLookAt(Transform &_transform, const Vector3 &_target, const Vector3 &_up, float _maxAngleRadians);
+    void RotateTowardsLookAtYAxis(Transform &_transform, const Vector3 &_target, const Vector3 &_up, float _maxAngleRadians);
 }
 
 namespace std

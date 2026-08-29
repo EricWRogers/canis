@@ -177,25 +177,25 @@ namespace Canis
             return JPH::Vec3(_value.x, _value.y, _value.z);
         }
 
-        JPH::Quat ToJoltRotation(const Vector3 &_eulerRadians)
+        JPH::Quat ToJoltRotation(const Quaternion &_rotation)
         {
-            Matrix4 rotationMatrix = Matrix4(1.0f);
-            rotationMatrix = glm::rotate(rotationMatrix, _eulerRadians.z, Vector3(0.0f, 0.0f, 1.0f));
-            rotationMatrix = glm::rotate(rotationMatrix, _eulerRadians.y, Vector3(0.0f, 1.0f, 0.0f));
-            rotationMatrix = glm::rotate(rotationMatrix, _eulerRadians.x, Vector3(1.0f, 0.0f, 0.0f));
-            const glm::quat quat = glm::quat_cast(rotationMatrix);
+            const Quaternion quat = glm::normalize(_rotation);
             return JPH::Quat(quat.x, quat.y, quat.z, quat.w);
         }
 
-        Vector3 ToCanisRotation(const JPH::Quat &_quat)
+        Quaternion ToCanisRotation(const JPH::Quat &_quat)
         {
-            const glm::quat quat(_quat.GetW(), _quat.GetX(), _quat.GetY(), _quat.GetZ());
-            return glm::eulerAngles(quat);
+            return glm::normalize(Quaternion(_quat.GetW(), _quat.GetX(), _quat.GetY(), _quat.GetZ()));
         }
 
         bool NearlyEqual(const Vector3 &_a, const Vector3 &_b, float _epsilon = 0.0005f)
         {
             return glm::all(glm::lessThanEqual(glm::abs(_a - _b), Vector3(_epsilon)));
+        }
+
+        bool NearlyEqual(const Quaternion &_a, const Quaternion &_b, float _epsilon = 0.0005f)
+        {
+            return 1.0f - std::fabs(glm::dot(glm::normalize(_a), glm::normalize(_b))) <= _epsilon;
         }
 
         bool NearlyZero(const Vector3 &_value, float _epsilon = 0.000001f)
@@ -259,7 +259,7 @@ namespace Canis
             if (!_rigidbody.lockRotationX && !_rigidbody.lockRotationY && !_rigidbody.lockRotationZ)
                 return false;
 
-            const Vector3 desiredWorldRotation = _desiredTransform.GetGlobalRotation();
+            const Vector3 desiredWorldRotation = glm::eulerAngles(_desiredTransform.GetGlobalRotation());
             bool corrected = false;
 
             if (_rigidbody.lockRotationX)
@@ -286,7 +286,7 @@ namespace Canis
             return corrected;
         }
 
-        void SetTransformFromWorldPose(Transform &_transform, const Vector3 &_worldPosition, const Vector3 &_worldRotation)
+        void SetTransformFromWorldPose(Transform &_transform, const Vector3 &_worldPosition, const Quaternion &_worldRotation)
         {
             if (_transform.parent != nullptr)
             {
@@ -296,7 +296,7 @@ namespace Canis
                     const Matrix4 inverseParent = glm::inverse(parentTransform.GetModelMatrix());
                     const Vector4 localPosition4 = inverseParent * Vector4(_worldPosition, 1.0f);
                     _transform.position = Vector3(localPosition4.x, localPosition4.y, localPosition4.z);
-                    _transform.rotation = _worldRotation - parentTransform.GetGlobalRotation();
+                    _transform.rotation = glm::normalize(glm::inverse(parentTransform.GetGlobalRotation()) * _worldRotation);
                     return;
                 }
             }
@@ -806,7 +806,7 @@ namespace Canis
             JPH::BodyID bodyID;
             size_t settingsHash = 0;
             Vector3 syncedLocalPosition = Vector3(0.0f);
-            Vector3 syncedLocalRotation = Vector3(0.0f);
+            Quaternion syncedLocalRotation = Quaternion(Vector3(0.0f));
             bool hasSyncedTransform = false;
         };
 
@@ -1203,13 +1203,15 @@ namespace Canis
                     continue;
 
                 const Vector3 worldPosition = ToCanisPosition(bodyInterface->GetPosition(runtimeData.bodyID));
-                Vector3 worldRotation = ToCanisRotation(bodyInterface->GetRotation(runtimeData.bodyID));
+                Quaternion worldRotation = ToCanisRotation(bodyInterface->GetRotation(runtimeData.bodyID));
                 const JPH::Vec3 bodyLinearVelocity = bodyInterface->GetLinearVelocity(runtimeData.bodyID);
                 const JPH::Vec3 bodyAngularVelocity = bodyInterface->GetAngularVelocity(runtimeData.bodyID);
                 Vector3 angularVelocity = Vector3(bodyAngularVelocity.GetX(), bodyAngularVelocity.GetY(), bodyAngularVelocity.GetZ());
 
-                if (ApplyLockedRotationAxes(*transform, *rigidbody, worldRotation, angularVelocity))
+                Vector3 worldEuler = glm::eulerAngles(worldRotation);
+                if (ApplyLockedRotationAxes(*transform, *rigidbody, worldEuler, angularVelocity))
                 {
+                    worldRotation = glm::normalize(Quaternion(worldEuler));
                     bodyInterface->SetPositionAndRotation(
                         runtimeData.bodyID,
                         ToJoltPosition(worldPosition),
