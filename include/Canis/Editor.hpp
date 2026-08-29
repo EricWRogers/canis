@@ -215,6 +215,7 @@ namespace Canis
             float _cardWidth,
             float _cardHeight);
         bool GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId);
+        bool GetModelPreviewTexture(const std::string &_modelPath, unsigned int &_textureId);
         bool GetScenePreviewTexture(
             const std::string &_scenePath,
             unsigned int &_textureId,
@@ -365,6 +366,7 @@ namespace Canis
             bool diskCacheChecked = false;
         };
         std::unordered_map<std::string, MaterialPreviewCacheEntry> m_materialPreviewCache = {};
+        std::unordered_map<std::string, MaterialPreviewCacheEntry> m_modelPreviewCache = {};
         struct ScenePreviewCacheEntry
         {
             GLTexture texture = {};

@@ -115,6 +115,21 @@ namespace Canis
             (std::to_string(cacheId) + ".png");
     }
 
+    static std::filesystem::path GetModelPreviewCachePath(const std::string &_modelPath)
+    {
+        uint64_t cacheId = static_cast<uint64_t>(std::hash<std::string>{}(_modelPath));
+        if (MetaFileAsset *meta = AssetManager::GetMetaFile(_modelPath))
+        {
+            if (static_cast<uint64_t>(meta->uuid) != 0u)
+                cacheId = static_cast<uint64_t>(meta->uuid);
+        }
+
+        return std::filesystem::path("cache") /
+            "editor" /
+            "model_previews" /
+            (std::to_string(cacheId) + ".png");
+    }
+
     static std::filesystem::file_time_type GetAssetWriteTime(const std::string &_path)
     {
         if (_path.empty() || _path == "Path was not found in AssetLibrary")
@@ -8876,10 +8891,30 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return nullptr;
 
-        if (Canis::RectTransform* transform = (_entity != nullptr && _entity->HasComponent<RectTransform>() ? &_entity->GetComponent<RectTransform>() : nullptr))
-            return &transform->children;
+        Canis::RectTransform* rectTransform = _entity->HasComponent<RectTransform>()
+            ? &_entity->GetComponent<RectTransform>()
+            : nullptr;
+        Canis::Transform* transform = _entity->HasComponent<Transform>()
+            ? &_entity->GetComponent<Transform>()
+            : nullptr;
 
-        if (Canis::Transform* transform = (_entity != nullptr && _entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
+        // An entity may have both components (for example, a world-space canvas).
+        // Follow the hierarchy that is actually connected instead of always
+        // treating RectTransform as authoritative.
+        if (rectTransform != nullptr && transform != nullptr)
+        {
+            if (transform->parent != nullptr && rectTransform->parent == nullptr)
+                return &transform->children;
+            if (rectTransform->parent != nullptr && transform->parent == nullptr)
+                return &rectTransform->children;
+            if (!transform->children.empty() && rectTransform->children.empty())
+                return &transform->children;
+        }
+
+        if (rectTransform != nullptr)
+            return &rectTransform->children;
+
+        if (transform != nullptr)
             return &transform->children;
 
         return nullptr;
@@ -8890,11 +8925,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return nullptr;
 
-        if (Canis::RectTransform* transform = (_entity != nullptr && _entity->HasComponent<RectTransform>() ? &_entity->GetComponent<RectTransform>() : nullptr))
-            return transform->parent;
+        if (_entity->HasComponent<RectTransform>())
+        {
+            Canis::Entity* parent = _entity->GetComponent<RectTransform>().parent;
+            if (parent != nullptr)
+                return parent;
+        }
 
-        if (Canis::Transform* transform = (_entity != nullptr && _entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
-            return transform->parent;
+        if (_entity->HasComponent<Transform>())
+            return _entity->GetComponent<Transform>().parent;
 
         return nullptr;
     }
@@ -8904,13 +8943,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_child == nullptr)
             return false;
 
-        if (Canis::RectTransform* childTransform = (_child != nullptr && _child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
+        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
         {
-            if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                return false;
+            const bool useTransform = _child->HasComponent<Transform>() &&
+                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
+                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
+            if (!useTransform)
+            {
+                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
+                    return false;
 
-            childTransform->SetParent(_parent);
-            return true;
+                childTransform->SetParent(_parent);
+                return true;
+            }
         }
 
         if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
@@ -8930,13 +8975,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_child == nullptr)
             return false;
 
-        if (Canis::RectTransform* childTransform = (_child != nullptr && _child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
+        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
         {
-            if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                return false;
+            const bool useTransform = _child->HasComponent<Transform>() &&
+                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
+                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
+            if (!useTransform)
+            {
+                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
+                    return false;
 
-            childTransform->SetParentAtIndex(_parent, _index);
-            return true;
+                childTransform->SetParentAtIndex(_parent, _index);
+                return true;
+            }
         }
 
         if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
@@ -8956,16 +9007,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return false;
 
-        if (Canis::RectTransform* transform = (_entity != nullptr && _entity->HasComponent<RectTransform>() ? &_entity->GetComponent<RectTransform>() : nullptr))
+        if (_entity->HasComponent<RectTransform>())
         {
-            if (transform->parent == nullptr)
-                return false;
-
-            transform->SetParent(nullptr);
-            return true;
+            Canis::RectTransform& transform = _entity->GetComponent<RectTransform>();
+            if (transform.parent != nullptr)
+            {
+                transform.SetParent(nullptr);
+                return true;
+            }
         }
 
-        if (Canis::Transform* transform = (_entity != nullptr && _entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
+        if (Canis::Transform* transform = (_entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
         {
             if (transform->parent == nullptr)
                 return false;
@@ -9028,6 +9080,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return HierarchyEntityKind::None;
 
+        if (_entity->HasComponent<Transform>() && _entity->HasComponent<RectTransform>())
+        {
+            const Canis::Transform& transform = _entity->GetComponent<Transform>();
+            const Canis::RectTransform& rectTransform = _entity->GetComponent<RectTransform>();
+            if ((transform.parent != nullptr && rectTransform.parent == nullptr) ||
+                (!transform.children.empty() && rectTransform.children.empty()))
+            {
+                return HierarchyEntityKind::Transform;
+            }
+        }
+
         if (_entity->HasComponent<RectTransform>())
             return HierarchyEntityKind::Rect;
 
@@ -9067,13 +9130,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
         {
-            if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                return false;
+            const bool useTransform = _child->HasComponent<Transform>() &&
+                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
+                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
+            if (!useTransform)
+            {
+                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
+                    return false;
 
-            const Vector2 localPosition = childTransform->position;
-            childTransform->SetParentAtIndex(_parent, _index);
-            childTransform->position = localPosition;
-            return true;
+                const Vector2 localPosition = childTransform->position;
+                childTransform->SetParentAtIndex(_parent, _index);
+                childTransform->position = localPosition;
+                return true;
+            }
         }
 
         if (Canis::Transform* childTransform = (_child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
@@ -14181,6 +14250,163 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return _textureId != 0;
     }
 
+    bool Editor::GetModelPreviewTexture(const std::string &_modelPath, unsigned int &_textureId)
+    {
+        _textureId = 0;
+
+        ModelAsset *model = AssetManager::GetModel(_modelPath);
+        MaterialAsset *material = AssetManager::GetMaterial("assets/defaults/materials/default.material");
+        if (model == nullptr || material == nullptr || material->shaderId < 0)
+            return false;
+
+        ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(material->shaderId);
+        if (shaderAsset == nullptr || shaderAsset->GetShader() == nullptr)
+            return false;
+
+        Shader *shader = shaderAsset->GetShader();
+        if (!shader->IsLinked())
+            shader->Link();
+        if (!shader->IsLinked())
+            return false;
+
+        MaterialPreviewCacheEntry &cache = m_modelPreviewCache[_modelPath];
+        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        std::filesystem::file_time_type sourceWriteTime = GetAssetWriteTime(_modelPath);
+        sourceWriteTime = std::max(
+            sourceWriteTime,
+            GetMaterialPreviewSourceWriteTime("assets/defaults/materials/default.material", *material));
+        const std::filesystem::path cachePath = GetModelPreviewCachePath(_modelPath);
+
+        constexpr int previewSize = 256;
+        EnsureRenderTarget(cache.renderTarget, previewSize, previewSize);
+        if (cache.renderTarget.framebuffer == 0)
+            return false;
+
+        bool shouldPersistRenderedPreview = false;
+        if (!cache.diskCacheChecked)
+        {
+            cache.diskCacheChecked = true;
+
+            std::error_code cacheTimeError = {};
+            const std::filesystem::file_time_type cacheWriteTime =
+                std::filesystem::last_write_time(cachePath, cacheTimeError);
+            if (!cacheTimeError &&
+                cacheWriteTime >= sourceWriteTime &&
+                LoadPngIntoRenderTarget(cachePath, cache.renderTarget))
+            {
+                cache.writeTime = sourceWriteTime;
+                cache.lastRenderSeconds = nowSeconds;
+            }
+            else
+            {
+                shouldPersistRenderedPreview = true;
+            }
+        }
+
+        const bool sourceChanged = cache.writeTime != sourceWriteTime;
+        shouldPersistRenderedPreview |= sourceChanged;
+        if (cache.lastRenderSeconds >= 0.0 && !sourceChanged)
+        {
+            _textureId = cache.renderTarget.colorTexture;
+            return true;
+        }
+
+        Vector3 minBounds(-0.5f);
+        Vector3 maxBounds(0.5f);
+        if (!model->GetLocalBounds(minBounds, maxBounds))
+            return false;
+
+        GLint previousFramebuffer = 0;
+        GLint previousViewport[4] = { 0, 0, 0, 0 };
+        GLint previousActiveTexture = GL_TEXTURE0;
+        GLfloat previousClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
+        GLboolean previousDepthMask = GL_TRUE;
+        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
+        const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
+        const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
+        glGetIntegerv(GL_VIEWPORT, previousViewport);
+        glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
+        glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
+        glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+
+        glBindFramebuffer(GL_FRAMEBUFFER, cache.renderTarget.framebuffer);
+        glViewport(0, 0, cache.renderTarget.width, cache.renderTarget.height);
+        glEnable(GL_DEPTH_TEST);
+        glDepthMask(GL_TRUE);
+        glDepthFunc(GL_LESS);
+        glDisable(GL_BLEND);
+        glDisable(GL_CULL_FACE);
+        glClearColor(0.055f, 0.067f, 0.086f, 1.0f);
+        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+
+        const Vector3 center = (minBounds + maxBounds) * 0.5f;
+        const Vector3 boundsSize = glm::max(maxBounds - minBounds, Vector3(0.001f));
+        const float maxDimension = std::max(boundsSize.x, std::max(boundsSize.y, boundsSize.z));
+        const float fitScale = (maxDimension > 0.0001f) ? (1.75f / maxDimension) : 1.0f;
+
+        Matrix4 modelMatrix(1.0f);
+        modelMatrix = glm::rotate(modelMatrix, DEG2RAD * -18.0f, Vector3(1.0f, 0.0f, 0.0f));
+        modelMatrix = glm::rotate(modelMatrix, DEG2RAD * 32.0f, Vector3(0.0f, 1.0f, 0.0f));
+        modelMatrix = glm::scale(modelMatrix, Vector3(fitScale));
+        modelMatrix = glm::translate(modelMatrix, -center);
+
+        const Vector3 cameraPosition(0.0f, 0.08f, 3.15f);
+        const Matrix4 projection = glm::perspective(DEG2RAD * 35.0f, 1.0f, 0.05f, 64.0f);
+        const Matrix4 view = glm::lookAt(cameraPosition, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f));
+
+        shader->Use();
+        shader->SetMat4("P", projection);
+        shader->SetMat4("V", view);
+        shader->SetVec3("cameraPosition", cameraPosition);
+        shader->SetVec3("ambientLightColor", 0.72f, 0.76f, 0.82f);
+        shader->SetFloat("ambientLightIntensity", 0.8f);
+        shader->SetBool("useDirectionalLight", true);
+        shader->SetVec3("directionalLightDirection", -0.45f, -0.8f, -0.35f);
+        shader->SetVec3("directionalLightColor", 1.0f, 0.96f, 0.9f);
+        shader->SetFloat("directionalLightIntensity", 1.8f);
+        shader->SetBool("useDirectionalShadow", false);
+        shader->SetInt("pointLightCount", 0);
+        shader->SetFloat("TIME", 0.0f);
+        shader->SetFloat("specularValue", 0.08f);
+        shader->SetFloat("roughnessValue", 0.82f);
+        shader->SetFloat("metallicValue", 0.0f);
+        shader->SetBool("useSpecularMap", false);
+        shader->SetBool("useRoughnessMap", false);
+        shader->SetBool("useMetallicMap", false);
+        shader->SetInt("specularMap", 1);
+        shader->SetInt("roughnessMap", 2);
+        shader->SetInt("metallicMap", 3);
+
+        const Color previewColor(0.88f, 0.9f, 0.94f, 1.0f);
+        model->Draw(*shader, modelMatrix, nullptr, material->albedoId, previewColor, nullptr);
+        shader->UnUse();
+
+        if (shouldPersistRenderedPreview &&
+            !WriteFramebufferToPng(
+                cache.renderTarget.framebuffer,
+                cache.renderTarget.width,
+                cache.renderTarget.height,
+                cachePath))
+        {
+            Debug::Warning("Failed to cache model preview '%s'.", cachePath.string().c_str());
+        }
+
+        glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+        glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
+        glDepthMask(previousDepthMask);
+        depthWasEnabled ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
+        blendWasEnabled ? glEnable(GL_BLEND) : glDisable(GL_BLEND);
+        cullWasEnabled ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
+        glActiveTexture(previousActiveTexture);
+
+        cache.writeTime = sourceWriteTime;
+        cache.lastRenderSeconds = nowSeconds;
+        _textureId = cache.renderTarget.colorTexture;
+        return _textureId != 0;
+    }
+
     bool Editor::GetScenePreviewTexture(
         const std::string &_scenePath,
         unsigned int &_textureId,
@@ -14222,6 +14448,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         for (auto &entry : m_materialPreviewCache)
             DestroyRenderTarget(entry.second.renderTarget);
         m_materialPreviewCache.clear();
+
+        for (auto &entry : m_modelPreviewCache)
+            DestroyRenderTarget(entry.second.renderTarget);
+        m_modelPreviewCache.clear();
 
         for (auto &entry : m_scenePreviewCache)
         {
@@ -14277,6 +14507,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::MATERIAL)
         {
             flipVertically = GetMaterialPreviewTexture(_assetPath, textureId);
+        }
+        else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::MODEL)
+        {
+            flipVertically = GetModelPreviewTexture(_assetPath, textureId);
         }
         else if (visible && _meta != nullptr && _meta->type == MetaFileAsset::FileType::SCENE)
         {

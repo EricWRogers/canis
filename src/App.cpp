@@ -2973,6 +2973,8 @@ namespace Canis
             },
         };
 
+        REGISTER_PROPERTY(sprite2DConf, Sprite2D, uv);
+
         RegisterScript(sprite2DConf);
 
         ScriptConf textConf = {
