@@ -412,6 +412,7 @@ namespace Canis
         float m_editorFontScale = 1.0f;
         bool m_showScenePanel = true;
         bool m_showGamePanel = true;
+        bool m_focusGamePanelNextFrame = false;
         bool m_showHierarchyPanel = true;
         bool m_showInspectorPanel = true;
         bool m_showEnvironmentPanel = true;

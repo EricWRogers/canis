@@ -20,6 +20,7 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Terrain.hpp>
+#include <Canis/VFX/Particles.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_dialog.h>
@@ -5961,6 +5962,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         PollAssetHotReload(_deltaTime);
         ProcessModelMaterialExportDialog();
 
+        if (m_mode == EditorMode::EDIT)
+        {
+            Entity* selectedEmitter = nullptr;
+            const std::vector<Entity*>& entities = m_scene->GetEntities();
+            if (m_selectedAssetPath.empty() &&
+                m_index >= 0 &&
+                m_index < static_cast<int>(entities.size()))
+            {
+                selectedEmitter = entities[m_index];
+            }
+
+            if (ParticleEmitterSystem* particleSystem = m_scene->GetSystem<ParticleEmitterSystem>())
+                particleSystem->UpdateEditorPreview(m_scene->GetRegistry(), _deltaTime, selectedEmitter);
+        }
+
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
         BeginPlayRender(m_window);
@@ -5996,6 +6012,25 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Canis::SaveEditorConfig();
                 m_editorFontApplyShouldSaveConfig = false;
             }
+        }
+
+        // Gameplay owns the keyboard while relative mouse capture is active.
+        // In particular, arrow-key turret controls must not also navigate
+        // editor widgets behind the Game panel.
+        ImGuiIO& captureIo = ImGui::GetIO();
+        const bool gameplayOwnsKeyboard =
+            m_mode == EditorMode::PLAY &&
+            m_showGamePanel &&
+            m_window != nullptr &&
+            m_window->IsMouseLocked();
+        if (gameplayOwnsKeyboard)
+        {
+            captureIo.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+            captureIo.ClearInputKeys();
+        }
+        else
+        {
+            captureIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
         }
 
         // Start the Dear ImGui frame
@@ -7370,6 +7405,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawGameView()
     {
+        if (m_focusGamePanelNextFrame)
+        {
+            ImGui::SetNextWindowFocus();
+            m_focusGamePanelNextFrame = false;
+        }
+
         ImGui::Begin("Game", &m_showGamePanel);
 
         m_playViewportPosX = 0.0f;
@@ -11644,7 +11685,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_animatorSelectedTransition = -1;
         }
 
-        ImGui::Begin("Animator", &m_showAnimatorPanel);
+        if (!ImGui::Begin("Animator", &m_showAnimatorPanel))
+        {
+            ImGui::End();
+            return;
+        }
 
         MetaFileAsset *meta = nullptr;
         if (!IsAnimatorControllerAssetPath(m_animatorStatePath, &meta))
@@ -11759,6 +11804,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const ImVec2 canvasScreenPos = ImGui::GetCursorScreenPos();
         const ImVec2 canvasSize = ImGui::GetContentRegionAvail();
         const ImRect canvasRect(canvasScreenPos, ImVec2(canvasScreenPos.x + canvasSize.x, canvasScreenPos.y + canvasSize.y));
+        const bool graphWindowHovered = ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows);
         const int selectedStateBeforeGraph = m_animatorSelectedState;
         const int selectedTransitionBeforeGraph = m_animatorSelectedTransition;
         AnimatorGraphDelegate delegate(
@@ -11837,6 +11883,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (!openContextMenu &&
             !ImGui::IsPopupOpen("AnimatorContextMenu") &&
+            graphWindowHovered &&
             canvasRect.Contains(ImGui::GetMousePos()) &&
             ImGui::IsMouseReleased(ImGuiMouseButton_Right))
         {
@@ -16414,6 +16461,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 g_lastPlaySceneNode = m_scene->EncodeScene();
                 g_lastPlayScenePath = m_scene->m_path;
 
+                m_showGamePanel = true;
+                m_focusGamePanelNextFrame = true;
                 m_mode = EditorMode::PLAY;
             }
             ImGui::SameLine();
