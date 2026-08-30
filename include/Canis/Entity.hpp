@@ -771,7 +771,7 @@ namespace Canis
 
         bool IsActiveInHierarchy() const
         {
-            if (entity == nullptr || !entity->active || !active)
+            if (!active || (entity != nullptr && !entity->active))
                 return false;
 
             if (parent != nullptr && parent->HasComponent<Transform>())
@@ -958,9 +958,16 @@ namespace Canis
 
     namespace Rigidbody3DForceMode
     {
+        // Applies a continuous force. Acceleration depends on the rigidbody's mass.
         constexpr int FORCE = 0;
+
+        // Applies continuous acceleration directly, ignoring the rigidbody's mass.
         constexpr int ACCELERATION = 1;
+
+        // Applies an instantaneous impulse. The velocity change depends on mass.
         constexpr int IMPULSE = 2;
+
+        // Applies an instantaneous velocity change directly, ignoring mass.
         constexpr int VELOCITY_CHANGE = 3;
     }
 
@@ -1000,6 +1007,40 @@ namespace Canis
             }
         }
 
+        void SetLinearVelocity(const Vector3 &_velocity)
+        {
+            if (!active || motionType != RigidbodyMotionType::DYNAMIC)
+                return;
+
+            pendingLinearVelocity = _velocity;
+            hasPendingLinearVelocity = true;
+        }
+
+        void SetAngularVelocity(const Vector3 &_velocity)
+        {
+            if (!active || motionType != RigidbodyMotionType::DYNAMIC)
+                return;
+
+            pendingAngularVelocity = _velocity;
+            hasPendingAngularVelocity = true;
+        }
+
+        void Move(const Vector3 &_translation)
+        {
+            if (!active || motionType != RigidbodyMotionType::KINEMATIC)
+                return;
+
+            pendingTranslation += _translation;
+        }
+
+        void Rotate(const Vector3 &_eulerRadians)
+        {
+            if (!active || motionType != RigidbodyMotionType::KINEMATIC)
+                return;
+
+            pendingRotation = glm::normalize(Quaternion(_eulerRadians) * pendingRotation);
+        }
+
         bool active = true;
         int motionType = RigidbodyMotionType::DYNAMIC;
         float mass = 1.0f;
@@ -1022,6 +1063,12 @@ namespace Canis
         Vector3 pendingAcceleration = Vector3(0.0f);
         Vector3 pendingImpulse = Vector3(0.0f);
         Vector3 pendingVelocityChange = Vector3(0.0f);
+        Vector3 pendingLinearVelocity = Vector3(0.0f);
+        bool hasPendingLinearVelocity = false;
+        Vector3 pendingAngularVelocity = Vector3(0.0f);
+        bool hasPendingAngularVelocity = false;
+        Vector3 pendingTranslation = Vector3(0.0f);
+        Quaternion pendingRotation = Quaternion(Vector3(0.0f));
     };
 
     struct BoxCollider
@@ -1097,6 +1144,29 @@ namespace Canis
         bool useAttachedModel = true;
         i32 modelId = -1;
         std::string modelPath = "";
+        std::vector<Entity*> entered = {};
+        std::vector<Entity*> exited = {};
+        std::vector<Entity*> stayed = {};
+    };
+
+    struct ConvexMeshCollider
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::ConvexMeshCollider";
+
+        ConvexMeshCollider() = default;
+        explicit ConvexMeshCollider(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+
+        void Create() {}
+
+        bool active = true;
+        bool useAttachedModel = true;
+        i32 modelId = -1;
+        std::string modelPath = "";
+        Vector3 offset = Vector3(0.0f);
+        Vector3 scale = Vector3(1.0f);
+        float convexRadius = 0.05f;
         std::vector<Entity*> entered = {};
         std::vector<Entity*> exited = {};
         std::vector<Entity*> stayed = {};

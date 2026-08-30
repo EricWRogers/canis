@@ -976,6 +976,57 @@ namespace Canis
             _collider.halfHeight = std::max(0.01f, halfExtents.y - _collider.radius);
         }
 
+        void DrawModelColliderAssetField(const char *_id, std::string &_modelPath, i32 &_modelId)
+        {
+            std::string modelLabel = "[ drop a model ]";
+            if (!_modelPath.empty())
+            {
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(_modelPath);
+                    meta != nullptr && !meta->name.empty())
+                {
+                    modelLabel = meta->name;
+                }
+                else
+                {
+                    modelLabel = std::filesystem::path(_modelPath).stem().string();
+                }
+            }
+
+            ImGui::PushID(_id);
+            ImGui::TextUnformatted("model");
+            ImGui::SameLine();
+            ImGui::Button(modelLabel.c_str(), ImVec2(170.0f, 0.0f));
+            if (ImGui::IsItemHovered() && !_modelPath.empty())
+                ImGui::SetTooltip("%s", _modelPath.c_str());
+
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                    const std::string path = AssetManager::GetPath(dropped.uuid);
+                    if (MetaFileAsset *meta = AssetManager::GetMetaFile(path);
+                        meta != nullptr && meta->type == MetaFileAsset::FileType::MODEL)
+                    {
+                        _modelPath = meta->path.empty() ? path : meta->path;
+                        _modelId = AssetManager::LoadModel(_modelPath);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+
+            if (!_modelPath.empty())
+            {
+                ImGui::SameLine();
+                if (ImGui::SmallButton("X"))
+                {
+                    _modelPath.clear();
+                    _modelId = -1;
+                }
+            }
+            ImGui::PopID();
+        }
+
         void DrawInspectorColorField(const char *_label, const char *_idSuffix, Color &_value)
         {
             DrawInspectorFieldLabel(_label);
@@ -3607,7 +3658,8 @@ namespace Canis
                 if (!_entity.HasComponent<BoxCollider>()
                     && !_entity.HasComponent<SphereCollider>()
                     && !_entity.HasComponent<CapsuleCollider>()
-                    && !_entity.HasComponent<MeshCollider>())
+                    && !_entity.HasComponent<MeshCollider>()
+                    && !_entity.HasComponent<ConvexMeshCollider>())
                 {
                     _entity.AddComponent<BoxCollider>();
                 }
@@ -3720,6 +3772,7 @@ namespace Canis
                 _entity.RemoveComponent<SphereCollider>();
                 _entity.RemoveComponent<CapsuleCollider>();
                 _entity.RemoveComponent<MeshCollider>();
+                _entity.RemoveComponent<ConvexMeshCollider>();
                 _entity.AddComponent<BoxCollider>();
             },
             .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<BoxCollider>(); },
@@ -3778,6 +3831,7 @@ namespace Canis
                 _entity.RemoveComponent<BoxCollider>();
                 _entity.RemoveComponent<CapsuleCollider>();
                 _entity.RemoveComponent<MeshCollider>();
+                _entity.RemoveComponent<ConvexMeshCollider>();
                 _entity.AddComponent<SphereCollider>();
             },
             .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<SphereCollider>(); },
@@ -3836,6 +3890,7 @@ namespace Canis
                 _entity.RemoveComponent<BoxCollider>();
                 _entity.RemoveComponent<SphereCollider>();
                 _entity.RemoveComponent<MeshCollider>();
+                _entity.RemoveComponent<ConvexMeshCollider>();
                 _entity.AddComponent<CapsuleCollider>();
             },
             .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<CapsuleCollider>(); },
@@ -3894,9 +3949,16 @@ namespace Canis
                 if (!_entity.HasComponent<Transform>())
                     _entity.AddComponent<Transform>();
 
+                Rigidbody *rigidbody = _entity.HasComponent<Rigidbody>()
+                    ? &_entity.GetComponent<Rigidbody>()
+                    : _entity.AddComponent<Rigidbody>();
+                rigidbody->motionType = RigidbodyMotionType::STATIC;
+                rigidbody->useGravity = false;
+
                 _entity.RemoveComponent<BoxCollider>();
                 _entity.RemoveComponent<SphereCollider>();
                 _entity.RemoveComponent<CapsuleCollider>();
+                _entity.RemoveComponent<ConvexMeshCollider>();
                 _entity.AddComponent<MeshCollider>();
             },
             .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<MeshCollider>(); },
@@ -3923,6 +3985,13 @@ namespace Canis
 
                 if (comp)
                 {
+                    if (!_entity.HasComponent<Rigidbody>())
+                    {
+                        Rigidbody &rigidbody = *_entity.AddComponent<Rigidbody>();
+                        rigidbody.motionType = RigidbodyMotionType::STATIC;
+                        rigidbody.useGravity = false;
+                    }
+
                     auto &meshCollider = *_entity.AddComponent<MeshCollider>();
                     meshCollider.active = comp["active"].as<bool>(true);
                     meshCollider.useAttachedModel = comp["useAttachedModel"].as<bool>(true);
@@ -3955,17 +4024,97 @@ namespace Canis
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), meshCollider->active);
                 DrawInspectorField(_editor, "useAttachedModel", _conf.name.c_str(), meshCollider->useAttachedModel);
-                std::string modelPath = meshCollider->modelPath;
-                DrawInspectorField(_editor, "modelPath", _conf.name.c_str(), modelPath);
-                if (modelPath != meshCollider->modelPath)
-                {
-                    meshCollider->modelPath = modelPath;
-                    meshCollider->modelId = meshCollider->modelPath.empty() ? -1 : AssetManager::LoadModel(meshCollider->modelPath);
-                }
+
+                if (!meshCollider->useAttachedModel)
+                    DrawModelColliderAssetField("MeshColliderModel", meshCollider->modelPath, meshCollider->modelId);
             },
         };
 
         RegisterScript(meshColliderConf);
+
+        ScriptConf convexMeshColliderConf = {
+            .name = "Canis::ConvexMeshCollider",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+                if (!_entity.HasComponent<Rigidbody>())
+                    _entity.AddComponent<Rigidbody>();
+
+                _entity.RemoveComponent<BoxCollider>();
+                _entity.RemoveComponent<SphereCollider>();
+                _entity.RemoveComponent<CapsuleCollider>();
+                _entity.RemoveComponent<MeshCollider>();
+                _entity.AddComponent<ConvexMeshCollider>();
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<ConvexMeshCollider>(); },
+            .Remove = [this](Entity &_entity) -> void { _entity.RemoveComponent<ConvexMeshCollider>(); },
+            .Get = [this](Entity &_entity) -> void* { return _entity.HasComponent<ConvexMeshCollider>() ? (void*)(&_entity.GetComponent<ConvexMeshCollider>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (ConvexMeshCollider *collider = _entity.HasComponent<ConvexMeshCollider>() ? &_entity.GetComponent<ConvexMeshCollider>() : nullptr)
+                {
+                    YAML::Node comp;
+                    comp["active"] = collider->active;
+                    comp["useAttachedModel"] = collider->useAttachedModel;
+                    comp["offset"] = collider->offset;
+                    comp["scale"] = collider->scale;
+                    comp["convexRadius"] = collider->convexRadius;
+                    if (!collider->modelPath.empty())
+                    {
+                        if (MetaFileAsset *meta = AssetManager::GetMetaFile(collider->modelPath))
+                            comp["modelUUID"] = static_cast<uint64_t>(meta->uuid);
+                    }
+                    _node["Canis::ConvexMeshCollider"] = comp;
+                }
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                if (YAML::Node comp = _node["Canis::ConvexMeshCollider"])
+                {
+                    if (!_entity.HasComponent<Rigidbody>())
+                        _entity.AddComponent<Rigidbody>();
+
+                    auto &collider = *_entity.AddComponent<ConvexMeshCollider>();
+                    collider.active = comp["active"].as<bool>(true);
+                    collider.useAttachedModel = comp["useAttachedModel"].as<bool>(true);
+                    collider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
+                    collider.scale = comp["scale"].as<Vector3>(Vector3(1.0f));
+                    collider.convexRadius = std::max(0.0f, comp["convexRadius"].as<float>(0.05f));
+                    collider.modelPath.clear();
+                    if (YAML::Node modelUUIDNode = comp["modelUUID"])
+                    {
+                        const UUID uuid = modelUUIDNode.as<uint64_t>(0);
+                        if (static_cast<uint64_t>(uuid) != 0)
+                        {
+                            const std::string path = AssetManager::GetPath(uuid);
+                            if (path.rfind("Path was not found", 0) != 0)
+                                collider.modelPath = path;
+                        }
+                    }
+                    if (collider.modelPath.empty())
+                        collider.modelPath = comp["modelPath"].as<std::string>("");
+
+                    collider.modelId = collider.modelPath.empty() ? -1 : AssetManager::LoadModel(collider.modelPath);
+                    if (_callCreate)
+                        collider.Create();
+                }
+            },
+            .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+                ConvexMeshCollider *collider = _entity.HasComponent<ConvexMeshCollider>() ? &_entity.GetComponent<ConvexMeshCollider>() : nullptr;
+                if (collider == nullptr)
+                    return;
+
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), collider->active);
+                DrawInspectorField(_editor, "useAttachedModel", _conf.name.c_str(), collider->useAttachedModel);
+                DrawInspectorField(_editor, "offset", _conf.name.c_str(), collider->offset);
+                DrawInspectorField(_editor, "scale", _conf.name.c_str(), collider->scale);
+                DrawInspectorField(_editor, "convexRadius", _conf.name.c_str(), collider->convexRadius);
+                collider->convexRadius = std::max(0.0f, collider->convexRadius);
+                if (!collider->useAttachedModel)
+                    DrawModelColliderAssetField("ConvexMeshColliderModel", collider->modelPath, collider->modelId);
+            },
+        };
+
+        RegisterScript(convexMeshColliderConf);
 
         ScriptConf terrainConf = {
             .name = "Canis::Terrain",

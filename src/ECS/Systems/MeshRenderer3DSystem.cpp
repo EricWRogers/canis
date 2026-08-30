@@ -7,6 +7,8 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Window.hpp>
+#include <Jolt/Jolt.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <algorithm>
 #include <array>
 #include <cmath>
@@ -129,6 +131,88 @@ namespace Canis
             }
         }
 
+        void AppendTriangleMeshLines(
+            std::vector<Vector3> &_lines,
+            const Matrix4 &_matrix,
+            const std::vector<Vector3> &_vertices,
+            const std::vector<u32> &_indices)
+        {
+            for (size_t i = 0; i + 2 < _indices.size(); i += 3)
+            {
+                const u32 index0 = _indices[i + 0];
+                const u32 index1 = _indices[i + 1];
+                const u32 index2 = _indices[i + 2];
+                if (index0 >= _vertices.size() || index1 >= _vertices.size() || index2 >= _vertices.size())
+                    continue;
+
+                const Vector3 point0 = TransformPoint(_matrix, _vertices[index0]);
+                const Vector3 point1 = TransformPoint(_matrix, _vertices[index1]);
+                const Vector3 point2 = TransformPoint(_matrix, _vertices[index2]);
+                AppendLine(_lines, point0, point1);
+                AppendLine(_lines, point1, point2);
+                AppendLine(_lines, point2, point0);
+            }
+        }
+
+        bool AppendConvexHullLines(
+            std::vector<Vector3> &_lines,
+            const Matrix4 &_matrix,
+            const std::vector<Vector3> &_vertices,
+            float _convexRadius)
+        {
+            if (_vertices.size() < 4)
+                return false;
+
+            std::vector<JPH::Vec3> points = {};
+            points.reserve(_vertices.size());
+            for (const Vector3 &vertex : _vertices)
+                points.emplace_back(vertex.x, vertex.y, vertex.z);
+
+            JPH::ConvexHullShapeSettings settings(
+                points.data(),
+                static_cast<int>(points.size()),
+                glm::max(0.0f, _convexRadius));
+            JPH::Shape::ShapeResult result = settings.Create();
+            if (result.HasError())
+                return false;
+
+            const JPH::Shape *shape = result.Get().GetPtr();
+            JPH::Shape::GetTrianglesContext context;
+            shape->GetTrianglesStart(
+                context,
+                JPH::AABox::sBiggest(),
+                // Convex hull triangles are emitted relative to their center
+                // of mass. Put that center back at its source-model position
+                // before applying the collider and entity transforms.
+                shape->GetCenterOfMass(),
+                JPH::Quat::sIdentity(),
+                JPH::Vec3::sOne());
+
+            constexpr int batchSize = 256;
+            JPH::Float3 triangleVertices[batchSize * 3];
+            for (;;)
+            {
+                const int triangleCount = shape->GetTrianglesNext(context, batchSize, triangleVertices);
+                if (triangleCount == 0)
+                    break;
+
+                for (int triangle = 0; triangle < triangleCount; ++triangle)
+                {
+                    const JPH::Vec3 point0(triangleVertices[triangle * 3 + 0]);
+                    const JPH::Vec3 point1(triangleVertices[triangle * 3 + 1]);
+                    const JPH::Vec3 point2(triangleVertices[triangle * 3 + 2]);
+                    const Vector3 vertex0(point0.GetX(), point0.GetY(), point0.GetZ());
+                    const Vector3 vertex1(point1.GetX(), point1.GetY(), point1.GetZ());
+                    const Vector3 vertex2(point2.GetX(), point2.GetY(), point2.GetZ());
+                    AppendLine(_lines, TransformPoint(_matrix, vertex0), TransformPoint(_matrix, vertex1));
+                    AppendLine(_lines, TransformPoint(_matrix, vertex1), TransformPoint(_matrix, vertex2));
+                    AppendLine(_lines, TransformPoint(_matrix, vertex2), TransformPoint(_matrix, vertex0));
+                }
+            }
+
+            return true;
+        }
+
         void AppendCircleLines(
             std::vector<Vector3> &_lines,
             const Matrix4 &_matrix,
@@ -176,17 +260,19 @@ namespace Canis
             if (_meshCollider == nullptr)
                 return -1;
 
+            if (_meshCollider->useAttachedModel)
+            {
+                if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                    return model->modelId;
+
+                return -1;
+            }
+
             if (_meshCollider->modelId >= 0)
                 return _meshCollider->modelId;
 
             if (!_meshCollider->modelPath.empty())
                 return AssetManager::LoadModel(_meshCollider->modelPath);
-
-            if (_meshCollider->useAttachedModel)
-            {
-                if (const Model *model = _registry.try_get<Model>(_entityHandle))
-                    return model->modelId;
-            }
 
             return -1;
         }
@@ -210,6 +296,41 @@ namespace Canis
             if (const Model *model = _registry.try_get<Model>(_entityHandle))
                 return model->applyNodeTransform;
 
+            return true;
+        }
+
+        i32 ResolveConvexMeshColliderModelId(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr)
+                return -1;
+            if (_collider->useAttachedModel)
+            {
+                if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                    return model->modelId;
+                return -1;
+            }
+            if (_collider->modelId >= 0)
+                return _collider->modelId;
+            if (!_collider->modelPath.empty())
+                return AssetManager::LoadModel(_collider->modelPath);
+            return -1;
+        }
+
+        i32 ResolveConvexMeshColliderNodeIndex(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr || !_collider->useAttachedModel)
+                return -1;
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->nodeIndex;
+            return -1;
+        }
+
+        bool ResolveConvexMeshColliderApplyNodeTransform(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr || !_collider->useAttachedModel)
+                return true;
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->applyNodeTransform;
             return true;
         }
 
@@ -626,12 +747,34 @@ namespace Canis
                     ModelAsset *model = AssetManager::GetModel(modelId);
                     if (model != nullptr)
                     {
-                        Vector3 minBounds = Vector3(0.0f);
-                        Vector3 maxBounds = Vector3(0.0f);
                         const i32 nodeIndex = ResolveMeshColliderNodeIndex(_registry, entityHandle, meshCollider);
                         const bool applyNodeTransform = ResolveMeshColliderApplyNodeTransform(_registry, entityHandle, meshCollider);
-                        if (model->GetLocalBounds(minBounds, maxBounds, nodeIndex, applyNodeTransform))
-                            AppendBoundsBoxLines(lines, modelMatrix, minBounds, maxBounds);
+                        std::vector<Vector3> vertices = {};
+                        std::vector<u32> indices = {};
+                        if (model->BuildTriangleMesh(vertices, indices, nodeIndex, applyNodeTransform))
+                            AppendTriangleMeshLines(lines, modelMatrix, vertices, indices);
+                    }
+                }
+            }
+
+            if (ConvexMeshCollider *collider = _registry.try_get<ConvexMeshCollider>(entityHandle))
+            {
+                if (collider->active)
+                {
+                    const i32 modelId = ResolveConvexMeshColliderModelId(_registry, entityHandle, collider);
+                    ModelAsset *model = AssetManager::GetModel(modelId);
+                    if (model != nullptr)
+                    {
+                        const i32 nodeIndex = ResolveConvexMeshColliderNodeIndex(_registry, entityHandle, collider);
+                        const bool applyNodeTransform = ResolveConvexMeshColliderApplyNodeTransform(_registry, entityHandle, collider);
+                        std::vector<Vector3> vertices = {};
+                        std::vector<u32> indices = {};
+                        if (model->BuildTriangleMesh(vertices, indices, nodeIndex, applyNodeTransform))
+                        {
+                            Matrix4 colliderMatrix = glm::translate(modelMatrix, collider->offset);
+                            colliderMatrix = glm::scale(colliderMatrix, collider->scale);
+                            AppendConvexHullLines(lines, colliderMatrix, vertices, collider->convexRadius);
+                        }
                     }
                 }
             }
@@ -814,7 +957,10 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0 || !modelRenderer.castShadow)
+            if ((entity != nullptr && !entity->active) ||
+                !transform.IsActiveInHierarchy() ||
+                modelRenderer.modelId < 0 ||
+                !modelRenderer.castShadow)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
@@ -1038,7 +1184,9 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
+            if ((entity != nullptr && !entity->active) ||
+                !transform.IsActiveInHierarchy() ||
+                modelRenderer.modelId < 0)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
@@ -1231,7 +1379,9 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
+            if ((entity != nullptr && !entity->active) ||
+                !transform.IsActiveInHierarchy() ||
+                modelRenderer.modelId < 0)
                 return;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);

@@ -22,6 +22,7 @@
 #include <Jolt/Physics/Collision/ObjectLayer.h>
 #include <Jolt/Physics/Collision/Shape/BoxShape.h>
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
+#include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
@@ -193,8 +194,14 @@ namespace Canis
             return glm::all(glm::lessThanEqual(glm::abs(_a - _b), Vector3(_epsilon)));
         }
 
-        bool NearlyEqual(const Quaternion &_a, const Quaternion &_b, float _epsilon = 0.0005f)
+        bool NearlyEqual(const Quaternion &_a, const Quaternion &_b, float _epsilon = 0.0000001f)
         {
+            // Quaternion dot products measure half the rotation angle.  The
+            // position tolerance is much too large here: 0.0005 treats yaw
+            // edits smaller than roughly 3.6 degrees as unchanged.  A script
+            // rotating a dynamic body a little each frame would consequently
+            // have its edit overwritten by the physics pose unless it also
+            // moved the body.
             return 1.0f - std::fabs(glm::dot(glm::normalize(_a), glm::normalize(_b))) <= _epsilon;
         }
 
@@ -310,17 +317,19 @@ namespace Canis
             if (_meshCollider == nullptr)
                 return -1;
 
+            if (_meshCollider->useAttachedModel)
+            {
+                if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                    return model->modelId;
+
+                return -1;
+            }
+
             if (_meshCollider->modelId >= 0)
                 return _meshCollider->modelId;
 
             if (!_meshCollider->modelPath.empty())
                 return AssetManager::LoadModel(_meshCollider->modelPath);
-
-            if (_meshCollider->useAttachedModel)
-            {
-                if (const Model *model = _registry.try_get<Model>(_entityHandle))
-                    return model->modelId;
-            }
 
             return -1;
         }
@@ -347,6 +356,43 @@ namespace Canis
             return true;
         }
 
+        i32 ResolveConvexMeshColliderModelId(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr)
+                return -1;
+
+            if (_collider->useAttachedModel)
+            {
+                if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                    return model->modelId;
+                return -1;
+            }
+
+            if (_collider->modelId >= 0)
+                return _collider->modelId;
+            if (!_collider->modelPath.empty())
+                return AssetManager::LoadModel(_collider->modelPath);
+            return -1;
+        }
+
+        i32 ResolveConvexMeshColliderNodeIndex(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr || !_collider->useAttachedModel)
+                return -1;
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->nodeIndex;
+            return -1;
+        }
+
+        bool ResolveConvexMeshColliderApplyNodeTransform(entt::registry &_registry, entt::entity _entityHandle, const ConvexMeshCollider *_collider)
+        {
+            if (_collider == nullptr || !_collider->useAttachedModel)
+                return true;
+            if (const Model *model = _registry.try_get<Model>(_entityHandle))
+                return model->applyNodeTransform;
+            return true;
+        }
+
         size_t BuildSettingsHash(
             entt::registry &_registry,
             entt::entity _entityHandle,
@@ -355,7 +401,8 @@ namespace Canis
             const BoxCollider *_boxCollider,
             const SphereCollider *_sphereCollider,
             const CapsuleCollider *_capsuleCollider,
-            const MeshCollider *_meshCollider)
+            const MeshCollider *_meshCollider,
+            const ConvexMeshCollider *_convexMeshCollider)
         {
             size_t hash = 0;
             hash = HashCombine(hash, std::hash<int>{}(_rigidbody.motionType));
@@ -411,6 +458,25 @@ namespace Canis
                 if (const ModelAsset *model = AssetManager::GetModel(modelId))
                     hash = HashCombine(hash, std::hash<u64>{}(model->GetGeometryRevision()));
             }
+            else if (_convexMeshCollider != nullptr)
+            {
+                hash = HashCombine(hash, 105u);
+                hash = HashCombine(hash, std::hash<bool>{}(_convexMeshCollider->active));
+                hash = HashCombine(hash, std::hash<bool>{}(_convexMeshCollider->useAttachedModel));
+                hash = HashCombine(hash, std::hash<std::string>{}(_convexMeshCollider->modelPath));
+                hash = HashCombine(hash, HashVector(_convexMeshCollider->offset));
+                hash = HashCombine(hash, HashVector(_convexMeshCollider->scale));
+                hash = HashCombine(hash, std::hash<float>{}(_convexMeshCollider->convexRadius));
+
+                const i32 modelId = ResolveConvexMeshColliderModelId(_registry, _entityHandle, _convexMeshCollider);
+                const i32 nodeIndex = ResolveConvexMeshColliderNodeIndex(_registry, _entityHandle, _convexMeshCollider);
+                const bool applyNodeTransform = ResolveConvexMeshColliderApplyNodeTransform(_registry, _entityHandle, _convexMeshCollider);
+                hash = HashCombine(hash, std::hash<int>{}(modelId));
+                hash = HashCombine(hash, std::hash<int>{}(nodeIndex));
+                hash = HashCombine(hash, std::hash<bool>{}(applyNodeTransform));
+                if (const ModelAsset *model = AssetManager::GetModel(modelId))
+                    hash = HashCombine(hash, std::hash<u64>{}(model->GetGeometryRevision()));
+            }
             else
             {
                 hash = HashCombine(hash, 100u);
@@ -426,7 +492,8 @@ namespace Canis
             const BoxCollider *_boxCollider,
             const SphereCollider *_sphereCollider,
             const CapsuleCollider *_capsuleCollider,
-            const MeshCollider *_meshCollider)
+            const MeshCollider *_meshCollider,
+            const ConvexMeshCollider *_convexMeshCollider)
         {
             const Vector3 signedGlobalScale = _transform.GetGlobalScale();
             const Vector3 globalScale = glm::abs(signedGlobalScale);
@@ -522,6 +589,59 @@ namespace Canis
                 return shapeResult.Get();
             }
 
+            if (_convexMeshCollider != nullptr)
+            {
+                const i32 modelId = ResolveConvexMeshColliderModelId(_registry, _entityHandle, _convexMeshCollider);
+                const i32 nodeIndex = ResolveConvexMeshColliderNodeIndex(_registry, _entityHandle, _convexMeshCollider);
+                const bool applyNodeTransform = ResolveConvexMeshColliderApplyNodeTransform(_registry, _entityHandle, _convexMeshCollider);
+                const ModelAsset *model = AssetManager::GetModel(modelId);
+                if (model == nullptr)
+                {
+                    Debug::Log("Jolt ConvexMeshCollider shape error: no source model for entity.");
+                    return nullptr;
+                }
+
+                std::vector<Vector3> vertices = {};
+                std::vector<u32> indices = {};
+                if (!model->BuildTriangleMesh(vertices, indices, nodeIndex, applyNodeTransform) || vertices.size() < 4)
+                {
+                    Debug::Log("Jolt ConvexMeshCollider shape error: source model has fewer than four vertices.");
+                    return nullptr;
+                }
+
+                std::vector<JPH::Vec3> points = {};
+                points.reserve(vertices.size());
+                const Vector3 colliderScale = _convexMeshCollider->scale * signedGlobalScale;
+                for (const Vector3 &vertex : vertices)
+                {
+                    points.emplace_back(
+                        vertex.x * colliderScale.x,
+                        vertex.y * colliderScale.y,
+                        vertex.z * colliderScale.z);
+                }
+
+                const Vector3 absoluteColliderScale = glm::abs(_convexMeshCollider->scale) * globalScale;
+                const float radiusScale = glm::min(
+                    absoluteColliderScale.x,
+                    glm::min(absoluteColliderScale.y, absoluteColliderScale.z));
+                const float convexRadius = glm::max(0.0f, _convexMeshCollider->convexRadius * radiusScale);
+                JPH::ConvexHullShapeSettings shapeSettings(
+                    points.data(),
+                    static_cast<int>(points.size()),
+                    convexRadius);
+                JPH::Shape::ShapeResult shapeResult = shapeSettings.Create();
+                if (shapeResult.HasError())
+                {
+                    Debug::Log("Jolt ConvexMeshCollider shape error: %s", shapeResult.GetError().c_str());
+                    return nullptr;
+                }
+                JPH::RefConst<JPH::Shape> shape = shapeResult.Get();
+                return ApplyLocalShapeOffset(
+                    shape,
+                    _convexMeshCollider->offset * signedGlobalScale,
+                    "ConvexMeshCollider");
+            }
+
             return nullptr;
         }
 
@@ -559,6 +679,9 @@ namespace Canis
             if (MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle))
                 return meshCollider->entity;
 
+            if (ConvexMeshCollider *collider = _registry.try_get<ConvexMeshCollider>(_entityHandle))
+                return collider->entity;
+
             return nullptr;
         }
 
@@ -581,6 +704,7 @@ namespace Canis
             ClearColliderContactVectors<SphereCollider>(_registry);
             ClearColliderContactVectors<CapsuleCollider>(_registry);
             ClearColliderContactVectors<MeshCollider>(_registry);
+            ClearColliderContactVectors<ConvexMeshCollider>(_registry);
         }
 
         template <typename Func>
@@ -597,6 +721,9 @@ namespace Canis
 
             if (MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle))
                 _func(*meshCollider);
+
+            if (ConvexMeshCollider *collider = _registry.try_get<ConvexMeshCollider>(_entityHandle))
+                _func(*collider);
         }
     } // namespace
 
@@ -808,6 +935,11 @@ namespace Canis
             Vector3 syncedLocalPosition = Vector3(0.0f);
             Quaternion syncedLocalRotation = Quaternion(Vector3(0.0f));
             bool hasSyncedTransform = false;
+            Vector3 previousWorldPosition = Vector3(0.0f);
+            Quaternion previousWorldRotation = Quaternion(Vector3(0.0f));
+            Vector3 currentWorldPosition = Vector3(0.0f);
+            Quaternion currentWorldRotation = Quaternion(Vector3(0.0f));
+            bool hasPhysicsPose = false;
         };
 
         std::unique_ptr<BPLayerInterfaceImpl> broadPhaseLayerInterface = nullptr;
@@ -914,6 +1046,78 @@ namespace Canis
             _rigidbody.pendingVelocityChange = Vector3(0.0f);
         }
 
+        void ClearPendingLinearVelocity(Rigidbody &_rigidbody)
+        {
+            _rigidbody.pendingLinearVelocity = Vector3(0.0f);
+            _rigidbody.hasPendingLinearVelocity = false;
+        }
+
+        void ApplyPendingLinearVelocity(const JPH::BodyID &_bodyID, Rigidbody &_rigidbody)
+        {
+            if (!_rigidbody.hasPendingLinearVelocity ||
+                bodyInterface == nullptr ||
+                _bodyID.IsInvalid() ||
+                !bodyInterface->IsAdded(_bodyID))
+            {
+                return;
+            }
+
+            bodyInterface->SetLinearVelocity(_bodyID, ToJoltVec3(_rigidbody.pendingLinearVelocity));
+            bodyInterface->ActivateBody(_bodyID);
+            ClearPendingLinearVelocity(_rigidbody);
+        }
+
+        void ClearPendingAngularVelocity(Rigidbody &_rigidbody)
+        {
+            _rigidbody.pendingAngularVelocity = Vector3(0.0f);
+            _rigidbody.hasPendingAngularVelocity = false;
+        }
+
+        void ApplyPendingAngularVelocity(const JPH::BodyID &_bodyID, Rigidbody &_rigidbody)
+        {
+            if (!_rigidbody.hasPendingAngularVelocity ||
+                bodyInterface == nullptr ||
+                _bodyID.IsInvalid() ||
+                !bodyInterface->IsAdded(_bodyID))
+            {
+                return;
+            }
+
+            bodyInterface->SetAngularVelocity(_bodyID, ToJoltVec3(_rigidbody.pendingAngularVelocity));
+            bodyInterface->ActivateBody(_bodyID);
+            ClearPendingAngularVelocity(_rigidbody);
+        }
+
+        void ClearPendingKinematicMotion(Rigidbody &_rigidbody)
+        {
+            _rigidbody.pendingTranslation = Vector3(0.0f);
+            _rigidbody.pendingRotation = Quaternion(Vector3(0.0f));
+        }
+
+        void ApplyPendingKinematicMotion(const JPH::BodyID &_bodyID, Rigidbody &_rigidbody, float _deltaTime)
+        {
+            if (bodyInterface == nullptr || _bodyID.IsInvalid() || !bodyInterface->IsAdded(_bodyID))
+                return;
+
+            const bool hasTranslation = !NearlyZero(_rigidbody.pendingTranslation);
+            const Quaternion identity = Quaternion(Vector3(0.0f));
+            const bool hasRotation = std::abs(glm::dot(_rigidbody.pendingRotation, identity)) < 0.999999f;
+            if (!hasTranslation && !hasRotation)
+                return;
+
+            const JPH::RVec3 currentPosition = bodyInterface->GetPosition(_bodyID);
+            const Quaternion currentRotation = ToCanisRotation(bodyInterface->GetRotation(_bodyID));
+            const Vector3 targetPosition = ToCanisPosition(currentPosition) + _rigidbody.pendingTranslation;
+            const Quaternion targetRotation = glm::normalize(_rigidbody.pendingRotation * currentRotation);
+
+            bodyInterface->MoveKinematic(
+                _bodyID,
+                ToJoltPosition(targetPosition),
+                ToJoltRotation(targetRotation),
+                glm::max(_deltaTime, 0.000001f));
+            ClearPendingKinematicMotion(_rigidbody);
+        }
+
         void ApplyPendingForces(const JPH::BodyID &_bodyID, Rigidbody &_rigidbody)
         {
             if (bodyInterface == nullptr || _bodyID.IsInvalid() || !bodyInterface->IsAdded(_bodyID))
@@ -975,6 +1179,7 @@ namespace Canis
             SphereCollider *sphereCollider = _registry.try_get<SphereCollider>(_entityHandle);
             CapsuleCollider *capsuleCollider = _registry.try_get<CapsuleCollider>(_entityHandle);
             MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle);
+            ConvexMeshCollider *convexMeshCollider = _registry.try_get<ConvexMeshCollider>(_entityHandle);
 
             if (boxCollider != nullptr && !boxCollider->active)
                 boxCollider = nullptr;
@@ -984,8 +1189,10 @@ namespace Canis
                 capsuleCollider = nullptr;
             if (meshCollider != nullptr && !meshCollider->active)
                 meshCollider = nullptr;
+            if (convexMeshCollider != nullptr && !convexMeshCollider->active)
+                convexMeshCollider = nullptr;
 
-            if (boxCollider == nullptr && sphereCollider == nullptr && capsuleCollider == nullptr && meshCollider == nullptr)
+            if (boxCollider == nullptr && sphereCollider == nullptr && capsuleCollider == nullptr && meshCollider == nullptr && convexMeshCollider == nullptr)
             {
                 RemoveBody(_entityHandle);
                 return false;
@@ -999,7 +1206,8 @@ namespace Canis
                 boxCollider,
                 sphereCollider,
                 capsuleCollider,
-                meshCollider);
+                meshCollider,
+                convexMeshCollider);
             auto bodyIt = bodies.find(_entityHandle);
             const bool needsRecreate = (bodyIt == bodies.end()) || (bodyIt->second.settingsHash != settingsHash);
 
@@ -1016,7 +1224,8 @@ namespace Canis
                 boxCollider,
                 sphereCollider,
                 capsuleCollider,
-                meshCollider);
+                meshCollider,
+                convexMeshCollider);
             if (shape == nullptr)
             {
                 RemoveBody(_entityHandle);
@@ -1071,11 +1280,16 @@ namespace Canis
             runtimeData.syncedLocalPosition = transform->position;
             runtimeData.syncedLocalRotation = transform->rotation;
             runtimeData.hasSyncedTransform = true;
+            runtimeData.previousWorldPosition = transform->GetGlobalPosition();
+            runtimeData.previousWorldRotation = transform->GetGlobalRotation();
+            runtimeData.currentWorldPosition = runtimeData.previousWorldPosition;
+            runtimeData.currentWorldRotation = runtimeData.previousWorldRotation;
+            runtimeData.hasPhysicsPose = true;
             bodies[_entityHandle] = runtimeData;
             return true;
         }
 
-        std::vector<entt::entity> SyncBodiesBeforeStep(entt::registry &_registry)
+        std::vector<entt::entity> SyncBodiesBeforeStep(entt::registry &_registry, float _physicsDeltaTime)
         {
             std::vector<entt::entity> activeBodies = {};
             std::unordered_set<entt::entity> expected = {};
@@ -1131,12 +1345,38 @@ namespace Canis
                     runtimeData.syncedLocalPosition = transform->position;
                     runtimeData.syncedLocalRotation = transform->rotation;
                     runtimeData.hasSyncedTransform = true;
+                    runtimeData.previousWorldPosition = transform->GetGlobalPosition();
+                    runtimeData.previousWorldRotation = transform->GetGlobalRotation();
+                    runtimeData.currentWorldPosition = runtimeData.previousWorldPosition;
+                    runtimeData.currentWorldRotation = runtimeData.previousWorldRotation;
+                    runtimeData.hasPhysicsPose = true;
                 }
 
                 if (motionType == JPH::EMotionType::Dynamic)
+                {
+                    if (_physicsDeltaTime > 0.0f)
+                    {
+                        ApplyPendingLinearVelocity(runtimeData.bodyID, *rigidbody);
+                        ApplyPendingAngularVelocity(runtimeData.bodyID, *rigidbody);
+                    }
                     ApplyPendingForces(runtimeData.bodyID, *rigidbody);
-                else
+                    ClearPendingKinematicMotion(*rigidbody);
+                }
+                else if (motionType == JPH::EMotionType::Kinematic)
+                {
                     ClearPendingForces(*rigidbody);
+                    ClearPendingLinearVelocity(*rigidbody);
+                    ClearPendingAngularVelocity(*rigidbody);
+                    if (_physicsDeltaTime > 0.0f)
+                        ApplyPendingKinematicMotion(runtimeData.bodyID, *rigidbody, _physicsDeltaTime);
+                }
+                else
+                {
+                    ClearPendingForces(*rigidbody);
+                    ClearPendingLinearVelocity(*rigidbody);
+                    ClearPendingAngularVelocity(*rigidbody);
+                    ClearPendingKinematicMotion(*rigidbody);
+                }
             }
 
             return activeBodies;
@@ -1184,7 +1424,45 @@ namespace Canis
             });
         }
 
-        void SyncBodiesAfterStep(entt::registry &_registry, const std::vector<entt::entity> &_activeBodies)
+        void CaptureBodyPoses(entt::registry &_registry, const std::vector<entt::entity> &_activeBodies)
+        {
+            for (const entt::entity entityHandle : _activeBodies)
+            {
+                auto bodyIt = bodies.find(entityHandle);
+                Rigidbody *rigidbody = _registry.try_get<Rigidbody>(entityHandle);
+                if (bodyIt == bodies.end() || rigidbody == nullptr ||
+                    ToMotionType(rigidbody->motionType) == JPH::EMotionType::Static)
+                {
+                    continue;
+                }
+
+                BodyRuntimeData &runtimeData = bodyIt->second;
+                if (runtimeData.bodyID.IsInvalid() || !bodyInterface->IsAdded(runtimeData.bodyID))
+                    continue;
+
+                const Vector3 position = ToCanisPosition(bodyInterface->GetPosition(runtimeData.bodyID));
+                const Quaternion rotation = ToCanisRotation(bodyInterface->GetRotation(runtimeData.bodyID));
+                if (!runtimeData.hasPhysicsPose)
+                {
+                    runtimeData.previousWorldPosition = position;
+                    runtimeData.previousWorldRotation = rotation;
+                    runtimeData.hasPhysicsPose = true;
+                }
+                else
+                {
+                    runtimeData.previousWorldPosition = runtimeData.currentWorldPosition;
+                    runtimeData.previousWorldRotation = runtimeData.currentWorldRotation;
+                }
+
+                runtimeData.currentWorldPosition = position;
+                runtimeData.currentWorldRotation = rotation;
+            }
+        }
+
+        void SyncBodiesAfterStep(
+            entt::registry &_registry,
+            const std::vector<entt::entity> &_activeBodies,
+            float _interpolationAlpha)
         {
             for (const entt::entity entityHandle : _activeBodies)
             {
@@ -1195,7 +1473,7 @@ namespace Canis
                     continue;
 
                 const JPH::EMotionType motionType = ToMotionType(rigidbody->motionType);
-                if (motionType != JPH::EMotionType::Dynamic)
+                if (motionType == JPH::EMotionType::Static)
                     continue;
 
                 BodyRuntimeData &runtimeData = bodyIt->second;
@@ -1204,6 +1482,14 @@ namespace Canis
 
                 const Vector3 worldPosition = ToCanisPosition(bodyInterface->GetPosition(runtimeData.bodyID));
                 Quaternion worldRotation = ToCanisRotation(bodyInterface->GetRotation(runtimeData.bodyID));
+                if (!runtimeData.hasPhysicsPose)
+                {
+                    runtimeData.previousWorldPosition = worldPosition;
+                    runtimeData.previousWorldRotation = worldRotation;
+                    runtimeData.currentWorldPosition = worldPosition;
+                    runtimeData.currentWorldRotation = worldRotation;
+                    runtimeData.hasPhysicsPose = true;
+                }
                 const JPH::Vec3 bodyLinearVelocity = bodyInterface->GetLinearVelocity(runtimeData.bodyID);
                 const JPH::Vec3 bodyAngularVelocity = bodyInterface->GetAngularVelocity(runtimeData.bodyID);
                 Vector3 angularVelocity = Vector3(bodyAngularVelocity.GetX(), bodyAngularVelocity.GetY(), bodyAngularVelocity.GetZ());
@@ -1218,9 +1504,25 @@ namespace Canis
                         ToJoltRotation(worldRotation),
                         JPH::EActivation::Activate);
                     bodyInterface->SetAngularVelocity(runtimeData.bodyID, ToJoltVec3(angularVelocity));
+                    runtimeData.currentWorldPosition = worldPosition;
+                    runtimeData.currentWorldRotation = worldRotation;
                 }
 
-                SetTransformFromWorldPose(*transform, worldPosition, worldRotation);
+                Quaternion interpolatedRotation = runtimeData.currentWorldRotation;
+                if (glm::dot(runtimeData.previousWorldRotation, interpolatedRotation) < 0.0f)
+                    interpolatedRotation = -interpolatedRotation;
+
+                const float alpha = glm::clamp(_interpolationAlpha, 0.0f, 1.0f);
+                const Vector3 interpolatedPosition = glm::mix(
+                    runtimeData.previousWorldPosition,
+                    runtimeData.currentWorldPosition,
+                    alpha);
+                interpolatedRotation = glm::normalize(glm::slerp(
+                    runtimeData.previousWorldRotation,
+                    interpolatedRotation,
+                    alpha));
+
+                SetTransformFromWorldPose(*transform, interpolatedPosition, interpolatedRotation);
                 rigidbody->linearVelocity = Vector3(bodyLinearVelocity.GetX(), bodyLinearVelocity.GetY(), bodyLinearVelocity.GetZ());
                 rigidbody->angularVelocity = angularVelocity;
                 runtimeData.syncedLocalPosition = transform->position;
@@ -1235,18 +1537,26 @@ namespace Canis
                 return;
 
             ClearColliderContactVectors(_registry);
-            std::vector<entt::entity> activeBodies = SyncBodiesBeforeStep(_registry);
-
             accumulator += glm::max(0.0f, _deltaTime);
             accumulator = glm::min(accumulator, kFixedTimeStep * (float)kMaxSubSteps);
+            const int stepCount = glm::min(
+                static_cast<int>(accumulator / kFixedTimeStep),
+                kMaxSubSteps);
+            const float physicsDeltaTime = static_cast<float>(stepCount) * kFixedTimeStep;
 
-            while (accumulator >= kFixedTimeStep)
+            std::vector<entt::entity> activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
+
+            for (int step = 0; step < stepCount; ++step)
             {
                 physicsSystem->Update(kFixedTimeStep, kCollisionSteps, tempAllocator.get(), jobSystem.get());
                 accumulator -= kFixedTimeStep;
+                CaptureBodyPoses(_registry, activeBodies);
             }
 
-            SyncBodiesAfterStep(_registry, activeBodies);
+            SyncBodiesAfterStep(
+                _registry,
+                activeBodies,
+                accumulator / kFixedTimeStep);
             ApplyContactFrameData(_registry);
         }
 
