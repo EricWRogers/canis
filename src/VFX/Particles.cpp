@@ -17,14 +17,16 @@ namespace Canis
 
         struct SimpleParticle
         {
-            Entity* entity = nullptr;
             Vector3 velocity = Vector3(0.0f);
+            Vector3 localPosition = Vector3(0.0f);
             float gravity = 0.0f;
             float drag = 0.0f;
             float age = 0.0f;
             float lifetime = 0.5f;
             Vector3 startScale = Vector3(1.0f);
             Vector3 endScale = Vector3(0.0f);
+            entt::entity emitterHandle = entt::null;
+            bool localSpace = false;
             Color startColor = Color(1.0f);
             Color endColor = Color(1.0f);
         };
@@ -37,7 +39,11 @@ namespace Canis
 
         float RandomRange(const float _minValue, const float _maxValue)
         {
-            std::uniform_real_distribution<float> distribution(_minValue, _maxValue);
+            // Inspector-authored ranges remain valid even when a negative
+            // forward range is entered in descending numeric order.
+            std::uniform_real_distribution<float> distribution(
+                std::min(_minValue, _maxValue),
+                std::max(_minValue, _maxValue));
             return distribution(GetParticleRng());
         }
 
@@ -58,34 +64,66 @@ namespace Canis
                 _emitter.cachedMaterialId = AssetManager::LoadMaterial(_emitter.materialPath);
         }
 
-        void CleanupDeadParticles(ParticleEmitter& _emitter)
+        void CleanupDeadParticles(ParticleEmitter& _emitter, const entt::registry& _registry)
         {
             _emitter.particles.erase(
                 std::remove_if(
                     _emitter.particles.begin(),
                     _emitter.particles.end(),
-                    [](Entity* _entity)
+                    [&_registry](const entt::entity _entityHandle)
                     {
-                        return _entity == nullptr || !_entity->active;
+                        return !_registry.valid(_entityHandle);
                     }),
                 _emitter.particles.end());
         }
 
-        void SpawnParticle(ParticleEmitter& _emitter, Transform& _emitterTransform, Scene& _scene)
+        void DestroyEmitterParticles(ParticleEmitter& _emitter, entt::registry& _registry)
+        {
+            for (const entt::entity particleHandle : _emitter.particles)
+            {
+                if (_registry.valid(particleHandle))
+                    _registry.destroy(particleHandle);
+            }
+
+            _emitter.particles.clear();
+        }
+
+        bool UpdateLocalParticleTransform(
+            SimpleParticle& _particle,
+            Transform& _particleTransform,
+            entt::registry& _registry,
+            const Vector3& _particleScale)
+        {
+            if (!_registry.valid(_particle.emitterHandle) ||
+                !_registry.all_of<Transform>(_particle.emitterHandle))
+            {
+                return false;
+            }
+
+            const Transform& emitterTransform = _registry.get<Transform>(_particle.emitterHandle);
+            if (!emitterTransform.IsActiveInHierarchy())
+                return false;
+
+            const Vector4 worldPosition = emitterTransform.GetModelMatrix() * Vector4(_particle.localPosition, 1.0f);
+            _particleTransform.position = Vector3(worldPosition);
+            _particleTransform.rotation = emitterTransform.GetGlobalRotation();
+            _particleTransform.scale = emitterTransform.GetGlobalScale() * _particleScale;
+            return true;
+        }
+
+        void SpawnParticle(
+            ParticleEmitter& _emitter,
+            Transform& _emitterTransform,
+            entt::registry& _registry,
+            const entt::entity _emitterHandle)
         {
             ResolveEmitterAssets(_emitter);
 
-            Entity* particleEntity = _scene.CreateEntity("Particle");
-            if (particleEntity == nullptr)
-                return;
-
-            Transform* particleTransform = particleEntity->AddComponent<Transform>();
-            Model* particleModel = particleEntity->AddComponent<Model>();
-            Material* particleMaterial = particleEntity->AddComponent<Material>();
-            SimpleParticle* particle = particleEntity->AddComponent<SimpleParticle>();
-
-            if (particleTransform == nullptr || particleModel == nullptr || particleMaterial == nullptr || particle == nullptr)
-                return;
+            const entt::entity particleHandle = _registry.create();
+            Transform& particleTransform = _registry.emplace<Transform>(particleHandle);
+            Model& particleModel = _registry.emplace<Model>(particleHandle);
+            Material& particleMaterial = _registry.emplace<Material>(particleHandle);
+            SimpleParticle& particle = _registry.emplace<SimpleParticle>(particleHandle);
 
             const Vector3 randomOffset = RandomVector3(-_emitter.spawnExtents, _emitter.spawnExtents);
             const Vector3 randomDirection = RandomVector3(_emitter.minVelocity, _emitter.maxVelocity);
@@ -95,48 +133,68 @@ namespace Canis
                 : Vector3(0.0f, 1.0f, 0.0f);
             const float speed = RandomRange(_emitter.speedMin, _emitter.speedMax);
             const Vector3 startScale = RandomVector3(_emitter.startScaleMin, _emitter.startScaleMax);
+            const Quaternion emitterRotation = _emitterTransform.GetGlobalRotation();
 
             if (_emitter.localSpace && _emitter.entity != nullptr)
             {
-                particleTransform->SetParent(_emitter.entity);
-                particleTransform->position = randomOffset;
-                particleTransform->rotation = Quaternion(Vector3(0.0f));
-                particleTransform->scale = startScale;
+                particle.localSpace = true;
+                particle.emitterHandle = _emitterHandle;
+                particle.localPosition = randomOffset;
+                UpdateLocalParticleTransform(particle, particleTransform, _registry, startScale);
             }
             else
             {
-                particleTransform->position = _emitterTransform.GetGlobalPosition() + randomOffset;
-                particleTransform->rotation = Quaternion(Vector3(0.0f));
-                particleTransform->scale = startScale;
+                const Vector4 worldPosition = _emitterTransform.GetModelMatrix() * Vector4(randomOffset, 1.0f);
+                particleTransform.position = Vector3(worldPosition);
+                particleTransform.rotation = emitterRotation;
+                particleTransform.scale = startScale;
             }
 
-            particleModel->modelId = _emitter.cachedModelId;
-            particleModel->color = _emitter.startColor;
+            particleModel.modelId = _emitter.cachedModelId;
+            particleModel.color = _emitter.startColor;
+            particleModel.castShadow = _emitter.castShadow;
 
-            particleMaterial->materialId = _emitter.cachedMaterialId;
-            particleMaterial->color = _emitter.startColor;
+            particleMaterial.materialId = _emitter.cachedMaterialId;
+            particleMaterial.color = _emitter.startColor;
+            particleMaterial.materialFields.SetFloat("particleAge", 0.0f);
+            particleMaterial.materialFields.SetFloat("particleLifetime", std::max(_emitter.particleLifetime, 0.001f));
+            particleMaterial.materialFields.SetFloat("particleNormalizedAge", 0.0f);
 
-            particle->velocity = normalizedDirection * speed;
-            particle->gravity = _emitter.gravity;
-            particle->drag = std::max(_emitter.drag, 0.0f);
-            particle->age = 0.0f;
-            particle->lifetime = std::max(_emitter.particleLifetime, 0.001f);
-            particle->startScale = startScale;
-            particle->endScale = _emitter.endScale;
-            particle->startColor = _emitter.startColor;
-            particle->endColor = _emitter.endColor;
+            // Velocity ranges are always authored relative to the emitter.
+            // World-space particles inherit its orientation once at spawn;
+            // local-space particles continue following it for their lifetime.
+            particle.velocity = (_emitter.localSpace
+                ? normalizedDirection
+                : glm::normalize(emitterRotation * normalizedDirection)) * speed;
+            particle.gravity = _emitter.gravity;
+            particle.drag = std::max(_emitter.drag, 0.0f);
+            particle.age = 0.0f;
+            particle.lifetime = std::max(_emitter.particleLifetime, 0.001f);
+            particle.startScale = startScale;
+            particle.endScale = _emitter.endScale;
+            particle.startColor = _emitter.startColor;
+            particle.endColor = _emitter.endColor;
 
-            _emitter.particles.push_back(particleEntity);
+            _emitter.particles.push_back(particleHandle);
         }
 
-        void EmitBurst(ParticleEmitter& _emitter, Transform& _emitterTransform, Scene& _scene)
+        void EmitBurst(
+            ParticleEmitter& _emitter,
+            Transform& _emitterTransform,
+            entt::registry& _registry,
+            const entt::entity _emitterHandle)
         {
             const int particlesToSpawn = std::max(_emitter.burstCount, 0);
             for (int i = 0; i < particlesToSpawn; ++i)
-                SpawnParticle(_emitter, _emitterTransform, _scene);
+                SpawnParticle(_emitter, _emitterTransform, _registry, _emitterHandle);
         }
 
-        void EmitContinuous(ParticleEmitter& _emitter, Transform& _emitterTransform, Scene& _scene, const float _deltaTime)
+        void EmitContinuous(
+            ParticleEmitter& _emitter,
+            Transform& _emitterTransform,
+            entt::registry& _registry,
+            const entt::entity _emitterHandle,
+            const float _deltaTime)
         {
             _emitter.spawnAccumulator += _deltaTime;
             const float interval = std::max(_emitter.spawnInterval, 0.001f);
@@ -146,7 +204,7 @@ namespace Canis
             {
                 _emitter.spawnAccumulator -= interval;
                 for (int i = 0; i < particlesPerStep; ++i)
-                    SpawnParticle(_emitter, _emitterTransform, _scene);
+                    SpawnParticle(_emitter, _emitterTransform, _registry, _emitterHandle);
             }
         }
     }
@@ -291,25 +349,64 @@ namespace Canis
 
     void ParticleEmitterSystem::Update(entt::registry& _registry, float _deltaTime)
     {
+        UpdateInternal(_registry, _deltaTime, nullptr, false);
+    }
+
+    void ParticleEmitterSystem::UpdateEditorPreview(
+        entt::registry& _registry,
+        float _deltaTime,
+        Entity* _selectedEntity)
+    {
+        UpdateInternal(_registry, _deltaTime, _selectedEntity, true);
+    }
+
+    void ParticleEmitterSystem::UpdateInternal(
+        entt::registry& _registry,
+        float _deltaTime,
+        Entity* _previewEmitter,
+        bool _editorPreview)
+    {
+        std::vector<entt::entity> expiredParticles = {};
         auto particleView = _registry.view<SimpleParticle, Transform, Model, Material>();
         for (auto [entityHandle, particle, transform, model, material] : particleView.each())
         {
-            if (particle.entity == nullptr || !particle.entity->active)
-                continue;
-
             particle.age += _deltaTime;
             particle.velocity.y += particle.gravity * _deltaTime;
             particle.velocity *= std::max(0.0f, 1.0f - (particle.drag * _deltaTime));
-            transform.position += particle.velocity * _deltaTime;
 
             const float t = Clamp01(particle.age / std::max(particle.lifetime, 0.001f));
-            transform.scale = glm::mix(particle.startScale, particle.endScale, t);
+            const Vector3 particleScale = glm::mix(particle.startScale, particle.endScale, t);
+
+            if (particle.localSpace)
+            {
+                particle.localPosition += particle.velocity * _deltaTime;
+                if (!UpdateLocalParticleTransform(particle, transform, _registry, particleScale))
+                {
+                    expiredParticles.push_back(entityHandle);
+                    continue;
+                }
+            }
+            else
+            {
+                transform.position += particle.velocity * _deltaTime;
+                transform.scale = particleScale;
+            }
+
             const Color color = glm::mix(particle.startColor, particle.endColor, t);
             model.color = color;
             material.color = color;
+            material.materialFields.SetFloat("particleAge", particle.age);
+            material.materialFields.SetFloat("particleLifetime", particle.lifetime);
+            material.materialFields.SetFloat("particleNormalizedAge", t);
 
             if (particle.age >= particle.lifetime)
-                particle.entity->Destroy();
+                expiredParticles.push_back(entityHandle);
+        }
+
+        for (const entt::entity entityHandle : expiredParticles)
+        {
+            if (_registry.valid(entityHandle))
+                _registry.destroy(entityHandle);
         }
 
         auto emitterView = _registry.view<Canis::ParticleEmitter, Transform>();
@@ -318,7 +415,43 @@ namespace Canis
             if (emitter.entity == nullptr || !emitter.entity->active)
                 continue;
 
-            CleanupDeadParticles(emitter);
+            CleanupDeadParticles(emitter, _registry);
+
+            if (_editorPreview)
+            {
+                const bool selected = emitter.entity == _previewEmitter;
+                if (!selected)
+                {
+                    if (emitter.editorPreviewSelected)
+                    {
+                        DestroyEmitterParticles(emitter, _registry);
+                        emitter.playing = false;
+                        emitter.pendingDestroy = false;
+                        emitter.initialized = false;
+                        emitter.editorPreviewSelected = false;
+                    }
+                    continue;
+                }
+
+                if (!emitter.editorPreviewSelected)
+                {
+                    emitter.editorPreviewSelected = true;
+                    emitter.Play();
+                }
+                else if (!emitter.playing && emitter.particles.empty())
+                {
+                    // Keep short one-shot effects visible while selected.
+                    emitter.Play();
+                }
+            }
+            else if (emitter.editorPreviewSelected)
+            {
+                DestroyEmitterParticles(emitter, _registry);
+                emitter.playing = false;
+                emitter.pendingDestroy = false;
+                emitter.initialized = false;
+                emitter.editorPreviewSelected = false;
+            }
 
             if (!emitter.initialized)
             {
@@ -338,7 +471,7 @@ namespace Canis
                 {
                     if (!emitter.hasTriggeredBurst)
                     {
-                        EmitBurst(emitter, transform, GetScene());
+                        EmitBurst(emitter, transform, _registry, entityHandle);
                         emitter.hasTriggeredBurst = true;
 
                         if (emitter.looping)
@@ -347,7 +480,10 @@ namespace Canis
                         }
                         else
                         {
-                            emitter.Stop();
+                            if (_editorPreview)
+                                emitter.playing = false;
+                            else
+                                emitter.Stop();
                         }
                     }
                     else if (emitter.looping && emitter.elapsed >= std::max(emitter.emissionDuration, 0.01f))
@@ -358,14 +494,19 @@ namespace Canis
                 }
                 else
                 {
-                    EmitContinuous(emitter, transform, GetScene(), _deltaTime);
+                    EmitContinuous(emitter, transform, _registry, entityHandle, _deltaTime);
 
                     if (!emitter.looping && emitter.elapsed >= std::max(emitter.emissionDuration, 0.0f))
-                        emitter.Stop();
+                    {
+                        if (_editorPreview)
+                            emitter.playing = false;
+                        else
+                            emitter.Stop();
+                    }
                 }
             }
 
-            if (emitter.pendingDestroy && emitter.particles.empty())
+            if (!_editorPreview && emitter.pendingDestroy && emitter.particles.empty())
                 emitter.entity->Destroy();
         }
     }
