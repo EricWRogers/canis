@@ -1331,7 +1331,11 @@ namespace Canis
                     || !NearlyEqual(transform->position, runtimeData.syncedLocalPosition)
                     || !NearlyEqual(transform->rotation, runtimeData.syncedLocalRotation);
 
-                if (motionType == JPH::EMotionType::Static || motionType == JPH::EMotionType::Kinematic || transformEdited)
+                // Kinematic bodies are advanced by MoveKinematic. Reapplying the
+                // interpolated Transform every pre-step resets that motion before
+                // the next command can accumulate. Only push a kinematic pose
+                // when game/editor code explicitly changed its Transform.
+                if (motionType == JPH::EMotionType::Static || transformEdited)
                 {
                     const JPH::EActivation activation = (motionType == JPH::EMotionType::Static)
                         ? JPH::EActivation::DontActivate

@@ -1,238 +1,168 @@
 #include <Canis/DataStructure/AStar.hpp>
 
+#include <algorithm>
+#include <limits>
+#include <queue>
+
 namespace Canis
 {
+    namespace
+    {
+        struct OpenPoint
+        {
+            float score = 0.0f;
+            unsigned int id = 0u;
+
+            bool operator<(const OpenPoint& _other) const
+            {
+                return score > _other.score;
+            }
+        };
+    }
+
     AStar::AStar()
     {
-        AStarNode node = {};
-        
-        graph.reserve(1000);
-
-        graph.push_back(node);
+        m_graph.emplace_back();
     }
 
-    unsigned int AStar::AddPoint(Vector3 _position)
+    unsigned int AStar::AddPoint(const Vector3& _position)
     {
-        AStarNode node = {};
+        if (const auto found = m_pointLookup.find(_position); found != m_pointLookup.end())
+            return found->second;
 
-        node.position = _position;
-
-        graph.push_back(node);
-        m_umap[_position] = graph.size() - 1;
-
-        return graph.size() - 1;
-    }
-
-    unsigned int AStar::GetClosestPoint(Vector3 _position)
-    {
-        if (graph.size() == 0)
-            Debug::FatalError("AStar::GetClosetPoint was called before a point was added to the graph.");
-        
-        unsigned int id = 0u;
-        float minDistance = f32_max; // set float to its largest value
-        float distance = 0.0f;
-
-        for(int i = 1; i < graph.size(); i++)
-        {
-            distance = glm::distance(_position, graph[i].position);
-
-            if (minDistance > distance)
-            {
-                id = i;
-                minDistance = distance;
-            }
-        }
-
+        const unsigned int id = static_cast<unsigned int>(m_graph.size());
+        m_graph.push_back(AStarNode{.position = _position});
+        m_pointLookup.emplace(_position, id);
         return id;
     }
 
-    unsigned int AStar::GetPointByPosition(Vector3 _position)
+    unsigned int AStar::GetClosestPoint(const Vector3& _position) const
     {
-        
-        if (m_umap.contains(_position))
-            return m_umap[_position];
-        else
-            return 0;
+        unsigned int closest = 0u;
+        float closestDistanceSquared = std::numeric_limits<float>::max();
+
+        for (unsigned int id = 1u; id < m_graph.size(); ++id)
+        {
+            const Vector3 difference = m_graph[id].position - _position;
+            const float distanceSquared = glm::dot(difference, difference);
+            if (distanceSquared < closestDistanceSquared)
+            {
+                closest = id;
+                closestDistanceSquared = distanceSquared;
+            }
+        }
+
+        return closest;
     }
 
-    void AStar::ConnectPoints(unsigned int idFrom, unsigned int idTo)
+    unsigned int AStar::GetPointByPosition(const Vector3& _position) const
     {
-        if (graph.size() <= idFrom)
-            Debug::FatalError("AStar::ConnectPoints idFrom has not been added to the graph.");
+        const auto found = m_pointLookup.find(_position);
+        return found == m_pointLookup.end() ? 0u : found->second;
+    }
 
-        if (graph.size() <= idTo)
-            Debug::FatalError("AStar::ConnectPoints idTo has not been added to the graph.");
-        
-        if (idTo == idFrom)
+    const Vector3& AStar::GetPointPosition(unsigned int _id) const
+    {
+        static const Vector3 invalidPoint(0.0f);
+        return _id > 0u && _id < m_graph.size() ? m_graph[_id].position : invalidPoint;
+    }
+
+    void AStar::ConnectPoints(unsigned int _idFrom, unsigned int _idTo)
+    {
+        if (_idFrom == 0u || _idTo == 0u || _idFrom == _idTo ||
+            _idFrom >= m_graph.size() || _idTo >= m_graph.size())
             return;
-        
-        if (!VecHas(graph[idFrom].adjacentPointIDs, idTo))
-            graph[idFrom].adjacentPointIDs.push_back(idTo);
-        if (!VecHas(graph[idTo].adjacentPointIDs, idFrom))
-            graph[idTo].adjacentPointIDs.push_back(idFrom);
+
+        auto connectOneWay = [this](unsigned int _from, unsigned int _to)
+        {
+            std::vector<unsigned int>& adjacent = m_graph[_from].adjacentPointIDs;
+            if (std::find(adjacent.begin(), adjacent.end(), _to) == adjacent.end())
+                adjacent.push_back(_to);
+        };
+
+        connectOneWay(_idFrom, _idTo);
+        connectOneWay(_idTo, _idFrom);
     }
 
-    void AStar::RemovePoint(unsigned int id) {
-        if (graph.size() <= id)
-            Debug::FatalError("AStar::RemovePoint id has not been added to the graph.");
-        for (int i = 0; i < graph[id].adjacentPointIDs.size(); i++) { //remove from adjacent points
-            for (int j = 0; j < graph[i].adjacentPointIDs.size(); j++) { //iterate over adjacent points of neighbor
-                if (graph[i].adjacentPointIDs[j] == id) { 
-                    graph[i].adjacentPointIDs.erase(graph[i].adjacentPointIDs.begin()+j);
+    void AStar::RemovePoint(unsigned int _id)
+    {
+        if (_id == 0u || _id >= m_graph.size())
+            return;
+
+        m_pointLookup.erase(m_graph[_id].position);
+        m_graph[_id].adjacentPointIDs.clear();
+        for (AStarNode& node : m_graph)
+        {
+            node.adjacentPointIDs.erase(
+                std::remove(node.adjacentPointIDs.begin(), node.adjacentPointIDs.end(), _id),
+                node.adjacentPointIDs.end());
+        }
+    }
+
+    bool AStar::ArePointsConnected(unsigned int _idFrom, unsigned int _idTo) const
+    {
+        if (_idFrom == 0u || _idFrom >= m_graph.size())
+            return false;
+        const std::vector<unsigned int>& adjacent = m_graph[_idFrom].adjacentPointIDs;
+        return std::find(adjacent.begin(), adjacent.end(), _idTo) != adjacent.end();
+    }
+
+    bool AStar::ValidPoint(const Vector3& _position) const
+    {
+        return GetPointByPosition(_position) != 0u;
+    }
+
+    std::vector<Vector3> AStar::GetPath(unsigned int _idFrom, unsigned int _idTo) const
+    {
+        if (_idFrom == 0u || _idTo == 0u ||
+            _idFrom >= m_graph.size() || _idTo >= m_graph.size())
+            return {};
+        if (_idFrom == _idTo)
+            return {m_graph[_idTo].position};
+
+        const float infinity = std::numeric_limits<float>::max();
+        std::vector<float> distance(m_graph.size(), infinity);
+        std::vector<unsigned int> predecessor(m_graph.size(), 0u);
+        std::priority_queue<OpenPoint> open;
+
+        distance[_idFrom] = 0.0f;
+        open.push(OpenPoint{glm::distance(m_graph[_idFrom].position, m_graph[_idTo].position), _idFrom});
+
+        while (!open.empty())
+        {
+            const unsigned int current = open.top().id;
+            open.pop();
+            if (current == _idTo)
+                break;
+
+            for (const unsigned int neighbor : m_graph[current].adjacentPointIDs)
+            {
+                if (neighbor == 0u || neighbor >= m_graph.size())
                     continue;
-                }
-            }
-        }
-        graph.erase(graph.begin()+id);
-    }
 
-    bool AStar::ArePointsConnected(unsigned int idFrom, unsigned int idTo)
-    {
-        if (graph.size() <= idFrom)
-            Debug::FatalError("AStar::ArePointsConnected idFrom has not been added to the graph.");
+                const float candidate = distance[current] +
+                    glm::distance(m_graph[current].position, m_graph[neighbor].position);
+                if (candidate >= distance[neighbor])
+                    continue;
 
-        if (graph.size() <= idTo)
-            Debug::FatalError("AStar::ArePointsConnected idTo has not been added to the graph.");
-        
-        if (graph[idFrom].adjacentPointIDs.size() )
-
-        for(int i = 0; i < graph[idFrom].adjacentPointIDs.size(); i++)
-        {
-            if (graph[idFrom].adjacentPointIDs[i] == idTo)
-            {
-                return true;
+                distance[neighbor] = candidate;
+                predecessor[neighbor] = current;
+                const float heuristic = glm::distance(m_graph[neighbor].position, m_graph[_idTo].position);
+                open.push(OpenPoint{candidate + heuristic, neighbor});
             }
         }
 
-        return false;
-    }
+        if (predecessor[_idTo] == 0u)
+            return {};
 
-    bool AStar::ValidPoint(Vector3 position)
-    {
-        for (int i = 1; i < graph.size();i++)
-        {
-            if (graph[i].position == position)
-                return true;
-        }
-
-        return false;
-    }
-
-    std::vector<Vector3> AStar::GetPath(unsigned int idFrom, unsigned int idTo)
-    {
-        if (graph.size() <= idFrom)
-            Debug::FatalError("AStar::GetPath idFrom has not been added to the graph.");
-
-        if (graph.size() <= idTo)
-            Debug::FatalError("AStar::GetPath idTo has not been added to the graph.");
-
-        // find better solution for reseting the graph
-        for(AStarNode& node : graph) {
-            node.f = 0.0f;
-            node.g = 0.0f;
-            node.h = 0.0f;
-            node.predecessorID = 0;
-        }
-        
-        std::vector<unsigned int> searchingSet;
-        std::vector<unsigned int> hasSearchedSet;
-        unsigned int graphNodeIndex;
-
-        searchingSet.push_back(idFrom);
-
-        while (searchingSet.size() > 0)
-        {
-            unsigned int lowestPath = 0;
-
-            for (unsigned int i = 0; i < searchingSet.size(); i++)
-            {
-                if (graph[searchingSet[lowestPath]].f > graph[searchingSet[i]].f)
-                {
-                    lowestPath = i;
-                }
-            }
-
-            AStarNode *node = &graph[searchingSet[lowestPath]];
-            graphNodeIndex = searchingSet[lowestPath];
-
-            if (idTo == searchingSet[lowestPath])
-            {
-                return BuildPath(node);
-            }
-
-            hasSearchedSet.push_back(searchingSet[lowestPath]);
-
-            searchingSet.erase(searchingSet.begin() + lowestPath);
-
-            std::vector<unsigned int> neighborIDs = node->adjacentPointIDs;
-
-            for(unsigned int i = 0; i < neighborIDs.size(); i++)
-            {
-                AStarNode *neighborNode = &graph[neighborIDs[i]];                
-
-                if (!VecHas(hasSearchedSet, neighborIDs[i]))
-                {
-                    if (graphNodeIndex == neighborIDs[i])
-                    {
-                        continue;
-                    }
-
-                    float currentG = node->g + std::abs(glm::distance(node->position, neighborNode->position));
-
-                    bool isNewPath = false;
-
-                    if (VecHas(searchingSet, neighborIDs[i]))
-                    {
-                        if (currentG < neighborNode->g)
-                        {
-                            isNewPath = true;
-                            neighborNode->g = currentG;
-                        }
-                    }
-                    else
-                    {
-                        isNewPath = true;
-                        neighborNode->g = currentG;
-                        searchingSet.push_back(neighborIDs[i]);
-                    }
-
-                    if (isNewPath)
-                    {
-                        neighborNode->h = std::abs(glm::distance(neighborNode->position, graph[idTo].position));
-                        neighborNode->f = neighborNode->g + neighborNode->h;
-                        neighborNode->predecessorID = graphNodeIndex;
-                    }
-                }
-            }
-        }
-
-        return std::vector<Vector3> {};
-    }
-
-    std::vector<Vector3> AStar::BuildPath(AStarNode *node)
-    {
         std::vector<Vector3> path;
-        AStarNode *currentNode = node;
-
-        while (currentNode->predecessorID != 0)
+        for (unsigned int current = _idTo; current != _idFrom; current = predecessor[current])
         {
-            path.insert(path.begin(), currentNode->position);
-            currentNode = &graph[currentNode->predecessorID];
+            if (current == 0u)
+                return {};
+            path.push_back(m_graph[current].position);
         }
-
+        std::reverse(path.begin(), path.end());
         return path;
     }
-
-    bool AStar::VecHas(std::vector<unsigned int> &toCheck, unsigned int value)
-    {
-        for (unsigned int n = 0; n < toCheck.size(); n++)
-        {
-            if (toCheck[n] == value)
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-} // end of Canis namespace
+}
