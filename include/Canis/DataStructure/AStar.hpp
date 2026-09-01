@@ -32,6 +32,7 @@ namespace Canis
         bool ValidPoint(const Vector3& _position) const;
         std::vector<Vector3> GetPath(unsigned int _idFrom, unsigned int _idTo) const;
         std::size_t GetPointCount() const { return m_graph.size() - 1u; }
+        const std::vector<AStarNode>& GetNodes() const { return m_graph; }
 
     private:
         std::vector<AStarNode> m_graph = {};

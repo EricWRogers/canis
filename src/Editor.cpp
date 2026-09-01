@@ -21,6 +21,7 @@
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Terrain.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/ECS/Systems/NavMeshSystem.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_dialog.h>
@@ -5975,6 +5976,31 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (ParticleEmitterSystem* particleSystem = m_scene->GetSystem<ParticleEmitterSystem>())
                 particleSystem->UpdateEditorPreview(m_scene->GetRegistry(), _deltaTime, selectedEmitter);
+
+            // Navigation surfaces are visualized only in the editor Scene view.
+            // A selected build-on-ready surface refreshes when its settings or
+            // transform change, while the game view stays free of debug geometry.
+            if (!m_terrainToolEnabled)
+            {
+                m_scene->ClearDebugGizmoLines();
+                Entity* selectedSurface = nullptr;
+                if (m_index >= 0 && m_index < static_cast<int>(entities.size()))
+                {
+                    Entity* selected = entities[m_index];
+                    if (selected != nullptr && selected->HasComponent<NavMeshSurface>())
+                        selectedSurface = selected;
+                }
+                if (selectedSurface != nullptr)
+                {
+                    if (NavMeshSystem* navMeshSystem = m_scene->GetSystem<NavMeshSystem>())
+                    {
+                        const NavMeshSurface& surface = selectedSurface->GetComponent<NavMeshSurface>();
+                        if (surface.active && surface.buildOnReady && navMeshSystem->NeedsBuild(*selectedSurface))
+                            (void)m_scene->BuildNavMesh(*selectedSurface);
+                        navMeshSystem->DrawVisualization(m_scene->GetRegistry(), selectedSurface);
+                    }
+                }
+            }
         }
 
         // Pass 1: runtime/game camera (used by Game panel).

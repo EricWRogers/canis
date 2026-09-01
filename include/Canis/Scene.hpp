@@ -88,6 +88,13 @@ namespace Canis
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, RaycastHit &_hit, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
         std::vector<RaycastHit> RaycastAll(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max());
+        bool BuildNavMesh(Entity& _surfaceEntity);
+        void InvalidateNavMesh(Entity& _surfaceEntity);
+        std::vector<Vector3> FindNavMeshPath(
+            Entity& _surfaceEntity,
+            const Vector3& _start,
+            const Vector3& _destination);
+        std::size_t GetNavMeshPointCount(const Entity& _surfaceEntity) const;
         bool TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const;
         bool TryGetMouseRayFromCamera(const Entity &_cameraEntity, Ray &_ray) const;
         void DrawDebugGizmoLine(const Vector3 &_start, const Vector3 &_end, const Color &_color = Color(1.0f));

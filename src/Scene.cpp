@@ -17,6 +17,7 @@
 #include <Canis/ECS/Systems/ModelAnimation3DSystem.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/JoltPhysics3DSystem.hpp>
+#include <Canis/ECS/Systems/NavMeshSystem.hpp>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -162,6 +163,41 @@ namespace Canis
             return physicsSystem->RaycastAll(_origin, _direction, _maxDistance, _mask);
 
         return {};
+    }
+
+    bool Scene::BuildNavMesh(Entity& _surfaceEntity)
+    {
+        if (JoltPhysics3DSystem* physicsSystem = GetSystem<JoltPhysics3DSystem>())
+            physicsSystem->Update(m_registry, 0.0f);
+        if (NavMeshSystem* navMeshSystem = GetSystem<NavMeshSystem>())
+            return navMeshSystem->Build(m_registry, _surfaceEntity);
+        return false;
+    }
+
+    void Scene::InvalidateNavMesh(Entity& _surfaceEntity)
+    {
+        if (NavMeshSystem* navMeshSystem = GetSystem<NavMeshSystem>())
+            navMeshSystem->Invalidate(_surfaceEntity);
+    }
+
+    std::vector<Vector3> Scene::FindNavMeshPath(
+        Entity& _surfaceEntity,
+        const Vector3& _start,
+        const Vector3& _destination)
+    {
+        if (NavMeshSystem* navMeshSystem = GetSystem<NavMeshSystem>())
+            return navMeshSystem->FindPath(m_registry, _surfaceEntity, _start, _destination);
+        return {};
+    }
+
+    std::size_t Scene::GetNavMeshPointCount(const Entity& _surfaceEntity) const
+    {
+        for (System* system : m_systems)
+        {
+            if (const NavMeshSystem* navMeshSystem = dynamic_cast<const NavMeshSystem*>(system))
+                return navMeshSystem->GetPointCount(_surfaceEntity);
+        }
+        return 0u;
     }
 
     bool Scene::TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const
@@ -451,6 +487,7 @@ namespace Canis
         CreateSystem<Canis::ModelAnimation3DSystem>();
         CreateSystem<Canis::SpriteAnimationSystem>();
         CreateSystem<Canis::JoltPhysics3DSystem>();
+        CreateSystem<Canis::NavMeshSystem>();
 
         if (app != nullptr)
         {

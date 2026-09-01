@@ -1172,6 +1172,31 @@ namespace Canis
         std::vector<Entity*> stayed = {};
     };
 
+    struct NavMeshSurface
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::NavMeshSurface";
+
+        NavMeshSurface() = default;
+        explicit NavMeshSurface(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+
+        void Create() {}
+        void MarkDirty() { ++revision; }
+
+        bool active = true;
+        bool buildOnReady = true;
+        bool showDebug = true;
+        bool meshCollidersOnly = true;
+        Vector3 size = Vector3(48.0f, 6.0f, 32.0f);
+        float cellSize = 1.5f;
+        float agentRadius = 0.5f;
+        float agentHeight = 1.8f;
+        float maxFloorDelta = 0.65f;
+        Mask collisionMask = Rigidbody::DefaultMask;
+        u64 revision = 1u;
+    };
+
     struct Terrain
     {
     public:

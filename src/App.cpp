@@ -4116,6 +4116,118 @@ namespace Canis
 
         RegisterScript(convexMeshColliderConf);
 
+        ScriptConf navMeshSurfaceConf = {
+            .name = "Canis::NavMeshSurface",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+                _entity.AddComponent<NavMeshSurface>();
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<NavMeshSurface>(); },
+            .Remove = [this](Entity &_entity) -> void {
+                _entity.scene.InvalidateNavMesh(_entity);
+                _entity.RemoveComponent<NavMeshSurface>();
+            },
+            .Get = [this](Entity &_entity) -> void* {
+                return _entity.HasComponent<NavMeshSurface>()
+                    ? static_cast<void*>(&_entity.GetComponent<NavMeshSurface>())
+                    : nullptr;
+            },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (!_entity.HasComponent<NavMeshSurface>())
+                    return;
+                const NavMeshSurface& surface = _entity.GetComponent<NavMeshSurface>();
+                YAML::Node comp;
+                comp["active"] = surface.active;
+                comp["buildOnReady"] = surface.buildOnReady;
+                comp["showDebug"] = surface.showDebug;
+                comp["meshCollidersOnly"] = surface.meshCollidersOnly;
+                comp["size"] = surface.size;
+                comp["cellSize"] = surface.cellSize;
+                comp["agentRadius"] = surface.agentRadius;
+                comp["agentHeight"] = surface.agentHeight;
+                comp["maxFloorDelta"] = surface.maxFloorDelta;
+                comp["collisionMask"] = surface.collisionMask;
+                _node["Canis::NavMeshSurface"] = comp;
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                const YAML::Node comp = _node["Canis::NavMeshSurface"];
+                if (!comp)
+                    return;
+                NavMeshSurface& surface = *_entity.AddComponent<NavMeshSurface>();
+                surface.active = comp["active"].as<bool>(true);
+                surface.buildOnReady = comp["buildOnReady"].as<bool>(true);
+                surface.showDebug = comp["showDebug"].as<bool>(true);
+                surface.meshCollidersOnly = comp["meshCollidersOnly"].as<bool>(true);
+                surface.size = comp["size"].as<Vector3>(surface.size);
+                surface.cellSize = std::max(0.1f, comp["cellSize"].as<float>(surface.cellSize));
+                surface.agentRadius = std::max(0.0f, comp["agentRadius"].as<float>(surface.agentRadius));
+                surface.agentHeight = std::max(0.1f, comp["agentHeight"].as<float>(surface.agentHeight));
+                surface.maxFloorDelta = std::max(0.05f, comp["maxFloorDelta"].as<float>(surface.maxFloorDelta));
+                surface.collisionMask = comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask);
+                if (_callCreate)
+                    surface.Create();
+            },
+            .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+                if (!_entity.HasComponent<NavMeshSurface>())
+                    return;
+                NavMeshSurface& surface = _entity.GetComponent<NavMeshSurface>();
+
+                const bool previousActive = surface.active;
+                const bool previousBuildOnReady = surface.buildOnReady;
+                const bool previousMeshOnly = surface.meshCollidersOnly;
+                const Vector3 previousSize = surface.size;
+                const float previousCellSize = surface.cellSize;
+                const float previousRadius = surface.agentRadius;
+                const float previousHeight = surface.agentHeight;
+                const float previousFloorDelta = surface.maxFloorDelta;
+                const Mask previousMask = surface.collisionMask;
+
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), surface.active);
+                DrawInspectorField(_editor, "buildOnReady", _conf.name.c_str(), surface.buildOnReady);
+                DrawInspectorField(_editor, "showDebug", _conf.name.c_str(), surface.showDebug);
+                DrawInspectorField(_editor, "meshCollidersOnly", _conf.name.c_str(), surface.meshCollidersOnly);
+                DrawInspectorField(_editor, "size", _conf.name.c_str(), surface.size);
+                DrawInspectorField(_editor, "cellSize", _conf.name.c_str(), surface.cellSize);
+                DrawInspectorField(_editor, "agentRadius", _conf.name.c_str(), surface.agentRadius);
+                DrawInspectorField(_editor, "agentHeight", _conf.name.c_str(), surface.agentHeight);
+                DrawInspectorField(_editor, "maxFloorDelta", _conf.name.c_str(), surface.maxFloorDelta);
+                DrawInspectorField("collisionMask", _conf.name.c_str(), surface.collisionMask);
+
+                surface.size = glm::max(glm::abs(surface.size), Vector3(0.1f));
+                surface.cellSize = std::max(0.1f, surface.cellSize);
+                surface.agentRadius = std::max(0.0f, surface.agentRadius);
+                surface.agentHeight = std::max(0.1f, surface.agentHeight);
+                surface.maxFloorDelta = std::max(0.05f, surface.maxFloorDelta);
+
+                if (previousActive != surface.active ||
+                    previousBuildOnReady != surface.buildOnReady ||
+                    previousMeshOnly != surface.meshCollidersOnly ||
+                    previousSize != surface.size ||
+                    previousCellSize != surface.cellSize ||
+                    previousRadius != surface.agentRadius ||
+                    previousHeight != surface.agentHeight ||
+                    previousFloorDelta != surface.maxFloorDelta ||
+                    previousMask != surface.collisionMask)
+                {
+                    surface.MarkDirty();
+                    _entity.scene.InvalidateNavMesh(_entity);
+                }
+
+                ImGui::PushID("NavMeshSurfaceActions");
+                if (ImGui::Button("Build Nav Mesh"))
+                    (void)_entity.scene.BuildNavMesh(_entity);
+                ImGui::SameLine();
+                ImGui::TextDisabled(
+                    "%zu points",
+                    _entity.scene.GetNavMeshPointCount(_entity));
+                ImGui::PopID();
+            },
+        };
+
+        RegisterScript(navMeshSurfaceConf);
+
         ScriptConf terrainConf = {
             .name = "Canis::Terrain",
             .Construct = nullptr,
