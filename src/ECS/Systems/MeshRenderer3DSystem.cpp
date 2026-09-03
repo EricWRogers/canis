@@ -1417,6 +1417,9 @@ namespace Canis
             i32 specularTextureId = -1;
             i32 roughnessTextureId = -1;
             i32 metallicTextureId = -1;
+            i32 emissionTextureId = -1;
+            Color emissionColor = Color(1.0f);
+            float emissionIntensity = 0.0f;
             float specularValue = 0.5f;
             float roughnessValue = 0.5f;
             float metallicValue = 0.0f;
@@ -1441,7 +1444,11 @@ namespace Canis
                     roughnessTextureId = materialAsset->roughnessId;
                 if (materialAsset->metallicId >= 0)
                     metallicTextureId = materialAsset->metallicId;
+                if (materialAsset->emissionId >= 0)
+                    emissionTextureId = materialAsset->emissionId;
 
+                emissionColor = materialAsset->emissionColor;
+                emissionIntensity = materialAsset->emissionIntensity;
                 specularValue = materialAsset->specularValue;
                 roughnessValue = materialAsset->roughnessValue;
                 metallicValue = materialAsset->metallicValue;
@@ -1487,13 +1494,17 @@ namespace Canis
             currentShader->SetFloat("specularValue", specularValue);
             currentShader->SetFloat("roughnessValue", roughnessValue);
             currentShader->SetFloat("metallicValue", metallicValue);
+            currentShader->SetVec4("emissionColor", emissionColor);
+            currentShader->SetFloat("emissionIntensity", emissionIntensity);
 
             currentShader->SetBool("useSpecularMap", specularTextureId >= 0);
             currentShader->SetBool("useRoughnessMap", roughnessTextureId >= 0);
             currentShader->SetBool("useMetallicMap", metallicTextureId >= 0);
+            currentShader->SetBool("useEmissionMap", emissionTextureId >= 0);
             currentShader->SetInt("specularMap", 1);
             currentShader->SetInt("roughnessMap", 2);
             currentShader->SetInt("metallicMap", 3);
+            currentShader->SetInt("emissionMap", 4);
 
             glActiveTexture(GL_TEXTURE1);
             if (specularTextureId >= 0)
@@ -1525,6 +1536,19 @@ namespace Canis
             if (metallicTextureId >= 0)
             {
                 if (TextureAsset *texture = AssetManager::GetTexture(metallicTextureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            glActiveTexture(GL_TEXTURE4);
+            if (emissionTextureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(emissionTextureId))
                     glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
                 else
                     glBindTexture(GL_TEXTURE_2D, 0);
@@ -1585,6 +1609,9 @@ namespace Canis
             i32 specularTextureId = -1;
             i32 roughnessTextureId = -1;
             i32 metallicTextureId = -1;
+            i32 emissionTextureId = -1;
+            Color emissionColor = Color(1.0f);
+            float emissionIntensity = 0.0f;
             float specularValue = 0.5f;
             float roughnessValue = 0.5f;
             float metallicValue = 0.0f;
@@ -1606,7 +1633,11 @@ namespace Canis
                     roughnessTextureId = materialAsset->roughnessId;
                 if (materialAsset->metallicId >= 0)
                     metallicTextureId = materialAsset->metallicId;
+                if (materialAsset->emissionId >= 0)
+                    emissionTextureId = materialAsset->emissionId;
 
+                emissionColor = materialAsset->emissionColor;
+                emissionIntensity = materialAsset->emissionIntensity;
                 specularValue = materialAsset->specularValue;
                 roughnessValue = materialAsset->roughnessValue;
                 metallicValue = materialAsset->metallicValue;
@@ -1633,13 +1664,17 @@ namespace Canis
             currentShader->SetFloat("specularValue", specularValue);
             currentShader->SetFloat("roughnessValue", roughnessValue);
             currentShader->SetFloat("metallicValue", metallicValue);
+            currentShader->SetVec4("emissionColor", emissionColor);
+            currentShader->SetFloat("emissionIntensity", emissionIntensity);
 
             currentShader->SetBool("useSpecularMap", specularTextureId >= 0);
             currentShader->SetBool("useRoughnessMap", roughnessTextureId >= 0);
             currentShader->SetBool("useMetallicMap", metallicTextureId >= 0);
+            currentShader->SetBool("useEmissionMap", emissionTextureId >= 0);
             currentShader->SetInt("specularMap", 1);
             currentShader->SetInt("roughnessMap", 2);
             currentShader->SetInt("metallicMap", 3);
+            currentShader->SetInt("emissionMap", 4);
 
             glActiveTexture(GL_TEXTURE1);
             if (specularTextureId >= 0)
@@ -1671,6 +1706,19 @@ namespace Canis
             if (metallicTextureId >= 0)
             {
                 if (TextureAsset *texture = AssetManager::GetTexture(metallicTextureId))
+                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
+                else
+                    glBindTexture(GL_TEXTURE_2D, 0);
+            }
+            else
+            {
+                glBindTexture(GL_TEXTURE_2D, 0);
+            }
+
+            glActiveTexture(GL_TEXTURE4);
+            if (emissionTextureId >= 0)
+            {
+                if (TextureAsset *texture = AssetManager::GetTexture(emissionTextureId))
                     glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
                 else
                     glBindTexture(GL_TEXTURE_2D, 0);

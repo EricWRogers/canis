@@ -144,7 +144,8 @@ namespace Canis
             bool IsReservedMaterialKey(const std::string &key)
             {
                 return key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
-                       key == "emission" || key == "color" || key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
+                       key == "emission" || key == "color" || key == "emissionColor" || key == "emissionIntensity" ||
+                       key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
                        key == "backFaceCulling" || key == "frontFaceCulling" || key == "uniforms";
             }
 
@@ -419,6 +420,8 @@ namespace Canis
                     _material.info |= MATERIAL_HAS_COLOR;
                 }
 
+                _material.emissionColor = _root["emissionColor"].as<Color>(Color(1.0f));
+                _material.emissionIntensity = std::max(0.0f, _root["emissionIntensity"].as<float>(0.0f));
                 _material.specularValue = _root["specularValue"].as<float>(0.5f);
                 _material.roughnessValue = _root["roughnessValue"].as<float>(0.5f);
                 _material.metallicValue = _root["metallicValue"].as<float>(0.0f);

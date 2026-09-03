@@ -106,10 +106,10 @@ namespace Canis
         runtime->built = true;
         const std::size_t pointCount = runtime->graph.GetPointCount();
         m_surfaces[_surfaceEntity.GetHandle()] = std::move(runtime);
-        Debug::Log(
+        /*Debug::Log(
             "Nav mesh '%s' built with %zu walkable points.",
             _surfaceEntity.name.c_str(),
-            pointCount);
+            pointCount);*/
         return pointCount > 0u;
     }
 

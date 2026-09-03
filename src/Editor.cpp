@@ -5356,6 +5356,20 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     static_cast<float>(pbr.baseColorFactor[3]));
             }
             root["color"] = color;
+            Color emissionColor(1.0f);
+            float emissionIntensity = 0.0f;
+            if (gltfMaterial.emissiveFactor.size() == 3u)
+            {
+                emissionColor = Color(
+                    static_cast<float>(gltfMaterial.emissiveFactor[0]),
+                    static_cast<float>(gltfMaterial.emissiveFactor[1]),
+                    static_cast<float>(gltfMaterial.emissiveFactor[2]),
+                    1.0f);
+                if (emissionColor.r > 0.0f || emissionColor.g > 0.0f || emissionColor.b > 0.0f)
+                    emissionIntensity = 1.0f;
+            }
+            root["emissionColor"] = emissionColor;
+            root["emissionIntensity"] = emissionIntensity;
             root["specularValue"] = 0.5f;
             root["roughnessValue"] = static_cast<float>(pbr.roughnessFactor);
             root["metallicValue"] = static_cast<float>(pbr.metallicFactor);
@@ -5440,6 +5454,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _material->metallicId = -1;
         _material->emissionId = -1;
         _material->color = Color(1.0f);
+        _material->emissionColor = Color(1.0f);
+        _material->emissionIntensity = 0.0f;
         _material->specularValue = 0.5f;
         _material->roughnessValue = 0.5f;
         _material->metallicValue = 0.0f;
@@ -5522,6 +5538,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             _material->info |= MATERIAL_HAS_COLOR;
         }
 
+        _material->emissionColor = _root["emissionColor"].as<Color>(Color(1.0f));
+        _material->emissionIntensity = std::max(0.0f, _root["emissionIntensity"].as<float>(0.0f));
         _material->specularValue = _root["specularValue"].as<float>(0.5f);
         _material->roughnessValue = _root["roughnessValue"].as<float>(0.5f);
         _material->metallicValue = _root["metallicValue"].as<float>(0.0f);
@@ -7784,7 +7802,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         glGenTextures(1, &m_gameColorTexture);
         glBindTexture(GL_TEXTURE_2D, m_gameColorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, _width, _height, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -7870,7 +7888,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         glGenTextures(1, &m_playColorTexture);
         glBindTexture(GL_TEXTURE_2D, m_playColorTexture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA8, _width, _height, 0, GL_RGBA, GL_UNSIGNED_BYTE, nullptr);
+        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA16F, _width, _height, 0, GL_RGBA, GL_FLOAT, nullptr);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
         glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
@@ -10550,6 +10568,24 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (ImGui::ColorEdit4("color", &color.r))
         {
             root["color"] = color;
+            dirty = true;
+        }
+
+        Color emissionColor = root["emissionColor"].as<Color>(Color(1.0f));
+        if (ImGui::ColorEdit4(
+                "emissionColor",
+                &emissionColor.r,
+                ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR))
+        {
+            root["emissionColor"] = emissionColor;
+            dirty = true;
+        }
+
+        float emissionIntensity = root["emissionIntensity"].as<float>(0.0f);
+        setMaterialNumberFieldWidth();
+        if (ImGui::DragFloat("emissionIntensity", &emissionIntensity, 0.05f, 0.0f, 50.0f))
+        {
+            root["emissionIntensity"] = std::max(0.0f, emissionIntensity);
             dirty = true;
         }
 
@@ -13887,6 +13923,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 std::ofstream out(targetPath.string());
                 out << "color: [1, 1, 1, 1]\n";
+                out << "emissionColor: [1, 1, 1, 1]\n";
+                out << "emissionIntensity: 0\n";
                 out << "backFaceCulling: true\n";
                 out.close();
             }
@@ -14272,12 +14310,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetFloat("specularValue", material->specularValue);
         shader->SetFloat("roughnessValue", material->roughnessValue);
         shader->SetFloat("metallicValue", material->metallicValue);
+        shader->SetVec4("emissionColor", material->emissionColor);
+        shader->SetFloat("emissionIntensity", material->emissionIntensity);
         shader->SetBool("useSpecularMap", material->specularId >= 0);
         shader->SetBool("useRoughnessMap", material->roughnessId >= 0);
         shader->SetBool("useMetallicMap", material->metallicId >= 0);
+        shader->SetBool("useEmissionMap", material->emissionId >= 0);
         shader->SetInt("specularMap", 1);
         shader->SetInt("roughnessMap", 2);
         shader->SetInt("metallicMap", 3);
+        shader->SetInt("emissionMap", 4);
         (void)material->materialFields.Use(*shader, 5);
 
         auto bindMaterialTexture = [](const GLenum _textureUnit, const int _assetId)
@@ -14289,6 +14331,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         bindMaterialTexture(GL_TEXTURE1, material->specularId);
         bindMaterialTexture(GL_TEXTURE2, material->roughnessId);
         bindMaterialTexture(GL_TEXTURE3, material->metallicId);
+        bindMaterialTexture(GL_TEXTURE4, material->emissionId);
         glActiveTexture(GL_TEXTURE0);
 
         const Color baseColor =

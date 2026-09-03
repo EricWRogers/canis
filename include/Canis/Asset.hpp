@@ -461,6 +461,8 @@ namespace Canis
         i32 metallicId = -1;
         i32 emissionId = -1;
         Color color = Color(1.0f);
+        Color emissionColor = Color(1.0f);
+        float emissionIntensity = 0.0f;
         float specularValue = 0.5f;
         float roughnessValue = 0.5f;
         float metallicValue = 0.0f;
