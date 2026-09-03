@@ -283,8 +283,11 @@ namespace Canis
                         continue;
 
                     UpdateMousePosition(eventWindowID, event.motion.x, event.motion.y, screenHeight, gameWindowID);
-                    mouseRel.x = event.motion.xrel;
-                    mouseRel.y = event.motion.yrel;
+                    // SDL may queue several relative-motion events between rendered
+                    // frames. Accumulate all of them so mouse look does not become
+                    // slower when the frame rate drops.
+                    mouseRel.x += event.motion.xrel;
+                    mouseRel.y += event.motion.yrel;
                     
                     m_lastInputDeviceType = (mouseRel != Vector2(0.0f)) ? InputDevice::MOUSE : m_lastInputDeviceType;
                 break;
