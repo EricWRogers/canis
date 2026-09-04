@@ -95,6 +95,13 @@ namespace Canis
             const Vector3& _start,
             const Vector3& _destination);
         std::size_t GetNavMeshPointCount(const Entity& _surfaceEntity) const;
+        bool BuildCloudNav(Entity& _surfaceEntity);
+        void InvalidateCloudNav(Entity& _surfaceEntity);
+        std::vector<Vector3> FindCloudNavPath(
+            Entity& _surfaceEntity,
+            const Vector3& _start,
+            const Vector3& _destination);
+        std::size_t GetCloudNavPointCount(const Entity& _surfaceEntity) const;
         bool TryGetRayFromCamera(const Entity &_cameraEntity, const Vector2 &_screenPosition, Ray &_ray) const;
         bool TryGetMouseRayFromCamera(const Entity &_cameraEntity, Ray &_ray) const;
         void DrawDebugGizmoLine(const Vector3 &_start, const Vector3 &_end, const Color &_color = Color(1.0f));

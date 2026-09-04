@@ -1197,6 +1197,31 @@ namespace Canis
         u64 revision = 1u;
     };
 
+    // A three-dimensional navigation volume for flying agents. Points are
+    // sampled throughout the box and connected when a spherical agent has a
+    // clear path between them.
+    struct CloudNavSurface
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::CloudNavSurface";
+
+        CloudNavSurface() = default;
+        explicit CloudNavSurface(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+
+        void Create() {}
+        void MarkDirty() { ++revision; }
+
+        bool active = true;
+        bool buildOnReady = true;
+        bool showDebug = true;
+        Vector3 size = Vector3(48.0f, 8.0f, 48.0f);
+        float nodeSpacing = 3.0f;
+        float agentRadius = 0.5f;
+        Mask collisionMask = Rigidbody::DefaultMask;
+        u64 revision = 1u;
+    };
+
     struct Terrain
     {
     public:

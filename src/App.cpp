@@ -4228,6 +4228,95 @@ namespace Canis
 
         RegisterScript(navMeshSurfaceConf);
 
+        ScriptConf cloudNavSurfaceConf = {
+            .name = "Canis::CloudNavSurface",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+                _entity.AddComponent<CloudNavSurface>();
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<CloudNavSurface>(); },
+            .Remove = [this](Entity &_entity) -> void {
+                _entity.scene.InvalidateCloudNav(_entity);
+                _entity.RemoveComponent<CloudNavSurface>();
+            },
+            .Get = [this](Entity &_entity) -> void* {
+                return _entity.HasComponent<CloudNavSurface>()
+                    ? static_cast<void*>(&_entity.GetComponent<CloudNavSurface>())
+                    : nullptr;
+            },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (!_entity.HasComponent<CloudNavSurface>())
+                    return;
+                const CloudNavSurface& surface = _entity.GetComponent<CloudNavSurface>();
+                YAML::Node comp;
+                comp["active"] = surface.active;
+                comp["buildOnReady"] = surface.buildOnReady;
+                comp["showDebug"] = surface.showDebug;
+                comp["size"] = surface.size;
+                comp["nodeSpacing"] = surface.nodeSpacing;
+                comp["agentRadius"] = surface.agentRadius;
+                comp["collisionMask"] = surface.collisionMask;
+                _node["Canis::CloudNavSurface"] = comp;
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                const YAML::Node comp = _node["Canis::CloudNavSurface"];
+                if (!comp)
+                    return;
+                CloudNavSurface& surface = *_entity.AddComponent<CloudNavSurface>();
+                surface.active = comp["active"].as<bool>(true);
+                surface.buildOnReady = comp["buildOnReady"].as<bool>(true);
+                surface.showDebug = comp["showDebug"].as<bool>(true);
+                surface.size = comp["size"].as<Vector3>(surface.size);
+                surface.nodeSpacing = std::max(0.25f, comp["nodeSpacing"].as<float>(surface.nodeSpacing));
+                surface.agentRadius = std::max(0.0f, comp["agentRadius"].as<float>(surface.agentRadius));
+                surface.collisionMask = comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask);
+                if (_callCreate)
+                    surface.Create();
+            },
+            .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+                if (!_entity.HasComponent<CloudNavSurface>())
+                    return;
+                CloudNavSurface& surface = _entity.GetComponent<CloudNavSurface>();
+
+                const bool previousActive = surface.active;
+                const bool previousBuild = surface.buildOnReady;
+                const Vector3 previousSize = surface.size;
+                const float previousSpacing = surface.nodeSpacing;
+                const float previousRadius = surface.agentRadius;
+                const Mask previousMask = surface.collisionMask;
+
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), surface.active);
+                DrawInspectorField(_editor, "buildOnReady", _conf.name.c_str(), surface.buildOnReady);
+                DrawInspectorField(_editor, "showDebug", _conf.name.c_str(), surface.showDebug);
+                DrawInspectorField(_editor, "size", _conf.name.c_str(), surface.size);
+                DrawInspectorField(_editor, "nodeSpacing", _conf.name.c_str(), surface.nodeSpacing);
+                DrawInspectorField(_editor, "agentRadius", _conf.name.c_str(), surface.agentRadius);
+                DrawInspectorField("collisionMask", _conf.name.c_str(), surface.collisionMask);
+
+                surface.size = glm::max(glm::abs(surface.size), Vector3(0.25f));
+                surface.nodeSpacing = std::max(0.25f, surface.nodeSpacing);
+                surface.agentRadius = std::max(0.0f, surface.agentRadius);
+                if (previousActive != surface.active || previousBuild != surface.buildOnReady ||
+                    previousSize != surface.size || previousSpacing != surface.nodeSpacing ||
+                    previousRadius != surface.agentRadius || previousMask != surface.collisionMask)
+                {
+                    surface.MarkDirty();
+                    _entity.scene.InvalidateCloudNav(_entity);
+                }
+
+                ImGui::PushID("CloudNavSurfaceActions");
+                if (ImGui::Button("Build Cloud Nav"))
+                    (void)_entity.scene.BuildCloudNav(_entity);
+                ImGui::SameLine();
+                ImGui::TextDisabled("%zu points", _entity.scene.GetCloudNavPointCount(_entity));
+                ImGui::PopID();
+            },
+        };
+
+        RegisterScript(cloudNavSurfaceConf);
+
         ScriptConf terrainConf = {
             .name = "Canis::Terrain",
             .Construct = nullptr,
@@ -5055,7 +5144,6 @@ namespace Canis
                         comp["static"] = model.staticModel;
                     if (!model.castShadow)
                         comp["castShadow"] = model.castShadow;
-
                     if (model.modelId > -1)
                     {
                         if (ModelAsset* modelAsset = AssetManager::GetModel(model.modelId))
@@ -5084,7 +5172,6 @@ namespace Canis
                     model.applyNodeTransform = comp["applyNodeTransform"].as<bool>(true);
                     model.staticModel = comp["static"].as<bool>(false);
                     model.castShadow = comp["castShadow"].as<bool>(true);
-
                     std::string path = "";
                     if (auto modelAsset = comp["ModelAsset"])
                     {
@@ -5138,7 +5225,6 @@ namespace Canis
                     DrawInspectorColorField("color", _conf.name.c_str(), model->color);
                     DrawInspectorField(_editor, "static", _conf.name.c_str(), model->staticModel);
                     DrawInspectorField(_editor, "castShadow", _conf.name.c_str(), model->castShadow);
-
                     std::string modelLabel = "[ empty ]";
                     ModelAsset* modelAsset = nullptr;
                     if (model->modelId > -1)

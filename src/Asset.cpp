@@ -1985,6 +1985,19 @@ namespace Canis
                 outputPrimitive.nodeIndex = static_cast<i32>(nodeIndex);
                 outputPrimitive.skinIndex = node.skin;
                 outputPrimitive.materialSlot = getMaterialSlot(primitive.material);
+                if (primitive.material >= 0 && primitive.material < static_cast<int>(gltfModel.materials.size()))
+                {
+                    const std::vector<double>& factor =
+                        gltfModel.materials[primitive.material].pbrMetallicRoughness.baseColorFactor;
+                    if (factor.size() >= 4u)
+                    {
+                        outputPrimitive.baseColor = Color(
+                            static_cast<float>(factor[0]),
+                            static_cast<float>(factor[1]),
+                            static_cast<float>(factor[2]),
+                            static_cast<float>(factor[3]));
+                    }
+                }
 
                 const size_t vertexCount = positionAccessor.count;
                 outputPrimitive.bindVertices.resize(vertexCount);
@@ -2027,6 +2040,28 @@ namespace Canis
                             outputPrimitive.bindVertices[v].uv = Vector2(
                                 uvs[v * 2u + 0u],
                                 uvs[v * 2u + 1u]);
+                        }
+                    }
+                }
+
+                auto colorIt = primitive.attributes.find("COLOR_0");
+                if (colorIt != primitive.attributes.end() && colorIt->second >= 0 && colorIt->second < (int)gltfModel.accessors.size())
+                {
+                    const tinygltf::Accessor &colorAccessor = gltfModel.accessors[colorIt->second];
+                    std::vector<float> colors;
+                    const int colorComponents = tinygltf::GetNumComponentsInType(colorAccessor.type);
+                    if (ReadAccessorFloats(gltfModel, colorAccessor, colors) &&
+                        colorAccessor.count == vertexCount && colorComponents >= 3)
+                    {
+                        for (size_t v = 0; v < vertexCount; ++v)
+                        {
+                            outputPrimitive.bindVertices[v].color = Color(
+                                colors[v * static_cast<size_t>(colorComponents) + 0u],
+                                colors[v * static_cast<size_t>(colorComponents) + 1u],
+                                colors[v * static_cast<size_t>(colorComponents) + 2u],
+                                colorComponents >= 4
+                                    ? colors[v * static_cast<size_t>(colorComponents) + 3u]
+                                    : 1.0f);
                         }
                     }
                 }
@@ -2136,6 +2171,7 @@ namespace Canis
             primitive.skinIndex = buildPrimitive.skinIndex;
             primitive.materialSlot = buildPrimitive.materialSlot;
             primitive.textureId = buildPrimitive.textureId;
+            primitive.baseColor = buildPrimitive.baseColor;
             primitive.hasSkinning = !primitive.skinVertices.empty() &&
                 primitive.skinVertices.size() == primitive.bindVertices.size();
             primitive.dynamicVertices = buildPrimitive.dynamicVertices || primitive.hasSkinning;
@@ -2214,6 +2250,10 @@ namespace Canis
 
         glEnableVertexAttribArray(2);
         glVertexAttribPointer(2, 2, GL_FLOAT, GL_FALSE, sizeof(RenderVertex3D), (void*)offsetof(RenderVertex3D, uv));
+
+        // Locations 3-6 are reserved for the instanced model matrix.
+        glEnableVertexAttribArray(7);
+        glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(RenderVertex3D), (void*)offsetof(RenderVertex3D, color));
 
         glBindVertexArray(0);
         return true;
@@ -2504,7 +2544,8 @@ namespace Canis
         const Color &_baseColor,
         const std::vector<MaterialAsset*> *_slotMaterialOverrides,
         i32 _nodeIndex,
-        bool _applyNodeTransform)
+        bool _applyNodeTransform,
+        const MaterialAsset *_baseMaterial)
     {
         const Pose3D *pose = (_pose == nullptr) ? &m_sharedPose : _pose;
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
@@ -2514,7 +2555,6 @@ namespace Canis
             Primitive3D &primitive = m_primitives[primitiveIndex];
             if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
                 continue;
-
             Matrix4 model = _modelMatrix;
             const bool hasSkinnedPose =
                 primitive.hasSkinning &&
@@ -2543,10 +2583,64 @@ namespace Canis
                 slotMaterial = (*_slotMaterialOverrides)[primitive.materialSlot];
             }
 
-            Color drawColor = _baseColor;
+            // Material slots are also PBR slots, not only albedo overrides.
+            // Apply their surface/emission values per primitive so a single
+            // imported model can mix metal armor and emissive details.
+            if (_slotMaterialOverrides != nullptr)
+            {
+                const MaterialAsset *primitiveMaterial =
+                    slotMaterial != nullptr ? slotMaterial : _baseMaterial;
+                const float specular = primitiveMaterial != nullptr
+                    ? primitiveMaterial->specularValue : 0.5f;
+                const float roughness = primitiveMaterial != nullptr
+                    ? primitiveMaterial->roughnessValue : 0.5f;
+                const float metallic = primitiveMaterial != nullptr
+                    ? primitiveMaterial->metallicValue : 0.0f;
+                const Color emissionColor = primitiveMaterial != nullptr
+                    ? primitiveMaterial->emissionColor : Color(1.0f);
+                const float emissionIntensity = primitiveMaterial != nullptr
+                    ? primitiveMaterial->emissionIntensity : 0.0f;
+
+                _shader.SetFloat("specularValue", specular);
+                _shader.SetFloat("roughnessValue", roughness);
+                _shader.SetFloat("metallicValue", metallic);
+                _shader.SetVec4("emissionColor", emissionColor);
+                _shader.SetFloat("emissionIntensity", emissionIntensity);
+
+                const i32 specularId = primitiveMaterial != nullptr
+                    ? primitiveMaterial->specularId : -1;
+                const i32 roughnessId = primitiveMaterial != nullptr
+                    ? primitiveMaterial->roughnessId : -1;
+                const i32 metallicId = primitiveMaterial != nullptr
+                    ? primitiveMaterial->metallicId : -1;
+                const i32 emissionId = primitiveMaterial != nullptr
+                    ? primitiveMaterial->emissionId : -1;
+                const i32 textureIds[] = {
+                    specularId, roughnessId, metallicId, emissionId
+                };
+                const char *useMapUniforms[] = {
+                    "useSpecularMap", "useRoughnessMap",
+                    "useMetallicMap", "useEmissionMap"
+                };
+                for (int mapIndex = 0; mapIndex < 4; ++mapIndex)
+                {
+                    _shader.SetBool(useMapUniforms[mapIndex], textureIds[mapIndex] >= 0);
+                    glActiveTexture(GL_TEXTURE1 + mapIndex);
+                    TextureAsset *texture = textureIds[mapIndex] >= 0
+                        ? AssetManager::GetTexture(textureIds[mapIndex]) : nullptr;
+                    glBindTexture(GL_TEXTURE_2D, texture != nullptr
+                        ? texture->GetGLTexture().id : 0);
+                }
+                glActiveTexture(GL_TEXTURE0);
+            }
+
+            Color drawColor = _baseColor * primitive.baseColor;
             i32 textureId = primitive.textureId;
             if (slotMaterial != nullptr)
             {
+                // An explicit material slot override replaces the imported
+                // glTF base-color factor for that primitive.
+                drawColor = _baseColor;
                 if ((slotMaterial->info & MATERIAL_HAS_COLOR) != 0u)
                     drawColor *= slotMaterial->color;
 
@@ -2639,7 +2733,7 @@ namespace Canis
             _shader.SetBool("useInstanceMatrix", true);
             _shader.SetBool("useAlbedoMap", textureId >= 0);
             _shader.SetInt("albedoMap", 0);
-            _shader.SetVec4("albedoValue", _baseColor);
+            _shader.SetVec4("albedoValue", _baseColor * primitive.baseColor);
 
             glActiveTexture(GL_TEXTURE0);
             if (textureId >= 0)

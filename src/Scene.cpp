@@ -18,6 +18,7 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/JoltPhysics3DSystem.hpp>
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
+#include <Canis/ECS/Systems/CloudNavSystem.hpp>
 #include <algorithm>
 #include <cctype>
 #include <filesystem>
@@ -196,6 +197,41 @@ namespace Canis
         {
             if (const NavMeshSystem* navMeshSystem = dynamic_cast<const NavMeshSystem*>(system))
                 return navMeshSystem->GetPointCount(_surfaceEntity);
+        }
+        return 0u;
+    }
+
+    bool Scene::BuildCloudNav(Entity& _surfaceEntity)
+    {
+        if (JoltPhysics3DSystem* physicsSystem = GetSystem<JoltPhysics3DSystem>())
+            physicsSystem->Update(m_registry, 0.0f);
+        if (CloudNavSystem* cloudNavSystem = GetSystem<CloudNavSystem>())
+            return cloudNavSystem->Build(m_registry, _surfaceEntity);
+        return false;
+    }
+
+    void Scene::InvalidateCloudNav(Entity& _surfaceEntity)
+    {
+        if (CloudNavSystem* cloudNavSystem = GetSystem<CloudNavSystem>())
+            cloudNavSystem->Invalidate(_surfaceEntity);
+    }
+
+    std::vector<Vector3> Scene::FindCloudNavPath(
+        Entity& _surfaceEntity,
+        const Vector3& _start,
+        const Vector3& _destination)
+    {
+        if (CloudNavSystem* cloudNavSystem = GetSystem<CloudNavSystem>())
+            return cloudNavSystem->FindPath(m_registry, _surfaceEntity, _start, _destination);
+        return {};
+    }
+
+    std::size_t Scene::GetCloudNavPointCount(const Entity& _surfaceEntity) const
+    {
+        for (System* system : m_systems)
+        {
+            if (const CloudNavSystem* cloudNavSystem = dynamic_cast<const CloudNavSystem*>(system))
+                return cloudNavSystem->GetPointCount(_surfaceEntity);
         }
         return 0u;
     }
@@ -488,6 +524,7 @@ namespace Canis
         CreateSystem<Canis::SpriteAnimationSystem>();
         CreateSystem<Canis::JoltPhysics3DSystem>();
         CreateSystem<Canis::NavMeshSystem>();
+        CreateSystem<Canis::CloudNavSystem>();
 
         if (app != nullptr)
         {

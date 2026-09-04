@@ -477,6 +477,7 @@ namespace Canis
             Vector3 position = Vector3(0.0f);
             Vector3 normal = Vector3(0.0f, 1.0f, 0.0f);
             Vector2 uv = Vector2(0.0f);
+            Color color = Color(1.0f);
         };
 
         struct SkinVertex3D
@@ -494,6 +495,7 @@ namespace Canis
             i32 skinIndex = -1;
             i32 materialSlot = -1;
             i32 textureId = -1;
+            Color baseColor = Color(1.0f);
             bool dynamicVertices = false;
         };
 
@@ -511,6 +513,7 @@ namespace Canis
             i32 skinIndex = -1;
             i32 materialSlot = -1;
             i32 textureId = -1;
+            Color baseColor = Color(1.0f);
             bool hasSkinning = false;
             bool dynamicVertices = false;
         };
@@ -606,7 +609,8 @@ namespace Canis
             const Color &_baseColor = Color(1.0f),
             const std::vector<MaterialAsset*> *_slotMaterialOverrides = nullptr,
             i32 _nodeIndex = -1,
-            bool _applyNodeTransform = true);
+            bool _applyNodeTransform = true,
+            const MaterialAsset *_baseMaterial = nullptr);
         void DrawInstanced(
             Shader &_shader,
             const std::vector<Matrix4> &_modelMatrices,

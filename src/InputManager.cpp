@@ -37,6 +37,14 @@ namespace Canis
                     return 0u;
             }
         }
+
+        bool IsMouseInputEvent(const SDL_Event& _event)
+        {
+            return _event.type == SDL_EVENT_MOUSE_MOTION ||
+                   _event.type == SDL_EVENT_MOUSE_WHEEL ||
+                   _event.type == SDL_EVENT_MOUSE_BUTTON_DOWN ||
+                   _event.type == SDL_EVENT_MOUSE_BUTTON_UP;
+        }
     } // namespace
 
     InputManager::InputManager()
@@ -223,7 +231,16 @@ namespace Canis
             bool imguiWantsKeyboard = false;
             if (Canis::IsEditorRuntimeEnabled())
             {
-                ImGui_ImplSDL3_ProcessEvent(&event);
+                // Relative mouse capture belongs exclusively to the running
+                // game. Do not let its invisible pointer move, scroll, or
+                // press editor widgets behind the Game panel. Button-up is
+                // still forwarded so the backend cannot retain a stale press
+                // that began before capture was enabled.
+                const bool gameplayOwnsMouse = window->IsMouseLocked();
+                const bool releaseEvent =
+                    event.type == SDL_EVENT_MOUSE_BUTTON_UP;
+                if (!gameplayOwnsMouse || !IsMouseInputEvent(event) || releaseEvent)
+                    ImGui_ImplSDL3_ProcessEvent(&event);
                 ImGuiIO& io = ImGui::GetIO();
                 imguiWantsMouse = io.WantCaptureMouse;
                 imguiWantsKeyboard = io.WantCaptureKeyboard;

@@ -1585,7 +1585,8 @@ namespace Canis
                 baseColor,
                 slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides,
                 modelRenderer.nodeIndex,
-                modelRenderer.applyNodeTransform);
+                modelRenderer.applyNodeTransform,
+                materialAsset);
         };
 
         auto drawStaticBatch = [&](const StaticModelBatch &_batch) -> void

@@ -22,6 +22,7 @@
 #include <Canis/Terrain.hpp>
 #include <Canis/VFX/Particles.hpp>
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
+#include <Canis/ECS/Systems/CloudNavSystem.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_dialog.h>
@@ -6005,17 +6006,32 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (m_index >= 0 && m_index < static_cast<int>(entities.size()))
                 {
                     Entity* selected = entities[m_index];
-                    if (selected != nullptr && selected->HasComponent<NavMeshSurface>())
+                    if (selected != nullptr &&
+                        (selected->HasComponent<NavMeshSurface>() ||
+                         selected->HasComponent<CloudNavSurface>()))
                         selectedSurface = selected;
                 }
                 if (selectedSurface != nullptr)
                 {
                     if (NavMeshSystem* navMeshSystem = m_scene->GetSystem<NavMeshSystem>())
                     {
-                        const NavMeshSurface& surface = selectedSurface->GetComponent<NavMeshSurface>();
-                        if (surface.active && surface.buildOnReady && navMeshSystem->NeedsBuild(*selectedSurface))
-                            (void)m_scene->BuildNavMesh(*selectedSurface);
-                        navMeshSystem->DrawVisualization(m_scene->GetRegistry(), selectedSurface);
+                        if (selectedSurface->HasComponent<NavMeshSurface>())
+                        {
+                            const NavMeshSurface& surface = selectedSurface->GetComponent<NavMeshSurface>();
+                            if (surface.active && surface.buildOnReady && navMeshSystem->NeedsBuild(*selectedSurface))
+                                (void)m_scene->BuildNavMesh(*selectedSurface);
+                            navMeshSystem->DrawVisualization(m_scene->GetRegistry(), selectedSurface);
+                        }
+                    }
+                    if (CloudNavSystem* cloudNavSystem = m_scene->GetSystem<CloudNavSystem>())
+                    {
+                        if (selectedSurface->HasComponent<CloudNavSurface>())
+                        {
+                            const CloudNavSurface& surface = selectedSurface->GetComponent<CloudNavSurface>();
+                            if (surface.active && surface.buildOnReady && cloudNavSystem->NeedsBuild(*selectedSurface))
+                                (void)m_scene->BuildCloudNav(*selectedSurface);
+                            cloudNavSystem->DrawVisualization(m_scene->GetRegistry(), selectedSurface);
+                        }
                     }
                 }
             }
@@ -6058,28 +6074,36 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        // Gameplay owns the keyboard while relative mouse capture is active.
-        // In particular, arrow-key turret controls must not also navigate
-        // editor widgets behind the Game panel.
+        // Gameplay owns editor input while relative mouse capture is active.
+        // This prevents keyboard navigation and the invisible relative-mode
+        // pointer from activating widgets behind the Game panel.
         ImGuiIO& captureIo = ImGui::GetIO();
-        const bool gameplayOwnsKeyboard =
+        const bool gameplayOwnsEditorInput =
             m_mode == EditorMode::PLAY &&
             m_showGamePanel &&
             m_window != nullptr &&
             m_window->IsMouseLocked();
-        if (gameplayOwnsKeyboard)
+        if (gameplayOwnsEditorInput)
         {
             captureIo.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
+            captureIo.ConfigFlags |= ImGuiConfigFlags_NoMouse;
             captureIo.ClearInputKeys();
+            captureIo.ClearInputMouse();
         }
         else
         {
             captureIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
+            captureIo.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
         }
 
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
+        if (gameplayOwnsEditorInput)
+        {
+            captureIo.ClearInputMouse();
+            captureIo.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
+        }
         ImGui::NewFrame();
         DrawMainDockspace();
 
