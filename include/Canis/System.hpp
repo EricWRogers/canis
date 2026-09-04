@@ -28,6 +28,9 @@ namespace Canis
         virtual void OnDestroy() {}
         virtual bool UpdateWhenPaused() const { return false; }
         virtual bool UpdateAfterScripts() const { return false; }
+        // Opt in when a system must evaluate authoring-time state such as
+        // animation poses, bone sockets, or editor-only previews.
+        virtual bool UpdateInEditor() const { return false; }
 
         bool IsCreated() { return m_isCreated; }
         std::string GetName() { return m_name; }

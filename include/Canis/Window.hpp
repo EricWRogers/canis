@@ -5,6 +5,19 @@
 
 namespace Canis
 {
+    enum class NativeWindowMode
+    {
+        WINDOWED,
+        BORDERLESS,
+        FULLSCREEN,
+    };
+
+    struct WindowOptions
+    {
+        NativeWindowMode mode = NativeWindowMode::WINDOWED;
+        bool resizable = true;
+        bool startMaximized = false;
+    };
 
     class Window
     {
@@ -16,7 +29,12 @@ namespace Canis
             ADAPTIVE = -1
         } Sync;
 
-        Window(const char *title, int width, int height, bool _offscreen = false);
+        Window(
+            const char *title,
+            int width,
+            int height,
+            bool _offscreen = false,
+            WindowOptions _options = {});
         ~Window();
 
         // Gameplay/render surface size (current game view target).
@@ -29,6 +47,8 @@ namespace Canis
 
         bool IsMouseLocked() { return m_mouseLock; }
         void LockMouse(bool _lock);
+        void SetMouseLockRegion(void* _sdlWindow, int _x, int _y, int _width, int _height);
+        void RefreshMouseLock();
         void CenterMouse();
         void SetMousePosition(int _x, int _y);
         void RequestClose() { m_shouldClose = true; }
@@ -69,6 +89,12 @@ namespace Canis
         int m_renderHeight = 0;
 
         bool m_mouseLock = false;
+        void* m_mouseLockWindow = nullptr;
+        bool m_hasMouseLockRegion = false;
+        int m_mouseLockRegionX = 0;
+        int m_mouseLockRegionY = 0;
+        int m_mouseLockRegionWidth = 0;
+        int m_mouseLockRegionHeight = 0;
         bool m_offscreen = false;
 
         void InitGL();

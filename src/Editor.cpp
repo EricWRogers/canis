@@ -6087,6 +6087,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             captureIo.ConfigFlags &= ~ImGuiConfigFlags_NavEnableKeyboard;
             captureIo.ConfigFlags |= ImGuiConfigFlags_NoMouse;
+            captureIo.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
             captureIo.ClearInputKeys();
             captureIo.ClearInputMouse();
         }
@@ -6094,6 +6095,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             captureIo.ConfigFlags |= ImGuiConfigFlags_NavEnableKeyboard;
             captureIo.ConfigFlags &= ~ImGuiConfigFlags_NoMouse;
+            captureIo.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
         }
 
         // Start the Dear ImGui frame
@@ -6443,6 +6445,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         m_playMouseCaptured = true;
+        m_window->RefreshMouseLock();
     }
 
     void Editor::ResetVertexSnapDrag()
@@ -7571,6 +7574,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         m_playViewportDrawHeight,
                         logicalWidth,
                         logicalHeight);
+
+                    if (m_window != nullptr && m_window->IsMouseLocked())
+                    {
+                        SDL_Window* playWindow = SDL_GetWindowFromID(m_gameInputWindowID);
+                        m_window->SetMouseLockRegion(
+                            playWindow,
+                            static_cast<int>(std::floor(localViewportPosX)),
+                            static_cast<int>(std::floor(localViewportPosY)),
+                            static_cast<int>(std::ceil(m_playViewportDrawWidth)),
+                            static_cast<int>(std::ceil(m_playViewportDrawHeight)));
+                    }
                 }
             }
             else
@@ -7689,45 +7703,46 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ResetVertexSnapDrag();
                 }
 
-                if (transform3D->parent != nullptr)
+                // Convert the manipulated world matrix back through both the
+                // ordinary parent and any runtime local-space prefix (for
+                // example an animated bone pose). The Transform fields remain
+                // the editable local offset, so the normal gizmo works for a
+                // bone-attached entity just like it does for any other child.
+                Matrix4 localSpace(1.0f);
+                if (transform3D->parent != nullptr &&
+                    transform3D->parent->HasComponent<Transform>())
                 {
-                    if (transform3D->parent->HasComponent<Transform>())
-                    {
-                        Transform& parentTransform = transform3D->parent->GetComponent<Transform>();
-                        const Vector3 parentWorldPosition = parentTransform.GetGlobalPosition();
-                        const Quaternion parentWorldRotation = parentTransform.GetGlobalRotation();
-                        const Vector3 parentWorldScale = parentTransform.GetGlobalScale();
-
-                        const Vector3 parentSpacePosition = worldPosition - parentWorldPosition;
-                        const Matrix4 inverseParentRotation = glm::mat4_cast(glm::inverse(parentWorldRotation));
-                        const Vector4 localPosition4 = inverseParentRotation * Vector4(
-                            parentSpacePosition.x,
-                            parentSpacePosition.y,
-                            parentSpacePosition.z,
-                            0.0f);
-
-                        transform3D->position.x = (parentWorldScale.x != 0.0f) ? (localPosition4.x / parentWorldScale.x) : localPosition4.x;
-                        transform3D->position.y = (parentWorldScale.y != 0.0f) ? (localPosition4.y / parentWorldScale.y) : localPosition4.y;
-                        transform3D->position.z = (parentWorldScale.z != 0.0f) ? (localPosition4.z / parentWorldScale.z) : localPosition4.z;
-
-                        transform3D->rotation = glm::normalize(glm::inverse(parentWorldRotation) * Quaternion(worldRotation));
-                        transform3D->scale.x = (parentWorldScale.x != 0.0f) ? (worldScale.x / parentWorldScale.x) : worldScale.x;
-                        transform3D->scale.y = (parentWorldScale.y != 0.0f) ? (worldScale.y / parentWorldScale.y) : worldScale.y;
-                        transform3D->scale.z = (parentWorldScale.z != 0.0f) ? (worldScale.z / parentWorldScale.z) : worldScale.z;
-                    }
-                    else
-                    {
-                        transform3D->position = worldPosition;
-                        transform3D->rotation = glm::normalize(Quaternion(worldRotation));
-                        transform3D->scale = worldScale;
-                    }
+                    localSpace = transform3D->parent
+                        ->GetComponent<Transform>()
+                        .GetModelMatrix();
                 }
-                else
-                {
-                    transform3D->position = worldPosition;
-                    transform3D->rotation = glm::normalize(Quaternion(worldRotation));
-                    transform3D->scale = worldScale;
-                }
+                if (transform3D->useLocalMatrixPrefix)
+                    localSpace *= transform3D->localMatrixPrefix;
+
+                const Matrix4 manipulatedWorld = ComposeTransformMatrix(
+                    worldPosition,
+                    worldRotation,
+                    worldScale);
+                const Matrix4 localModel = glm::inverse(localSpace) * manipulatedWorld;
+                float localTranslation[3], localRotation[3], localScale[3];
+                ImGuizmo::DecomposeMatrixToComponents(
+                    glm::value_ptr(localModel),
+                    localTranslation,
+                    localRotation,
+                    localScale);
+
+                transform3D->position = Vector3(
+                    localTranslation[0],
+                    localTranslation[1],
+                    localTranslation[2]);
+                transform3D->rotation = glm::normalize(Quaternion(Vector3(
+                    DEG2RAD * localRotation[0],
+                    DEG2RAD * localRotation[1],
+                    DEG2RAD * localRotation[2])));
+                transform3D->scale = Vector3(
+                    localScale[0],
+                    localScale[1],
+                    localScale[2]);
             }
             else
             {
@@ -16146,6 +16161,42 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::GetProjectConfig().targetGameHeight = std::max(1, targetGameHeight);
             Canis::SaveProjectConfig();
         }
+
+        static const char* windowModeLabels[] = {
+            "Windowed",
+            "Borderless",
+            "Fullscreen"
+        };
+        int windowMode = std::clamp(
+            Canis::GetProjectConfig().windowMode,
+            static_cast<int>(PROJECT_WINDOW_WINDOWED),
+            static_cast<int>(PROJECT_WINDOW_FULLSCREEN));
+        ImGui::Text("window mode");
+        ImGui::SameLine();
+        if (ImGui::Combo("##windowMode", &windowMode, windowModeLabels, IM_ARRAYSIZE(windowModeLabels)))
+        {
+            Canis::GetProjectConfig().windowMode = windowMode;
+            Canis::SaveProjectConfig();
+        }
+
+        bool windowResizable = Canis::GetProjectConfig().windowResizable;
+        ImGui::Text("resizable");
+        ImGui::SameLine();
+        if (ImGui::Checkbox("##windowResizable", &windowResizable))
+        {
+            Canis::GetProjectConfig().windowResizable = windowResizable;
+            Canis::SaveProjectConfig();
+        }
+
+        bool windowStartMaximized = Canis::GetProjectConfig().windowStartMaximized;
+        ImGui::Text("start maximized");
+        ImGui::SameLine();
+        if (ImGui::Checkbox("##windowStartMaximized", &windowStartMaximized))
+        {
+            Canis::GetProjectConfig().windowStartMaximized = windowStartMaximized;
+            Canis::SaveProjectConfig();
+        }
+        ImGui::TextDisabled("These window settings are applied only outside the editor.");
 
         // display sync mode
         static const char* syncLabels[] = { "VSync On", "Sync Off", "Adaptive Sync" };

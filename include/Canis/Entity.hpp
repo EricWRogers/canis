@@ -669,6 +669,24 @@ namespace Canis
         Entity* parent = nullptr;
         std::vector<Entity*> children = {};
 
+        // Optional runtime-authored space inserted between the parent and this
+        // transform's local TRS. Bone attachments use this for the animated
+        // bone pose while leaving position/rotation/scale editable as offsets.
+        Matrix4 localMatrixPrefix = Matrix4(1.0f);
+        bool useLocalMatrixPrefix = false;
+
+        void SetLocalMatrixPrefix(const Matrix4& _matrix)
+        {
+            localMatrixPrefix = _matrix;
+            useLocalMatrixPrefix = true;
+        }
+
+        void ClearLocalMatrixPrefix()
+        {
+            localMatrixPrefix = Matrix4(1.0f);
+            useLocalMatrixPrefix = false;
+        }
+
         void Rotate(const Vector3 &_eulerRadians)
         {
             Canis::Rotate(*this, _eulerRadians);
@@ -685,7 +703,7 @@ namespace Canis
             matrix = glm::translate(matrix, position);
             matrix *= glm::mat4_cast(glm::normalize(rotation));
             matrix = glm::scale(matrix, scale);
-            return matrix;
+            return useLocalMatrixPrefix ? localMatrixPrefix * matrix : matrix;
         }
 
         Matrix4 GetModelMatrix() const
@@ -713,34 +731,26 @@ namespace Canis
 
         Quaternion GetGlobalRotation() const
         {
-            if (parent != nullptr)
+            const Matrix4 model = GetModelMatrix();
+            glm::mat3 rotationMatrix(model);
+            for (int column = 0; column < 3; ++column)
             {
-                if (parent->HasComponent<Transform>())
-                {
-                    const Transform& parentTransform = parent->GetComponent<Transform>();
-                    return glm::normalize(parentTransform.GetGlobalRotation() * rotation);
-                }
+                const float length = glm::length(Vector3(rotationMatrix[column]));
+                if (length > 0.000001f)
+                    rotationMatrix[column] /= length;
             }
-
-            return rotation;
+            if (glm::determinant(rotationMatrix) < 0.0f)
+                rotationMatrix[0] = -rotationMatrix[0];
+            return glm::normalize(glm::quat_cast(rotationMatrix));
         }
 
         Vector3 GetGlobalScale() const
         {
-            if (parent != nullptr)
-            {
-                if (parent->HasComponent<Transform>())
-                {
-                    const Transform& parentTransform = parent->GetComponent<Transform>();
-                    const Vector3 parentScale = parentTransform.GetGlobalScale();
-                    return Vector3(
-                        parentScale.x * scale.x,
-                        parentScale.y * scale.y,
-                        parentScale.z * scale.z);
-                }
-            }
-
-            return scale;
+            const Matrix4 model = GetModelMatrix();
+            return Vector3(
+                glm::length(Vector3(model[0])),
+                glm::length(Vector3(model[1])),
+                glm::length(Vector3(model[2])));
         }
 
         Vector3 GetForward() const

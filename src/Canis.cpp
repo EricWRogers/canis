@@ -32,6 +32,18 @@ namespace Canis
             return PROJECT_SYNC_OFF;
         }
 
+        int NormalizeProjectWindowMode(int _value)
+        {
+            if (_value == PROJECT_WINDOW_WINDOWED ||
+                _value == PROJECT_WINDOW_BORDERLESS ||
+                _value == PROJECT_WINDOW_FULLSCREEN)
+            {
+                return _value;
+            }
+
+            return PROJECT_WINDOW_WINDOWED;
+        }
+
         int NormalizeEditorThemeMode(int _value)
         {
             if (_value == EDITOR_THEME_DARK || _value == EDITOR_THEME_LIGHT)
@@ -288,6 +300,9 @@ namespace Canis
         node["editorWindowHeight"] = projectConfig.editorWindowHeight;
         node["targetGameWidth"] = projectConfig.targetGameWidth;
         node["targetGameHeight"] = projectConfig.targetGameHeight;
+        node["windowMode"] = NormalizeProjectWindowMode(projectConfig.windowMode);
+        node["windowResizable"] = projectConfig.windowResizable;
+        node["windowStartMaximized"] = projectConfig.windowStartMaximized;
 
         const fs::path runtimeConfigPath = kProjectConfigPath;
         if (!WriteProjectConfigNode(runtimeConfigPath, node))
@@ -321,10 +336,15 @@ namespace Canis
                 }
 
                 // Runtime-only values such as the current editor window size
-                // may intentionally differ. Only mirror the two identity
-                // fields that also control the root CMake configuration.
+                // may intentionally differ. Mirror source-controlled project
+                // settings so a rebuild cannot replace changes made here.
                 sourceNode["gameName"] = projectConfig.gameName;
                 sourceNode["executableName"] = projectConfig.executableName;
+                sourceNode["targetGameWidth"] = projectConfig.targetGameWidth;
+                sourceNode["targetGameHeight"] = projectConfig.targetGameHeight;
+                sourceNode["windowMode"] = NormalizeProjectWindowMode(projectConfig.windowMode);
+                sourceNode["windowResizable"] = projectConfig.windowResizable;
+                sourceNode["windowStartMaximized"] = projectConfig.windowStartMaximized;
                 if (!WriteProjectConfigNode(sourceConfigPath, sourceNode))
                     return false;
             }
@@ -426,6 +446,18 @@ namespace Canis
         projectConfig.editorWindowHeight = node["editorWindowHeight"].as<int>(projectConfig.editorWindowHeight);
         projectConfig.targetGameWidth = node["targetGameWidth"].as<int>(projectConfig.targetGameWidth);
         projectConfig.targetGameHeight = node["targetGameHeight"].as<int>(projectConfig.targetGameHeight);
+        projectConfig.windowMode = node["windowMode"].as<int>(projectConfig.windowMode);
+        if (!node["windowMode"])
+        {
+            if (node["fullscreen"].as<bool>(false))
+                projectConfig.windowMode = PROJECT_WINDOW_FULLSCREEN;
+            else if (node["borderless"].as<bool>(false))
+                projectConfig.windowMode = PROJECT_WINDOW_BORDERLESS;
+        }
+        projectConfig.windowMode = NormalizeProjectWindowMode(projectConfig.windowMode);
+        projectConfig.windowResizable = node["windowResizable"].as<bool>(
+            node["resizeable"].as<bool>(projectConfig.windowResizable));
+        projectConfig.windowStartMaximized = node["windowStartMaximized"].as<bool>(projectConfig.windowStartMaximized);
 
         SetEditorRuntimeEnabled(projectConfig.editor);
 

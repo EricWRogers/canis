@@ -415,6 +415,19 @@ namespace Canis
         }
     }
 
+    void Scene::UpdateEditor()
+    {
+        // Edit mode intentionally does not run game scripts. A small subset
+        // of systems still needs to evaluate derived authoring data before
+        // rendering and gizmo interaction. A zero delta initializes the
+        // selected animation pose without advancing playback.
+        for (System* system : m_updateSystems)
+        {
+            if (system != nullptr && system->UpdateInEditor())
+                system->Update(m_registry, 0.0f);
+        }
+    }
+
     void Scene::Unload()
     {
         for (Entity*& e : m_entities)

@@ -65,6 +65,7 @@ namespace Canis
         
         void Init(App *_app, Window *_window, InputManager *_inputManger);
         void Update(float _deltaTime);
+        void UpdateEditor();
         void Render(float _deltaTime);
         void Unload();
         

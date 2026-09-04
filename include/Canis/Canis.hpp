@@ -14,6 +14,13 @@ namespace Canis
         PROJECT_SYNC_VSYNC = 1,
     };
 
+    enum ProjectWindowMode : int
+    {
+        PROJECT_WINDOW_WINDOWED = 0,
+        PROJECT_WINDOW_BORDERLESS = 1,
+        PROJECT_WINDOW_FULLSCREEN = 2,
+    };
+
     enum EditorThemeMode : int
     {
         EDITOR_THEME_DARK = 0,
@@ -54,6 +61,9 @@ namespace Canis
         int editorWindowHeight = 512;
         int targetGameWidth = 512;
         int targetGameHeight = 512;
+        int windowMode = PROJECT_WINDOW_WINDOWED;
+        bool windowResizable = true;
+        bool windowStartMaximized = false;
     };
 
     struct EditorSceneCameraConfig

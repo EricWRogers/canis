@@ -215,6 +215,8 @@ namespace Canis
         m_textInput.clear();
 
         Window* window = (Window*)_window;
+        if (window->IsMouseLocked())
+            window->RefreshMouseLock();
         int screenWidth = window->GetWindowWidth();
         int screenHeight = window->GetWindowHeight();
         window->SetResized(false);

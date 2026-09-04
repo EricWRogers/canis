@@ -3,19 +3,28 @@
 #include <Canis/Debug.hpp>
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
+#include <algorithm>
 #include <cstdlib>
 
 #include <stb_image.h>
 
 namespace Canis
 {
-    Window::Window(const char *title, int width, int height, bool _offscreen)
+    Window::Window(
+        const char *title,
+        int width,
+        int height,
+        bool _offscreen,
+        WindowOptions _options)
     {
         m_offscreen = _offscreen;
         // if linux
 #ifdef __linux__
         SDL_SetHint(SDL_HINT_VIDEO_DRIVER, "x11");
 #endif
+        // FPS capture should keep the native pointer centered instead of
+        // allowing its hidden absolute position to drift toward an edge.
+        SDL_SetHint(SDL_HINT_MOUSE_RELATIVE_MODE_CENTER, "1");
         if (SDL_Init(SDL_INIT_VIDEO | SDL_INIT_EVENTS | SDL_INIT_GAMEPAD) == false)
         {
             SDL_LogError(SDL_LOG_CATEGORY_APPLICATION, "SDL_Init Error: %s", SDL_GetError());
@@ -41,7 +50,15 @@ namespace Canis
         m_renderWidth = width;
         m_renderHeight = height;
 
-        SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL | SDL_WINDOW_RESIZABLE;
+        SDL_WindowFlags windowFlags = SDL_WINDOW_OPENGL;
+        if (_options.resizable && _options.mode != NativeWindowMode::FULLSCREEN)
+            windowFlags |= SDL_WINDOW_RESIZABLE;
+        if (_options.mode == NativeWindowMode::BORDERLESS)
+            windowFlags |= SDL_WINDOW_BORDERLESS;
+        else if (_options.mode == NativeWindowMode::FULLSCREEN)
+            windowFlags |= SDL_WINDOW_FULLSCREEN;
+        if (_options.startMaximized && _options.mode == NativeWindowMode::WINDOWED)
+            windowFlags |= SDL_WINDOW_MAXIMIZED;
         if (m_offscreen)
             windowFlags |= SDL_WINDOW_HIDDEN;
         m_window = SDL_CreateWindow(title, width, height, windowFlags);
@@ -106,12 +123,126 @@ namespace Canis
 
     void Window::LockMouse(bool _lock)
     {
-        if (!MakeContextCurrent())
+        SDL_Window* mainWindow = static_cast<SDL_Window*>(m_window);
+        SDL_Window* lockWindow = static_cast<SDL_Window*>(m_mouseLockWindow);
+        (void)SDL_CaptureMouse(false);
+        if (_lock)
+        {
+            m_mouseLock = true;
+            m_mouseLockWindow = mainWindow;
+            m_hasMouseLockRegion = false;
+            RefreshMouseLock();
+            return;
+        }
+
+        // Release whichever ImGui platform window owned capture, as well as
+        // the main window in case capture was migrated between viewports.
+        if (lockWindow != nullptr)
+        {
+            (void)SDL_SetWindowRelativeMouseMode(lockWindow, false);
+            (void)SDL_SetWindowMouseGrab(lockWindow, false);
+            (void)SDL_SetWindowMouseRect(lockWindow, nullptr);
+        }
+        if (mainWindow != nullptr && mainWindow != lockWindow)
+        {
+            (void)SDL_SetWindowRelativeMouseMode(mainWindow, false);
+            (void)SDL_SetWindowMouseGrab(mainWindow, false);
+            (void)SDL_SetWindowMouseRect(mainWindow, nullptr);
+        }
+
+        m_mouseLock = false;
+        m_mouseLockWindow = nullptr;
+        m_hasMouseLockRegion = false;
+        (void)SDL_ShowCursor();
+    }
+
+    void Window::SetMouseLockRegion(
+        void* _sdlWindow,
+        int _x,
+        int _y,
+        int _width,
+        int _height)
+    {
+        if (!m_mouseLock || _width <= 0 || _height <= 0)
             return;
 
-        m_mouseLock = _lock;
-        SDL_CaptureMouse(m_mouseLock);
-        SDL_SetWindowRelativeMouseMode((SDL_Window*)m_window, m_mouseLock);
+        SDL_Window* newLockWindow = static_cast<SDL_Window*>(
+            _sdlWindow != nullptr ? _sdlWindow : m_window);
+        SDL_Window* oldLockWindow = static_cast<SDL_Window*>(m_mouseLockWindow);
+        if (newLockWindow == nullptr)
+            return;
+
+        if (oldLockWindow != nullptr && oldLockWindow != newLockWindow)
+        {
+            (void)SDL_SetWindowRelativeMouseMode(oldLockWindow, false);
+            (void)SDL_SetWindowMouseGrab(oldLockWindow, false);
+            (void)SDL_SetWindowMouseRect(oldLockWindow, nullptr);
+        }
+
+        int windowWidth = 0;
+        int windowHeight = 0;
+        (void)SDL_GetWindowSize(newLockWindow, &windowWidth, &windowHeight);
+        const int regionX = std::clamp(_x, 0, std::max(0, windowWidth - 1));
+        const int regionY = std::clamp(_y, 0, std::max(0, windowHeight - 1));
+        const int regionWidth = std::clamp(_width, 1, std::max(1, windowWidth - regionX));
+        const int regionHeight = std::clamp(_height, 1, std::max(1, windowHeight - regionY));
+        const bool regionChanged =
+            oldLockWindow != newLockWindow ||
+            !m_hasMouseLockRegion ||
+            m_mouseLockRegionX != regionX ||
+            m_mouseLockRegionY != regionY ||
+            m_mouseLockRegionWidth != regionWidth ||
+            m_mouseLockRegionHeight != regionHeight;
+
+        m_mouseLockWindow = newLockWindow;
+        m_hasMouseLockRegion = true;
+        m_mouseLockRegionX = regionX;
+        m_mouseLockRegionY = regionY;
+        m_mouseLockRegionWidth = regionWidth;
+        m_mouseLockRegionHeight = regionHeight;
+        if (regionChanged)
+        {
+            const SDL_Rect region = {
+                m_mouseLockRegionX,
+                m_mouseLockRegionY,
+                m_mouseLockRegionWidth,
+                m_mouseLockRegionHeight
+            };
+            if (!SDL_SetWindowMouseRect(newLockWindow, &region))
+                Debug::Warning("SDL_SetWindowMouseRect failed: %s", SDL_GetError());
+        }
+        RefreshMouseLock();
+    }
+
+    void Window::RefreshMouseLock()
+    {
+        if (!m_mouseLock)
+            return;
+
+        SDL_Window* lockWindow = static_cast<SDL_Window*>(
+            m_mouseLockWindow != nullptr ? m_mouseLockWindow : m_window);
+        if (lockWindow == nullptr)
+            return;
+
+        if (!SDL_GetWindowMouseGrab(lockWindow) &&
+            !SDL_SetWindowMouseGrab(lockWindow, true))
+        {
+            Debug::Warning("SDL_SetWindowMouseGrab(true) failed: %s", SDL_GetError());
+        }
+        if (!SDL_GetWindowRelativeMouseMode(lockWindow) &&
+            !SDL_SetWindowRelativeMouseMode(lockWindow, true))
+        {
+            Debug::Warning("SDL_SetWindowRelativeMouseMode(true) failed: %s", SDL_GetError());
+            (void)SDL_SetWindowMouseGrab(lockWindow, false);
+            (void)SDL_SetWindowMouseRect(lockWindow, nullptr);
+            m_mouseLock = false;
+            m_mouseLockWindow = nullptr;
+            m_hasMouseLockRegion = false;
+            (void)SDL_ShowCursor();
+            return;
+        }
+
+        (void)SDL_HideCursor();
     }
 
     void Window::CenterMouse()

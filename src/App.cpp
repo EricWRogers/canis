@@ -1895,8 +1895,27 @@ namespace Canis
             Debug::Log("Runtime window override: %dx%d.", startupWidth, startupHeight);
         const std::string windowTitle = GetProjectConfig().gameName.empty()
             ? std::string("Canis Game") : GetProjectConfig().gameName;
+        WindowOptions windowOptions = {};
+        if (!runtime.editorRuntimeEnabled)
+        {
+            switch (GetProjectConfig().windowMode)
+            {
+                case PROJECT_WINDOW_BORDERLESS:
+                    windowOptions.mode = NativeWindowMode::BORDERLESS;
+                    break;
+                case PROJECT_WINDOW_FULLSCREEN:
+                    windowOptions.mode = NativeWindowMode::FULLSCREEN;
+                    break;
+                case PROJECT_WINDOW_WINDOWED:
+                default:
+                    windowOptions.mode = NativeWindowMode::WINDOWED;
+                    break;
+            }
+            windowOptions.resizable = GetProjectConfig().windowResizable;
+            windowOptions.startMaximized = GetProjectConfig().windowStartMaximized;
+        }
         runtime.window = std::make_unique<Window>(
-            windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen);
+            windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen, windowOptions);
         runtime.window->SetClearColor(Color(1.0f));
         runtime.window->SetSync(static_cast<Window::Sync>(GetProjectConfig().syncMode));
         AudioManager::Initialize();
@@ -2070,7 +2089,7 @@ namespace Canis
                 GetProjectConfig().editorWindowWidth = window.GetWindowWidth();
                 GetProjectConfig().editorWindowHeight = window.GetWindowHeight();
             }
-            else
+            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN)
             {
                 GetProjectConfig().targetGameWidth = window.GetWindowWidth();
                 GetProjectConfig().targetGameHeight = window.GetWindowHeight();
@@ -2165,6 +2184,7 @@ namespace Canis
         }
         else
         {
+            scene.UpdateEditor();
             m_updateTimeMs = 0.0f;
             m_sceneUpdateTimeMs = 0.0f;
             m_gameCodeUpdateTimeMs = 0.0f;
@@ -2389,7 +2409,7 @@ namespace Canis
                 GetProjectConfig().editorWindowWidth = runtime->window->GetWindowWidth();
                 GetProjectConfig().editorWindowHeight = runtime->window->GetWindowHeight();
             }
-            else
+            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN)
             {
                 GetProjectConfig().targetGameWidth = runtime->window->GetWindowWidth();
                 GetProjectConfig().targetGameHeight = runtime->window->GetWindowHeight();
