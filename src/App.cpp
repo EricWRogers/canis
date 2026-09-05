@@ -5698,6 +5698,63 @@ namespace Canis
 
         RegisterScript(modelAnimationConf);
 
+        static ComponentConf boneAttachmentConf = {};
+        REGISTER_PROPERTY(boneAttachmentConf, BoneAttachment, target);
+        REGISTER_PROPERTY(boneAttachmentConf, BoneAttachment, boneName);
+        REGISTER_PROPERTY(boneAttachmentConf, BoneAttachment, parentToTarget);
+        REGISTER_PROPERTY(boneAttachmentConf, BoneAttachment, followPosition);
+        REGISTER_PROPERTY(boneAttachmentConf, BoneAttachment, followRotation);
+        boneAttachmentConf.registry.drawers["boneName"] = [](
+            Editor&,
+            const std::string& propertyName,
+            void* componentPointer,
+            const std::string& idSuffix)
+        {
+            BoneAttachment& attachment = *static_cast<BoneAttachment*>(componentPointer);
+            ModelAsset* model = nullptr;
+            if (attachment.target != nullptr && attachment.target->HasComponent<Model>())
+                model = AssetManager::GetModel(attachment.target->GetComponent<Model>().modelId);
+
+            DrawInspectorFieldLabel(propertyName.c_str());
+            SetNextInspectorFieldItemWidth();
+            ImGui::PushID(idSuffix.c_str());
+            ImGui::PushID(propertyName.c_str());
+            const char* preview = attachment.boneName.empty() ? "[ select bone ]" : attachment.boneName.c_str();
+            if (model == nullptr)
+            {
+                ImGui::BeginDisabled();
+                ImGui::Button("[ target needs a Model ]", ImVec2(-1.0f, 0.0f));
+                ImGui::EndDisabled();
+            }
+            else if (ImGui::BeginCombo("##bone", preview))
+            {
+                if (ImGui::Selectable("[ none ]", attachment.boneName.empty()))
+                    attachment.boneName.clear();
+                for (i32 index = 0; index < model->GetNodeCount(); ++index)
+                {
+                    const ModelAsset::Node3D* node = model->GetNode(index);
+                    if (node == nullptr || node->mesh >= 0)
+                        continue;
+                    std::string name = model->GetNodeName(index);
+                    if (name.empty()) name = "Bone " + std::to_string(index);
+                    ImGui::PushID(index);
+                    const bool selected = name == attachment.boneName;
+                    if (ImGui::Selectable(name.c_str(), selected)) attachment.boneName = name;
+                    if (selected) ImGui::SetItemDefaultFocus();
+                    ImGui::PopID();
+                }
+                ImGui::EndCombo();
+            }
+            ImGui::PopID();
+            ImGui::PopID();
+        };
+        DEFAULT_COMPONENT_CONFIG_AND_REQUIRED(
+            boneAttachmentConf,
+            BoneAttachment,
+            Transform);
+        boneAttachmentConf.DEFAULT_DRAW_COMPONENT_INSPECTOR(BoneAttachment);
+        RegisterComponent(boneAttachmentConf);
+
         ScriptConf animatorConf = {};
         animatorConf.name = "Canis::Animator";
         animatorConf.Construct = nullptr;

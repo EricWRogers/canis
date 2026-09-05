@@ -102,7 +102,7 @@ namespace Canis
                 modelAnimation.transitionDuration > 0.0f &&
                 !modelAnimation.transitionLocalNodeMatrices.empty();
             if (!modelAnimation.poseInitialized || animationChanged ||
-                transitionActive)
+                transitionActive || !modelAnimation.layers.empty())
             {
                 if (!model->UpdateAnimation(
                         modelAnimation.pose,
@@ -130,6 +130,51 @@ namespace Canis
                         modelAnimation.transitionDuration = 0.0f;
                         modelAnimation.transitionElapsed = 0.0f;
                     }
+                }
+
+                for (const ModelAnimation::LayerSample& layer : modelAnimation.layers)
+                {
+                    if (layer.weight <= 0.0f)
+                        continue;
+                    ModelAsset* layerModel = AssetManager::GetModel(
+                        layer.sourceModelId >= 0 ? layer.sourceModelId : animationModelId);
+                    if (layerModel == nullptr || layerModel->GetAnimationCount() <= 0)
+                        continue;
+                    ModelAsset::Pose3D layerPose = {};
+                    const i32 layerAnimationIndex = std::clamp(
+                        layer.animationIndex, 0, layerModel->GetAnimationCount() - 1);
+                    if (!layerModel->UpdateAnimation(
+                            layerPose,
+                            layerAnimationIndex,
+                            layer.animationTime,
+                            Vector3(1.0f)))
+                        continue;
+                    if (layer.transitionSourceModelId >= 0 &&
+                        layer.transitionAnimationIndex >= 0 &&
+                        layer.transitionTargetWeight < 1.0f)
+                    {
+                        ModelAsset* previousModel = AssetManager::GetModel(layer.transitionSourceModelId);
+                        ModelAsset::Pose3D previousPose = {};
+                        if (previousModel != nullptr && previousModel->UpdateAnimation(
+                                previousPose,
+                                layer.transitionAnimationIndex,
+                                layer.transitionAnimationTime,
+                                Vector3(1.0f)))
+                        {
+                            layerModel->BlendPoseFromLocalMatrices(
+                                layerPose,
+                                previousPose.localNodeMatrices,
+                                layer.transitionTargetWeight);
+                        }
+                    }
+                    model->BlendPoseLayer(
+                        modelAnimation.pose,
+                        layerPose.localNodeMatrices,
+                        layer.weight,
+                        layer.maskRoots,
+                        layer.maskBones,
+                        layer.maskWeights,
+                        layer.additive);
                 }
 
                 modelAnimation.poseInitialized = true;

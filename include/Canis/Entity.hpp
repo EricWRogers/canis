@@ -1461,6 +1461,48 @@ namespace Canis
         i32 lastEvaluatedAnimationIndex = -1;
         float lastEvaluatedAnimationTime = 0.0f;
         Vector3 lastEvaluatedRootMotionMask = Vector3(0.0f);
+
+        struct LayerSample
+        {
+            i32 sourceModelId = -1;
+            i32 animationIndex = 0;
+            float animationTime = 0.0f;
+            float weight = 1.0f;
+            bool additive = false;
+            std::vector<std::string> maskRoots = {};
+            std::vector<std::string> maskBones = {};
+            std::vector<AnimatorMaskBoneWeight> maskWeights = {};
+            i32 transitionSourceModelId = -1;
+            i32 transitionAnimationIndex = -1;
+            float transitionAnimationTime = 0.0f;
+            float transitionTargetWeight = 1.0f;
+        };
+        std::vector<LayerSample> layers = {};
+    };
+
+    // Attaches an entity to the final animated pose of a named skeleton node.
+    // This lives in the engine so weapons, VFX, cameras, and gameplay objects
+    // all observe the pose after animator layers have been composed.
+    struct BoneAttachment
+    {
+        static constexpr const char* ScriptName = "Canis::BoneAttachment";
+        BoneAttachment() = default;
+        explicit BoneAttachment(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+        Entity* target = nullptr;
+        std::string boneName = "";
+        bool parentToTarget = true;
+        bool followPosition = true;
+        bool followRotation = true;
+        void Create() {}
+        void Destroy()
+        {
+            if (entity != nullptr && entity->HasComponent<Transform>())
+                entity->GetComponent<Transform>().ClearLocalMatrixPrefix();
+        }
+        i32 cachedModelId = -1;
+        i32 cachedNodeIndex = -1;
+        std::string cachedBoneName = "";
     };
 
     struct AnimationPlayer
@@ -1489,6 +1531,23 @@ namespace Canis
         std::string name = "";
         AnimationValue value = AnimationValue::Float(0.0f);
         bool triggerActive = false;
+    };
+
+    struct AnimatorLayerRuntime
+    {
+        std::string name = "";
+        std::string currentState = "";
+        std::string requestedState = "";
+        float requestedNormalizedTime = 0.0f;
+        bool restartRequested = false;
+        float time = 0.0f;
+        std::string appliedState = "";
+        float weightOverride = -1.0f;
+        i32 transitionSourceModelId = -1;
+        i32 transitionAnimationIndex = -1;
+        float transitionAnimationTime = 0.0f;
+        float transitionDuration = 0.0f;
+        float transitionElapsed = 0.0f;
     };
 
     struct Animator
@@ -1573,6 +1632,59 @@ namespace Canis
             }
         }
 
+        // Selects a state immediately. "Base Layer" addresses the legacy
+        // top-level state machine; other names address additional layers.
+        void Play(
+            const std::string& _state,
+            const std::string& _layer = "Base Layer",
+            float _normalizedTime = 0.0f,
+            bool _restart = false)
+        {
+            if (_state.empty())
+                return;
+            if (_layer.empty() || _layer == "Base Layer")
+            {
+                if (_restart || currentState != _state)
+                {
+                    currentState = _state;
+                    time = 0.0f;
+                    appliedState.clear();
+                }
+                return;
+            }
+            for (AnimatorLayerRuntime& layer : layers)
+            {
+                if (layer.name != _layer)
+                    continue;
+                layer.requestedState = _state;
+                layer.requestedNormalizedTime = std::max(_normalizedTime, 0.0f);
+                layer.restartRequested = _restart;
+                return;
+            }
+            AnimatorLayerRuntime layer = {};
+            layer.name = _layer;
+            layer.requestedState = _state;
+            layer.requestedNormalizedTime = std::max(_normalizedTime, 0.0f);
+            layer.restartRequested = _restart;
+            layers.push_back(layer);
+        }
+
+        void SetLayerWeight(const std::string& _layer, float _weight)
+        {
+            for (AnimatorLayerRuntime& layer : layers)
+            {
+                if (layer.name == _layer)
+                {
+                    layer.weightOverride = glm::clamp(_weight, 0.0f, 1.0f);
+                    return;
+                }
+            }
+            AnimatorLayerRuntime layer = {};
+            layer.name = _layer;
+            layer.weightOverride = glm::clamp(_weight, 0.0f, 1.0f);
+            layers.push_back(layer);
+        }
+
         float GetFloat(const std::string& _name, float _default = 0.0f) const
         {
             if (const AnimatorParameterRuntime* parameter = GetParameter(_name))
@@ -1602,6 +1714,7 @@ namespace Canis
         std::string currentState = "";
         float time = 0.0f;
         std::vector<AnimatorParameterRuntime> parameters = {};
+        std::vector<AnimatorLayerRuntime> layers = {};
 
         bool parametersInitialized = false;
         bool drivesModelAnimation = false;

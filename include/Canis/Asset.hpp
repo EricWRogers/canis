@@ -319,6 +319,33 @@ namespace Canis
         std::vector<AnimatorTransition> transitions = {};
     };
 
+    enum class AnimatorLayerBlendMode
+    {
+        OVERRIDE = 0,
+        ADDITIVE,
+    };
+
+    struct AnimatorMaskBoneWeight
+    {
+        std::string boneName = "";
+        float weight = 1.0f;
+    };
+
+    // A generic skeleton mask. Each named root includes all of its descendants.
+    // An empty mask affects the complete skeleton.
+    struct AnimatorLayer
+    {
+        std::string name = "Layer";
+        AnimatorLayerBlendMode blendMode = AnimatorLayerBlendMode::OVERRIDE;
+        float weight = 1.0f;
+        std::string weightParameter = "";
+        std::vector<std::string> maskRoots = {};
+        std::vector<std::string> maskBones = {};
+        std::vector<AnimatorMaskBoneWeight> maskWeights = {};
+        std::string entryState = "";
+        std::vector<AnimatorState> states = {};
+    };
+
     class AnimatorControllerAsset : public Asset
     {
     private:
@@ -334,6 +361,9 @@ namespace Canis
         std::string entryState = "";
         std::vector<AnimatorParameterDefinition> parameters = {};
         std::vector<AnimatorState> states = {};
+        // The legacy top-level state machine is the base layer. Additional
+        // layers are evaluated independently and composed in list order.
+        std::vector<AnimatorLayer> layers = {};
     };
 
     // Removes a state and every transition targeting it. If the removed state
@@ -599,6 +629,14 @@ namespace Canis
             Pose3D &_pose,
             const std::vector<Matrix4> &_sourceLocalMatrices,
             float _targetWeight) const;
+        bool BlendPoseLayer(
+            Pose3D &_pose,
+            const std::vector<Matrix4> &_layerLocalMatrices,
+            float _weight,
+            const std::vector<std::string> &_maskRoots,
+            const std::vector<std::string> &_maskBones,
+            const std::vector<AnimatorMaskBoneWeight> &_maskWeights,
+            bool _additive) const;
         void ResetPose();
         void ResetPose(Pose3D &_pose) const;
         void Draw(

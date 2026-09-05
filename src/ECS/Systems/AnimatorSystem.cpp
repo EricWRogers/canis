@@ -256,6 +256,136 @@ namespace Canis
                 }
             }
         }
+
+        const AnimatorState* FindAnimatorState(
+            const std::vector<AnimatorState>& _states,
+            const std::string& _name)
+        {
+            for (const AnimatorState& state : _states)
+                if (state.name == _name)
+                    return &state;
+            return nullptr;
+        }
+
+        void EvaluateAnimatorLayer(
+            Entity& _entity,
+            Animator& _animator,
+            const AnimatorLayer& _layer,
+            float _deltaTime)
+        {
+            if (_layer.states.empty() || !_entity.HasComponent<ModelAnimation>())
+                return;
+
+            AnimatorLayerRuntime* runtime = nullptr;
+            for (AnimatorLayerRuntime& candidate : _animator.layers)
+                if (candidate.name == _layer.name) { runtime = &candidate; break; }
+            if (runtime == nullptr)
+            {
+                AnimatorLayerRuntime created = {};
+                created.name = _layer.name;
+                _animator.layers.push_back(created);
+                runtime = &_animator.layers.back();
+            }
+
+            if (!runtime->requestedState.empty())
+            {
+                if (runtime->restartRequested || runtime->currentState != runtime->requestedState)
+                {
+                    runtime->currentState = runtime->requestedState;
+                    runtime->time = 0.0f;
+                    runtime->appliedState.clear();
+                    runtime->transitionDuration = 0.0f;
+                    runtime->transitionSourceModelId = -1;
+                }
+                runtime->requestedState.clear();
+                runtime->restartRequested = false;
+            }
+            if (runtime->currentState.empty())
+                runtime->currentState = _layer.entryState.empty() ? _layer.states.front().name : _layer.entryState;
+
+            const AnimatorState* state = FindAnimatorState(_layer.states, runtime->currentState);
+            if (state == nullptr)
+            {
+                runtime->currentState = _layer.entryState.empty() ? _layer.states.front().name : _layer.entryState;
+                runtime->time = 0.0f;
+                state = FindAnimatorState(_layer.states, runtime->currentState);
+            }
+            if (state == nullptr || state->modelPath.empty())
+                return;
+
+            i32 animationIndex = 0;
+            ModelAsset* source = GetAnimatorStateModel(*state, animationIndex);
+            if (source == nullptr)
+                return;
+            const float duration = std::max(source->GetAnimationDuration(animationIndex), 0.0f);
+            if (_animator.playing && duration > 0.0f)
+            {
+                runtime->time += _deltaTime * GetAnimatorStateSpeed(*state, _animator);
+                if (state->loop)
+                {
+                    while (runtime->time < 0.0f) runtime->time += duration;
+                    while (runtime->time >= duration) runtime->time -= duration;
+                }
+                else runtime->time = std::clamp(runtime->time, 0.0f, duration);
+            }
+
+            const float normalized = duration > 0.0f ? std::clamp(runtime->time / duration, 0.0f, 1.0f) : 1.0f;
+            for (const AnimatorTransition& transition : state->transitions)
+            {
+                if (transition.hasExitTime && normalized + 0.0001f < transition.exitTimeNormalized)
+                    continue;
+                bool matches = true;
+                for (const AnimatorTransitionCondition& condition : transition.conditions)
+                    if (!AnimatorConditionMatches(condition, _animator)) { matches = false; break; }
+                if (!matches || transition.toState.empty())
+                    continue;
+                runtime->transitionSourceModelId = AssetManager::LoadModel(state->modelPath);
+                runtime->transitionAnimationIndex = animationIndex;
+                runtime->transitionAnimationTime = runtime->time;
+                runtime->transitionDuration = std::max(transition.duration, 0.0f);
+                runtime->transitionElapsed = 0.0f;
+                ConsumeAnimatorTransitionTriggers(transition, _animator);
+                runtime->currentState = transition.toState;
+                runtime->time = 0.0f;
+                state = FindAnimatorState(_layer.states, runtime->currentState);
+                if (state == nullptr || state->modelPath.empty()) return;
+                source = GetAnimatorStateModel(*state, animationIndex);
+                if (source == nullptr) return;
+                break;
+            }
+
+            ModelAnimation::LayerSample sample = {};
+            sample.sourceModelId = AssetManager::LoadModel(state->modelPath);
+            sample.animationIndex = animationIndex;
+            sample.animationTime = runtime->time;
+            sample.weight = glm::clamp(
+                runtime->weightOverride >= 0.0f
+                    ? runtime->weightOverride
+                    : (_layer.weightParameter.empty()
+                    ? _layer.weight
+                    : _animator.GetFloat(_layer.weightParameter, _layer.weight)),
+                0.0f, 1.0f);
+            sample.additive = _layer.blendMode == AnimatorLayerBlendMode::ADDITIVE;
+            sample.maskRoots = _layer.maskRoots;
+            sample.maskBones = _layer.maskBones;
+            sample.maskWeights = _layer.maskWeights;
+            if (runtime->transitionDuration > 0.0f && runtime->transitionSourceModelId >= 0)
+            {
+                runtime->transitionElapsed += std::max(_deltaTime, 0.0f);
+                sample.transitionSourceModelId = runtime->transitionSourceModelId;
+                sample.transitionAnimationIndex = runtime->transitionAnimationIndex;
+                sample.transitionAnimationTime = runtime->transitionAnimationTime;
+                sample.transitionTargetWeight = glm::clamp(
+                    runtime->transitionElapsed / runtime->transitionDuration, 0.0f, 1.0f);
+                if (sample.transitionTargetWeight >= 1.0f)
+                {
+                    runtime->transitionDuration = 0.0f;
+                    runtime->transitionSourceModelId = -1;
+                }
+            }
+            _entity.GetComponent<ModelAnimation>().layers.push_back(std::move(sample));
+            runtime->appliedState = state->name;
+        }
     }
 
     void AnimatorSystem::Update(entt::registry &_registry, float _deltaTime)
@@ -280,6 +410,8 @@ namespace Canis
                 continue;
 
             SyncAnimatorParameters(animator, *controller);
+            if (entity->HasComponent<ModelAnimation>())
+                entity->GetComponent<ModelAnimation>().layers.clear();
 
             if (animator.currentState.empty())
                 animator.currentState = controller->entryState.empty() ? controller->states.front().name : controller->entryState;
@@ -389,25 +521,24 @@ namespace Canis
                     modelAnimation.playAnimation = animator.playing;
                     modelAnimation.rootMotionMask = state->rootMotionMask;
                 }
-                continue;
             }
-
-            if (clip == nullptr)
-                continue;
-
-            const float sampleTime = (clip->length <= 0.0f) ? 0.0f :
-                (state->loop ? animator.time : std::clamp(animator.time, 0.0f, clip->length));
-
-            if (hadPreviousSample && animator.playing)
+            else if (clip != nullptr)
             {
-                const bool looped = state->loop && sampleTime < previousSampleTime;
-                DispatchAnimationEventsBetween(*scene->app, *entity, *clip, activeClipPath, previousSampleTime, sampleTime, looped);
+                const float sampleTime = (clip->length <= 0.0f) ? 0.0f :
+                    (state->loop ? animator.time : std::clamp(animator.time, 0.0f, clip->length));
+                if (hadPreviousSample && animator.playing)
+                {
+                    const bool looped = state->loop && sampleTime < previousSampleTime;
+                    DispatchAnimationEventsBetween(*scene->app, *entity, *clip, activeClipPath, previousSampleTime, sampleTime, looped);
+                }
+                animator.lastEventSampleTime = sampleTime;
+                animator.lastEventSampleValid = true;
+                animator.lastEventClipPath = activeClipPath;
+                (void)ApplyAnimationClip(*scene->app, *entity, *clip, sampleTime);
             }
 
-            animator.lastEventSampleTime = sampleTime;
-            animator.lastEventSampleValid = true;
-            animator.lastEventClipPath = activeClipPath;
-            (void)ApplyAnimationClip(*scene->app, *entity, *clip, sampleTime);
+            for (const AnimatorLayer& layer : controller->layers)
+                EvaluateAnimatorLayer(*entity, animator, layer, _deltaTime);
         }
     }
 }

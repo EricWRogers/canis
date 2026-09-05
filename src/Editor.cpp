@@ -12746,6 +12746,228 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
+        if (ImGui::CollapsingHeader("Animation Layers", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            ImGui::TextDisabled("Masks include each named bone and all descendants.");
+            for (std::size_t layerIndex = 0; layerIndex < controller->layers.size(); ++layerIndex)
+            {
+                AnimatorLayer& layer = controller->layers[layerIndex];
+                ImGui::PushID(static_cast<int>(layerIndex));
+                if (ImGui::TreeNode(layer.name.empty() ? "Layer" : layer.name.c_str()))
+                {
+                    dirty = ImGui::InputText("name", &layer.name) || dirty;
+                    const char* modes[] = {"Override", "Additive"};
+                    int mode = static_cast<int>(layer.blendMode);
+                    if (ImGui::Combo("blend mode", &mode, modes, IM_ARRAYSIZE(modes)))
+                    {
+                        layer.blendMode = static_cast<AnimatorLayerBlendMode>(std::clamp(mode, 0, 1));
+                        dirty = true;
+                    }
+                    dirty = ImGui::SliderFloat("weight", &layer.weight, 0.0f, 1.0f) || dirty;
+                    dirty = ImGui::InputText("weight parameter", &layer.weightParameter) || dirty;
+                    dirty = ImGui::InputText("entry state", &layer.entryState) || dirty;
+
+                    if (ImGui::TreeNode("Mask Roots"))
+                    {
+                        for (std::size_t maskIndex = 0; maskIndex < layer.maskRoots.size(); ++maskIndex)
+                        {
+                            ImGui::PushID(static_cast<int>(maskIndex));
+                            ImGui::SetNextItemWidth(-36.0f);
+                            dirty = ImGui::InputText("##bone", &layer.maskRoots[maskIndex]) || dirty;
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X"))
+                            {
+                                layer.maskRoots.erase(layer.maskRoots.begin() + static_cast<std::ptrdiff_t>(maskIndex));
+                                dirty = true;
+                                ImGui::PopID();
+                                break;
+                            }
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("Add Mask Root"))
+                        {
+                            layer.maskRoots.emplace_back("Bone");
+                            dirty = true;
+                        }
+                        ModelAsset* maskModel = nullptr;
+                        if (!layer.states.empty() && !layer.states.front().modelPath.empty())
+                            maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
+                        if (maskModel != nullptr && ImGui::BeginCombo("Pick From Skeleton", "[ select bone ]"))
+                        {
+                            for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
+                            {
+                                const std::string boneName = maskModel->GetNodeName(nodeIndex);
+                                if (boneName.empty()) continue;
+                                const bool selected = std::find(layer.maskRoots.begin(), layer.maskRoots.end(), boneName) != layer.maskRoots.end();
+                                if (ImGui::Selectable(boneName.c_str(), selected) && !selected)
+                                {
+                                    layer.maskRoots.push_back(boneName);
+                                    dirty = true;
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    if (ImGui::TreeNode("Exact Mask Bones"))
+                    {
+                        for (std::size_t maskIndex = 0; maskIndex < layer.maskBones.size(); ++maskIndex)
+                        {
+                            ImGui::PushID(static_cast<int>(maskIndex));
+                            ImGui::SetNextItemWidth(-36.0f);
+                            dirty = ImGui::InputText("##exactBone", &layer.maskBones[maskIndex]) || dirty;
+                            ImGui::SameLine();
+                            if (ImGui::SmallButton("X"))
+                            {
+                                layer.maskBones.erase(layer.maskBones.begin() + static_cast<std::ptrdiff_t>(maskIndex));
+                                dirty = true;
+                                ImGui::PopID();
+                                break;
+                            }
+                            ImGui::PopID();
+                        }
+                        ModelAsset* maskModel = nullptr;
+                        if (!layer.states.empty() && !layer.states.front().modelPath.empty())
+                            maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
+                        if (maskModel != nullptr && ImGui::BeginCombo("Pick Exact Bone", "[ select bone ]"))
+                        {
+                            for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
+                            {
+                                const std::string boneName = maskModel->GetNodeName(nodeIndex);
+                                if (boneName.empty()) continue;
+                                const bool selected = std::find(layer.maskBones.begin(), layer.maskBones.end(), boneName) != layer.maskBones.end();
+                                if (ImGui::Selectable(boneName.c_str(), selected) && !selected)
+                                {
+                                    layer.maskBones.push_back(boneName);
+                                    dirty = true;
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    if (ImGui::TreeNode("Weighted Mask Bones"))
+                    {
+                        for (std::size_t maskIndex = 0; maskIndex < layer.maskWeights.size(); ++maskIndex)
+                        {
+                            AnimatorMaskBoneWeight& weightedBone = layer.maskWeights[maskIndex];
+                            ImGui::PushID(static_cast<int>(maskIndex));
+                            dirty = ImGui::InputText("bone", &weightedBone.boneName) || dirty;
+                            dirty = ImGui::SliderFloat("weight", &weightedBone.weight, 0.0f, 1.0f) || dirty;
+                            if (ImGui::SmallButton("Delete Weighted Bone"))
+                            {
+                                layer.maskWeights.erase(layer.maskWeights.begin() + static_cast<std::ptrdiff_t>(maskIndex));
+                                dirty = true;
+                                ImGui::PopID();
+                                break;
+                            }
+                            ImGui::PopID();
+                        }
+                        ModelAsset* maskModel = nullptr;
+                        if (!layer.states.empty() && !layer.states.front().modelPath.empty())
+                            maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
+                        if (maskModel != nullptr && ImGui::BeginCombo("Add Weighted Bone", "[ select bone ]"))
+                        {
+                            for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
+                            {
+                                const std::string boneName = maskModel->GetNodeName(nodeIndex);
+                                if (boneName.empty()) continue;
+                                const bool selected = std::any_of(
+                                    layer.maskWeights.begin(), layer.maskWeights.end(),
+                                    [&](const AnimatorMaskBoneWeight& entry) { return entry.boneName == boneName; });
+                                if (ImGui::Selectable(boneName.c_str(), selected) && !selected)
+                                {
+                                    layer.maskWeights.push_back({boneName, 0.5f});
+                                    dirty = true;
+                                }
+                            }
+                            ImGui::EndCombo();
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    if (ImGui::TreeNode("States"))
+                    {
+                        for (std::size_t stateIndex = 0; stateIndex < layer.states.size(); ++stateIndex)
+                        {
+                            AnimatorState& state = layer.states[stateIndex];
+                            ImGui::PushID(static_cast<int>(stateIndex));
+                            dirty = ImGui::InputText("name", &state.name) || dirty;
+                            dirty = ImGui::InputText("model path", &state.modelPath) || dirty;
+                            dirty = ImGui::InputInt("animation index", &state.modelAnimationIndex) || dirty;
+                            dirty = ImGui::Checkbox("loop", &state.loop) || dirty;
+                            dirty = ImGui::InputFloat("speed", &state.speed) || dirty;
+                            if (ImGui::TreeNode("Transitions"))
+                            {
+                                for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
+                                {
+                                    AnimatorTransition& transition = state.transitions[transitionIndex];
+                                    ImGui::PushID(static_cast<int>(transitionIndex));
+                                    dirty = ImGui::InputText("to state", &transition.toState) || dirty;
+                                    dirty = ImGui::Checkbox("has exit time", &transition.hasExitTime) || dirty;
+                                    dirty = ImGui::SliderFloat("exit time", &transition.exitTimeNormalized, 0.0f, 1.0f) || dirty;
+                                    dirty = ImGui::InputFloat("crossfade", &transition.duration) || dirty;
+                                    transition.duration = std::max(transition.duration, 0.0f);
+                                    if (ImGui::SmallButton("Delete Transition"))
+                                    {
+                                        state.transitions.erase(state.transitions.begin() + static_cast<std::ptrdiff_t>(transitionIndex));
+                                        dirty = true;
+                                        ImGui::PopID();
+                                        break;
+                                    }
+                                    ImGui::PopID();
+                                }
+                                if (ImGui::SmallButton("Add Transition"))
+                                {
+                                    AnimatorTransition transition = {};
+                                    if (!layer.states.empty()) transition.toState = layer.states.front().name;
+                                    state.transitions.push_back(transition);
+                                    dirty = true;
+                                }
+                                ImGui::TreePop();
+                            }
+                            if (ImGui::SmallButton("Delete State"))
+                            {
+                                layer.states.erase(layer.states.begin() + static_cast<std::ptrdiff_t>(stateIndex));
+                                dirty = true;
+                                ImGui::PopID();
+                                break;
+                            }
+                            ImGui::Separator();
+                            ImGui::PopID();
+                        }
+                        if (ImGui::SmallButton("Add State"))
+                        {
+                            layer.states.emplace_back();
+                            if (layer.entryState.empty()) layer.entryState = layer.states.back().name;
+                            dirty = true;
+                        }
+                        ImGui::TreePop();
+                    }
+
+                    if (ImGui::Button("Delete Layer"))
+                    {
+                        controller->layers.erase(controller->layers.begin() + static_cast<std::ptrdiff_t>(layerIndex));
+                        dirty = true;
+                        ImGui::TreePop();
+                        ImGui::PopID();
+                        break;
+                    }
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            if (ImGui::Button("Add Animation Layer"))
+            {
+                AnimatorLayer layer = {};
+                layer.name = "Layer " + std::to_string(controller->layers.size() + 1);
+                controller->layers.push_back(layer);
+                dirty = true;
+            }
+        }
+
         if (ImGui::CollapsingHeader("States", ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (std::size_t stateIndex = 0; stateIndex < controller->states.size(); ++stateIndex)

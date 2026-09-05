@@ -15,6 +15,7 @@
 #include <Canis/ECS/Systems/AnimatorSystem.hpp>
 #include <Canis/ECS/Systems/AnimationPlayerSystem.hpp>
 #include <Canis/ECS/Systems/ModelAnimation3DSystem.hpp>
+#include <Canis/ECS/Systems/BoneAttachmentSystem.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/JoltPhysics3DSystem.hpp>
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
@@ -534,6 +535,7 @@ namespace Canis
         CreateSystem<Canis::AnimatorSystem>();
         CreateSystem<Canis::AnimationPlayerSystem>();
         CreateSystem<Canis::ModelAnimation3DSystem>();
+        CreateSystem<Canis::BoneAttachmentSystem>();
         CreateSystem<Canis::SpriteAnimationSystem>();
         CreateSystem<Canis::JoltPhysics3DSystem>();
         CreateSystem<Canis::NavMeshSystem>();

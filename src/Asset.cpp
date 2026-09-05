@@ -2503,6 +2503,103 @@ namespace Canis
         return true;
     }
 
+    bool ModelAsset::BlendPoseLayer(
+        Pose3D &_pose,
+        const std::vector<Matrix4> &_layerLocalMatrices,
+        float _weight,
+        const std::vector<std::string> &_maskRoots,
+        const std::vector<std::string> &_maskBones,
+        const std::vector<AnimatorMaskBoneWeight> &_maskWeights,
+        bool _additive) const
+    {
+        if (_layerLocalMatrices.size() != m_nodes.size() ||
+            _pose.localNodeMatrices.size() != m_nodes.size())
+            return false;
+
+        const float weight = glm::clamp(_weight, 0.0f, 1.0f);
+        if (weight <= 0.0f)
+            return true;
+
+        const bool unmasked = _maskRoots.empty() && _maskBones.empty() && _maskWeights.empty();
+        std::vector<float> nodeWeights(m_nodes.size(), unmasked ? 1.0f : 0.0f);
+        if (!unmasked)
+        {
+            for (std::size_t index = 0; index < m_nodes.size(); ++index)
+            {
+                if (std::find(_maskBones.begin(), _maskBones.end(), m_nodes[index].name) != _maskBones.end())
+                    nodeWeights[index] = 1.0f;
+                i32 cursor = static_cast<i32>(index);
+                while (cursor >= 0 && cursor < static_cast<i32>(m_nodes.size()))
+                {
+                    if (std::find(_maskRoots.begin(), _maskRoots.end(), m_nodes[cursor].name) != _maskRoots.end())
+                    {
+                        nodeWeights[index] = 1.0f;
+                        break;
+                    }
+                    cursor = m_nodes[cursor].parent;
+                }
+            }
+            for (const AnimatorMaskBoneWeight& weightedBone : _maskWeights)
+            {
+                for (std::size_t index = 0; index < m_nodes.size(); ++index)
+                    if (m_nodes[index].name == weightedBone.boneName)
+                        nodeWeights[index] = glm::clamp(weightedBone.weight, 0.0f, 1.0f);
+            }
+        }
+
+        auto decompose = [](const Matrix4& matrix, Vector3& scale, glm::quat& rotation, Vector3& translation)
+        {
+            translation = Vector3(matrix[3]);
+            Vector3 x(matrix[0]), y(matrix[1]), z(matrix[2]);
+            scale = Vector3(glm::length(x), glm::length(y), glm::length(z));
+            if (scale.x <= 0.000001f || scale.y <= 0.000001f || scale.z <= 0.000001f)
+                return false;
+            x /= scale.x; y /= scale.y; z /= scale.z;
+            if (glm::dot(glm::cross(x, y), z) < 0.0f) { scale.x = -scale.x; x = -x; }
+            glm::mat3 matrix3(1.0f); matrix3[0] = x; matrix3[1] = y; matrix3[2] = z;
+            rotation = glm::normalize(glm::quat_cast(matrix3));
+            return true;
+        };
+
+        for (std::size_t index = 0; index < m_nodes.size(); ++index)
+        {
+            const float nodeWeight = weight * nodeWeights[index];
+            if (nodeWeight <= 0.0f)
+                continue;
+            Vector3 baseScale, layerScale, bindScale, baseTranslation, layerTranslation, bindTranslation;
+            glm::quat baseRotation, layerRotation, bindRotation;
+            if (!decompose(_pose.localNodeMatrices[index], baseScale, baseRotation, baseTranslation) ||
+                !decompose(_layerLocalMatrices[index], layerScale, layerRotation, layerTranslation))
+                continue;
+
+            Vector3 translation;
+            Vector3 scale;
+            glm::quat rotation;
+            if (_additive)
+            {
+                if (!decompose(m_bindLocalMatrices[index], bindScale, bindRotation, bindTranslation))
+                    continue;
+                translation = baseTranslation + ((layerTranslation - bindTranslation) * nodeWeight);
+                const glm::quat delta = glm::normalize(glm::inverse(bindRotation) * layerRotation);
+                rotation = glm::normalize(baseRotation * glm::slerp(glm::quat(1.0f, 0.0f, 0.0f, 0.0f), delta, nodeWeight));
+                const Vector3 ratio = layerScale / glm::max(glm::abs(bindScale), Vector3(0.000001f));
+                scale = baseScale * glm::mix(Vector3(1.0f), ratio, nodeWeight);
+            }
+            else
+            {
+                translation = glm::mix(baseTranslation, layerTranslation, nodeWeight);
+                rotation = glm::normalize(glm::slerp(baseRotation, layerRotation, nodeWeight));
+                scale = glm::mix(baseScale, layerScale, nodeWeight);
+            }
+            _pose.localNodeMatrices[index] = glm::translate(Matrix4(1.0f), translation) *
+                glm::mat4_cast(rotation) * glm::scale(Matrix4(1.0f), scale);
+        }
+
+        UpdateGlobalMatrices(_pose);
+        UpdateSkinning(_pose);
+        return true;
+    }
+
     void ModelAsset::ResetPose()
     {
         ResetPose(m_sharedPose);
@@ -3397,6 +3494,95 @@ namespace Canis
         return true;
     }
 
+    namespace
+    {
+        AnimatorState DecodeAnimatorStateNode(
+            const YAML::Node& _stateNode,
+            const std::vector<AnimatorParameterDefinition>& _parameters)
+        {
+            AnimatorState state = {};
+            state.name = _stateNode["name"].as<std::string>(state.name);
+            state.clip = _stateNode["clip"].as<AnimationClipAssetHandle>(state.clip);
+            state.modelPath = _stateNode["modelPath"].as<std::string>("");
+            state.modelAnimationIndex = _stateNode["modelAnimationIndex"].as<i32>(0);
+            state.loop = _stateNode["loop"].as<bool>(true);
+            state.speed = _stateNode["speed"].as<float>(1.0f);
+            state.speedParameter = _stateNode["speedParameter"].as<std::string>("");
+            state.rootMotionMask = _stateNode["rootMotionMask"].as<Vector3>(Vector3(0.0f));
+            if (YAML::Node position = _stateNode["editorPosition"])
+                state.editorPosition = position.as<Vector2>(state.editorPosition);
+
+            if (YAML::Node transitions = _stateNode["transitions"];
+                transitions && transitions.IsSequence())
+            {
+                for (const YAML::Node& transitionNode : transitions)
+                {
+                    AnimatorTransition transition = {};
+                    transition.toState = transitionNode["toState"].as<std::string>("");
+                    transition.hasExitTime = transitionNode["hasExitTime"].as<bool>(false);
+                    transition.exitTimeNormalized = transitionNode["exitTimeNormalized"].as<float>(1.0f);
+                    transition.duration = std::max(transitionNode["duration"].as<float>(0.15f), 0.0f);
+                    transition.preserveNormalizedTime = transitionNode["preserveNormalizedTime"].as<bool>(false);
+                    if (YAML::Node conditions = transitionNode["conditions"];
+                        conditions && conditions.IsSequence())
+                    {
+                        for (const YAML::Node& conditionNode : conditions)
+                        {
+                            AnimatorTransitionCondition condition = {};
+                            condition.parameter = conditionNode["parameter"].as<std::string>("");
+                            condition.mode = AnimatorConditionModeFromString(conditionNode["mode"].as<std::string>("greater"));
+                            AnimatorParameterType type = AnimatorParameterType::FLOAT;
+                            for (const AnimatorParameterDefinition& parameter : _parameters)
+                                if (parameter.name == condition.parameter) { type = parameter.type; break; }
+                            condition.value = DecodeAnimationValue(
+                                AnimatorParameterValueType(type), conditionNode["value"]);
+                            transition.conditions.push_back(condition);
+                        }
+                    }
+                    state.transitions.push_back(transition);
+                }
+            }
+            return state;
+        }
+
+        YAML::Node EncodeAnimatorStateNode(const AnimatorState& _state)
+        {
+            YAML::Node node(YAML::NodeType::Map);
+            node["name"] = _state.name;
+            node["clip"] = _state.clip;
+            if (!_state.modelPath.empty()) node["modelPath"] = _state.modelPath;
+            node["modelAnimationIndex"] = _state.modelAnimationIndex;
+            node["loop"] = _state.loop;
+            node["speed"] = _state.speed;
+            if (!_state.speedParameter.empty()) node["speedParameter"] = _state.speedParameter;
+            node["rootMotionMask"] = _state.rootMotionMask;
+            node["editorPosition"] = _state.editorPosition;
+            YAML::Node transitions(YAML::NodeType::Sequence);
+            for (const AnimatorTransition& transition : _state.transitions)
+            {
+                YAML::Node transitionNode(YAML::NodeType::Map);
+                transitionNode["toState"] = transition.toState;
+                transitionNode["hasExitTime"] = transition.hasExitTime;
+                transitionNode["exitTimeNormalized"] = transition.exitTimeNormalized;
+                transitionNode["duration"] = transition.duration;
+                transitionNode["preserveNormalizedTime"] = transition.preserveNormalizedTime;
+                YAML::Node conditions(YAML::NodeType::Sequence);
+                for (const AnimatorTransitionCondition& condition : transition.conditions)
+                {
+                    YAML::Node conditionNode(YAML::NodeType::Map);
+                    conditionNode["parameter"] = condition.parameter;
+                    conditionNode["mode"] = AnimatorConditionModeToString(condition.mode);
+                    conditionNode["value"] = EncodeAnimationValue(condition.value);
+                    conditions.push_back(conditionNode);
+                }
+                transitionNode["conditions"] = conditions;
+                transitions.push_back(transitionNode);
+            }
+            node["transitions"] = transitions;
+            return node;
+        }
+    }
+
     bool AnimatorControllerAsset::Load(std::string _path)
     {
         Free();
@@ -3415,6 +3601,7 @@ namespace Canis
         entryState = root["entryState"].as<std::string>("");
         parameters.clear();
         states.clear();
+        layers.clear();
 
         if (YAML::Node parametersNode = root["parameters"]; parametersNode && parametersNode.IsSequence())
         {
@@ -3433,64 +3620,41 @@ namespace Canis
         if (YAML::Node statesNode = root["states"]; statesNode && statesNode.IsSequence())
         {
             for (const YAML::Node &stateNode : statesNode)
+                states.push_back(DecodeAnimatorStateNode(stateNode, parameters));
+        }
+
+        if (YAML::Node layersNode = root["layers"]; layersNode && layersNode.IsSequence())
+        {
+            for (const YAML::Node& layerNode : layersNode)
             {
-                AnimatorState state = {};
-                state.name = stateNode["name"].as<std::string>(state.name);
-                state.clip = stateNode["clip"].as<AnimationClipAssetHandle>(state.clip);
-                state.modelPath = stateNode["modelPath"].as<std::string>("");
-                state.modelAnimationIndex = stateNode["modelAnimationIndex"].as<i32>(0);
-                state.loop = stateNode["loop"].as<bool>(true);
-                state.speed = stateNode["speed"].as<float>(1.0f);
-                state.speedParameter = stateNode["speedParameter"].as<std::string>("");
-                state.rootMotionMask =
-                    stateNode["rootMotionMask"].as<Vector3>(Vector3(0.0f));
-                if (YAML::Node editorPositionNode = stateNode["editorPosition"])
-                    state.editorPosition = editorPositionNode.as<Vector2>(state.editorPosition);
-
-                if (YAML::Node transitionsNode = stateNode["transitions"]; transitionsNode && transitionsNode.IsSequence())
+                AnimatorLayer layer = {};
+                layer.name = layerNode["name"].as<std::string>(layer.name);
+                layer.blendMode = layerNode["blendMode"].as<std::string>("override") == "additive"
+                    ? AnimatorLayerBlendMode::ADDITIVE : AnimatorLayerBlendMode::OVERRIDE;
+                layer.weight = glm::clamp(layerNode["weight"].as<float>(1.0f), 0.0f, 1.0f);
+                layer.weightParameter = layerNode["weightParameter"].as<std::string>("");
+                layer.entryState = layerNode["entryState"].as<std::string>("");
+                if (YAML::Node mask = layerNode["maskRoots"]; mask && mask.IsSequence())
+                    for (const YAML::Node& rootNode : mask)
+                        layer.maskRoots.push_back(rootNode.as<std::string>(""));
+                if (YAML::Node mask = layerNode["maskBones"]; mask && mask.IsSequence())
+                    for (const YAML::Node& boneNode : mask)
+                        layer.maskBones.push_back(boneNode.as<std::string>(""));
+                if (YAML::Node weights = layerNode["maskWeights"]; weights && weights.IsSequence())
                 {
-                    for (const YAML::Node &transitionNode : transitionsNode)
+                    for (const YAML::Node& weightNode : weights)
                     {
-                        AnimatorTransition transition = {};
-                        transition.toState = transitionNode["toState"].as<std::string>("");
-                        transition.hasExitTime = transitionNode["hasExitTime"].as<bool>(false);
-                        transition.exitTimeNormalized = transitionNode["exitTimeNormalized"].as<float>(1.0f);
-                        transition.duration = std::max(
-                            transitionNode["duration"].as<float>(0.15f),
-                            0.0f);
-                        transition.preserveNormalizedTime =
-                            transitionNode["preserveNormalizedTime"].as<bool>(false);
-
-                        if (YAML::Node conditionsNode = transitionNode["conditions"]; conditionsNode && conditionsNode.IsSequence())
-                        {
-                            for (const YAML::Node &conditionNode : conditionsNode)
-                            {
-                                AnimatorTransitionCondition condition = {};
-                                condition.parameter = conditionNode["parameter"].as<std::string>("");
-                                condition.mode = AnimatorConditionModeFromString(conditionNode["mode"].as<std::string>("greater"));
-
-                                AnimatorParameterType parameterType = AnimatorParameterType::FLOAT;
-                                for (const AnimatorParameterDefinition &parameter : parameters)
-                                {
-                                    if (parameter.name == condition.parameter)
-                                    {
-                                        parameterType = parameter.type;
-                                        break;
-                                    }
-                                }
-
-                                condition.value = DecodeAnimationValue(
-                                    AnimatorParameterValueType(parameterType),
-                                    conditionNode["value"]);
-                                transition.conditions.push_back(condition);
-                            }
-                        }
-
-                        state.transitions.push_back(transition);
+                        AnimatorMaskBoneWeight weightedBone = {};
+                        weightedBone.boneName = weightNode["bone"].as<std::string>("");
+                        weightedBone.weight = glm::clamp(weightNode["weight"].as<float>(1.0f), 0.0f, 1.0f);
+                        if (!weightedBone.boneName.empty()) layer.maskWeights.push_back(weightedBone);
                     }
                 }
-
-                states.push_back(state);
+                if (YAML::Node layerStates = layerNode["states"]; layerStates && layerStates.IsSequence())
+                    for (const YAML::Node& stateNode : layerStates)
+                        layer.states.push_back(DecodeAnimatorStateNode(stateNode, parameters));
+                if (layer.entryState.empty() && !layer.states.empty()) layer.entryState = layer.states.front().name;
+                layers.push_back(layer);
             }
         }
 
@@ -3506,6 +3670,7 @@ namespace Canis
         entryState.clear();
         parameters.clear();
         states.clear();
+        layers.clear();
         return true;
     }
 
@@ -3531,50 +3696,40 @@ namespace Canis
 
         YAML::Node statesNode(YAML::NodeType::Sequence);
         for (const AnimatorState &state : states)
-        {
-            YAML::Node stateNode(YAML::NodeType::Map);
-            stateNode["name"] = state.name;
-            stateNode["clip"] = state.clip;
-            if (!state.modelPath.empty())
-                stateNode["modelPath"] = state.modelPath;
-            stateNode["modelAnimationIndex"] = state.modelAnimationIndex;
-            stateNode["loop"] = state.loop;
-            stateNode["speed"] = state.speed;
-            if (!state.speedParameter.empty())
-                stateNode["speedParameter"] = state.speedParameter;
-            stateNode["rootMotionMask"] = state.rootMotionMask;
-            stateNode["editorPosition"] = state.editorPosition;
-
-            YAML::Node transitionsNode(YAML::NodeType::Sequence);
-            for (const AnimatorTransition &transition : state.transitions)
-            {
-                YAML::Node transitionNode(YAML::NodeType::Map);
-                transitionNode["toState"] = transition.toState;
-                transitionNode["hasExitTime"] = transition.hasExitTime;
-                transitionNode["exitTimeNormalized"] = transition.exitTimeNormalized;
-                transitionNode["duration"] = transition.duration;
-                transitionNode["preserveNormalizedTime"] =
-                    transition.preserveNormalizedTime;
-
-                YAML::Node conditionsNode(YAML::NodeType::Sequence);
-                for (const AnimatorTransitionCondition &condition : transition.conditions)
-                {
-                    YAML::Node conditionNode(YAML::NodeType::Map);
-                    conditionNode["parameter"] = condition.parameter;
-                    conditionNode["mode"] = AnimatorConditionModeToString(condition.mode);
-                    conditionNode["value"] = EncodeAnimationValue(condition.value);
-                    conditionsNode.push_back(conditionNode);
-                }
-
-                transitionNode["conditions"] = conditionsNode;
-                transitionsNode.push_back(transitionNode);
-            }
-
-            stateNode["transitions"] = transitionsNode;
-            statesNode.push_back(stateNode);
-        }
+            statesNode.push_back(EncodeAnimatorStateNode(state));
 
         root["states"] = statesNode;
+
+        YAML::Node layersNode(YAML::NodeType::Sequence);
+        for (const AnimatorLayer& layer : layers)
+        {
+            YAML::Node layerNode(YAML::NodeType::Map);
+            layerNode["name"] = layer.name;
+            layerNode["blendMode"] = layer.blendMode == AnimatorLayerBlendMode::ADDITIVE ? "additive" : "override";
+            layerNode["weight"] = layer.weight;
+            if (!layer.weightParameter.empty()) layerNode["weightParameter"] = layer.weightParameter;
+            layerNode["entryState"] = layer.entryState;
+            YAML::Node mask(YAML::NodeType::Sequence);
+            for (const std::string& rootName : layer.maskRoots) mask.push_back(rootName);
+            layerNode["maskRoots"] = mask;
+            YAML::Node maskBones(YAML::NodeType::Sequence);
+            for (const std::string& boneName : layer.maskBones) maskBones.push_back(boneName);
+            layerNode["maskBones"] = maskBones;
+            YAML::Node maskWeights(YAML::NodeType::Sequence);
+            for (const AnimatorMaskBoneWeight& weightedBone : layer.maskWeights)
+            {
+                YAML::Node weightNode(YAML::NodeType::Map);
+                weightNode["bone"] = weightedBone.boneName;
+                weightNode["weight"] = glm::clamp(weightedBone.weight, 0.0f, 1.0f);
+                maskWeights.push_back(weightNode);
+            }
+            layerNode["maskWeights"] = maskWeights;
+            YAML::Node layerStates(YAML::NodeType::Sequence);
+            for (const AnimatorState& state : layer.states) layerStates.push_back(EncodeAnimatorStateNode(state));
+            layerNode["states"] = layerStates;
+            layersNode.push_back(layerNode);
+        }
+        root["layers"] = layersNode;
 
         std::ofstream out(targetPath);
         if (!out.is_open())
