@@ -1,6 +1,7 @@
 #include <Canis/Editor.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Window.hpp>
+#include <Canis/EditorTransformConstraints.hpp>
 #include <algorithm>
 #include <cmath>
 #include <cstdlib>
@@ -76,6 +77,7 @@ namespace Canis
         m_meshHistoryBefore = CaptureSceneHistoryState();
         m_meshOperation = operation;
         m_meshAxis = -1;
+        m_meshPlaneConstraint = false;
         m_meshAmount = 0;
         m_meshNumeric.clear();
         m_meshError.clear();
@@ -105,6 +107,8 @@ namespace Canis
             // The authored topology is untouched during preview. Restore only its render data.
             RebuildBlockoutEntity(*e, false);
         }
+        if (!confirm && m_meshOperation == 6)
+            ImGuizmo::Enable(false);
         m_meshOperation = 0;
         m_meshNumeric.clear();
         m_meshBefore = {};
@@ -363,7 +367,7 @@ namespace Canis
         m_meshHover = m_meshSelectMode == 0 ? vertexHit : (m_meshSelectMode == 1 ? edgeHit : faceHit);
         if (edgeHit >= 0 && m_meshOperation != 5)
             m_meshLoopEdge = m_meshEdges[edgeHit];
-        bool keys = hovered && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive() &&
+        bool keys = (hovered || (m_meshOperation && m_sceneViewFocused)) && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive() &&
                     !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId) &&
                     !ImGui::IsMouseDown(ImGuiMouseButton_Right);
         if (!m_meshOperation && keys)
@@ -396,7 +400,7 @@ namespace Canis
                     m_meshBoxSelect = true;
                     m_meshDragStart = {mouse.x, mouse.y};
                 }
-                if (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_X))
+                if (!m_meshOperation && (ImGui::IsKeyPressed(ImGuiKey_Delete) || ImGui::IsKeyPressed(ImGuiKey_X)))
                     m_meshDeleteRequested = true;
             }
         }
@@ -423,9 +427,7 @@ namespace Canis
             Matrix4 gizmo = m_meshOperation == 6 ? m_meshGizmoCurrent : start;
             auto view = m_scene->GetEditorCamera3DView();
             auto projection = m_scene->GetEditorCamera3DProjection();
-            ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-            ImGuizmo::SetRect(m_gameViewportPosX, m_gameViewportPosY, m_gameViewportDrawWidth,
-                              m_gameViewportDrawHeight);
+            PrepareSceneViewGizmo();
             ImGuizmo::SetOrthographic(false);
             ImGuizmo::OPERATION op = m_meshGizmoMode == 0
                                          ? ImGuizmo::TRANSLATE
@@ -528,12 +530,17 @@ namespace Canis
                 m_meshLoopEdge = m_meshEdges[edgeHit];
             if (keys)
             {
-                if (ImGui::IsKeyPressed(ImGuiKey_X))
-                    m_meshAxis = 0;
-                if (ImGui::IsKeyPressed(ImGuiKey_Y))
-                    m_meshAxis = 1;
-                if (ImGui::IsKeyPressed(ImGuiKey_Z))
-                    m_meshAxis = 2;
+                const ImGuiKey axisKeys[] = {ImGuiKey_X, ImGuiKey_Y, ImGuiKey_Z};
+                for (int axis = 0; axis < 3; ++axis)
+                    if (!ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(axisKeys[axis], false))
+                    {
+                        const bool plane = ImGui::GetIO().KeyShift && m_meshOperation != 2;
+                        if (m_meshAxis == axis && m_meshPlaneConstraint == plane)
+                            m_meshAxis = -1;
+                        else
+                            m_meshAxis = axis;
+                        m_meshPlaneConstraint = m_meshAxis >= 0 && plane;
+                    }
                 // Modeling uses key events because no text field owns SDL text input.
                 for (int digit = 0; digit < 10; ++digit)
                     if (ImGui::IsKeyPressed(static_cast<ImGuiKey>(ImGuiKey_0 + digit), false) ||
@@ -594,14 +601,34 @@ namespace Canis
                     center /= float(ids.size());
                 Vector3 axis(0);
                 axis[m_meshAxis < 0 ? 1 : m_meshAxis] = 1;
-                Vector3 move = axis * m_meshAmount;
-                if (m_meshAxis < 0 && m_meshOperation == 1)
+                Vector3 move(0);
+                if (m_meshOperation == 1)
                 {
-                    Matrix4 invView = glm::inverse(m_scene->GetEditorCamera3DView());
-                    Vector3 world = Vector3(invView[0]) * m_meshAmount;
+                    const Matrix4 invView = glm::inverse(m_scene->GetEditorCamera3DView());
+                    const Vector3 world = Vector3(invView[0]) * (mouse.x - m_meshDragStart.x) * 0.02f +
+                        Vector3(invView[1]) * (m_meshDragStart.y - mouse.y) * 0.02f;
+                    move = ConstrainEditorVector(Vector3(glm::inverse(model) * Vector4(world, 0)),
+                                                 m_meshAxis, m_meshPlaneConstraint);
+                    if (!m_meshNumeric.empty())
+                    {
+                        Vector3 direction = m_meshAxis >= 0 && !m_meshPlaneConstraint ? axis :
+                            ConstrainEditorVector(Vector3(glm::inverse(model) * Vector4(invView[0])),
+                                                  m_meshAxis, m_meshPlaneConstraint);
+                        if (glm::length(direction) < 0.0001f)
+                        {
+                            direction = Vector3(0);
+                            direction[m_meshAxis == 0 ? 1 : 0] = 1;
+                        }
+                        move = glm::normalize(direction) * m_meshAmount;
+                    }
+                    else if (m_gridSnappingEnabled)
+                    {
+                        const float snap = std::max(m_translationSnap, 0.001f);
+                        move = glm::round(move / snap) * snap;
+                    }
                     if (m_meshNumeric.empty())
-                        world += Vector3(invView[1]) * (m_meshDragStart.y - mouse.y) * 0.02f;
-                    move = Vector3(glm::inverse(model) * Vector4(world, 0));
+                        m_meshAmount = m_meshAxis >= 0 && !m_meshPlaneConstraint
+                            ? move[m_meshAxis] : glm::length(move);
                 }
                 for (u32 id : ids)
                 {
@@ -613,10 +640,7 @@ namespace Canis
                             center + glm::angleAxis(m_meshAmount * 0.01745329252f, axis) * p;
                     if (m_meshOperation == 3)
                     {
-                        if (m_meshAxis < 0)
-                            p *= m_meshAmount;
-                        else
-                            p[m_meshAxis] *= m_meshAmount;
+                        p *= EditorScaleFactors(m_meshAmount, m_meshAxis, m_meshPlaneConstraint);
                         m_meshPreview.vertices[id] = center + p;
                     }
                 }
@@ -688,18 +712,27 @@ namespace Canis
         }
         std::string help =
             m_meshOperation
-                ? "Confirm: Enter / click | Cancel: Esc / right-click | X Y Z axis | Type a value"
+                ? "Confirm: Enter / click | Cancel: Esc / right-click | X Y Z axis | Shift+axis plane | Type a value"
                 : "Tab exit | 1 vertex 2 edge 3 face | G R S | E extrude | Ctrl+R loop | B box select";
+        if (m_meshOperation && m_meshAxis >= 0)
+        {
+            const char* axes[] = {"X", "Y", "Z"};
+            const char* planes[] = {"YZ", "XZ", "XY"};
+            help += std::string(" | Local ") +
+                (m_meshPlaneConstraint ? planes[m_meshAxis] : axes[m_meshAxis]);
+        }
         if (m_meshOperation == 5)
             help = "Loop cut: " + std::to_string(m_meshCutCount) +
                    " | Wheel: count | Click: confirm | Esc: cancel";
+        if (m_meshOperation == 6)
+            help = "Drag handle | Release: confirm | Esc / right-click: cancel";
         if (!m_meshError.empty())
             help = m_meshError;
         const float helpWidth = std::max(100.0f, float(m_gameViewportWidth) - 20.0f);
         draw->AddText(ImGui::GetFont(), ImGui::GetFontSize(),
                       {m_gameViewportPosX + 10, m_gameViewportPosY + 10},
                       IM_COL32(255, 230, 150, 255), help.c_str(), nullptr, helpWidth);
-        if (m_meshOperation && m_meshOperation != 5)
+        if (m_meshOperation && m_meshOperation != 5 && m_meshOperation != 6)
             draw->AddText({m_gameViewportPosX + 10,
                            m_gameViewportPosY + 14 + ImGui::CalcTextSize(help.c_str(), nullptr, false, helpWidth).y},
                           IM_COL32(255, 255, 255, 255),

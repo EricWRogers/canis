@@ -40,6 +40,12 @@ namespace Canis
         bool editorLocked = false;
         std::string name = "";
         std::string tag = "";
+
+        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        bool HasTag(Tag value) const { return tag == ToTagName(value); }
+
+        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        void SetTag(Tag value) { tag = ToTagName(value); }
         UUID uuid;
         
         Entity() = delete;

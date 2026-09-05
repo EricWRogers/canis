@@ -151,6 +151,18 @@ namespace Canis
         Entity* GetEntityWithTag(std::string _tag);
         std::vector<Entity*> GetEntitiesWithTag(std::string _tag);
 
+        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        Entity* GetEntityWithTag(Tag value)
+        {
+            return GetEntityWithTag(std::string(ToTagName(value)));
+        }
+
+        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        std::vector<Entity*> GetEntitiesWithTag(Tag value)
+        {
+            return GetEntitiesWithTag(std::string(ToTagName(value)));
+        }
+
         void Destroy(int _id);
         void Destroy(Entity& _entity);
 

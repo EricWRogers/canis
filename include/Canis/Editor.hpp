@@ -227,6 +227,7 @@ namespace Canis
         void SaveActiveSceneTab();
         bool IsSceneTabDirty(int _index) const;
         void DrawGameView();
+        void PrepareSceneViewGizmo();
         void DrawSceneViewGizmo();
         void DrawEditorWindowMenu();
         void EnsureGameRenderTarget(int _width, int _height);
@@ -492,6 +493,7 @@ namespace Canis
         std::vector<std::pair<u32,u32>> m_meshEdges;
         int m_meshOperation = 0; // 1 move, 2 rotate, 3 scale, 4 extrude, 5 loop
         int m_meshAxis = -1;
+        bool m_meshPlaneConstraint = false;
         int m_meshCutCount = 1;
         int m_meshHover = -1;
         std::pair<u32,u32> m_meshLoopEdge = {0,0};

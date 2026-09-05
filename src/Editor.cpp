@@ -1,3 +1,4 @@
+#include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
 
 #include <Canis/Canis.hpp>
@@ -8552,6 +8553,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
     }
 
+    void Editor::PrepareSceneViewGizmo()
+    {
+        PrepareViewportGizmo(m_gameViewportPosX, m_gameViewportPosY,
+                             m_gameViewportDrawWidth, m_gameViewportDrawHeight);
+    }
+
     void Editor::DrawSceneViewGizmo()
     {
         if (m_gameViewportWidth <= 0 || m_gameViewportHeight <= 0)
@@ -8579,25 +8586,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
-        float rectW = (m_gameViewportDrawWidth > 0.0f) ? m_gameViewportDrawWidth : static_cast<float>(m_gameViewportWidth);
-        float rectH = (m_gameViewportDrawHeight > 0.0f) ? m_gameViewportDrawHeight : static_cast<float>(m_gameViewportHeight);
-
-        // Keep ImGuizmo's internal helper window attached to the Scene viewport.
-        // This preserves gizmo interaction while preventing it from showing up as its own platform window.
-        ImGuiWindow* sceneWindow = ImGui::GetCurrentWindow();
-        if (sceneWindow != nullptr && sceneWindow->Viewport != nullptr)
-            ImGui::SetNextWindowViewport(sceneWindow->Viewport->ID);
-
-        ImGuiWindowClass gizmoWindowClass = {};
-        gizmoWindowClass.ViewportFlagsOverrideSet = ImGuiViewportFlags_NoTaskBarIcon;
-        gizmoWindowClass.ViewportFlagsOverrideClear = ImGuiViewportFlags_NoAutoMerge;
-        ImGui::SetNextWindowClass(&gizmoWindowClass);
-        ImGuizmo::BeginFrame();
-
-        ImGuizmo::SetDrawlist(ImGui::GetWindowDrawList());
-        ImGuizmo::SetAlternativeWindow(ImGui::GetCurrentWindow());
-        ImGuizmo::SetRect(m_gameViewportPosX, m_gameViewportPosY, rectW, rectH);
-        ImGuizmo::Enable(true);
+        PrepareSceneViewGizmo();
 
         static bool altDuplicateLatch = false;
         if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
@@ -11688,7 +11677,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::InputText("##name", &entity.name);
             ImGui::Text("tag:  ");
             ImGui::SameLine();
-            ImGui::InputText("##tag", &entity.tag);
+            const auto& projectTags = Canis::GetProjectConfig().tags;
+            if (ImGui::BeginCombo("##tag", entity.tag.empty() ? "None" : entity.tag.c_str()))
+            {
+                if (ImGui::Selectable("None", entity.tag.empty()))
+                    entity.tag.clear();
+                for (const std::string& tag : projectTags)
+                    if (ImGui::Selectable(tag.c_str(), entity.tag == tag))
+                        entity.tag = tag;
+                if (!entity.tag.empty() &&
+                    std::find(projectTags.begin(), projectTags.end(), entity.tag) == projectTags.end())
+                    ImGui::TextDisabled("Current tag is not in Project Settings.");
+                ImGui::EndCombo();
+            }
 
             for (ScriptConf &conf : m_app->GetScriptRegistry())
             {
@@ -17396,6 +17397,43 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else
             ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                 "Use only letters, numbers, _, ., +, or -.");
+
+        if (ImGui::CollapsingHeader("Tags"))
+        {
+            auto& tags = Canis::GetProjectConfig().tags;
+            ImGui::TextWrapped("Add tags here, then rebuild game code to use Tags. "
+                "Removing a tag keeps existing scene assignments.");
+            for (std::size_t i = 0; i < tags.size();)
+            {
+                ImGui::PushID(static_cast<int>(i));
+                const bool remove = ImGui::SmallButton("Remove");
+                ImGui::SameLine();
+                ImGui::TextUnformatted(tags[i].c_str());
+                ImGui::PopID();
+                if (remove)
+                {
+                    tags.erase(tags.begin() + i);
+                    Canis::SaveProjectConfig();
+                }
+                else
+                    ++i;
+            }
+            static std::string newTag;
+            ImGui::InputText("New tag", &newTag);
+            const bool validTag = Canis::IsValidProjectTag(newTag) &&
+                std::find(tags.begin(), tags.end(), newTag) == tags.end();
+            ImGui::BeginDisabled(!validTag);
+            if (ImGui::Button("Add Tag"))
+            {
+                tags.push_back(newTag);
+                newTag.clear();
+                Canis::SaveProjectConfig();
+            }
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Start with A-Z; use letters, numbers, or _. None and __ are reserved.");
+            if (!newTag.empty() && !validTag)
+                ImGui::TextDisabled("Enter a valid, unique tag name.");
+        }
 
         bool editorEnabled = Canis::GetProjectConfig().editor;
         ImGui::Text("editor mode");

@@ -276,8 +276,21 @@ namespace Canis
             return false;
         }
 
+        std::vector<std::string> seenTags;
+        for (const std::string& tag : projectConfig.tags)
+        {
+            if (!IsValidProjectTag(tag) ||
+                std::find(seenTags.begin(), seenTags.end(), tag) != seenTags.end())
+            {
+                Debug::Error("Invalid or duplicate project tag: %s", tag.c_str());
+                return false;
+            }
+            seenTags.push_back(tag);
+        }
+
         YAML::Node node;
 
+        node["tags"] = projectConfig.tags;
         node["gameName"] = projectConfig.gameName;
         node["executableName"] = projectConfig.executableName;
         node["useFrameLimit"] = projectConfig.useFrameLimit;
@@ -338,6 +351,7 @@ namespace Canis
                 // Runtime-only values such as the current editor window size
                 // may intentionally differ. Mirror source-controlled project
                 // settings so a rebuild cannot replace changes made here.
+                sourceNode["tags"] = projectConfig.tags;
                 sourceNode["gameName"] = projectConfig.gameName;
                 sourceNode["executableName"] = projectConfig.executableName;
                 sourceNode["targetGameWidth"] = projectConfig.targetGameWidth;
@@ -424,6 +438,7 @@ namespace Canis
         if (FileExists(editorConfigPath.c_str()))
             editorNode = YAML::LoadFile(editorConfigPath);
 
+        projectConfig.tags = node["tags"].as<std::vector<std::string>>(std::vector<std::string>{});
         projectConfig.gameName = node["gameName"].as<std::string>(projectConfig.gameName);
         projectConfig.executableName = node["executableName"].as<std::string>(projectConfig.executableName);
         projectConfig.useFrameLimit = node["useFrameLimit"].as<bool>(projectConfig.useFrameLimit);

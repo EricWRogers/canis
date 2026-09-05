@@ -27,6 +27,19 @@ namespace Canis
         EDITOR_THEME_LIGHT = 1,
     };
 
+    // Uppercase-leading identifiers avoid C++ keywords and reserved identifiers.
+    inline bool IsValidProjectTag(const std::string& name)
+    {
+        if (name.empty() || name == "None" || name[0] < 'A' || name[0] > 'Z' ||
+            name.find("__") != std::string::npos)
+            return false;
+        for (const char c : name)
+            if (!((c >= 'A' && c <= 'Z') || (c >= 'a' && c <= 'z') ||
+                  (c >= '0' && c <= '9') || c == '_'))
+                return false;
+        return true;
+    }
+
     struct ProjectConfig
     {
         // Human-facing title and build-target identity are deliberately
@@ -34,6 +47,7 @@ namespace Canis
         // remain suitable for the host platform and build system.
         std::string gameName = "Canis Game";
         std::string executableName = "c-engine";
+        std::vector<std::string> tags = {};
         //bool fullscreen = false;
         //bool borderless = false;
         //bool resizeable = false;

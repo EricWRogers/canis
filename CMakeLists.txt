@@ -83,6 +83,14 @@ target_compile_definitions(${CANIS_ENGINE_LIB} PRIVATE CANIS_HAS_FREETYPE)
 message(STATUS "CanisEngine: using vendored FreeType submodule")
 
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
+    if(CANIS_ENABLE_EDITOR)
+        add_executable(CanisEditorGizmoTests tests/EditorGizmoTests.cpp)
+        target_link_libraries(CanisEditorGizmoTests PRIVATE ${CANIS_ENGINE_LIB} imgui imguizmo)
+        add_test(NAME CanisEditorGizmoTests COMMAND CanisEditorGizmoTests)
+    endif()
+    add_executable(CanisEditorTransformConstraintsTests tests/EditorTransformConstraintsTests.cpp)
+    target_link_libraries(CanisEditorTransformConstraintsTests PRIVATE ${CANIS_ENGINE_LIB})
+    add_test(NAME CanisEditorTransformConstraintsTests COMMAND CanisEditorTransformConstraintsTests)
     add_executable(CanisBlockoutGeometryTests
         tests/BlockoutGeometryTests.cpp
     )
