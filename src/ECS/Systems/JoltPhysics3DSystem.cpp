@@ -1090,6 +1090,7 @@ namespace Canis
 
         void ClearPendingKinematicMotion(Rigidbody &_rigidbody)
         {
+            _rigidbody.hasPendingKinematicStop = false;
             _rigidbody.pendingTranslation = Vector3(0.0f);
             _rigidbody.pendingRotation = Quaternion(Vector3(0.0f));
         }
@@ -1102,7 +1103,7 @@ namespace Canis
             const bool hasTranslation = !NearlyZero(_rigidbody.pendingTranslation);
             const Quaternion identity = Quaternion(Vector3(0.0f));
             const bool hasRotation = std::abs(glm::dot(_rigidbody.pendingRotation, identity)) < 0.999999f;
-            if (!hasTranslation && !hasRotation)
+            if (!hasTranslation && !hasRotation && !_rigidbody.hasPendingKinematicStop)
                 return;
 
             const JPH::RVec3 currentPosition = bodyInterface->GetPosition(_bodyID);

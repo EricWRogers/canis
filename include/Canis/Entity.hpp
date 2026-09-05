@@ -1050,6 +1050,15 @@ namespace Canis
             pendingTranslation += _translation;
         }
 
+        void StopKinematicMotion()
+        {
+            if (!active || motionType != RigidbodyMotionType::KINEMATIC)
+                return;
+            pendingTranslation = Vector3(0.0f);
+            pendingRotation = Quaternion(Vector3(0.0f));
+            hasPendingKinematicStop = true;
+        }
+
         void Rotate(const Vector3 &_eulerRadians)
         {
             if (!active || motionType != RigidbodyMotionType::KINEMATIC)
@@ -1084,6 +1093,7 @@ namespace Canis
         bool hasPendingLinearVelocity = false;
         Vector3 pendingAngularVelocity = Vector3(0.0f);
         bool hasPendingAngularVelocity = false;
+        bool hasPendingKinematicStop = false;
         Vector3 pendingTranslation = Vector3(0.0f);
         Quaternion pendingRotation = Quaternion(Vector3(0.0f));
     };
