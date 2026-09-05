@@ -485,6 +485,7 @@ namespace Canis
         float m_rotationSnapDegrees = 15.0f;
         float m_scaleSnap = 0.25f;
         Vector3 m_blockoutPlacementPosition = Vector3(0.0f);
+        Vector3 m_playPlacementPosition = Vector3(0.0f);
         std::vector<UUID> m_selectedEntityUUIDs = {};
         int m_blockoutDrawType = -1;
         UUID m_meshEditEntity = UUID(0);

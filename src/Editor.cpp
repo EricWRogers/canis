@@ -1,5 +1,6 @@
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/EditorSpawnPlacement.hpp>
 
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
@@ -8353,6 +8354,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             m_blockoutPlacementPosition = rayOrigin + rayDirection * 6.0f;
                         }
 
+                        m_playPlacementPosition = m_blockoutPlacementPosition;
                         if (m_gridSnappingEnabled)
                         {
                             const float snap = std::max(0.01f, m_translationSnap);
@@ -8388,7 +8390,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ImGui::EndMenu();
                     }
                     if (ImGui::MenuItem("Play From Here"))
-                        StartPlayModeAt(&m_blockoutPlacementPosition);
+                        StartPlayModeAt(&m_playPlacementPosition);
                     if (ImGui::MenuItem("Drop Selection To Floor", "End", false, !GetSelectedEntities().empty()))
                         (void)DropSelectedEntitiesToFloor();
                     if (ImGui::MenuItem("Duplicate Selection", "Ctrl+D", false, !GetSelectedEntities().empty()))
@@ -9292,7 +9294,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 Transform &transform = player->GetComponent<Transform>();
                 Vector3 position = *_position;
-                position.y += 0.1f;
+                position.y += EditorSpawnGroundOffset(transform.GetGlobalScale(), transform.GetGlobalRotation(),
+                    player->HasComponent<BoxCollider>() ? &player->GetComponent<BoxCollider>() : nullptr,
+                    player->HasComponent<SphereCollider>() ? &player->GetComponent<SphereCollider>() : nullptr,
+                    player->HasComponent<CapsuleCollider>() ? &player->GetComponent<CapsuleCollider>() : nullptr);
                 if (transform.parent == nullptr)
                     transform.position = position;
                 else
