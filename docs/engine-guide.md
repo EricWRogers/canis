@@ -337,7 +337,32 @@ The editor integration currently provides:
 - inspector drawing for registered scripts and built-in components
 - runtime/editor window mode support through project config
 - editor camera overrides on the scene
+- multiple scene tabs with per-tab working snapshots and undo/redo history
+- a scene-local viewport toolbar below the scene tabs
 - system timing collection for update and render systems
+
+Scene tabs reuse the application's single live `Scene`. Before switching, the
+editor captures the active scene YAML, terrain assets, hierarchy and selection
+state, and history stacks in a `SceneTabState`. It restores the destination
+snapshot into the same scene object and loads that asset's saved editor-camera
+configuration. This avoids updating or rendering several worlds at once while
+still preserving unsaved work in every open tab. A saved snapshot provides the
+dirty-state baseline, and dirty tabs cannot be closed until saved.
+
+Blockout Edit Mode is implemented in `src/EditorMeshEdit.cpp`. Tab on one
+unlocked blockout converts its primitive into `EditableBlockoutMesh`, stored
+inside `BlockoutShape` with indexed vertices and ordered face loops. Face slots
+and vertex indices remain stable; removed face slots are empty. Edge adjacency
+is derived from vertex pairs. `src/BlockoutEditing.cpp` implements quad-ring
+splitting, region extrusion, coplanar dissolve, conversion, and topology
+validation. Rendering triangulates the polygons; edited shapes use mesh
+collision. Scene serialization, history snapshots, and OBJ baking all use the
+same committed mesh. During a preview only render geometry changes; confirmation
+updates collision and navigation and records a single history entry.
+
+Editor framebuffer captures now include the composed UI when `--editor` is
+combined with `--capture-dir` and `--stop-at`, allowing viewport UI checks as
+well as runtime scene captures.
 
 Inspector rendering is a mix of:
 

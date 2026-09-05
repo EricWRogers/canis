@@ -741,6 +741,7 @@ namespace Canis
         entity.name = _node["Name"].as<std::string>("");
         entity.tag = _node["Tag"].as<std::string>("");
         entity.active = _node["Active"].as<bool>(true);
+        entity.editorLocked = _node["EditorLocked"].as<bool>(false);
 
         if (app != nullptr)
         {
@@ -900,6 +901,7 @@ namespace Canis
         node["Name"] = _entity.name;
         node["Tag"] = _entity.tag;
         node["Active"] = _entity.active;
+        node["EditorLocked"] = _entity.editorLocked;
 
         std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
 

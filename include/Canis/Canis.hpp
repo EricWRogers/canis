@@ -87,6 +87,11 @@ namespace Canis
         std::string fontPath = "";
         float fontScale = 1.0f;
         bool reloadBuildAutoCloseOnSuccess = false;
+        bool showBlockoutGrid = true;
+        bool gridSnappingEnabled = true;
+        float translationSnap = 0.25f;
+        float rotationSnapDegrees = 15.0f;
+        float scaleSnap = 0.25f;
         int sceneCameraMode = 0;
         Vector3 sceneCamera3DPosition = Vector3(0.0f, 2.0f, 8.0f);
         float sceneCamera3DYaw = -90.0f;

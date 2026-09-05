@@ -22,6 +22,7 @@
 #include <Canis/Network.hpp>
 #include <Canis/VFX/Particles.hpp>
 #include <Canis/Terrain.hpp>
+#include <Canis/Blockout.hpp>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -610,7 +611,7 @@ namespace Canis
             int _height,
             const fs::path &_outputPath)
         {
-            if (_framebuffer == 0u || _width <= 0 || _height <= 0)
+            if (_width <= 0 || _height <= 0)
                 return false;
 
             std::error_code error = {};
@@ -625,7 +626,7 @@ namespace Canis
             glGetIntegerv(GL_READ_BUFFER, &previousReadBuffer);
             glGetIntegerv(GL_PACK_ALIGNMENT, &previousPackAlignment);
             glBindFramebuffer(GL_READ_FRAMEBUFFER, _framebuffer);
-            glReadBuffer(GL_COLOR_ATTACHMENT0);
+            glReadBuffer(_framebuffer == 0u ? GL_BACK : GL_COLOR_ATTACHMENT0);
             glPixelStorei(GL_PACK_ALIGNMENT, 1);
 
             const size_t rowBytes = static_cast<size_t>(_width) * 4u;
@@ -2217,6 +2218,9 @@ namespace Canis
         if (runtime.editorRuntimeEnabled)
         {
             editor.Draw(&scene, &window, this, &gameCodeObject, deltaTime);
+            // Editor captures use the composed window framebuffer, including its UI.
+            captureWidth = window.GetWindowWidth();
+            captureHeight = window.GetWindowHeight();
             inputManager.SetGameInputWindowID(editor.GetGameInputWindowID());
         }
         else
@@ -4336,6 +4340,267 @@ namespace Canis
         };
 
         RegisterScript(cloudNavSurfaceConf);
+
+        ScriptConf blockoutShapeConf = {
+            .name = "Canis::BlockoutShape",
+            .Construct = nullptr,
+            .Add = [this](Entity &_entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+                BlockoutShape &shape = *_entity.AddComponent<BlockoutShape>();
+                shape.MarkDirty();
+                RebuildBlockoutEntity(_entity);
+            },
+            .Has = [this](Entity &_entity) -> bool { return _entity.HasComponent<BlockoutShape>(); },
+            .Remove = [this](Entity &_entity) -> void {
+                if (_entity.HasComponent<BlockoutShape>())
+                {
+                    BlockoutShape &shape = _entity.GetComponent<BlockoutShape>();
+                    if (shape.runtimeModelId >= 0)
+                        AssetManager::FreeModel(shape.runtimeModelId);
+                }
+                _entity.RemoveComponent<BlockoutShape>();
+            },
+            .Get = [this](Entity &_entity) -> void* {
+                return _entity.HasComponent<BlockoutShape>() ?
+                    static_cast<void*>(&_entity.GetComponent<BlockoutShape>()) : nullptr;
+            },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (!_entity.HasComponent<BlockoutShape>())
+                    return;
+                const BlockoutShape &shape = _entity.GetComponent<BlockoutShape>();
+                YAML::Node comp;
+                comp["active"] = shape.active;
+                comp["type"] = shape.type;
+                comp["size"] = shape.size;
+                comp["sides"] = shape.sides;
+                comp["stepCount"] = shape.stepCount;
+                comp["uvScale"] = shape.uvScale;
+                comp["loopCutsX"] = shape.loopCutsX;
+                comp["loopCutsY"] = shape.loopCutsY;
+                comp["loopCutsZ"] = shape.loopCutsZ;
+                comp["extrudeNegative"] = shape.extrudeNegative;
+                comp["extrudePositive"] = shape.extrudePositive;
+                comp["meshEdited"] = shape.meshEdited;
+                if (shape.meshEdited)
+                {
+                    for (const auto &p:shape.editMesh.vertices) comp["editVertices"].push_back(p);
+                    for (const auto &f:shape.editMesh.faces)
+                    {
+                        YAML::Node face;
+                        face["vertices"] = f.vertices;
+                        face["uv"] = YAML::Node(YAML::NodeType::Sequence);
+                        for (const auto &uv:f.uv) face["uv"].push_back(uv);
+                        comp["editFaces"].push_back(face);
+                    }
+                }
+                comp["generateCollision"] = shape.generateCollision;
+                comp["visibleInGame"] = shape.visibleInGame;
+                comp["castShadow"] = shape.castShadow;
+                _node["Canis::BlockoutShape"] = comp;
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                const YAML::Node comp = _node["Canis::BlockoutShape"];
+                if (!comp)
+                    return;
+                BlockoutShape &shape = *_entity.AddComponent<BlockoutShape>();
+                shape.active = comp["active"].as<bool>(true);
+                shape.type = std::clamp(
+                    comp["type"].as<int>(BlockoutShapeType::BOX),
+                    BlockoutShapeType::BOX,
+                    BlockoutShapeType::STAIRS);
+                shape.size = glm::max(
+                    glm::abs(comp["size"].as<Vector3>(Vector3(1.0f))),
+                    Vector3(0.01f));
+                shape.sides = std::clamp(comp["sides"].as<int>(16), 3, 64);
+                shape.stepCount = std::clamp(comp["stepCount"].as<int>(6), 1, 64);
+                shape.uvScale = glm::max(
+                    glm::abs(comp["uvScale"].as<Vector2>(Vector2(1.0f))),
+                    Vector2(0.001f));
+                shape.loopCutsX = std::clamp(comp["loopCutsX"].as<int>(0), 0, 32);
+                shape.loopCutsY = std::clamp(comp["loopCutsY"].as<int>(0), 0, 32);
+                shape.loopCutsZ = std::clamp(comp["loopCutsZ"].as<int>(0), 0, 32);
+                shape.extrudeNegative = glm::clamp(
+                    comp["extrudeNegative"].as<Vector3>(Vector3(0.0f)),
+                    Vector3(0.0f),
+                    Vector3(10000.0f));
+                shape.extrudePositive = glm::clamp(
+                    comp["extrudePositive"].as<Vector3>(Vector3(0.0f)),
+                    Vector3(0.0f),
+                    Vector3(10000.0f));
+                shape.generateCollision = comp["generateCollision"].as<bool>(true);
+                shape.meshEdited = comp["meshEdited"].as<bool>(false);
+                if (shape.meshEdited)
+                {
+                    if (comp["editVertices"].size()>100000 || comp["editFaces"].size()>100000)
+                        throw std::runtime_error("Editable blockout exceeds mesh limit");
+                    for (const auto &p:comp["editVertices"]) shape.editMesh.vertices.push_back(p.as<Vector3>());
+                    for (const auto &f:comp["editFaces"])
+                    {
+                        BlockoutFace face;
+                        face.vertices=f["vertices"].as<std::vector<u32>>();
+                        for (const auto &uv:f["uv"]) face.uv.push_back(uv.as<Vector2>());
+                        shape.editMesh.faces.push_back(std::move(face));
+                    }
+                }
+                shape.visibleInGame = comp["visibleInGame"].as<bool>(true);
+                shape.castShadow = comp["castShadow"].as<bool>(true);
+                if (_callCreate)
+                    shape.Create();
+                RebuildBlockoutEntity(_entity);
+            },
+            .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
+                if (!_entity.HasComponent<BlockoutShape>())
+                    return;
+                BlockoutShape &shape = _entity.GetComponent<BlockoutShape>();
+                const BlockoutShape before = shape;
+                const char *shapeNames[] = {"Box", "Plane", "Ramp", "Cylinder", "Stairs"};
+
+                DrawInspectorField(_editor, "active", _conf.name.c_str(), shape.active);
+                if (shape.meshEdited) ImGui::TextUnformatted("Editable mesh: use Tab in the Scene view.");
+                ImGui::BeginDisabled(shape.meshEdited);
+                ImGui::TextUnformatted("type");
+                ImGui::SameLine();
+                ImGui::SetNextItemWidth(170.0f);
+                (void)ImGui::Combo("##BlockoutShapeType", &shape.type, shapeNames, IM_ARRAYSIZE(shapeNames));
+                DrawInspectorField(_editor, "size", _conf.name.c_str(), shape.size);
+                if (shape.type == BlockoutShapeType::CYLINDER)
+                    DrawInspectorField(_editor, "sides", _conf.name.c_str(), shape.sides);
+                if (shape.type == BlockoutShapeType::STAIRS)
+                    DrawInspectorField(_editor, "stepCount", _conf.name.c_str(), shape.stepCount);
+                DrawInspectorField(_editor, "uvScale", _conf.name.c_str(), shape.uvScale);
+
+                if (shape.type == BlockoutShapeType::BOX)
+                {
+                    ImGui::PushID("BlockoutTopology");
+                    ImGui::Separator();
+                    ImGui::TextUnformatted("Topology");
+                    int loopCuts[3] = {shape.loopCutsX, shape.loopCutsY, shape.loopCutsZ};
+                    ImGui::SetNextItemWidth(210.0f);
+                    if (ImGui::DragInt3("Loop Cuts X/Y/Z", loopCuts, 1.0f, 0, 32))
+                    {
+                        shape.loopCutsX = loopCuts[0];
+                        shape.loopCutsY = loopCuts[1];
+                        shape.loopCutsZ = loopCuts[2];
+                    }
+
+                    static int loopCutAxis = 0;
+                    const char *axisNames[] = {"X", "Y", "Z"};
+                    ImGui::SetNextItemWidth(80.0f);
+                    ImGui::Combo("Cut Axis", &loopCutAxis, axisNames, IM_ARRAYSIZE(axisNames));
+                    ImGui::SameLine();
+                    if (ImGui::Button("Add Loop Cut"))
+                    {
+                        int *selectedCuts[] = {&shape.loopCutsX, &shape.loopCutsY, &shape.loopCutsZ};
+                        *selectedCuts[loopCutAxis] = std::min(*selectedCuts[loopCutAxis] + 1, 32);
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Adds an evenly spaced edge loop perpendicular to the selected local axis.");
+                    ImGui::SameLine();
+                    if (ImGui::Button("Remove Cut"))
+                    {
+                        int *selectedCuts[] = {&shape.loopCutsX, &shape.loopCutsY, &shape.loopCutsZ};
+                        *selectedCuts[loopCutAxis] = std::max(*selectedCuts[loopCutAxis] - 1, 0);
+                    }
+
+                    static int extrudeFace = 3;
+                    static float extrudeDistance = 1.0f;
+                    const char *faceNames[] = {"-X Left", "+X Right", "-Y Bottom", "+Y Top", "-Z Back", "+Z Front"};
+                    ImGui::SetNextItemWidth(130.0f);
+                    ImGui::Combo("Face", &extrudeFace, faceNames, IM_ARRAYSIZE(faceNames));
+                    ImGui::SetNextItemWidth(130.0f);
+                    ImGui::DragFloat("Extrude Distance", &extrudeDistance, 0.05f, 0.01f, 1000.0f, "%.2f");
+                    if (ImGui::Button("Extrude Face"))
+                    {
+                        const float distance = std::clamp(std::abs(extrudeDistance), 0.01f, 1000.0f);
+                        switch (extrudeFace)
+                        {
+                        case 0: shape.extrudeNegative.x += distance; break;
+                        case 1: shape.extrudePositive.x += distance; break;
+                        case 2: shape.extrudeNegative.y += distance; break;
+                        case 3: shape.extrudePositive.y += distance; break;
+                        case 4: shape.extrudeNegative.z += distance; break;
+                        case 5: shape.extrudePositive.z += distance; break;
+                        default: break;
+                        }
+                    }
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("Pushes the selected outer face along its local normal. Repeated operations accumulate.");
+                    ImGui::SameLine();
+                    if (ImGui::Button("Reset Topology"))
+                    {
+                        shape.loopCutsX = 0;
+                        shape.loopCutsY = 0;
+                        shape.loopCutsZ = 0;
+                        shape.extrudeNegative = Vector3(0.0f);
+                        shape.extrudePositive = Vector3(0.0f);
+                    }
+                    ImGui::TextDisabled(
+                        "Extrusion -: %.2f, %.2f, %.2f  +: %.2f, %.2f, %.2f",
+                        shape.extrudeNegative.x,
+                        shape.extrudeNegative.y,
+                        shape.extrudeNegative.z,
+                        shape.extrudePositive.x,
+                        shape.extrudePositive.y,
+                        shape.extrudePositive.z);
+                    ImGui::Separator();
+                    ImGui::PopID();
+                }
+
+                ImGui::EndDisabled();
+                DrawInspectorField(_editor, "generateCollision", _conf.name.c_str(), shape.generateCollision);
+                DrawInspectorField(_editor, "visibleInGame", _conf.name.c_str(), shape.visibleInGame);
+                DrawInspectorField(_editor, "castShadow", _conf.name.c_str(), shape.castShadow);
+
+                if (_entity.HasComponent<Material>())
+                {
+                    Material &material = _entity.GetComponent<Material>();
+                    ImGui::TextUnformatted("Whitebox Material");
+                    if (ImGui::SmallButton("Neutral"))
+                        material.materialId = AssetManager::LoadMaterial("assets/defaults/materials/whitebox_neutral.material");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Gameplay"))
+                        material.materialId = AssetManager::LoadMaterial("assets/defaults/materials/whitebox_gameplay.material");
+                    ImGui::SameLine();
+                    if (ImGui::SmallButton("Blocker"))
+                        material.materialId = AssetManager::LoadMaterial("assets/defaults/materials/whitebox_blocker.material");
+                }
+
+                const bool bakeRequested = ImGui::Button("Bake To Static OBJ");
+                if (ImGui::IsItemHovered())
+                    ImGui::SetTooltip("Writes assets/generated/blockouts/<name>_<uuid>.obj and replaces the procedural component.");
+
+                shape.type = std::clamp(shape.type, BlockoutShapeType::BOX, BlockoutShapeType::STAIRS);
+                shape.size = glm::max(glm::abs(shape.size), Vector3(0.01f));
+                shape.sides = std::clamp(shape.sides, 3, 64);
+                shape.stepCount = std::clamp(shape.stepCount, 1, 64);
+                shape.uvScale = glm::max(glm::abs(shape.uvScale), Vector2(0.001f));
+                shape.loopCutsX = std::clamp(shape.loopCutsX, 0, 32);
+                shape.loopCutsY = std::clamp(shape.loopCutsY, 0, 32);
+                shape.loopCutsZ = std::clamp(shape.loopCutsZ, 0, 32);
+                shape.extrudeNegative = glm::clamp(shape.extrudeNegative, Vector3(0.0f), Vector3(10000.0f));
+                shape.extrudePositive = glm::clamp(shape.extrudePositive, Vector3(0.0f), Vector3(10000.0f));
+
+                if (before.active != shape.active || before.type != shape.type ||
+                    before.size != shape.size || before.sides != shape.sides ||
+                    before.stepCount != shape.stepCount || before.uvScale != shape.uvScale ||
+                    before.loopCutsX != shape.loopCutsX || before.loopCutsY != shape.loopCutsY ||
+                    before.loopCutsZ != shape.loopCutsZ ||
+                    before.extrudeNegative != shape.extrudeNegative ||
+                    before.extrudePositive != shape.extrudePositive ||
+                    before.generateCollision != shape.generateCollision ||
+                    before.visibleInGame != shape.visibleInGame ||
+                    before.castShadow != shape.castShadow)
+                {
+                    shape.MarkDirty();
+                    RebuildBlockoutEntity(_entity);
+                }
+                if (bakeRequested)
+                    (void)_editor.BakeBlockoutEntity(&_entity);
+            },
+        };
+
+        RegisterScript(blockoutShapeConf);
 
         ScriptConf terrainConf = {
             .name = "Canis::Terrain",

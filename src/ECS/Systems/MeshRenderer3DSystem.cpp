@@ -962,6 +962,12 @@ namespace Canis
                 modelRenderer.modelId < 0 ||
                 !modelRenderer.castShadow)
                 continue;
+            if (const BlockoutShape *blockout = _registry.try_get<BlockoutShape>(entityHandle))
+            {
+                if (!blockout->active ||
+                    (!blockout->visibleInGame && !scene->HasEditorCamera3DOverride()))
+                    continue;
+            }
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
             if (model == nullptr)
@@ -1188,6 +1194,12 @@ namespace Canis
                 !transform.IsActiveInHierarchy() ||
                 modelRenderer.modelId < 0)
                 continue;
+            if (const BlockoutShape *blockout = _registry.try_get<BlockoutShape>(entityHandle))
+            {
+                if (!blockout->active ||
+                    (!blockout->visibleInGame && !scene->HasEditorCamera3DOverride()))
+                    continue;
+            }
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
             if (model == nullptr)

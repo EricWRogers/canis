@@ -20,6 +20,7 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Terrain.hpp>
+#include <Canis/Blockout.hpp>
 #include <Canis/VFX/Particles.hpp>
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
 #include <Canis/ECS/Systems/CloudNavSystem.hpp>
@@ -273,6 +274,14 @@ namespace Canis
         const std::vector<Canis::Entity*> &_roots,
         const std::string &_prefabPath);
     static void AssignPrefabHandle(Canis::Entity *_entity, const SceneAssetHandle &_prefabHandle);
+    static bool InstantiateSceneAssetIntoHierarchy(
+        Canis::Scene &_scene,
+        const AssetDragData &_dropped,
+        Canis::Entity *_parent,
+        int _childIndex,
+        std::vector<Canis::UUID> *_rootOrder,
+        int _targetRootPos,
+        Canis::Entity* &_outTopLevel);
 
     namespace
     {
@@ -4090,6 +4099,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Cube,
             Sphere,
             Capsule,
+            BlockoutBox,
+            BlockoutPlane,
+            BlockoutRamp,
+            BlockoutCylinder,
+            BlockoutStairs,
             DirectionalLight,
             PointLight,
         };
@@ -4213,6 +4227,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 break;
             case HierarchyCreateType::Capsule:
                 baseName = "Capsule";
+                break;
+            case HierarchyCreateType::BlockoutBox:
+                baseName = "Blockout Box";
+                break;
+            case HierarchyCreateType::BlockoutPlane:
+                baseName = "Blockout Plane";
+                break;
+            case HierarchyCreateType::BlockoutRamp:
+                baseName = "Blockout Ramp";
+                break;
+            case HierarchyCreateType::BlockoutCylinder:
+                baseName = "Blockout Cylinder";
+                break;
+            case HierarchyCreateType::BlockoutStairs:
+                baseName = "Blockout Stairs";
                 break;
             case HierarchyCreateType::DirectionalLight:
                 baseName = "Directional Light";
@@ -4355,6 +4384,43 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
                 break;
             }
+            case HierarchyCreateType::BlockoutBox:
+            case HierarchyCreateType::BlockoutPlane:
+            case HierarchyCreateType::BlockoutRamp:
+            case HierarchyCreateType::BlockoutCylinder:
+            case HierarchyCreateType::BlockoutStairs:
+            {
+                addRequired(*entity, BlockoutShape::ScriptName);
+                BlockoutShape &shape = entity->GetComponent<BlockoutShape>();
+                switch (_type)
+                {
+                case HierarchyCreateType::BlockoutPlane:
+                    shape.type = BlockoutShapeType::PLANE;
+                    shape.size = Vector3(4.0f, 0.1f, 4.0f);
+                    break;
+                case HierarchyCreateType::BlockoutRamp:
+                    shape.type = BlockoutShapeType::RAMP;
+                    shape.size = Vector3(2.0f, 1.0f, 3.0f);
+                    break;
+                case HierarchyCreateType::BlockoutCylinder:
+                    shape.type = BlockoutShapeType::CYLINDER;
+                    shape.size = Vector3(2.0f, 2.0f, 2.0f);
+                    break;
+                case HierarchyCreateType::BlockoutStairs:
+                    shape.type = BlockoutShapeType::STAIRS;
+                    shape.size = Vector3(2.0f, 2.0f, 4.0f);
+                    shape.stepCount = 8;
+                    break;
+                case HierarchyCreateType::BlockoutBox:
+                default:
+                    shape.type = BlockoutShapeType::BOX;
+                    shape.size = Vector3(2.0f, 2.0f, 2.0f);
+                    break;
+                }
+                shape.MarkDirty();
+                RebuildBlockoutEntity(*entity);
+                break;
+            }
             case HierarchyCreateType::DirectionalLight:
             {
                 addRequired(*entity, DirectionalLight::ScriptName);
@@ -4429,6 +4495,20 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         create(HierarchyCreateType::Sphere);
                     if (ImGui::MenuItem("Capsule"))
                         create(HierarchyCreateType::Capsule);
+                    if (ImGui::BeginMenu("Blockout"))
+                    {
+                        if (ImGui::MenuItem("Box"))
+                            create(HierarchyCreateType::BlockoutBox);
+                        if (ImGui::MenuItem("Plane"))
+                            create(HierarchyCreateType::BlockoutPlane);
+                        if (ImGui::MenuItem("Ramp"))
+                            create(HierarchyCreateType::BlockoutRamp);
+                        if (ImGui::MenuItem("Cylinder"))
+                            create(HierarchyCreateType::BlockoutCylinder);
+                        if (ImGui::MenuItem("Stairs"))
+                            create(HierarchyCreateType::BlockoutStairs);
+                        ImGui::EndMenu();
+                    }
                     if (ImGui::MenuItem("Directional Light"))
                         create(HierarchyCreateType::DirectionalLight);
                     if (ImGui::MenuItem("Point Light"))
@@ -5624,6 +5704,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_editorFontScale = NormalizeEditorFontScale(Canis::GetEditorConfig().fontScale);
         Canis::GetEditorConfig().fontScale = m_editorFontScale;
         m_reloadBuildAutoCloseOnSuccess = Canis::GetEditorConfig().reloadBuildAutoCloseOnSuccess;
+        m_showBlockoutGrid = Canis::GetEditorConfig().showBlockoutGrid;
+        m_gridSnappingEnabled = Canis::GetEditorConfig().gridSnappingEnabled;
+        m_translationSnap = std::max(0.01f, Canis::GetEditorConfig().translationSnap);
+        m_rotationSnapDegrees = std::clamp(Canis::GetEditorConfig().rotationSnapDegrees, 1.0f, 180.0f);
+        m_scaleSnap = std::max(0.01f, Canis::GetEditorConfig().scaleSnap);
         LoadSceneCameraConfig();
         ApplyEditorThemeStyle(m_editorThemeSelection, m_editorUiScale);
         RefreshEditorFontOptions();
@@ -5978,7 +6063,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_gameSharedLib = _gameSharedLib;
         m_gameInputWindowID = SDL_GetWindowID((SDL_Window *)m_window->GetSDLWindow());
         if (sceneChanged)
+        {
             ResetSceneHistory();
+            InitializeSceneTabs();
+        }
+        else if (m_sceneTabs.empty())
+        {
+            InitializeSceneTabs();
+        }
         PollAssetHotReload(_deltaTime);
         ProcessModelMaterialExportDialog();
 
@@ -6002,6 +6094,41 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (!m_terrainToolEnabled)
             {
                 m_scene->ClearDebugGizmoLines();
+
+                if (m_showBlockoutGrid && m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
+                {
+                    const float spacing = std::max(0.01f, m_translationSnap);
+                    constexpr int halfLineCount = 40;
+                    const float centerX = std::round(m_editorCamera3DPosition.x / spacing) * spacing;
+                    const float centerZ = std::round(m_editorCamera3DPosition.z / spacing) * spacing;
+                    const float extent = spacing * static_cast<float>(halfLineCount);
+                    for (int line = -halfLineCount; line <= halfLineCount; ++line)
+                    {
+                        const bool major = (line % 10) == 0;
+                        const Color color = major ?
+                            Color(0.30f, 0.34f, 0.40f, 0.72f) :
+                            Color(0.19f, 0.22f, 0.27f, 0.42f);
+                        const float x = centerX + static_cast<float>(line) * spacing;
+                        const float z = centerZ + static_cast<float>(line) * spacing;
+                        m_scene->DrawDebugGizmoLine(
+                            Vector3(x, 0.002f, centerZ - extent),
+                            Vector3(x, 0.002f, centerZ + extent),
+                            color);
+                        m_scene->DrawDebugGizmoLine(
+                            Vector3(centerX - extent, 0.002f, z),
+                            Vector3(centerX + extent, 0.002f, z),
+                            color);
+                    }
+                    m_scene->DrawDebugGizmoLine(
+                        Vector3(centerX - extent, 0.004f, 0.0f),
+                        Vector3(centerX + extent, 0.004f, 0.0f),
+                        Color(0.80f, 0.18f, 0.16f, 0.92f));
+                    m_scene->DrawDebugGizmoLine(
+                        Vector3(0.0f, 0.004f, centerZ - extent),
+                        Vector3(0.0f, 0.004f, centerZ + extent),
+                        Color(0.18f, 0.42f, 0.92f, 0.92f));
+                }
+
                 Entity* selectedSurface = nullptr;
                 if (m_index >= 0 && m_index < static_cast<int>(entities.size()))
                 {
@@ -6155,7 +6282,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ProcessQueuedPrefabRebuilds();
         UpdateTerrainBrush();
 
-        if (!m_terrainToolEnabled)
+        if (!m_terrainToolEnabled && m_meshEditEntity == UUID(0))
         {
             if (m_sceneCameraMode == SceneCameraMode::SCENE_CAMERA_3D)
                 SelectModel3D();
@@ -6163,7 +6290,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 SelectSprite2D();
         }
 
-        (void)HandleSceneViewDeleteShortcut();
+        if (m_meshEditEntity == UUID(0) && m_sceneViewFocused && m_mode == EditorMode::EDIT && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive())
+        {
+            if (ImGui::GetIO().KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_D, false))
+                (void)DuplicateSelectedEntities();
+            if (ImGui::IsKeyPressed(ImGuiKey_End, false))
+                (void)DropSelectedEntitiesToFloor();
+        }
+
+        if (m_meshEditEntity == UUID(0)) (void)HandleSceneViewDeleteShortcut();
         EndSceneHistoryFrame();
 
         // find camera and verfy target entity
@@ -6275,7 +6410,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         // must use the unfiltered editor mouse stream or right-drag is discarded
         // whenever the cursor is over the Scene viewport.
         const bool rightClickNavigation =
-            m_gameViewHovered && input.GetUnfilteredRightClick();
+            m_gameViewHovered && m_meshOperation == 0 && input.GetUnfilteredRightClick();
         const Vector2 sceneMouseRel = input.GetUnfilteredMouseDelta();
 
         const int renderWidth = std::max(1, (m_gameViewportWidth > 0) ? m_gameViewportWidth : m_window->GetWindowWidth());
@@ -6887,10 +7022,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         state.sceneYaml = out.c_str();
         state.hierarchyRootOrder = m_hierarchyRootOrder;
         state.terrainAssets = CaptureTerrainAssetHistory();
+        state.meshEntity = m_meshEditEntity;
+        state.meshSelectionMode = m_meshSelectMode;
+        state.meshSelection = m_meshSelection;
 
         const std::vector<Entity*> &entities = m_scene->GetEntities();
         if (m_index >= 0 && m_index < static_cast<int>(entities.size()) && entities[m_index] != nullptr)
             state.selectedEntityUUID = entities[m_index]->uuid;
+        state.selectedEntityUUIDs = m_selectedEntityUUIDs;
 
         return state;
     }
@@ -7174,6 +7313,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else
         {
             m_sceneHistoryCurrentState.selectedEntityUUID = afterState.selectedEntityUUID;
+            m_sceneHistoryCurrentState.meshEntity = afterState.meshEntity;
+            m_sceneHistoryCurrentState.meshSelectionMode = afterState.meshSelectionMode;
+            m_sceneHistoryCurrentState.meshSelection = afterState.meshSelection;
         }
 
         CommitSceneHistoryPendingChange();
@@ -7181,6 +7323,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::RestoreSceneHistoryState(const SceneHistoryState &_state)
     {
+        FinishMeshOperation(false);
         if (m_scene == nullptr || _state.sceneYaml.empty())
             return;
 
@@ -7204,6 +7347,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_sceneHistoryRestoring = false;
 
         m_hierarchyRootOrder = _state.hierarchyRootOrder;
+        m_meshEditEntity = _state.meshEntity;
+        m_meshSelectMode = _state.meshSelectionMode;
+        m_meshSelection = _state.meshSelection;
+        m_meshBoxSelect = false;
         m_queuedPrefabInstanceRebuilds.clear();
         m_rebuildAllPrefabInstancesRequested = false;
         m_hierarchyRevealTargetUUID = UUID(0);
@@ -7212,7 +7359,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_selectedScriptPath.clear();
 
         m_index = -1;
+        m_selectedEntityUUIDs.clear();
         std::vector<Entity*> &entities = m_scene->GetEntities();
+        for (const UUID uuid : _state.selectedEntityUUIDs)
+        {
+            if (m_scene->GetEntityWithUUID(uuid) != nullptr)
+                m_selectedEntityUUIDs.push_back(uuid);
+        }
         if ((uint64_t)_state.selectedEntityUUID != 0)
         {
             for (int i = 0; i < static_cast<int>(entities.size()); ++i)
@@ -7220,6 +7373,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (entities[i] != nullptr && entities[i]->uuid == _state.selectedEntityUUID)
                 {
                     m_index = i;
+                    if (m_selectedEntityUUIDs.empty())
+                        m_selectedEntityUUIDs.push_back(entities[i]->uuid);
                     break;
                 }
             }
@@ -7232,6 +7387,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (entities[i] != nullptr)
                 {
                     m_index = i;
+                    m_selectedEntityUUIDs.push_back(entities[i]->uuid);
                     break;
                 }
             }
@@ -7256,6 +7412,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::UndoSceneEdit()
     {
+        FinishMeshOperation(false);
         if (!CanTrackSceneHistory())
             return;
 
@@ -7271,6 +7428,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::RedoSceneEdit()
     {
+        FinishMeshOperation(false);
         if (!CanTrackSceneHistory())
             return;
 
@@ -7314,7 +7472,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     bool Editor::RemoveSceneEntity(Canis::Entity *_entity)
     {
-        if (!CanTrackSceneHistory() || _entity == nullptr)
+        if (!CanTrackSceneHistory() || _entity == nullptr || _entity->editorLocked)
             return false;
 
         std::vector<Entity*> &entities = m_scene->GetEntities();
@@ -7336,6 +7494,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 m_hierarchyRootOrder.end(),
                 removedUUID),
             m_hierarchyRootOrder.end());
+        m_selectedEntityUUIDs.erase(
+            std::remove(m_selectedEntityUUIDs.begin(), m_selectedEntityUUIDs.end(), removedUUID),
+            m_selectedEntityUUIDs.end());
 
         if (m_index < 0 ||
             m_index >= static_cast<int>(entities.size()) ||
@@ -7381,7 +7542,446 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_index >= static_cast<int>(entities.size()))
             return false;
 
+        const std::vector<Entity*> selected = GetSelectedEntities();
+        if (selected.size() > 1)
+        {
+            const SceneHistoryState beforeState = CaptureSceneHistoryState();
+            std::vector<UUID> targets = {};
+            for (Entity *entity : selected)
+                targets.push_back(entity->uuid);
+            for (const UUID uuid : targets)
+            {
+                if (Entity *entity = m_scene->GetEntityWithUUID(uuid))
+                {
+                    if (!entity->editorLocked)
+                    {
+                        m_hierarchyRootOrder.erase(
+                            std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), uuid),
+                            m_hierarchyRootOrder.end());
+                        m_scene->Destroy(*entity);
+                    }
+                }
+            }
+            m_selectedEntityUUIDs.clear();
+            m_index = -1;
+            CommitSceneHistoryImmediateChange(beforeState);
+            m_forceRefresh = true;
+            return true;
+        }
+
         return RemoveSceneEntity(entities[m_index]);
+    }
+
+    void Editor::InitializeSceneTabs()
+    {
+        m_sceneTabs.clear();
+        m_activeSceneTab = -1;
+        m_sceneTabSelectionRequest = -1;
+        if (m_scene == nullptr || m_scene->GetPath().empty())
+            return;
+
+        SceneTabState tab = {};
+        tab.path = std::filesystem::path(m_scene->GetPath()).lexically_normal().generic_string();
+        tab.workingState = CaptureSceneHistoryState();
+        tab.savedState = tab.workingState;
+        tab.historyCurrentState = m_sceneHistoryCurrentState;
+        tab.historyPendingBeforeState = m_sceneHistoryPendingBeforeState;
+        tab.hasHistoryCurrentState = m_hasSceneHistoryCurrentState;
+        tab.hasHistoryPendingBeforeState = m_hasSceneHistoryPendingBeforeState;
+        tab.historyEditWasActive = m_sceneHistoryEditWasActive;
+        m_sceneTabs.push_back(std::move(tab));
+        m_activeSceneTab = 0;
+        m_sceneTabSelectionRequest = 0;
+    }
+
+    void Editor::StoreActiveSceneTab()
+    {
+        FinishMeshOperation(false);
+        if (m_scene == nullptr || m_activeSceneTab < 0 ||
+            m_activeSceneTab >= static_cast<int>(m_sceneTabs.size()))
+            return;
+
+        FlushSceneHistoryPendingChange();
+        SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(m_activeSceneTab)];
+        tab.path = std::filesystem::path(m_scene->GetPath()).lexically_normal().generic_string();
+        tab.workingState = CaptureSceneHistoryState();
+        tab.undoStack = m_sceneUndoStack;
+        tab.meshEntity = m_meshEditEntity;
+        tab.meshMode = m_meshSelectMode;
+        tab.meshSelection = m_meshSelection;
+        tab.redoStack = m_sceneRedoStack;
+        tab.historyCurrentState = m_sceneHistoryCurrentState;
+        tab.historyPendingBeforeState = m_sceneHistoryPendingBeforeState;
+        tab.hasHistoryCurrentState = m_hasSceneHistoryCurrentState;
+        tab.hasHistoryPendingBeforeState = m_hasSceneHistoryPendingBeforeState;
+        tab.historyEditWasActive = m_sceneHistoryEditWasActive;
+    }
+
+    bool Editor::IsSceneTabDirty(int _index) const
+    {
+        if (_index < 0 || _index >= static_cast<int>(m_sceneTabs.size()))
+            return false;
+
+        const SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(_index)];
+        const SceneHistoryState &working =
+            (_index == m_activeSceneTab && m_hasSceneHistoryCurrentState) ?
+            m_sceneHistoryCurrentState : tab.workingState;
+        return working.sceneYaml != tab.savedState.sceneYaml ||
+            !TerrainAssetHistoryEquals(working.terrainAssets, tab.savedState.terrainAssets);
+    }
+
+    void Editor::SwitchSceneTab(int _index)
+    {
+        if (m_scene == nullptr || m_mode != EditorMode::EDIT ||
+            _index < 0 || _index >= static_cast<int>(m_sceneTabs.size()) ||
+            _index == m_activeSceneTab)
+            return;
+
+        StoreActiveSceneTab();
+        SaveSceneCameraConfig();
+
+        m_activeSceneTab = _index;
+        SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(_index)];
+        m_scene->m_path = tab.path;
+        RestoreSceneHistoryState(tab.workingState);
+
+        m_sceneUndoStack = tab.undoStack;
+        m_sceneRedoStack = tab.redoStack;
+        m_sceneHistoryCurrentState = tab.historyCurrentState.sceneYaml.empty() ?
+            tab.workingState : tab.historyCurrentState;
+        m_sceneHistoryPendingBeforeState = tab.historyPendingBeforeState;
+        m_hasSceneHistoryCurrentState = tab.hasHistoryCurrentState;
+        m_hasSceneHistoryPendingBeforeState = tab.hasHistoryPendingBeforeState;
+        m_sceneHistoryEditWasActive = tab.historyEditWasActive;
+        m_meshEditEntity = tab.meshEntity;
+        m_meshSelectMode = tab.meshMode;
+        m_meshSelection = tab.meshSelection;
+
+        m_animationRestoreBindings.clear();
+        m_animationPreviewTargetUUID = UUID(0);
+        m_animationPreviewClipPath.clear();
+        m_blockoutDrawType = -1;
+        m_blockoutDrawActive = false;
+        m_blockoutDrawEntity = UUID(0);
+        m_marqueeSelectActive = false;
+        ResetVertexSnapDrag();
+
+        Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(tab.path);
+        Canis::SaveEditorConfig();
+        LoadSceneCameraConfig();
+        m_sceneTabSelectionRequest = _index;
+        m_forceRefresh = true;
+    }
+
+    void Editor::OpenSceneTab(const std::string &_path)
+    {
+        if (m_scene == nullptr || m_mode != EditorMode::EDIT || _path.empty())
+            return;
+
+        const std::string normalizedPath =
+            std::filesystem::path(_path).lexically_normal().generic_string();
+        for (int i = 0; i < static_cast<int>(m_sceneTabs.size()); ++i)
+        {
+            if (m_sceneTabs[static_cast<std::size_t>(i)].path == normalizedPath)
+            {
+                SwitchSceneTab(i);
+                m_sceneTabSelectionRequest = i;
+                return;
+            }
+        }
+
+        StoreActiveSceneTab();
+        SaveSceneCameraConfig();
+        m_scene->Unload();
+        m_scene->Load(normalizedPath);
+        m_meshEditEntity = UUID(0);
+        m_meshSelection.clear();
+        m_hierarchyRootOrder.clear();
+        m_selectedEntityUUIDs.clear();
+        m_index = -1;
+        ResetSceneHistory();
+
+        SceneTabState tab = {};
+        tab.path = normalizedPath;
+        tab.workingState = CaptureSceneHistoryState();
+        tab.savedState = tab.workingState;
+        tab.historyCurrentState = m_sceneHistoryCurrentState;
+        tab.hasHistoryCurrentState = m_hasSceneHistoryCurrentState;
+        m_sceneTabs.push_back(std::move(tab));
+        m_activeSceneTab = static_cast<int>(m_sceneTabs.size()) - 1;
+        m_sceneTabSelectionRequest = m_activeSceneTab;
+
+        m_animationRestoreBindings.clear();
+        m_animationPreviewTargetUUID = UUID(0);
+        m_animationPreviewClipPath.clear();
+        m_blockoutDrawType = -1;
+        m_blockoutDrawActive = false;
+        m_blockoutDrawEntity = UUID(0);
+        m_marqueeSelectActive = false;
+        ResetVertexSnapDrag();
+
+        Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(normalizedPath);
+        Canis::SaveEditorConfig();
+        LoadSceneCameraConfig();
+        m_forceRefresh = true;
+    }
+
+    void Editor::CloseSceneTab(int _index)
+    {
+        if (_index < 0 || _index >= static_cast<int>(m_sceneTabs.size()) ||
+            m_sceneTabs.size() <= 1u)
+            return;
+
+        if (_index == m_activeSceneTab)
+            StoreActiveSceneTab();
+        if (IsSceneTabDirty(_index))
+        {
+            Debug::Warning("Save '%s' before closing its scene tab.",
+                m_sceneTabs[static_cast<std::size_t>(_index)].path.c_str());
+            return;
+        }
+
+        if (_index == m_activeSceneTab)
+        {
+            const int replacement = (_index > 0) ? _index - 1 : _index + 1;
+            SwitchSceneTab(replacement);
+        }
+
+        m_sceneTabs.erase(m_sceneTabs.begin() + _index);
+        if (m_activeSceneTab > _index)
+            --m_activeSceneTab;
+        m_sceneTabSelectionRequest = m_activeSceneTab;
+    }
+
+    void Editor::SaveActiveSceneTab()
+    {
+        FinishMeshOperation(false);
+        if (m_scene == nullptr)
+            return;
+
+        FlushSceneHistoryPendingChange();
+        SaveSceneTerrainAssets();
+        m_scene->Save();
+        if (m_activeSceneTab >= 0 && m_activeSceneTab < static_cast<int>(m_sceneTabs.size()))
+        {
+            StoreActiveSceneTab();
+            SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(m_activeSceneTab)];
+            tab.savedState = tab.workingState;
+        }
+    }
+
+    void Editor::DrawSceneTabs()
+    {
+        if (m_sceneTabs.empty())
+            return;
+
+        int requestedSwitch = -1;
+        int requestedClose = -1;
+        if (ImGui::BeginTabBar(
+                "##SceneAssetTabs",
+                ImGuiTabBarFlags_Reorderable |
+                ImGuiTabBarFlags_AutoSelectNewTabs |
+                ImGuiTabBarFlags_FittingPolicyScroll))
+        {
+            for (int i = 0; i < static_cast<int>(m_sceneTabs.size()); ++i)
+            {
+                const SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(i)];
+                std::string displayName = std::filesystem::path(tab.path).stem().string();
+                if (displayName.empty())
+                    displayName = "Scene";
+                const std::string label = displayName + "###SceneTab" + tab.path;
+                bool open = true;
+                ImGuiTabItemFlags flags = IsSceneTabDirty(i) ? ImGuiTabItemFlags_UnsavedDocument : 0;
+                if (m_sceneTabSelectionRequest == i)
+                    flags |= ImGuiTabItemFlags_SetSelected;
+                if (ImGui::BeginTabItem(label.c_str(), m_sceneTabs.size() > 1u ? &open : nullptr, flags))
+                {
+                    // SetSelected can make both the old and requested tabs report
+                    // visible during the transition frame. Only interpret a visible
+                    // tab as a user switch when no programmatic selection is pending,
+                    // otherwise the old tab queues a switch back and the scenes
+                    // oscillate every frame.
+                    if (m_sceneTabSelectionRequest < 0 && i != m_activeSceneTab)
+                        requestedSwitch = i;
+                    if (ImGui::IsItemHovered())
+                        ImGui::SetTooltip("%s", tab.path.c_str());
+                    ImGui::EndTabItem();
+                }
+                if (!open)
+                    requestedClose = i;
+            }
+
+            if (ImGui::TabItemButton("+", ImGuiTabItemFlags_Trailing | ImGuiTabItemFlags_NoTooltip))
+                ImGui::OpenPopup("SceneTabHelp");
+            if (ImGui::BeginPopup("SceneTabHelp"))
+            {
+                ImGui::TextUnformatted("Double-click a scene in Assets to open it as a tab.");
+                ImGui::EndPopup();
+            }
+            ImGui::EndTabBar();
+        }
+        m_sceneTabSelectionRequest = -1;
+
+        if (requestedSwitch >= 0)
+            SwitchSceneTab(requestedSwitch);
+        if (requestedClose >= 0)
+            CloseSceneTab(requestedClose);
+    }
+
+    void Editor::DrawSceneToolbar()
+    {
+        const float toolbarHeight =
+            ImGui::GetFrameHeightWithSpacing() * (m_meshEditEntity == UUID(0) ? 1 : 2) + ImGui::GetStyle().ScrollbarSize;
+        ImGui::BeginChild(
+            "##SceneViewportToolbar",
+            ImVec2(0.0f, toolbarHeight),
+            false,
+            ImGuiWindowFlags_HorizontalScrollbar);
+
+        DrawMeshEditToolbar();
+        if (m_meshEditEntity != UUID(0))
+        {
+            ImGui::EndChild();
+            return;
+        }
+
+        if (m_guizmoMode == GuizmoMode::LOCAL)
+        {
+            if (ImGui::Button("Local##ScenePanel"))
+                m_guizmoMode = GuizmoMode::WORLD;
+        }
+        else
+        {
+            if (ImGui::Button("World##ScenePanel"))
+                m_guizmoMode = GuizmoMode::LOCAL;
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button(m_vertexSnappingEnabled ? "Vertex Snap: On##ScenePanel" : "Vertex Snap: Off##ScenePanel"))
+            m_vertexSnappingEnabled = !m_vertexSnappingEnabled;
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Hold V while translating for temporary vertex snapping.");
+
+        ImGui::SameLine();
+        if (ImGui::Button(m_gridSnappingEnabled ? "Grid Snap: On##ScenePanel" : "Grid Snap: Off##ScenePanel"))
+        {
+            m_gridSnappingEnabled = !m_gridSnappingEnabled;
+            Canis::GetEditorConfig().gridSnappingEnabled = m_gridSnappingEnabled;
+            Canis::SaveEditorConfig();
+        }
+        if (ImGui::BeginPopupContextItem("GridSnapSettings"))
+        {
+            ImGui::SetNextItemWidth(120.0f);
+            const bool moveChanged = ImGui::DragFloat("Move", &m_translationSnap, 0.01f, 0.01f, 100.0f, "%.2f");
+            ImGui::SetNextItemWidth(120.0f);
+            const bool rotateChanged = ImGui::DragFloat("Rotate", &m_rotationSnapDegrees, 1.0f, 1.0f, 180.0f, "%.0f deg");
+            ImGui::SetNextItemWidth(120.0f);
+            const bool scaleChanged = ImGui::DragFloat("Scale", &m_scaleSnap, 0.01f, 0.01f, 10.0f, "%.2f");
+            if (moveChanged || rotateChanged || scaleChanged)
+            {
+                Canis::GetEditorConfig().translationSnap = std::max(0.01f, m_translationSnap);
+                Canis::GetEditorConfig().rotationSnapDegrees = std::clamp(m_rotationSnapDegrees, 1.0f, 180.0f);
+                Canis::GetEditorConfig().scaleSnap = std::max(0.01f, m_scaleSnap);
+                Canis::SaveEditorConfig();
+            }
+            ImGui::EndPopup();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Right-click to edit move, rotation, and scale increments.");
+
+        ImGui::SameLine();
+        if (ImGui::Button(m_showBlockoutGrid ? "Grid: On##ScenePanel" : "Grid: Off##ScenePanel"))
+        {
+            m_showBlockoutGrid = !m_showBlockoutGrid;
+            Canis::GetEditorConfig().showBlockoutGrid = m_showBlockoutGrid;
+            Canis::SaveEditorConfig();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("+ Blockout##ScenePanel"))
+            ImGui::OpenPopup("CreateBlockoutPopup");
+        if (ImGui::BeginPopup("CreateBlockoutPopup"))
+        {
+            auto createBlockout = [&](HierarchyCreateType _type) -> void
+            {
+                const SceneHistoryState beforeState = CaptureSceneHistoryState();
+                Entity *created = CreateHierarchyEntity(*this, *m_app, *m_scene, _type, nullptr);
+                if (created != nullptr && created->HasComponent<Transform>())
+                {
+                    const float yaw = DEG2RAD * m_editorCamera3DYaw;
+                    const float pitch = DEG2RAD * m_editorCamera3DPitch;
+                    Vector3 forward(
+                        std::cos(pitch) * std::cos(yaw),
+                        std::sin(pitch),
+                        std::cos(pitch) * std::sin(yaw));
+                    forward = glm::length(forward) > 0.0001f ?
+                        glm::normalize(forward) : Vector3(0.0f, 0.0f, -1.0f);
+                    Vector3 position = m_editorCamera3DPosition + forward * 6.0f;
+                    position.y = 0.0f;
+                    if (m_gridSnappingEnabled)
+                    {
+                        const float snap = std::max(0.01f, m_translationSnap);
+                        position.x = std::round(position.x / snap) * snap;
+                        position.z = std::round(position.z / snap) * snap;
+                    }
+                    created->GetComponent<Transform>().position = position;
+                    FocusEntity(created);
+                    CommitSceneHistoryImmediateChange(beforeState);
+                }
+            };
+
+            if (ImGui::BeginMenu("Draw In Viewport"))
+            {
+                if (ImGui::MenuItem("Box", nullptr, m_blockoutDrawType == BlockoutShapeType::BOX)) m_blockoutDrawType = BlockoutShapeType::BOX;
+                if (ImGui::MenuItem("Plane", nullptr, m_blockoutDrawType == BlockoutShapeType::PLANE)) m_blockoutDrawType = BlockoutShapeType::PLANE;
+                if (ImGui::MenuItem("Ramp", nullptr, m_blockoutDrawType == BlockoutShapeType::RAMP)) m_blockoutDrawType = BlockoutShapeType::RAMP;
+                if (ImGui::MenuItem("Cylinder", nullptr, m_blockoutDrawType == BlockoutShapeType::CYLINDER)) m_blockoutDrawType = BlockoutShapeType::CYLINDER;
+                if (ImGui::MenuItem("Stairs", nullptr, m_blockoutDrawType == BlockoutShapeType::STAIRS)) m_blockoutDrawType = BlockoutShapeType::STAIRS;
+                ImGui::EndMenu();
+            }
+            if (m_blockoutDrawType >= 0 && ImGui::MenuItem("Exit Draw Mode", "Esc"))
+                m_blockoutDrawType = -1;
+            ImGui::Separator();
+            ImGui::TextDisabled("Create At Camera");
+            if (ImGui::MenuItem("Box")) createBlockout(HierarchyCreateType::BlockoutBox);
+            if (ImGui::MenuItem("Plane")) createBlockout(HierarchyCreateType::BlockoutPlane);
+            if (ImGui::MenuItem("Ramp")) createBlockout(HierarchyCreateType::BlockoutRamp);
+            if (ImGui::MenuItem("Cylinder")) createBlockout(HierarchyCreateType::BlockoutCylinder);
+            if (ImGui::MenuItem("Stairs")) createBlockout(HierarchyCreateType::BlockoutStairs);
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::Button("Selection##ScenePanel"))
+            ImGui::OpenPopup("SelectionToolsPopup");
+        if (ImGui::BeginPopup("SelectionToolsPopup"))
+        {
+            const bool hasSelection = !GetSelectedEntities().empty();
+            if (!hasSelection)
+                ImGui::BeginDisabled();
+            if (ImGui::MenuItem("Duplicate", "Ctrl+D"))
+                (void)DuplicateSelectedEntities();
+            if (ImGui::MenuItem("Drop To Floor", "End"))
+                (void)DropSelectedEntitiesToFloor();
+            if (!hasSelection)
+                ImGui::EndDisabled();
+            bool showColliders = m_scene->GetShowColliders();
+            if (ImGui::MenuItem("Show Collision", nullptr, showColliders))
+                m_scene->SetShowColliders(!showColliders);
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        int sceneCameraMode = static_cast<int>(m_sceneCameraMode);
+        const char* sceneCameraModeLabels[] = { "3D", "2D" };
+        ImGui::SetNextItemWidth(70.0f);
+        if (ImGui::Combo("##SceneCameraMode", &sceneCameraMode, sceneCameraModeLabels, IM_ARRAYSIZE(sceneCameraModeLabels)))
+        {
+            m_sceneCameraMode = static_cast<SceneCameraMode>(sceneCameraMode);
+            MarkSceneCameraConfigDirty();
+        }
+
+        ImGui::EndChild();
     }
 
     void Editor::DrawSceneView()
@@ -7390,6 +7990,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_sceneViewClicked = false;
         m_sceneViewFocused =
             ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
+
+        DrawSceneTabs();
+        DrawSceneToolbar();
 
         ImVec2 avail = ImGui::GetContentRegionAvail();
         int nextWidth = static_cast<int>(avail.x);
@@ -7449,7 +8052,354 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImVec2(1.0f, 0.0f));
                 hovered = ImGui::IsItemHovered();
                 m_sceneViewClicked = hovered && ImGui::IsMouseClicked(ImGuiMouseButton_Left);
-                DrawSceneViewGizmo();
+
+                auto snapBlockoutPoint = [&](Vector3 _point) -> Vector3
+                {
+                    if (!m_gridSnappingEnabled)
+                        return _point;
+                    const float snap = std::max(0.01f, m_translationSnap);
+                    _point.x = std::round(_point.x / snap) * snap;
+                    _point.y = std::round(_point.y / snap) * snap;
+                    _point.z = std::round(_point.z / snap) * snap;
+                    return _point;
+                };
+
+                auto findPlacementPoint = [&](Vector3 &_point, bool _useSurface) -> bool
+                {
+                    Vector3 rayOrigin(0.0f);
+                    Vector3 rayDirection(0.0f, -1.0f, 0.0f);
+                    float rayLength = 0.0f;
+                    if (!TryGetSceneViewMouseRay(rayOrigin, rayDirection, rayLength))
+                        return false;
+
+                    if (_useSurface)
+                    {
+                        RaycastHit hit = {};
+                        if (m_scene->Raycast(rayOrigin, rayDirection, hit, rayLength))
+                        {
+                            _point = snapBlockoutPoint(hit.point);
+                            return true;
+                        }
+                    }
+
+                    const float planeY = m_blockoutDrawActive ? m_blockoutDrawStart.y : 0.0f;
+                    if (std::abs(rayDirection.y) > 0.00001f)
+                    {
+                        const float distance = (planeY - rayOrigin.y) / rayDirection.y;
+                        if (distance > 0.0f)
+                        {
+                            _point = snapBlockoutPoint(rayOrigin + rayDirection * distance);
+                            return true;
+                        }
+                    }
+                    _point = snapBlockoutPoint(rayOrigin + rayDirection * 6.0f);
+                    return true;
+                };
+
+                if (m_meshEditEntity == UUID(0) && ImGui::BeginDragDropTarget())
+                {
+                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                    {
+                        const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                        const SceneHistoryState beforeState = CaptureSceneHistoryState();
+                        const bool replaceSelection = ImGui::GetIO().KeyShift && !GetSelectedEntities().empty();
+                        std::vector<Entity*> spawned = {};
+
+                        if (replaceSelection)
+                        {
+                            const std::vector<Entity*> selected = GetSelectedEntities();
+                            for (Entity *target : selected)
+                            {
+                                if (target == nullptr || target->editorLocked)
+                                    continue;
+                                Entity *replacement = nullptr;
+                                if (!InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, nullptr, -1, &m_hierarchyRootOrder, -1, replacement) || replacement == nullptr)
+                                    continue;
+
+                                if (target->HasComponent<Transform>() && replacement->HasComponent<Transform>())
+                                {
+                                    const Transform &source = target->GetComponent<Transform>();
+                                    Transform &destination = replacement->GetComponent<Transform>();
+                                    destination.position = source.position;
+                                    destination.rotation = source.rotation;
+                                    destination.scale = source.scale;
+                                }
+                                const UUID removedUUID = target->uuid;
+                                m_scene->Destroy(*target);
+                                m_hierarchyRootOrder.erase(
+                                    std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), removedUUID),
+                                    m_hierarchyRootOrder.end());
+                                spawned.push_back(replacement);
+                            }
+                        }
+                        else
+                        {
+                            Entity *created = nullptr;
+                            if (InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, nullptr, -1, &m_hierarchyRootOrder, -1, created) && created != nullptr)
+                            {
+                                Vector3 point(0.0f);
+                                if (created->HasComponent<Transform>() && findPlacementPoint(point, true))
+                                    created->GetComponent<Transform>().position = point;
+                                spawned.push_back(created);
+                            }
+                        }
+
+                        if (!spawned.empty())
+                        {
+                            m_selectedEntityUUIDs.clear();
+                            for (Entity *entity : spawned)
+                                m_selectedEntityUUIDs.push_back(entity->uuid);
+                            SelectEntity(spawned.back(), true, false);
+                            CommitSceneHistoryImmediateChange(beforeState);
+                            m_forceRefresh = true;
+                        }
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+
+                if (m_mode == EditorMode::EDIT && m_blockoutDrawType >= 0)
+                {
+                    m_sceneViewClicked = false;
+                    Vector3 point = m_blockoutDrawStart;
+                    if (!m_blockoutDrawActive && hovered &&
+                        ImGui::IsMouseClicked(ImGuiMouseButton_Left) &&
+                        !ImGuizmo::IsOver() && findPlacementPoint(point, true))
+                    {
+                        m_blockoutDrawBeforeState = CaptureSceneHistoryState();
+                        m_blockoutDrawStart = point;
+                        m_blockoutDrawStartMouseY = ImGui::GetMousePos().y;
+
+                        HierarchyCreateType createType = HierarchyCreateType::BlockoutBox;
+                        if (m_blockoutDrawType == BlockoutShapeType::PLANE) createType = HierarchyCreateType::BlockoutPlane;
+                        else if (m_blockoutDrawType == BlockoutShapeType::RAMP) createType = HierarchyCreateType::BlockoutRamp;
+                        else if (m_blockoutDrawType == BlockoutShapeType::CYLINDER) createType = HierarchyCreateType::BlockoutCylinder;
+                        else if (m_blockoutDrawType == BlockoutShapeType::STAIRS) createType = HierarchyCreateType::BlockoutStairs;
+
+                        Entity *created = CreateHierarchyEntity(*this, *m_app, *m_scene, createType, nullptr);
+                        if (created != nullptr && created->HasComponent<BlockoutShape>() && created->HasComponent<Transform>())
+                        {
+                            BlockoutShape &shape = created->GetComponent<BlockoutShape>();
+                            const float minimum = m_gridSnappingEnabled ? std::max(0.01f, m_translationSnap) : 0.1f;
+                            shape.size.x = minimum;
+                            shape.size.z = minimum;
+                            shape.generateCollision = false;
+                            shape.MarkDirty();
+                            created->GetComponent<Transform>().position = point;
+                            if (created->HasComponent<Material>())
+                            {
+                                created->GetComponent<Material>().materialId = AssetManager::LoadMaterial(
+                                    "assets/defaults/materials/whitebox_preview.material");
+                            }
+                            RebuildBlockoutEntity(*created);
+                            m_blockoutDrawEntity = created->uuid;
+                            m_blockoutDrawActive = true;
+                        }
+                    }
+
+                    if (m_blockoutDrawActive)
+                    {
+                        Entity *created = m_scene->GetEntityWithUUID(m_blockoutDrawEntity);
+                        if (created != nullptr && created->HasComponent<BlockoutShape>() && created->HasComponent<Transform>())
+                        {
+                            if (findPlacementPoint(point, false))
+                            {
+                                BlockoutShape &shape = created->GetComponent<BlockoutShape>();
+                                Transform &transform = created->GetComponent<Transform>();
+                                const float minimum = m_gridSnappingEnabled ? std::max(0.01f, m_translationSnap) : 0.1f;
+                                shape.size.x = std::max(minimum, std::abs(point.x - m_blockoutDrawStart.x));
+                                shape.size.z = std::max(minimum, std::abs(point.z - m_blockoutDrawStart.z));
+                                transform.position.x = (point.x + m_blockoutDrawStart.x) * 0.5f;
+                                transform.position.z = (point.z + m_blockoutDrawStart.z) * 0.5f;
+                                transform.position.y = m_blockoutDrawStart.y;
+
+                                if (shape.type == BlockoutShapeType::PLANE)
+                                    shape.size.y = 0.1f;
+                                else if (ImGui::GetIO().KeyShift)
+                                {
+                                    const float height = (m_blockoutDrawStartMouseY - ImGui::GetMousePos().y) * minimum * 0.05f;
+                                    shape.size.y = std::max(minimum, height);
+                                }
+                                shape.MarkDirty();
+                                RebuildBlockoutEntity(*created);
+                            }
+
+                            if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+                            {
+                                BlockoutShape &shape = created->GetComponent<BlockoutShape>();
+                                shape.generateCollision = true;
+                                shape.MarkDirty();
+                                if (created->HasComponent<Material>())
+                                {
+                                    created->GetComponent<Material>().materialId = AssetManager::LoadMaterial(
+                                        "assets/defaults/materials/whitebox_neutral.material");
+                                }
+                                RebuildBlockoutEntity(*created);
+                                FocusEntity(created);
+                                CommitSceneHistoryImmediateChange(m_blockoutDrawBeforeState);
+                                m_blockoutDrawActive = false;
+                                m_blockoutDrawEntity = UUID(0);
+                                m_blockoutDrawBeforeState = {};
+                            }
+                        }
+                        else
+                        {
+                            m_blockoutDrawActive = false;
+                            m_blockoutDrawEntity = UUID(0);
+                        }
+                    }
+
+                    if (ImGui::IsKeyPressed(ImGuiKey_Escape, false))
+                    {
+                        if (m_blockoutDrawActive)
+                            RestoreSceneHistoryState(m_blockoutDrawBeforeState);
+                        else
+                            m_blockoutDrawType = -1;
+                        m_blockoutDrawActive = false;
+                        m_blockoutDrawEntity = UUID(0);
+                        m_blockoutDrawBeforeState = {};
+                    }
+
+                    ImGui::GetWindowDrawList()->AddText(
+                        ImVec2(m_gameViewportPosX + 12.0f, m_gameViewportPosY + 12.0f),
+                        IM_COL32(255, 220, 96, 255),
+                        "Blockout Draw: drag footprint, hold Shift for height, Esc to exit");
+                }
+
+                if (m_meshEditEntity == UUID(0) && m_mode == EditorMode::EDIT && m_blockoutDrawType < 0 && hovered &&
+                    ImGui::GetIO().KeyShift && ImGui::IsMouseClicked(ImGuiMouseButton_Left) && !ImGuizmo::IsOver())
+                {
+                    const ImVec2 mouse = ImGui::GetMousePos();
+                    m_marqueeSelectStart = Vector2(mouse.x, mouse.y);
+                    m_marqueeSelectActive = true;
+                    m_sceneViewClicked = false;
+                }
+
+                if (m_marqueeSelectActive)
+                {
+                    m_sceneViewClicked = false;
+                    const ImVec2 mouse = ImGui::GetMousePos();
+                    const ImVec2 minimum(
+                        std::min(m_marqueeSelectStart.x, mouse.x),
+                        std::min(m_marqueeSelectStart.y, mouse.y));
+                    const ImVec2 maximum(
+                        std::max(m_marqueeSelectStart.x, mouse.x),
+                        std::max(m_marqueeSelectStart.y, mouse.y));
+                    ImDrawList *drawList = ImGui::GetWindowDrawList();
+                    drawList->AddRectFilled(minimum, maximum, IM_COL32(80, 145, 255, 35));
+                    drawList->AddRect(minimum, maximum, IM_COL32(100, 175, 255, 230), 0.0f, 0, 1.5f);
+
+                    if (ImGui::IsMouseReleased(ImGuiMouseButton_Left))
+                    {
+                        const Matrix4 viewProjection = m_scene->GetEditorCamera3DProjection() * m_scene->GetEditorCamera3DView();
+                        std::vector<Entity*> inside = {};
+                        for (Entity *entity : m_scene->GetEntities())
+                        {
+                            if (entity == nullptr || !entity->active || entity->editorLocked ||
+                                !entity->HasComponent<Transform>() || !entity->HasComponent<Model>())
+                                continue;
+                            const Vector4 clip = viewProjection * Vector4(entity->GetComponent<Transform>().GetGlobalPosition(), 1.0f);
+                            if (clip.w <= 0.00001f)
+                                continue;
+                            const Vector3 ndc = Vector3(clip) / clip.w;
+                            const float screenX = m_gameViewportPosX + (ndc.x * 0.5f + 0.5f) * m_gameViewportDrawWidth;
+                            const float screenY = m_gameViewportPosY + (0.5f - ndc.y * 0.5f) * m_gameViewportDrawHeight;
+                            if (screenX >= minimum.x && screenX <= maximum.x && screenY >= minimum.y && screenY <= maximum.y)
+                                inside.push_back(entity);
+                        }
+
+                        if (!ImGui::GetIO().KeyCtrl)
+                            m_selectedEntityUUIDs.clear();
+                        for (Entity *entity : inside)
+                        {
+                            if (!IsEntitySelected(entity))
+                                m_selectedEntityUUIDs.push_back(entity->uuid);
+                        }
+                        if (!m_selectedEntityUUIDs.empty())
+                        {
+                            if (Entity *primary = m_scene->GetEntityWithUUID(m_selectedEntityUUIDs.back()))
+                                SelectEntity(primary, true, false);
+                        }
+                        m_marqueeSelectActive = false;
+                    }
+                }
+
+                const bool blockoutContextRequested =
+                    m_meshEditEntity == UUID(0) && hovered &&
+                    !ImGui::GetIO().WantTextInput &&
+                    ImGui::IsKeyDown(ImGuiKey_B) &&
+                    ImGui::IsMouseClicked(ImGuiMouseButton_Right);
+                if (blockoutContextRequested)
+                {
+                    m_gameViewHovered = true;
+                    Vector3 rayOrigin(0.0f);
+                    Vector3 rayDirection(0.0f, -1.0f, 0.0f);
+                    float rayLength = 0.0f;
+                    if (TryGetSceneViewMouseRay(rayOrigin, rayDirection, rayLength))
+                    {
+                        RaycastHit hit = {};
+                        if (m_scene->Raycast(rayOrigin, rayDirection, hit, rayLength))
+                        {
+                            m_blockoutPlacementPosition = hit.point;
+                        }
+                        else if (std::abs(rayDirection.y) > 0.00001f)
+                        {
+                            const float distance = -rayOrigin.y / rayDirection.y;
+                            m_blockoutPlacementPosition = distance > 0.0f ?
+                                rayOrigin + rayDirection * distance : rayOrigin + rayDirection * 6.0f;
+                        }
+                        else
+                        {
+                            m_blockoutPlacementPosition = rayOrigin + rayDirection * 6.0f;
+                        }
+
+                        if (m_gridSnappingEnabled)
+                        {
+                            const float snap = std::max(0.01f, m_translationSnap);
+                            m_blockoutPlacementPosition.x = std::round(m_blockoutPlacementPosition.x / snap) * snap;
+                            m_blockoutPlacementPosition.y = std::round(m_blockoutPlacementPosition.y / snap) * snap;
+                            m_blockoutPlacementPosition.z = std::round(m_blockoutPlacementPosition.z / snap) * snap;
+                        }
+                    }
+
+                    ImGui::OpenPopup("SceneBlockoutContext");
+                }
+
+                if (ImGui::BeginPopup("SceneBlockoutContext"))
+                {
+                    if (ImGui::BeginMenu("Place Blockout"))
+                    {
+                        auto placeBlockout = [&](HierarchyCreateType _type) -> void
+                        {
+                            const SceneHistoryState beforeState = CaptureSceneHistoryState();
+                            Entity *created = CreateHierarchyEntity(*this, *m_app, *m_scene, _type, nullptr);
+                            if (created != nullptr && created->HasComponent<Transform>())
+                            {
+                                created->GetComponent<Transform>().position = m_blockoutPlacementPosition;
+                                FocusEntity(created);
+                                CommitSceneHistoryImmediateChange(beforeState);
+                            }
+                        };
+                        if (ImGui::MenuItem("Box")) placeBlockout(HierarchyCreateType::BlockoutBox);
+                        if (ImGui::MenuItem("Plane")) placeBlockout(HierarchyCreateType::BlockoutPlane);
+                        if (ImGui::MenuItem("Ramp")) placeBlockout(HierarchyCreateType::BlockoutRamp);
+                        if (ImGui::MenuItem("Cylinder")) placeBlockout(HierarchyCreateType::BlockoutCylinder);
+                        if (ImGui::MenuItem("Stairs")) placeBlockout(HierarchyCreateType::BlockoutStairs);
+                        ImGui::EndMenu();
+                    }
+                    if (ImGui::MenuItem("Play From Here"))
+                        StartPlayModeAt(&m_blockoutPlacementPosition);
+                    if (ImGui::MenuItem("Drop Selection To Floor", "End", false, !GetSelectedEntities().empty()))
+                        (void)DropSelectedEntitiesToFloor();
+                    if (ImGui::MenuItem("Duplicate Selection", "Ctrl+D", false, !GetSelectedEntities().empty()))
+                        (void)DuplicateSelectedEntities();
+                    bool showColliders = m_scene->GetShowColliders();
+                    if (ImGui::MenuItem("Show Collision", nullptr, showColliders))
+                        m_scene->SetShowColliders(!showColliders);
+                    ImGui::EndPopup();
+                }
+                DrawMeshEditViewport(hovered);
+                if (m_meshEditEntity == UUID(0) && !m_blockoutDrawActive && m_blockoutDrawType < 0)
+                    DrawSceneViewGizmo();
             }
             else
             {
@@ -7623,6 +8573,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
+        if (selected->editorLocked)
+        {
+            ResetVertexSnapDrag();
+            return;
+        }
+
         float rectW = (m_gameViewportDrawWidth > 0.0f) ? m_gameViewportDrawWidth : static_cast<float>(m_gameViewportWidth);
         float rectH = (m_gameViewportDrawHeight > 0.0f) ? m_gameViewportDrawHeight : static_cast<float>(m_gameViewportHeight);
 
@@ -7642,6 +8598,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGuizmo::SetAlternativeWindow(ImGui::GetCurrentWindow());
         ImGuizmo::SetRect(m_gameViewportPosX, m_gameViewportPosY, rectW, rectH);
         ImGuizmo::Enable(true);
+
+        static bool altDuplicateLatch = false;
+        if (!ImGui::IsMouseDown(ImGuiMouseButton_Left))
+            altDuplicateLatch = false;
+        if (!altDuplicateLatch && ImGui::GetIO().KeyAlt &&
+            ImGui::IsMouseClicked(ImGuiMouseButton_Left) && ImGuizmo::IsOver())
+        {
+            altDuplicateLatch = DuplicateSelectedEntities();
+            if (m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()))
+                selected = m_scene->GetEntities()[m_index];
+        }
 
         if (Transform *transform3D = (selected != nullptr && selected->HasComponent<Transform>() ? &selected->GetComponent<Transform>() : nullptr))
         {
@@ -7674,12 +8641,58 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     operation3D = ImGuizmo::SCALE;
             }
 
+            float snapValues[3] = {m_translationSnap, m_translationSnap, m_translationSnap};
+            if (operation3D == ImGuizmo::ROTATE)
+                snapValues[0] = snapValues[1] = snapValues[2] = m_rotationSnapDegrees;
+            else if (operation3D == ImGuizmo::SCALE)
+                snapValues[0] = snapValues[1] = snapValues[2] = m_scaleSnap;
+
+            float blockoutBounds[6] = {};
+            const float *localBounds = nullptr;
+            if (operation3D == ImGuizmo::SCALE && selected->HasComponent<BlockoutShape>())
+            {
+                const BlockoutShape &shape = selected->GetComponent<BlockoutShape>();
+                const Vector3 size = glm::max(glm::abs(shape.size), Vector3(0.01f));
+                Vector3 minimum(-size.x * 0.5f, 0.0f, -size.z * 0.5f);
+                Vector3 maximum(size.x * 0.5f, size.y, size.z * 0.5f);
+                if (shape.type == BlockoutShapeType::BOX)
+                {
+                    minimum -= glm::max(shape.extrudeNegative, Vector3(0.0f));
+                    maximum += glm::max(shape.extrudePositive, Vector3(0.0f));
+                }
+                blockoutBounds[0] = minimum.x;
+                blockoutBounds[1] = minimum.y;
+                blockoutBounds[2] = minimum.z;
+                blockoutBounds[3] = maximum.x;
+                blockoutBounds[4] = maximum.y;
+                blockoutBounds[5] = maximum.z;
+                if (shape.meshEdited)
+                {
+                    BlockoutMeshData mesh;
+                    if (BuildBlockoutMesh(shape, mesh))
+                    {
+                        blockoutBounds[0] = mesh.boundsMin.x;
+                        blockoutBounds[1] = mesh.boundsMin.y;
+                        blockoutBounds[2] = mesh.boundsMin.z;
+                        blockoutBounds[3] = mesh.boundsMax.x;
+                        blockoutBounds[4] = mesh.boundsMax.y;
+                        blockoutBounds[5] = mesh.boundsMax.z;
+                    }
+                }
+                localBounds = blockoutBounds;
+            }
+
+            Matrix4 deltaModel(1.0f);
             ImGuizmo::Manipulate(
                 glm::value_ptr(view),
                 glm::value_ptr(projection),
                 operation3D,
                 (ImGuizmo::MODE)m_guizmoMode,
-                glm::value_ptr(model));
+                glm::value_ptr(model),
+                glm::value_ptr(deltaModel),
+                m_gridSnappingEnabled ? snapValues : nullptr,
+                localBounds,
+                m_gridSnappingEnabled && localBounds != nullptr ? snapValues : nullptr);
 
             if (ImGuizmo::IsUsing())
             {
@@ -7743,6 +8756,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     localScale[0],
                     localScale[1],
                     localScale[2]);
+
+                for (Entity *other : GetSelectedEntities())
+                {
+                    if (other == nullptr || other == selected || other->editorLocked || !other->HasComponent<Transform>())
+                        continue;
+
+                    Transform &otherTransform = other->GetComponent<Transform>();
+                    Matrix4 otherLocalSpace(1.0f);
+                    if (otherTransform.parent != nullptr && otherTransform.parent->HasComponent<Transform>())
+                        otherLocalSpace = otherTransform.parent->GetComponent<Transform>().GetModelMatrix();
+                    if (otherTransform.useLocalMatrixPrefix)
+                        otherLocalSpace *= otherTransform.localMatrixPrefix;
+
+                    const Matrix4 otherWorld = deltaModel * otherTransform.GetModelMatrix();
+                    const Matrix4 otherLocal = glm::inverse(otherLocalSpace) * otherWorld;
+                    float otherTranslation[3], otherRotation[3], otherScale[3];
+                    ImGuizmo::DecomposeMatrixToComponents(
+                        glm::value_ptr(otherLocal),
+                        otherTranslation,
+                        otherRotation,
+                        otherScale);
+                    otherTransform.position = Vector3(
+                        otherTranslation[0],
+                        otherTranslation[1],
+                        otherTranslation[2]);
+                    otherTransform.rotation = glm::normalize(Quaternion(Vector3(
+                        DEG2RAD * otherRotation[0],
+                        DEG2RAD * otherRotation[1],
+                        DEG2RAD * otherRotation[2])));
+                    otherTransform.scale = Vector3(
+                        otherScale[0],
+                        otherScale[1],
+                        otherScale[2]);
+                }
             }
             else
             {
@@ -8049,16 +9096,228 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::FocusEntity(Canis::Entity *_entity)
     {
+        m_selectedEntityUUIDs.clear();
         for (int i = 0; i < m_scene->GetEntities().size(); i++)
         {
             if (m_scene->GetEntities()[i] == _entity)
             {
                 m_index = i;
+                m_selectedEntityUUIDs.push_back(_entity->uuid);
                 m_selectedAssetPath.clear();
                 RequestHierarchyReveal(_entity);
                 return;
             }
         }
+        m_index = -1;
+    }
+
+    void Editor::SelectEntity(Canis::Entity *_entity, bool _additive, bool _toggle)
+    {
+        if (_entity == nullptr)
+            return;
+
+        if (!_additive)
+        {
+            FocusEntity(_entity);
+            return;
+        }
+
+        auto selected = std::find(
+            m_selectedEntityUUIDs.begin(),
+            m_selectedEntityUUIDs.end(),
+            _entity->uuid);
+        if (selected != m_selectedEntityUUIDs.end())
+        {
+            if (_toggle)
+                m_selectedEntityUUIDs.erase(selected);
+        }
+        else
+        {
+            m_selectedEntityUUIDs.push_back(_entity->uuid);
+        }
+
+        std::vector<Entity*> &entities = m_scene->GetEntities();
+        if (m_selectedEntityUUIDs.empty())
+        {
+            m_index = -1;
+            return;
+        }
+
+        const UUID primary = m_selectedEntityUUIDs.back();
+        for (int i = 0; i < static_cast<int>(entities.size()); ++i)
+        {
+            if (entities[i] != nullptr && entities[i]->uuid == primary)
+            {
+                m_index = i;
+                m_selectedAssetPath.clear();
+                RequestHierarchyReveal(entities[i]);
+                break;
+            }
+        }
+    }
+
+    bool Editor::IsEntitySelected(const Canis::Entity *_entity) const
+    {
+        return _entity != nullptr && std::find(
+            m_selectedEntityUUIDs.begin(),
+            m_selectedEntityUUIDs.end(),
+            _entity->uuid) != m_selectedEntityUUIDs.end();
+    }
+
+    std::vector<Canis::Entity*> Editor::GetSelectedEntities() const
+    {
+        std::vector<Entity*> result = {};
+        if (m_scene == nullptr)
+            return result;
+
+        for (const UUID uuid : m_selectedEntityUUIDs)
+        {
+            if (Entity *entity = m_scene->GetEntityWithUUID(uuid))
+                result.push_back(entity);
+        }
+
+        if (result.empty())
+        {
+            const std::vector<Entity*> &entities = m_scene->GetEntities();
+            if (m_index >= 0 && m_index < static_cast<int>(entities.size()) && entities[m_index] != nullptr)
+                result.push_back(entities[m_index]);
+        }
+        return result;
+    }
+
+    bool Editor::DropSelectedEntitiesToFloor()
+    {
+        const std::vector<Entity*> selected = GetSelectedEntities();
+        if (!CanTrackSceneHistory() || selected.empty())
+            return false;
+
+        std::unordered_set<Entity*> selectedSet(selected.begin(), selected.end());
+        const SceneHistoryState beforeState = CaptureSceneHistoryState();
+        bool changed = false;
+        for (Entity *entity : selected)
+        {
+            if (entity == nullptr || entity->editorLocked || !entity->HasComponent<Transform>())
+                continue;
+
+            Transform &transform = entity->GetComponent<Transform>();
+            const Vector3 worldPosition = transform.GetGlobalPosition();
+            const Vector3 rayOrigin(worldPosition.x, worldPosition.y + 1000.0f, worldPosition.z);
+            float floorY = 0.0f;
+            for (const RaycastHit &hit : m_scene->RaycastAll(rayOrigin, Vector3(0.0f, -1.0f, 0.0f), 2000.0f))
+            {
+                if (hit.entity != nullptr && !selectedSet.contains(hit.entity))
+                {
+                    floorY = hit.point.y;
+                    break;
+                }
+            }
+
+            const float deltaY = floorY - worldPosition.y;
+            if (std::abs(deltaY) > 0.00001f)
+            {
+                transform.position.y += deltaY;
+                changed = true;
+            }
+        }
+
+        if (changed)
+            CommitSceneHistoryImmediateChange(beforeState);
+        return changed;
+    }
+
+    bool Editor::BakeBlockoutEntity(Canis::Entity *_entity)
+    {
+        if (!CanTrackSceneHistory() || _entity == nullptr ||
+            !_entity->HasComponent<BlockoutShape>() || !_entity->HasComponent<Transform>())
+            return false;
+
+        std::string stem = {};
+        for (const char character : _entity->name)
+        {
+            const unsigned char value = static_cast<unsigned char>(character);
+            if (std::isalnum(value))
+                stem.push_back(static_cast<char>(std::tolower(value)));
+            else if (!stem.empty() && stem.back() != '_')
+                stem.push_back('_');
+        }
+        while (!stem.empty() && stem.back() == '_')
+            stem.pop_back();
+        if (stem.empty())
+            stem = "blockout";
+
+        const std::filesystem::path outputPath = std::filesystem::path("assets") /
+            "generated" / "blockouts" /
+            (stem + "_" + std::to_string(static_cast<uint64_t>(_entity->uuid)) + ".obj");
+        std::string error = {};
+        if (!ExportBlockoutObj(_entity->GetComponent<BlockoutShape>(), outputPath, &error))
+        {
+            Debug::Warning("Could not bake blockout '%s': %s", _entity->name.c_str(), error.c_str());
+            return false;
+        }
+
+        const int modelId = AssetManager::LoadModel(outputPath.generic_string());
+        if (modelId < 0)
+        {
+            Debug::Warning("Could not load baked blockout model '%s'.", outputPath.generic_string().c_str());
+            return false;
+        }
+
+        const SceneHistoryState beforeState = CaptureSceneHistoryState();
+        _entity->RemoveComponent<BlockoutShape>();
+        Model &model = _entity->AddOrReplaceComponent<Model>();
+        model.modelId = modelId;
+        model.staticModel = true;
+        if (_entity->HasComponent<MeshCollider>())
+        {
+            MeshCollider &collider = _entity->GetComponent<MeshCollider>();
+            collider.useAttachedModel = true;
+            collider.modelId = -1;
+            collider.modelPath.clear();
+        }
+        m_assetPaths = FindFilesInFolder("assets", "");
+        CommitSceneHistoryImmediateChange(beforeState);
+        Debug::Log("Baked blockout '%s' to '%s'.", _entity->name.c_str(), outputPath.generic_string().c_str());
+        return true;
+    }
+
+    void Editor::StartPlayModeAt(const Canis::Vector3 *_position)
+    {
+        ExitMeshEdit();
+        if (m_scene == nullptr || m_window == nullptr || m_mode != EditorMode::EDIT)
+            return;
+
+        FlushSceneHistoryPendingChange();
+        m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
+        Time::SetTargetFPS(Canis::GetProjectConfig().useFrameLimit
+            ? Canis::GetProjectConfig().frameLimit + 0.0f
+            : 100000.0f);
+        g_lastPlaySceneNode = m_scene->EncodeScene();
+        g_lastPlayScenePath = m_scene->m_path;
+
+        if (_position != nullptr)
+        {
+            Entity *player = m_scene->GetEntityWithTag("Player");
+            if (player == nullptr)
+                player = m_scene->GetEntityWithTag("player");
+            if (player != nullptr && player->HasComponent<Transform>())
+            {
+                Transform &transform = player->GetComponent<Transform>();
+                Vector3 position = *_position;
+                position.y += 0.1f;
+                if (transform.parent == nullptr)
+                    transform.position = position;
+                else
+                    transform.position = Vector3(glm::inverse(transform.parent->GetComponent<Transform>().GetModelMatrix()) * Vector4(position, 1.0f));
+            }
+            else
+            {
+                Debug::Warning("Play From Here needs an entity tagged 'Player'. Starting without relocation.");
+            }
+        }
+
+        m_showGamePanel = true;
+        m_focusGamePanelNextFrame = true;
+        m_mode = EditorMode::PLAY;
     }
 
     void Editor::NotifyAnimationPropertyEdited(
@@ -9171,6 +10430,68 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
     }
 
+    bool Editor::DuplicateSelectedEntities()
+    {
+        if (!CanTrackSceneHistory())
+            return false;
+
+        const std::vector<Entity*> selected = GetSelectedEntities();
+        if (selected.empty())
+            return false;
+
+        std::unordered_set<Entity*> selectedSet(selected.begin(), selected.end());
+        std::vector<Entity*> roots = {};
+        for (Entity *entity : selected)
+        {
+            bool ancestorSelected = false;
+            for (Entity *parent = GetHierarchyParent(entity); parent != nullptr; parent = GetHierarchyParent(parent))
+            {
+                if (selectedSet.contains(parent))
+                {
+                    ancestorSelected = true;
+                    break;
+                }
+            }
+            if (!ancestorSelected)
+                roots.push_back(entity);
+        }
+
+        const SceneHistoryState beforeState = CaptureSceneHistoryState();
+        std::vector<Entity*> duplicatedRoots = {};
+        for (Entity *root : roots)
+        {
+            YAML::Node nodes(YAML::NodeType::Sequence);
+            std::vector<Entity*> hierarchy = {root};
+            GetHierarchyChildrenRecursive(root, hierarchy);
+            for (Entity *entity : hierarchy)
+                nodes.push_back(m_scene->EncodeEntity(*entity));
+
+            std::vector<Entity*> duplicated = m_scene->LoadEntityNodes(nodes, false);
+            if (duplicated.empty() || duplicated.front() == nullptr)
+                continue;
+
+            Entity *newRoot = duplicated.front();
+            newRoot->name = MakeUniqueEntityName(*m_scene, root->name);
+            if (newRoot->HasComponent<Transform>())
+            {
+                Transform &transform = newRoot->GetComponent<Transform>();
+                transform.position.x += m_gridSnappingEnabled ? std::max(0.01f, m_translationSnap) : 0.25f;
+            }
+            duplicatedRoots.push_back(newRoot);
+        }
+
+        if (duplicatedRoots.empty())
+            return false;
+
+        m_selectedEntityUUIDs.clear();
+        for (Entity *entity : duplicatedRoots)
+            m_selectedEntityUUIDs.push_back(entity->uuid);
+        SelectEntity(duplicatedRoots.back(), true, false);
+        CommitSceneHistoryImmediateChange(beforeState);
+        m_forceRefresh = true;
+        return true;
+    }
+
     enum class HierarchyEntityKind
     {
         None,
@@ -9830,8 +11151,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         std::vector<Canis::Entity*> *children = GetHierarchyChildren(_entity);
 
-        bool isSelected = (m_index >= 0 && m_index < (int)_entities.size() &&
-                           _entities[m_index] == _entity);
+        bool isSelected = IsEntitySelected(_entity) ||
+            (m_selectedEntityUUIDs.empty() && m_index >= 0 && m_index < (int)_entities.size() && _entities[m_index] == _entity);
 
         bool hasChildren = (children != nullptr && !children->empty());
 
@@ -9847,7 +11168,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         }
 
-        std::string label = _entity->name + "##" + std::to_string(_entity->uuid);
+        std::string label = (_entity->editorLocked ? "[L] " : "") + _entity->name + "##" + std::to_string(_entity->uuid);
         bool nodeOpen = ImGui::TreeNodeEx(label.c_str(), flags);
 
         if (m_hierarchyRevealTargetUUID == _entity->uuid)
@@ -9860,16 +11181,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         // select on click
         if (ImGui::IsItemHovered() && ImGui::IsMouseReleased(ImGuiMouseButton_Left))
         {
-            for (int i = 0; i < (int)_entities.size(); ++i)
-            {
-                if (_entities[i] == _entity)
-                {
-                    m_index = i;
-                    m_selectedAssetPath.clear();
-                    _refresh = true;
-                    break;
-                }
-            }
+            const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift;
+            SelectEntity(_entity, additive, ImGui::GetIO().KeyCtrl);
+            _refresh = true;
         }
 
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
@@ -9885,6 +11199,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::UUID uuid = _entity->uuid;
             ImGui::SetDragDropPayload("ENTITY_DRAG", &uuid, sizeof(Canis::UUID));
             ImGui::Text("Entity: %s", _entity->name.c_str());
+            ImGui::TextUnformatted("Drop onto an Assets folder to create a prefab (including children).");
             ImGui::EndDragDropSource();
         }
 
@@ -10366,6 +11681,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::Text("active:");
             ImGui::SameLine();
             ImGui::Checkbox("##entity_active", &entity.active);
+            ImGui::SameLine();
+            ImGui::Checkbox("Locked", &entity.editorLocked);
             ImGui::Text("name: ");
             ImGui::SameLine();
             ImGui::InputText("##name", &entity.name);
@@ -14787,7 +16104,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (entry.is_directory())
             {
                 const std::string fullPath = entry.path().string();
-                if (searchActive && !AssetDirectoryContainsSearchMatch(entry.path(), searchQuery))
+                if (searchActive && !AssetPathMatchesSearch(entry.path(), searchQuery) &&
+                    !AssetDirectoryContainsSearchMatch(entry.path(), searchQuery))
                     continue;
 
                 const bool isRenamingThis = m_isRenamingAsset && (m_renamingPath == fullPath);
@@ -14828,24 +16146,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 if (ImGui::BeginDragDropTarget())
                 {
-                    if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ENTITY_DRAG"))
-                    {
-                        if (m_scene != nullptr && m_mode == EditorMode::EDIT)
-                        {
-                            const Canis::UUID droppedUUID = *static_cast<const Canis::UUID *>(payload->Data);
-                            if (Canis::Entity *droppedEntity = m_scene->GetEntityWithUUID(droppedUUID))
-                            {
-                                std::string prefabPath = {};
-                                if (ExportHierarchyEntityToPrefabAsset(*m_scene, *droppedEntity, entry.path(), prefabPath))
-                                {
-                                    const SceneAssetHandle prefabHandle = MakeSceneAssetHandleFromPath(prefabPath);
-                                    AssignPrefabInstanceMetadata(droppedEntity, prefabHandle, droppedEntity);
-                                    AssignPrefabHandle(droppedEntity, prefabHandle);
-                                    m_selectedAssetPath = prefabPath;
-                                }
-                            }
-                        }
-                    }
+                    AcceptHierarchyPrefabDrop(entry.path());
 
                     if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
                     {
@@ -15175,13 +16476,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         if (meta->type == MetaFileAsset::FileType::SCENE && m_mode == EditorMode::EDIT)
                         {
-                            SaveSceneCameraConfig();
-                            Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(meta->path);
-                            Canis::SaveEditorConfig();
-                            m_scene->Unload();
-                            m_scene->Load(meta->path);
-                            ResetSceneHistory();
-                            LoadSceneCameraConfig();
+                            OpenSceneTab(meta->path);
                         }
                         else if (meta->type == MetaFileAsset::FileType::MODEL ||
                                  meta->type == MetaFileAsset::FileType::MATERIAL ||
@@ -15505,6 +16800,53 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
     }
 
+    void Editor::AcceptHierarchyPrefabDrop(const std::filesystem::path &_folderPath)
+    {
+        const ImGuiPayload *payload = ImGui::AcceptDragDropPayload(
+            "ENTITY_DRAG", ImGuiDragDropFlags_AcceptBeforeDelivery);
+        if (payload == nullptr || payload->DataSize != sizeof(Canis::UUID))
+            return;
+
+        if (m_scene == nullptr || m_mode != EditorMode::EDIT)
+        {
+            ImGui::SetTooltip("Stop Play mode to create a prefab.");
+            return;
+        }
+        const Canis::UUID uuid = *static_cast<const Canis::UUID *>(payload->Data);
+        Canis::Entity *entity = m_scene->GetEntityWithUUID(uuid);
+        if (entity == nullptr)
+            return;
+
+        ImGui::SetTooltip("Create prefab: %s\nFolder: %s\nIncludes all children; existing files are kept.",
+                          entity->name.c_str(), _folderPath.generic_string().c_str());
+        if (!payload->IsDelivery())
+            return;
+
+        FinishMeshOperation(false);
+        const auto before = CaptureSceneHistoryState();
+        std::string prefabPath;
+        try
+        {
+            if (!ExportHierarchyEntityToPrefabAsset(*m_scene, *entity, _folderPath, prefabPath))
+            {
+                m_prefabDropStatus = "Could not create prefab in " + _folderPath.generic_string();
+                Debug::Warning("%s", m_prefabDropStatus.c_str());
+                return;
+            }
+            const SceneAssetHandle handle = MakeSceneAssetHandleFromPath(prefabPath);
+            AssignPrefabInstanceMetadata(entity, handle, entity);
+            AssignPrefabHandle(entity, handle);
+            CommitSceneHistoryImmediateChange(before);
+            m_selectedAssetPath = prefabPath;
+            m_prefabDropStatus = "Created prefab: " + prefabPath;
+        }
+        catch (const std::exception &error)
+        {
+            m_prefabDropStatus = "Prefab creation failed: " + std::string(error.what());
+            Debug::Warning("%s", m_prefabDropStatus.c_str());
+        }
+    }
+
     void Editor::DrawAssetsPanel()
     {
         ImGui::Begin("Assets", &m_showAssetsPanel);
@@ -15521,6 +16863,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::EndDisabled();
 
         ImGui::Separator();
+
+        ImGui::TextDisabled("Drag a Hierarchy entity onto a folder to create a prefab.");
+        if (!m_prefabDropStatus.empty())
+            ImGui::TextWrapped("%s", m_prefabDropStatus.c_str());
 
         DrawDirectoryRecursive("assets");
 
@@ -16582,9 +17928,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ImGui::Button("Save##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
-                FlushSceneHistoryPendingChange();
-                SaveSceneTerrainAssets();
-                m_scene->Save();
+                SaveActiveSceneTab();
             }            
             ImGui::SameLine();
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.13f, 0.36f, 0.25f, 1.0f));
@@ -16595,19 +17939,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
-                FlushSceneHistoryPendingChange();
-                m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
-                if (Canis::GetProjectConfig().useFrameLimit)
-                    Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
-                else
-                    Time::SetTargetFPS(100000.0f);
-                // save copy of scene
-                g_lastPlaySceneNode = m_scene->EncodeScene();
-                g_lastPlayScenePath = m_scene->m_path;
-
-                m_showGamePanel = true;
-                m_focusGamePanelNextFrame = true;
-                m_mode = EditorMode::PLAY;
+                StartPlayModeAt(nullptr);
             }
             ImGui::SameLine();
             if (ImGui::Button("Launch##ScenePanel"))
@@ -16621,8 +17953,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Launch a separate no-editor runtime using Project Settings.");
             ImGui::SameLine();
-            if (ImGui::Button("Reload##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
+            if (ImGui::Button("Reload##ScenePanel") || (m_meshEditEntity == UUID(0) && ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
+                ExitMeshEdit();
                 hotKeyCoolDown = HOTKEYRESET;
 
                 bool buildAlreadyRunning = false;
@@ -16777,38 +18110,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ImGui::SameLine();
         ImGui::Text("FPS: %s", std::to_string(m_app->FPS()).c_str());
-
-        ImGui::SameLine();
-        if (m_guizmoMode == GuizmoMode::LOCAL)
-        {
-            if (ImGui::Button("Local##ScenePanel"))
-            {
-                m_guizmoMode = GuizmoMode::WORLD;
-            }
-        }
-        else
-        {
-            if (ImGui::Button("World##ScenePanel"))
-            {
-                m_guizmoMode = GuizmoMode::LOCAL;
-            }
-        }
-
-        ImGui::SameLine();
-        if (ImGui::Button(m_vertexSnappingEnabled ? "Vertex Snap: On##ScenePanel" : "Vertex Snap: Off##ScenePanel"))
-            m_vertexSnappingEnabled = !m_vertexSnappingEnabled;
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Hold V while translating for temporary vertex snapping.");
-
-        ImGui::SameLine();
-        int sceneCameraMode = static_cast<int>(m_sceneCameraMode);
-        const char* sceneCameraModeLabels[] = { "3D", "2D" };
-        ImGui::SetNextItemWidth(70.0f);
-        if (ImGui::Combo("##SceneCameraMode", &sceneCameraMode, sceneCameraModeLabels, IM_ARRAYSIZE(sceneCameraModeLabels)))
-        {
-            m_sceneCameraMode = static_cast<SceneCameraMode>(sceneCameraMode);
-            MarkSceneCameraConfigDirty();
-        }
 
         size_t entityCount = 0;
 
@@ -17587,7 +18888,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (entityIndex < 0 || entityIndex >= static_cast<int>(entities.size()) || entities[entityIndex] == nullptr)
             return;
 
-        FocusEntity(entities[entityIndex]);
+        const bool additive = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeyShift;
+        SelectEntity(entities[entityIndex], additive, ImGui::GetIO().KeyCtrl);
     }
 
     void Editor::DrawSelectionMouseDebug(Camera2D *_camera2D)

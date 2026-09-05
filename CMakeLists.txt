@@ -8,13 +8,17 @@ file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
 file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Blockout.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/BlockoutEditing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/PostProcessPipeline.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Terrain.cpp"
 )
 
 if(CANIS_ENABLE_EDITOR)
+    list(APPEND CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorMeshEdit.cpp")
     list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorStub.cpp")
 else()
+    list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/EditorMeshEdit.cpp")
     list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Editor.cpp")
 endif()
 
@@ -77,6 +81,18 @@ endif()
 target_link_libraries(${CANIS_ENGINE_LIB} PRIVATE Freetype::Freetype)
 target_compile_definitions(${CANIS_ENGINE_LIB} PRIVATE CANIS_HAS_FREETYPE)
 message(STATUS "CanisEngine: using vendored FreeType submodule")
+
+if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
+    add_executable(CanisBlockoutGeometryTests
+        tests/BlockoutGeometryTests.cpp
+    )
+    target_link_libraries(CanisBlockoutGeometryTests PRIVATE ${CANIS_ENGINE_LIB})
+    set_target_properties(CanisBlockoutGeometryTests PROPERTIES
+        CXX_STANDARD 20
+        CXX_STANDARD_REQUIRED ON
+    )
+    add_test(NAME CanisBlockoutGeometryTests COMMAND CanisBlockoutGeometryTests)
+endif()
 
 add_executable(${PROJECT_NAME} main.cpp)
 

@@ -15,6 +15,7 @@
 #include <Canis/Asset.hpp>
 #include <Canis/AssetHandle.hpp>
 #include <Canis/PostProcessPipeline.hpp>
+#include <Canis/Blockout.hpp>
 
 namespace Canis
 {
@@ -71,6 +72,7 @@ namespace Canis
         }
         void StopPlayMode();
         void FocusEntity(Canis::Entity* _entity);
+        bool BakeBlockoutEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
         void ApplyPrefabInstanceOverrides(Canis::Entity* _entity);
@@ -162,14 +164,35 @@ namespace Canis
 
             std::string sceneYaml = "";
             UUID selectedEntityUUID = UUID(0);
+            std::vector<UUID> selectedEntityUUIDs = {};
             std::vector<UUID> hierarchyRootOrder = {};
             std::vector<TerrainAssetSnapshot> terrainAssets = {};
+            UUID meshEntity = UUID(0);
+            int meshSelectionMode = 2;
+            std::vector<u32> meshSelection;
         };
 
         struct PendingHotReloadAsset
         {
             std::filesystem::file_time_type writeTime = {};
             float debounceSeconds = 0.0f;
+        };
+
+        struct SceneTabState
+        {
+            std::string path = "";
+            SceneHistoryState workingState = {};
+            SceneHistoryState savedState = {};
+            std::vector<SceneHistoryState> undoStack = {};
+            std::vector<SceneHistoryState> redoStack = {};
+            SceneHistoryState historyCurrentState = {};
+            SceneHistoryState historyPendingBeforeState = {};
+            bool hasHistoryCurrentState = false;
+            bool hasHistoryPendingBeforeState = false;
+            bool historyEditWasActive = false;
+            UUID meshEntity = UUID(0);
+            int meshMode = 2;
+            std::vector<u32> meshSelection;
         };
 
         struct ModelMaterialExportDialogState
@@ -187,6 +210,22 @@ namespace Canis
         void DrawMainDockspace();
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
+        void DrawSceneTabs();
+        void DrawSceneToolbar();
+        void DrawMeshEditToolbar();
+        void DrawMeshEditViewport(bool _hovered);
+        void ToggleMeshEdit();
+        void FinishMeshOperation(bool _confirm);
+        void BeginMeshOperation(int _operation);
+        void ExitMeshEdit();
+        Entity* MeshEditEntity() const;
+        void InitializeSceneTabs();
+        void StoreActiveSceneTab();
+        void OpenSceneTab(const std::string &_path);
+        void SwitchSceneTab(int _index);
+        void CloseSceneTab(int _index);
+        void SaveActiveSceneTab();
+        bool IsSceneTabDirty(int _index) const;
         void DrawGameView();
         void DrawSceneViewGizmo();
         void DrawEditorWindowMenu();
@@ -206,6 +245,7 @@ namespace Canis
         void DrawEnvironment();
         void DrawAssetsPanel();
         void DrawDirectoryRecursive(const std::string &_dirPath);
+        void AcceptHierarchyPrefabDrop(const std::filesystem::path &_folderPath);
         void DrawAssetCreateMenu(const std::filesystem::path &_folderPath);
         bool DrawAssetPreviewCard(
             const std::string &_assetPath,
@@ -305,6 +345,12 @@ namespace Canis
         void MarkSceneCameraConfigDirty();
         void UpdateSceneCameraConfigAutosave(float _deltaTime);
         void SaveSceneTerrainAssets();
+        void SelectEntity(Canis::Entity *_entity, bool _additive, bool _toggle);
+        bool IsEntitySelected(const Canis::Entity *_entity) const;
+        std::vector<Canis::Entity*> GetSelectedEntities() const;
+        bool DuplicateSelectedEntities();
+        bool DropSelectedEntitiesToFloor();
+        void StartPlayModeAt(const Canis::Vector3 *_position);
 
         void SelectSprite2D();
         void SelectModel3D();
@@ -357,6 +403,7 @@ namespace Canis
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
         std::string m_assetSearch = {};
+        std::string m_prefabDropStatus = {};
         struct MaterialPreviewCacheEntry
         {
             RenderTarget renderTarget = {};
@@ -431,6 +478,42 @@ namespace Canis
         bool m_sceneCameraConfigDirty = false;
         float m_sceneCameraConfigSaveDelay = 0.0f;
         bool m_vertexSnappingEnabled = false;
+        bool m_showBlockoutGrid = true;
+        bool m_gridSnappingEnabled = true;
+        float m_translationSnap = 0.25f;
+        float m_rotationSnapDegrees = 15.0f;
+        float m_scaleSnap = 0.25f;
+        Vector3 m_blockoutPlacementPosition = Vector3(0.0f);
+        std::vector<UUID> m_selectedEntityUUIDs = {};
+        int m_blockoutDrawType = -1;
+        UUID m_meshEditEntity = UUID(0);
+        int m_meshSelectMode = 2;
+        std::vector<u32> m_meshSelection;
+        std::vector<std::pair<u32,u32>> m_meshEdges;
+        int m_meshOperation = 0; // 1 move, 2 rotate, 3 scale, 4 extrude, 5 loop
+        int m_meshAxis = -1;
+        int m_meshCutCount = 1;
+        int m_meshHover = -1;
+        std::pair<u32,u32> m_meshLoopEdge = {0,0};
+        Vector2 m_meshDragStart = Vector2(0);
+        float m_meshAmount = 0;
+        std::string m_meshNumeric;
+        std::string m_meshError;
+        EditableBlockoutMesh m_meshBefore;
+        EditableBlockoutMesh m_meshPreview;
+        SceneHistoryState m_meshHistoryBefore;
+        bool m_meshBoxSelect = false;
+        bool m_meshDeleteRequested = false;
+        int m_meshGizmoMode = 0;
+        Matrix4 m_meshGizmoStart = Matrix4(1);
+        Matrix4 m_meshGizmoCurrent = Matrix4(1);
+        bool m_blockoutDrawActive = false;
+        UUID m_blockoutDrawEntity = UUID(0);
+        Vector3 m_blockoutDrawStart = Vector3(0.0f);
+        float m_blockoutDrawStartMouseY = 0.0f;
+        SceneHistoryState m_blockoutDrawBeforeState = {};
+        bool m_marqueeSelectActive = false;
+        Vector2 m_marqueeSelectStart = Vector2(0.0f);
         bool m_vertexSnapDragActive = false;
         int m_vertexSnapAxesMask = 0;
         Vector3 m_vertexSnapDragDirection = Vector3(0.0f);
@@ -463,6 +546,9 @@ namespace Canis
         bool m_reloadBuildAutoCloseOnSuccess = false;
         int m_reloadBuildExitCode = -1;
         std::vector<UUID> m_hierarchyRootOrder = {};
+        std::vector<SceneTabState> m_sceneTabs = {};
+        int m_activeSceneTab = -1;
+        int m_sceneTabSelectionRequest = -1;
         std::vector<UUID> m_queuedPrefabInstanceRebuilds = {};
         bool m_rebuildAllPrefabInstancesRequested = false;
         UUID m_hierarchyRevealTargetUUID = UUID(0);

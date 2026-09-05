@@ -365,6 +365,11 @@ namespace Canis
         node["fontPath"] = editorConfig.fontPath;
         node["fontScale"] = NormalizeEditorFontScale(editorConfig.fontScale);
         node["reloadBuildAutoCloseOnSuccess"] = editorConfig.reloadBuildAutoCloseOnSuccess;
+        node["showBlockoutGrid"] = editorConfig.showBlockoutGrid;
+        node["gridSnappingEnabled"] = editorConfig.gridSnappingEnabled;
+        node["translationSnap"] = std::max(0.01f, editorConfig.translationSnap);
+        node["rotationSnapDegrees"] = std::clamp(editorConfig.rotationSnapDegrees, 1.0f, 180.0f);
+        node["scaleSnap"] = std::max(0.01f, editorConfig.scaleSnap);
 
         std::vector<EditorSceneCameraConfig> sceneCamerasToSave = editorConfig.sceneCameras;
         if (sceneCamerasToSave.empty() && !editorConfig.lastEditorScene.Empty())
@@ -475,6 +480,18 @@ namespace Canis
         editorConfig.fontScale = NormalizeEditorFontScale(editorNode["fontScale"].as<float>(editorConfig.fontScale));
         editorConfig.reloadBuildAutoCloseOnSuccess =
             editorNode["reloadBuildAutoCloseOnSuccess"].as<bool>(editorConfig.reloadBuildAutoCloseOnSuccess);
+        editorConfig.showBlockoutGrid = editorNode["showBlockoutGrid"].as<bool>(editorConfig.showBlockoutGrid);
+        editorConfig.gridSnappingEnabled = editorNode["gridSnappingEnabled"].as<bool>(editorConfig.gridSnappingEnabled);
+        editorConfig.translationSnap = std::max(
+            0.01f,
+            editorNode["translationSnap"].as<float>(editorConfig.translationSnap));
+        editorConfig.rotationSnapDegrees = std::clamp(
+            editorNode["rotationSnapDegrees"].as<float>(editorConfig.rotationSnapDegrees),
+            1.0f,
+            180.0f);
+        editorConfig.scaleSnap = std::max(
+            0.01f,
+            editorNode["scaleSnap"].as<float>(editorConfig.scaleSnap));
         editorConfig.sceneCameraMode = editorNode["sceneCameraMode"].as<int>(editorConfig.sceneCameraMode);
         if (editorConfig.sceneCameraMode < 0 || editorConfig.sceneCameraMode > 1)
             editorConfig.sceneCameraMode = 0;

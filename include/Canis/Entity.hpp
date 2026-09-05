@@ -37,6 +37,7 @@ namespace Canis
         int id = -1;
         Scene& scene;
         bool active = true;
+        bool editorLocked = false;
         std::string name = "";
         std::string tag = "";
         UUID uuid;
@@ -1244,6 +1245,63 @@ namespace Canis
         void Create() {}
 
         TerrainAssetHandle terrain = {};
+        i32 runtimeModelId = -1;
+        u64 runtimeRevision = 0u;
+    };
+
+    namespace BlockoutShapeType
+    {
+        constexpr int BOX = 0;
+        constexpr int PLANE = 1;
+        constexpr int RAMP = 2;
+        constexpr int CYLINDER = 3;
+        constexpr int STAIRS = 4;
+    }
+
+    // Indices are stable IDs: edits append vertices/faces and leave removed face slots empty.
+    struct BlockoutFace
+    {
+        std::vector<u32> vertices;
+        std::vector<Vector2> uv;
+    };
+
+    struct EditableBlockoutMesh
+    {
+        std::vector<Vector3> vertices;
+        std::vector<BlockoutFace> faces;
+    };
+
+    struct BlockoutShape
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::BlockoutShape";
+
+        BlockoutShape() = default;
+        explicit BlockoutShape(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+
+        void Create() {}
+        void MarkDirty() { ++revision; }
+
+        bool active = true;
+        int type = BlockoutShapeType::BOX;
+        Vector3 size = Vector3(1.0f);
+        int sides = 16;
+        int stepCount = 6;
+        Vector2 uvScale = Vector2(1.0f);
+        int loopCutsX = 0;
+        int loopCutsY = 0;
+        int loopCutsZ = 0;
+        Vector3 extrudeNegative = Vector3(0.0f);
+        Vector3 extrudePositive = Vector3(0.0f);
+        bool meshEdited = false;
+        EditableBlockoutMesh editMesh;
+        bool generateCollision = true;
+        bool visibleInGame = true;
+        bool castShadow = true;
+        u64 revision = 1u;
+
+        // Runtime geometry is rebuilt from the serialized parameters.
         i32 runtimeModelId = -1;
         u64 runtimeRevision = 0u;
     };
