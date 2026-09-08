@@ -167,7 +167,7 @@ if(CANIS_PLATFORM_WEB)
         "SHELL:--shell-file ${CMAKE_SOURCE_DIR}/project/web/shell.html"
         "SHELL:--pre-js ${CMAKE_SOURCE_DIR}/project/web/persistence.js"
         "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/assets@/assets"
-        "SHELL:--preload-file ${CMAKE_SOURCE_DIR}/project/project_settings/project.canis@/project_settings/project.canis"
+        "SHELL:--preload-file ${CANIS_PROJECT_CONFIG}@/project_settings/project.canis"
     )
 endif()
 
@@ -182,3 +182,26 @@ target_precompile_headers(${PROJECT_NAME}
 #        $<TARGET_FILE:${PROJECT_NAME}>
 #        $<TARGET_FILE_DIR:CanisEngine>
 #)
+
+# SDL enum constants are not preprocessor macros. Feature-detect the vendored
+# header so old pinned SDL revisions and future Steam-family revisions both build.
+set_property(DIRECTORY APPEND PROPERTY CMAKE_CONFIGURE_DEPENDS "${CMAKE_SOURCE_DIR}/external/SDL/include/SDL3/SDL_gamepad.h")
+file(READ "${CMAKE_SOURCE_DIR}/external/SDL/include/SDL3/SDL_gamepad.h" CANIS_SDL_GAMEPAD_HEADER)
+if(CANIS_SDL_GAMEPAD_HEADER MATCHES "SDL_GAMEPAD_TYPE_STEAM")
+    target_compile_definitions(CanisEngine PRIVATE CANIS_SDL_HAS_STEAM_GAMEPAD_TYPE=1)
+else()
+    target_compile_definitions(CanisEngine PRIVATE CANIS_SDL_HAS_STEAM_GAMEPAD_TYPE=0)
+endif()
+if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
+    add_executable(CanisInputActionsTests tests/InputActionsTests.cpp)
+    target_link_libraries(CanisInputActionsTests PRIVATE CanisEngine)
+    add_test(NAME CanisInputActionsTests COMMAND CanisInputActionsTests)
+endif()
+
+include(cmake/SteamInput.cmake)
+
+if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
+    add_executable(CanisInputRebindingTests tests/InputRebindingTests.cpp)
+    target_link_libraries(CanisInputRebindingTests PRIVATE CanisEngine)
+    add_test(NAME CanisInputRebindingTests COMMAND CanisInputRebindingTests)
+endif()

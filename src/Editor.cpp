@@ -13,6 +13,7 @@
 #include <Canis/Shader.hpp>
 #include <Canis/IOManager.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/InputActionsEditor.hpp>
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
@@ -6259,6 +6260,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawScriptsPanel();
         if (m_showProjectSettingsPanel)
             DrawProjectSettings();
+        if (m_showInputActionsPanel && m_scene)
+            DrawInputActionsEditor(m_scene->GetInputManager(), m_showInputActionsPanel);
         if (m_showConsolePanel)
             DrawConsolePanel();
         if (m_showScenePanel)
@@ -17604,6 +17607,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::SaveEditorConfig();
         }
 
+        ImGui::InputText("Input asset", &Canis::GetProjectConfig().inputAsset);
+        if (ImGui::Button("Open Input Actions")) m_showInputActionsPanel = true;
         std::string &gameName = Canis::GetProjectConfig().gameName;
         ImGui::Text("game name");
         ImGui::SameLine();
@@ -18106,6 +18111,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::MenuItem("Animator", nullptr, &m_showAnimatorPanel);
         ImGui::MenuItem("ShaderGraph", nullptr, &m_showShaderGraphPanel);
         ImGui::MenuItem("Project Settings", nullptr, &m_showProjectSettingsPanel);
+        ImGui::MenuItem("Input Actions", nullptr, &m_showInputActionsPanel);
 
         ImGui::Separator();
         ImGui::MenuItem("Hot Reload Assets", nullptr, &m_hotReloadAssets);

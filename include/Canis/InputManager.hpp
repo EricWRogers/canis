@@ -1,8 +1,10 @@
 #pragma once
 #include <Canis/Math.hpp>
+#include <Canis/InputActions.hpp>
 #include <vector>
 #include <string>
 #include <unordered_map>
+#include <unordered_set>
 #include <Canis/Data/Key.hpp>
 
 
@@ -38,13 +40,15 @@ namespace Canis
     {
         XBOX,
         PLAYSTATION,
-        NINTENDO
+        NINTENDO,
+        STEAM,
+        UNKNOWN
     };
 
     struct GameControllerData
     {
-        Vector2 leftStick;
-        Vector2 rightStick;
+        Vector2 leftStick = Vector2(0.0f);
+        Vector2 rightStick = Vector2(0.0f);
         float leftTrigger = 0.0f;
         float rightTrigger = 0.0f;
         unsigned int buttons = 0u;
@@ -52,7 +56,8 @@ namespace Canis
     struct GameController
     {
         void *controller = nullptr;
-        GameControllerType gameControllerType = GameControllerType::XBOX;
+        GameControllerType gameControllerType = GameControllerType::UNKNOWN;
+        bool originalSteamController = false;
         unsigned int index = 0;
         unsigned int joyId;
         GameControllerData currentData = {};
@@ -71,6 +76,30 @@ namespace Canis
         InputManager();
         ~InputManager();
 
+        // Action snapshots are published once, after SDL and synthetic collection.
+        InputActionSystem& Actions() { return m_actions; }
+        const InputActionSystem& Actions() const { return m_actions; }
+        ActionSnapshot Action(ActionId id) const { return m_actions.Action(id); }
+        template<class T> requires InputActionEnum<T>::value
+        ActionSnapshot Action(T id) const { return Action(ActionId{static_cast<uint32_t>(id)}); }
+        // Same zero-based index as the raw gamepad API; indices can shift on disconnect.
+        ActionSnapshot Action(ActionId id, unsigned int controllerIndex) const;
+        template<class T> requires InputActionEnum<T>::value
+        ActionSnapshot Action(T id, unsigned int controllerIndex) const { return Action(ActionId{static_cast<uint32_t>(id)}, controllerIndex); }
+        void EnableMap(InputMapId id) { m_actions.EnableMap(id); }
+        void DisableMap(InputMapId id) { m_actions.DisableMap(id); }
+        template<class T> requires InputMapEnum<T>::value
+        void EnableMap(T id) { EnableMap(InputMapId{static_cast<uint32_t>(id)}); }
+        template<class T> requires InputMapEnum<T>::value
+        void DisableMap(T id) { DisableMap(InputMapId{static_cast<uint32_t>(id)}); }
+        std::vector<InputBinding> Bindings(ActionId id) const { return m_actions.Bindings(id); }
+        InputPrompt Prompt(ActionId id, InputScheme scheme) const { return m_actions.Prompt(id, scheme); }
+        template<class T> requires InputActionEnum<T>::value
+        std::vector<InputBinding> Bindings(T id) const { return m_actions.Bindings({static_cast<uint32_t>(id)}); }
+        template<class T> requires InputActionEnum<T>::value
+        InputPrompt Prompt(T id, InputScheme scheme) const { return m_actions.Prompt({static_cast<uint32_t>(id)}, scheme); }
+        void EvaluateActions(bool gameplayActive = true);
+        GameControllerType GetControllerType() const;
         bool Update(void* _window);
         void BeginSyntheticInputFrame();
         void SetSyntheticKey(unsigned int _keyID, bool _down);
@@ -137,6 +166,11 @@ namespace Canis
         bool active = true;
         
     private:
+        InputActionSystem m_actions;
+        std::unordered_set<uint64_t> m_steamOwnedSources;
+        bool m_actionEditorCaptured = false;
+        bool m_actionsWereAvailable = true;
+        void ClearSyntheticState(InputCancellation reason);
         void PressKey(unsigned int _keyID);
         void ReleasedKey(unsigned int _keyID);
         void SwapMaps();

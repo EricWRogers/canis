@@ -1,4 +1,6 @@
 #include <Canis/InputManager.hpp>
+#include <bit>
+#include <Canis/SteamInput.hpp>
 #include <SDL3/SDL_keyboard.h>
 #include <SDL3/SDL_gamepad.h>
 #include <SDL3/SDL_events.h>
@@ -54,6 +56,9 @@ namespace Canis
 
     void InputManager::ResetState()
     {
+        m_actions.Cancel(InputCancellation::FocusLost);
+        ClearSyntheticState(InputCancellation::FocusLost);
+        // Physical samples remain known until SDL reports neutral after focus returns.
         m_keyVec.clear();
         m_lastKnown.clear();
         mouseRel = Vector2(0.0f);
@@ -72,6 +77,17 @@ namespace Canis
             controller.oldData = {};
             controller.lastButtonsPressed = 0u;
         }
+    }
+
+    void InputManager::ClearSyntheticState(InputCancellation reason)
+    {
+        m_actions.RemoveSource(1, reason);
+        m_syntheticKeys.clear(); m_previousSyntheticKeys.clear();
+        m_syntheticLeftClick = m_previousSyntheticLeftClick = false;
+        m_syntheticRightClick = m_previousSyntheticRightClick = false;
+        m_syntheticGamepad = {}; m_previousSyntheticGamepad = {};
+        m_syntheticGamepadEnabled = false;
+        m_syntheticScrollVertical = 0;
     }
 
     InputManager::~InputManager()
@@ -94,12 +110,16 @@ namespace Canis
 
     void InputManager::SetSyntheticKey(unsigned int _keyID, bool _down)
     {
+        for (const auto& c : InputControls()) if (c.key == _keyID && c.key != 0)
+            m_actions.Record(c.path, Vector2(_down ? 1.0f : 0.0f, 0), 1);
         m_syntheticKeys[_keyID] = _down;
         m_lastInputDeviceType = InputDevice::KEYBOARD;
     }
 
     void InputManager::SetSyntheticMouseButton(unsigned int _button, bool _down)
     {
+        const char* names[] = {"", "Mouse/Left", "Mouse/Middle", "Mouse/Right", "Mouse/X1", "Mouse/X2"};
+        if (_button > 0 && _button < 6) m_actions.Record(names[_button], Vector2(_down ? 1.0f : 0.0f, 0), 1);
         if (_button == 1u)
             m_syntheticLeftClick = _down;
         else if (_button == 3u)
@@ -128,6 +148,8 @@ namespace Canis
     void InputManager::SetSyntheticGamepadButton(unsigned int _button, bool _down)
     {
         m_syntheticGamepadEnabled = true;
+        for (const auto& c : InputControls()) if (c.button && (_button & c.button))
+            m_actions.Record(c.path, Vector2(_down ? 1.0f : 0.0f, 0), 1);
         if (_down)
             m_syntheticGamepad.buttons |= _button;
         else
@@ -139,6 +161,7 @@ namespace Canis
     {
         m_syntheticGamepadEnabled = true;
         m_syntheticGamepad.leftStick = glm::clamp(_value, Vector2(-1.0f), Vector2(1.0f));
+        m_actions.Record("Gamepad/LeftStick", m_syntheticGamepad.leftStick, 1);
         m_lastInputDeviceType = InputDevice::GAMEPAD;
     }
 
@@ -146,6 +169,7 @@ namespace Canis
     {
         m_syntheticGamepadEnabled = true;
         m_syntheticGamepad.rightStick = glm::clamp(_value, Vector2(-1.0f), Vector2(1.0f));
+        m_actions.Record("Gamepad/RightStick", m_syntheticGamepad.rightStick, 1);
         m_lastInputDeviceType = InputDevice::GAMEPAD;
     }
 
@@ -154,6 +178,8 @@ namespace Canis
         m_syntheticGamepadEnabled = true;
         m_syntheticGamepad.leftTrigger = glm::clamp(_left, 0.0f, 1.0f);
         m_syntheticGamepad.rightTrigger = glm::clamp(_right, 0.0f, 1.0f);
+        m_actions.Record("Gamepad/LeftTrigger", Vector2(m_syntheticGamepad.leftTrigger, 0), 1);
+        m_actions.Record("Gamepad/RightTrigger", Vector2(m_syntheticGamepad.rightTrigger, 0), 1);
         m_lastInputDeviceType = InputDevice::GAMEPAD;
     }
 
@@ -215,6 +241,10 @@ namespace Canis
         m_textInput.clear();
 
         Window* window = (Window*)_window;
+#if CANIS_EDITOR
+        m_actionEditorCaptured = Canis::IsEditorRuntimeEnabled() && ImGui::GetCurrentContext() &&
+            (ImGui::GetIO().WantTextInput || (ImGui::GetIO().WantCaptureKeyboard && !window->IsMouseLocked()));
+#endif
         if (window->IsMouseLocked())
             window->RefreshMouseLock();
         int screenWidth = window->GetWindowWidth();
@@ -358,6 +388,11 @@ namespace Canis
                 if (!AcceptsGameMouseEvent(eventWindowID, event.button.x, event.button.y, gameWindowID, window->IsMouseLocked()))
                     continue;
                 UpdateMousePosition(eventWindowID, event.button.x, event.button.y, screenHeight, gameWindowID);
+                {
+                    const char* names[] = {"", "Mouse/Left", "Mouse/Middle", "Mouse/Right", "Mouse/X1", "Mouse/X2"};
+                    if (event.button.button > 0 && event.button.button < 6)
+                        m_actions.Record(names[event.button.button], Vector2(1, 0));
+                }
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = true;
                 if (event.button.button == SDL_BUTTON_RIGHT)
@@ -373,6 +408,11 @@ namespace Canis
                 if (Canis::IsEditorRuntimeEnabled() && eventWindowID != gameWindowID)
                     continue;
                 UpdateMousePosition(eventWindowID, event.button.x, event.button.y, screenHeight, gameWindowID);
+                {
+                    const char* names[] = {"", "Mouse/Left", "Mouse/Middle", "Mouse/Right", "Mouse/X1", "Mouse/X2"};
+                    if (event.button.button > 0 && event.button.button < 6)
+                        m_actions.Record(names[event.button.button], Vector2(0, 0));
+                }
                 if (event.button.button == SDL_BUTTON_LEFT)
                     m_leftClick = false;
                 if (event.button.button == SDL_BUTTON_RIGHT)
@@ -385,48 +425,27 @@ namespace Canis
             case SDL_EVENT_GAMEPAD_REMOVED:
                 OnGameControllerDisconnect(&event.cdevice);
                 break;
-            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
-                m_lastInputDeviceType = InputDevice::GAMEPAD;
+            case SDL_EVENT_GAMEPAD_AXIS_MOTION:
+            {
+                const uint64_t source = uint64_t(event.gaxis.which) + 2;
+                const float value = glm::clamp(event.gaxis.value / 32767.0f, -1.0f, 1.0f);
+                switch (event.gaxis.axis) {
+                    case SDL_GAMEPAD_AXIS_LEFTX: m_actions.RecordComponent("Gamepad/LeftStick",value,0,source); break;
+                    case SDL_GAMEPAD_AXIS_LEFTY: m_actions.RecordComponent("Gamepad/LeftStick",-value,1,source); break;
+                    case SDL_GAMEPAD_AXIS_RIGHTX: m_actions.RecordComponent("Gamepad/RightStick",value,0,source); break;
+                    case SDL_GAMEPAD_AXIS_RIGHTY: m_actions.RecordComponent("Gamepad/RightStick",-value,1,source); break;
+                    case SDL_GAMEPAD_AXIS_LEFT_TRIGGER: m_actions.RecordComponent("Gamepad/LeftTrigger",value,0,source); break;
+                    case SDL_GAMEPAD_AXIS_RIGHT_TRIGGER: m_actions.RecordComponent("Gamepad/RightTrigger",value,0,source); break;
+                }
                 break;
             }
-        }
-
-        std::vector<SDL_Gamepad*> currentControllers;
-
-        // find active controllers
-        int countJoysticks = 0;
-        SDL_JoystickID *joysticks = SDL_GetJoysticks(&countJoysticks);
-        for (int i = 0; i < countJoysticks; i++) {
-            SDL_JoystickID jid = joysticks[i];
-            if (SDL_IsGamepad(jid)) {
-                SDL_Gamepad *controller = SDL_OpenGamepad(i);
-                currentControllers.push_back(controller);
+            case SDL_EVENT_GAMEPAD_BUTTON_DOWN:
+            case SDL_EVENT_GAMEPAD_BUTTON_UP:
+                for (const auto& c : InputControls()) if (c.button && event.gbutton.button < 32 && c.button == (1u << event.gbutton.button))
+                    m_actions.Record(c.path, Vector2(event.gbutton.down ? 1.0f : 0.0f, 0), uint64_t(event.gbutton.which) + 2);
+                if (event.gbutton.down) m_lastInputDeviceType = InputDevice::GAMEPAD;
+                break;
             }
-        }
-
-        // remove unactive controllers
-        for (int i = 0; i < m_gameControllers.size(); i++)
-        {
-            bool found = false;
-
-            for (int x = 0; x < currentControllers.size(); x++)
-            {
-                if (m_gameControllers[i].controller == currentControllers[x])
-                {
-                    found = true;
-                }
-            }
-
-            if (!found)
-            {
-                m_gameControllers.erase( m_gameControllers.begin() + i );
-            }
-        }
-
-        // reorder controller order
-        for (int i = 0; i < m_gameControllers.size(); i++)
-        {
-            SDL_SetGamepadPlayerIndex((SDL_Gamepad*)m_gameControllers[i].controller, i);
         }
 
         // update controllers
@@ -512,11 +531,13 @@ namespace Canis
 
     void InputManager::PressKey(unsigned int _keyID)
     {
+        for (const auto& c : InputControls()) if (c.key && c.key == _keyID) m_actions.Record(c.path, Vector2(1, 0));
         m_keyVec.push_back(InputData { _keyID , true});
     }
 
     void InputManager::ReleasedKey(unsigned int _keyID)
     {
+        for (const auto& c : InputControls()) if (c.key && c.key == _keyID) m_actions.Record(c.path, Vector2(0));
         m_keyVec.push_back(InputData { _keyID , false});
     }
 
@@ -792,13 +813,31 @@ namespace Canis
                 gameController.lastButtonsPressed = ControllerButton::DPAD_UP;
                 m_lastControllerID = m_gameControllers.size();
 
-                std::string controllerName = std::string(SDL_GetGamepadName((SDL_Gamepad*)gameController.controller));
-
-                if (controllerName[0] == 'P')
-                {
-                    gameController.gameControllerType = GameControllerType::PLAYSTATION;
+                const char* name = SDL_GetGamepadName((SDL_Gamepad*)gameController.controller);
+                std::string controllerName = name ? name : "Unknown";
+                switch (SDL_GetGamepadType((SDL_Gamepad*)gameController.controller)) {
+                    case SDL_GAMEPAD_TYPE_XBOX360: case SDL_GAMEPAD_TYPE_XBOXONE:
+                        gameController.gameControllerType = XBOX; break;
+                    case SDL_GAMEPAD_TYPE_PS3: case SDL_GAMEPAD_TYPE_PS4: case SDL_GAMEPAD_TYPE_PS5:
+                        gameController.gameControllerType = PLAYSTATION; break;
+                    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_PRO:
+                    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_LEFT:
+                    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_RIGHT:
+                    case SDL_GAMEPAD_TYPE_NINTENDO_SWITCH_JOYCON_PAIR:
+                        gameController.gameControllerType = NINTENDO; break;
+#if CANIS_SDL_HAS_STEAM_GAMEPAD_TYPE
+                    case SDL_GAMEPAD_TYPE_STEAM:
+                        gameController.gameControllerType = STEAM; break;
+#endif
+                    default: gameController.gameControllerType = UNKNOWN; break;
                 }
 
+                const auto vendor = SDL_GetGamepadVendor(static_cast<SDL_Gamepad*>(gameController.controller));
+                const auto product = SDL_GetGamepadProduct(static_cast<SDL_Gamepad*>(gameController.controller));
+                // These are the 2015 D0G IDs in SDL's controller database, not a broad Valve vendor match.
+                gameController.originalSteamController = vendor == 0x28de &&
+                    (product == 0x1102 || product == 0x1105 || product == 0x1106 || product == 0x1142);
+                if (gameController.originalSteamController) gameController.gameControllerType = STEAM;
                 m_gameControllers.push_back(gameController);
 
                 Debug::Log("Game Controller Connected Joy ID: %s Name: %s", std::to_string(gameController.joyId).c_str(), controllerName.c_str());
@@ -806,60 +845,91 @@ namespace Canis
         }
     }
     
-    void InputManager::OnGameControllerDisconnect(void *_device)
+    void InputManager::OnGameControllerDisconnect(void* devicePointer)
     {
-        SDL_GamepadDeviceEvent& device = (*(SDL_GamepadDeviceEvent*)(_device));
-        SDL_Gamepad * controller;
-        SDL_JoystickID joyID = 0;
-
-        std::vector<SDL_Gamepad*> currentControllers;
-
-        // find active controllers
-        int countJoysticks = 0;
-        SDL_JoystickID *joysticks = SDL_GetJoysticks(&countJoysticks);
-        for (int i = 0; i < countJoysticks; i++) {
-            SDL_JoystickID jid = joysticks[i];
-            if (SDL_IsGamepad(jid)) {
-                controller = SDL_OpenGamepad(jid);
-                SDL_Joystick * js = SDL_GetGamepadJoystick(controller);
-                if (device.which == SDL_GetJoystickID(js)) {
-                    SDL_CloseGamepad(controller);
-                    joyID = device.which;
-                }
-                else
-                {
-                    currentControllers.push_back(controller);
-                }
-            }
+        const auto& device = *static_cast<SDL_GamepadDeviceEvent*>(devicePointer);
+        m_actions.RemoveSource(uint64_t(device.which) + 2, InputCancellation::Disconnected);
+        m_steamOwnedSources.erase(uint64_t(device.which) + 2);
+        m_actions.ForgetController(uint64_t(device.which) + 2);
+        for (auto it = m_gameControllers.begin(); it != m_gameControllers.end();) {
+            if (it->joyId == device.which) {
+                SDL_CloseGamepad(static_cast<SDL_Gamepad*>(it->controller));
+                it = m_gameControllers.erase(it);
+            } else ++it;
         }
-
-        // remove unactive controllers
-        for (int i = 0; i < m_gameControllers.size(); i++)
-        {
-            bool found = false;
-
-            for (int x = 0; x < currentControllers.size(); x++)
-            {
-                if (m_gameControllers[i].controller == currentControllers[x])
-                {
-                    found = true;
-                }
-            }
-
-            if (!found)
-            {
-                m_gameControllers.erase( m_gameControllers.begin() + i );
-
-                Debug::Log("Game Controller Disconnected");
-            }
-        }
-
-        // reorder controller order
-        for (int i = 0; i < m_gameControllers.size(); i++)
-        {
-            SDL_SetGamepadPlayerIndex((SDL_Gamepad*)m_gameControllers[i].controller, i);
-        }
+        m_lastControllerID = 0;
+        for (size_t i = 0; i < m_gameControllers.size(); ++i)
+            SDL_SetGamepadPlayerIndex(static_cast<SDL_Gamepad*>(m_gameControllers[i].controller), static_cast<int>(i));
     }
 
+    GameControllerType InputManager::GetControllerType() const
+    {
+        return m_lastControllerID < m_gameControllers.size() ? m_gameControllers[m_lastControllerID].gameControllerType : UNKNOWN;
+    }
 
-} // end of Canis namespace
+    ActionSnapshot InputManager::Action(ActionId id, unsigned int controllerIndex) const
+    {
+        if (controllerIndex >= m_gameControllers.size()) {
+            ActionSnapshot neutral; neutral.type = m_actions.Action(id).type;
+            return neutral;
+        }
+        return m_actions.Action(id, uint64_t(m_gameControllers[controllerIndex].joyId) + 2);
+    }
+
+    void InputManager::EvaluateActions(bool gameplayActive)
+    {
+        std::vector<uint64_t> steamHandles;
+        for (const auto& pad : m_gameControllers)
+            steamHandles.push_back(SDL_GetGamepadSteamHandle(static_cast<SDL_Gamepad*>(pad.controller)));
+        SteamInputPlatform::Poll(m_actions, steamHandles);
+        for (const auto& pad : m_gameControllers) {
+            const uint64_t source = uint64_t(pad.joyId) + 2;
+            const bool owned = SteamInputPlatform::OwnsController(SDL_GetGamepadSteamHandle(static_cast<SDL_Gamepad*>(pad.controller)));
+            if (owned != m_steamOwnedSources.contains(source)) {
+                m_actions.RemoveSource(source, InputCancellation::BackendChanged);
+                if (owned) m_steamOwnedSources.insert(source); else m_steamOwnedSources.erase(source);
+            }
+            // Discard SDL events collected earlier this frame for Steam-owned devices.
+            if (owned) m_actions.DiscardSourceEvents(source);
+            const auto type = pad.gameControllerType;
+            m_actions.TrackController(source, pad.originalSteamController ? "steam_controller" :
+                type == XBOX ? "xbox" : type == PLAYSTATION ? "playstation" : type == NINTENDO ? "switch" : "unknown", owned);
+        }
+        const bool* keys = SDL_GetKeyboardState(nullptr);
+        for (const auto& c : InputControls()) if (c.key)
+            m_actions.Record(c.path, Vector2(keys[c.key] ? 1.0f : 0.0f, 0));
+        // Reconcile releases outside the game viewport without accepting new
+        // button presses outside its existing routing rules.
+        const SDL_MouseButtonFlags mouseButtons = SDL_GetMouseState(nullptr, nullptr);
+        const char* mousePaths[] = {"Mouse/Left", "Mouse/Middle", "Mouse/Right", "Mouse/X1", "Mouse/X2"};
+        for (unsigned int i = 0; i < 5; ++i)
+            if (!(mouseButtons & SDL_BUTTON_MASK(i + 1))) m_actions.Record(mousePaths[i], Vector2(0.0f));
+        // Read unfiltered SDL axes here; the action processor applies its dead zone once.
+        for (const auto& pad : m_gameControllers) {
+            auto* device = static_cast<SDL_Gamepad*>(pad.controller);
+            const uint64_t source = uint64_t(pad.joyId) + 2;
+            if (m_steamOwnedSources.contains(source)) continue;
+            for (const auto& c : InputControls()) if (c.button) {
+                const int button = std::countr_zero(c.button);
+                m_actions.Record(c.path, Vector2(SDL_GetGamepadButton(device, static_cast<SDL_GamepadButton>(button)) ? 1.0f : 0.0f, 0), source);
+            }
+            auto axis = [&](SDL_GamepadAxis a) { return glm::clamp(SDL_GetGamepadAxis(device, a) / 32767.0f, -1.0f, 1.0f); };
+            m_actions.Record("Gamepad/LeftStick", Vector2(axis(SDL_GAMEPAD_AXIS_LEFTX), -axis(SDL_GAMEPAD_AXIS_LEFTY)), source);
+            m_actions.Record("Gamepad/RightStick", Vector2(axis(SDL_GAMEPAD_AXIS_RIGHTX), -axis(SDL_GAMEPAD_AXIS_RIGHTY)), source);
+            m_actions.Record("Gamepad/LeftTrigger", Vector2(axis(SDL_GAMEPAD_AXIS_LEFT_TRIGGER), 0), source);
+            m_actions.Record("Gamepad/RightTrigger", Vector2(axis(SDL_GAMEPAD_AXIS_RIGHT_TRIGGER), 0), source);
+        }
+        m_actions.Record("Mouse/Delta", mouseRel);
+        m_actions.Record("Mouse/Wheel", Vector2(m_scrollVertical + m_syntheticScrollVertical, 0));
+        const bool available = active && gameplayActive && !m_windowWasBackgrounded && !m_actionEditorCaptured;
+        if (!available && m_actionsWereAvailable && !m_windowWasBackgrounded)
+            ClearSyntheticState(InputCancellation::Capture);
+        m_actionsWereAvailable = available;
+        const auto family = GetControllerType();
+        m_actions.SetGlyphFamily(family == XBOX ? "xbox" : family == PLAYSTATION ? "playstation" : family == NINTENDO ? "switch" : "unknown");
+        if (m_lastControllerID < m_gameControllers.size() && m_gameControllers[m_lastControllerID].originalSteamController)
+            m_actions.SetGlyphFamily("steam_controller");
+        // The SDL Steam family spans several models; native Steam origins select their own glyphs.
+        m_actions.Evaluate(available);
+    }
+} // namespace Canis

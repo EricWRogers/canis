@@ -42,6 +42,7 @@ namespace Canis
 
     struct ProjectConfig
     {
+        std::string inputAsset = "project_settings/input.canis";
         // Human-facing title and build-target identity are deliberately
         // separate: game names may contain spaces while executable names must
         // remain suitable for the host platform and build system.

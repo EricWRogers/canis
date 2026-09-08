@@ -15,6 +15,7 @@
 #include <Canis/Editor.hpp>
 #include <Canis/IOManager.hpp>
 #include <Canis/InputManager.hpp>
+#include <Canis/SteamInput.hpp>
 #include <Canis/AudioManager.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/PostProcessPipeline.hpp>
@@ -1915,6 +1916,7 @@ namespace Canis
             windowOptions.resizable = GetProjectConfig().windowResizable;
             windowOptions.startMaximized = GetProjectConfig().windowStartMaximized;
         }
+        SteamInputPlatform::Initialize();
         runtime.window = std::make_unique<Window>(
             windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen, windowOptions);
         runtime.window->SetClearColor(Color(1.0f));
@@ -2144,6 +2146,8 @@ namespace Canis
         if (runtime.editorRuntimeEnabled)
             runGameTick = (editor.m_mode == EditorMode::PLAY);
 #endif
+
+        inputManager.EvaluateActions(runGameTick);
 
         if (runGameTick)
         {
@@ -2442,6 +2446,8 @@ namespace Canis
         DestroyRenderTarget(runtime->runtimeRenderTarget);
         DestroyRenderTarget(runtime->runtimePostProcessTarget);
         m_editor = nullptr;
+        runtime->inputManager.reset();
+        SteamInputPlatform::Shutdown();
         delete runtime;
     }
 

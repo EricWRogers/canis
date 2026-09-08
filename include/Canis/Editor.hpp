@@ -471,6 +471,7 @@ namespace Canis
         bool m_showAnimatorPanel = true;
         bool m_showShaderGraphPanel = true;
         bool m_showProjectSettingsPanel = true;
+        bool m_showInputActionsPanel = false;
         bool m_showConsolePanel = true;
         bool m_playViewHovered = false;
         bool m_playMouseCaptured = false;

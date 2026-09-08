@@ -66,6 +66,12 @@ namespace Canis
         (void)_entity;
     }
 
+    bool Editor::BakeBlockoutEntity(Canis::Entity* _entity)
+    {
+        (void)_entity;
+        return false;
+    }
+
     void Editor::NotifyAnimationPropertyEdited(
         Canis::Entity& _entity,
         const std::string& _componentName,

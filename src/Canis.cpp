@@ -290,6 +290,7 @@ namespace Canis
 
         YAML::Node node;
 
+        node["inputAsset"] = projectConfig.inputAsset;
         node["tags"] = projectConfig.tags;
         node["gameName"] = projectConfig.gameName;
         node["executableName"] = projectConfig.executableName;
@@ -351,6 +352,7 @@ namespace Canis
                 // Runtime-only values such as the current editor window size
                 // may intentionally differ. Mirror source-controlled project
                 // settings so a rebuild cannot replace changes made here.
+                sourceNode["inputAsset"] = projectConfig.inputAsset;
                 sourceNode["tags"] = projectConfig.tags;
                 sourceNode["gameName"] = projectConfig.gameName;
                 sourceNode["executableName"] = projectConfig.executableName;
@@ -438,6 +440,7 @@ namespace Canis
         if (FileExists(editorConfigPath.c_str()))
             editorNode = YAML::LoadFile(editorConfigPath);
 
+        projectConfig.inputAsset = node["inputAsset"].as<std::string>(projectConfig.inputAsset);
         projectConfig.tags = node["tags"].as<std::vector<std::string>>(std::vector<std::string>{});
         projectConfig.gameName = node["gameName"].as<std::string>(projectConfig.gameName);
         projectConfig.executableName = node["executableName"].as<std::string>(projectConfig.executableName);
