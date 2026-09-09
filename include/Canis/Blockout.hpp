@@ -5,7 +5,7 @@
 #include <vector>
 
 #include <Canis/Asset.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 namespace Canis
 {

@@ -412,7 +412,7 @@ namespace Canis
         auto emitterView = _registry.view<Canis::ParticleEmitter, Transform>();
         for (auto [entityHandle, emitter, transform] : emitterView.each())
         {
-            if (emitter.entity == nullptr || !emitter.entity->active)
+            if (emitter.entity == nullptr || !emitter.entity->Active())
                 continue;
 
             CleanupDeadParticles(emitter, _registry);

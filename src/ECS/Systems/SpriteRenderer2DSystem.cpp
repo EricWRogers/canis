@@ -7,7 +7,7 @@
 
 #include <Canis/Math.hpp>
 #include <Canis/Time.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Window.hpp>
@@ -585,24 +585,17 @@ namespace Canis
             const std::vector<Entity*>& sceneEntities = scene->GetEntities();
             std::vector<bool> visited(sceneEntities.size(), false);
 
-            auto wasVisited = [&](Entity* _entity) -> bool
+            auto wasVisited = [&](Entity* entity) -> bool
             {
-                return _entity != nullptr &&
-                    _entity->id >= 0 &&
-                    _entity->id < static_cast<int>(visited.size()) &&
-                    visited[static_cast<std::size_t>(_entity->id)];
+                const int index = entity ? scene->GetEntityIndex(*entity) : -1;
+                return index >= 0 && index < static_cast<int>(visited.size()) && visited[static_cast<std::size_t>(index)];
             };
 
-            auto markVisited = [&](Entity* _entity) -> void
+            auto markVisited = [&](Entity* entity) -> void
             {
-                if (_entity == nullptr ||
-                    _entity->id < 0 ||
-                    _entity->id >= static_cast<int>(visited.size()))
-                {
-                    return;
-                }
-
-                visited[static_cast<std::size_t>(_entity->id)] = true;
+                const int index = entity ? scene->GetEntityIndex(*entity) : -1;
+                if (index >= 0 && index < static_cast<int>(visited.size()))
+                    visited[static_cast<std::size_t>(index)] = true;
             };
 
             auto renderTree = [&](auto&& _self, Entity* _entity) -> void

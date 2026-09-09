@@ -1,8 +1,9 @@
 #pragma once
+#include <Canis/Entity.hpp>
 
 #include <glm/glm.hpp>
 
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 #include <algorithm>
 #include <array>
@@ -16,7 +17,7 @@ namespace Canis
     struct OctPoint
     {
         glm::vec3 position = glm::vec3(0.0f);
-        Entity* entity = nullptr;
+        Entity entity = nullptr;
         UUID entityUUID = UUID(0);
         glm::vec3 velocity = glm::vec3(0.0f);
     };
@@ -73,7 +74,7 @@ namespace Canis
             OctPoint payload;
             payload.position = _point;
             payload.entity = _entity;
-            payload.entityUUID = (_entity != nullptr) ? _entity->uuid : UUID(0);
+            payload.entityUUID = (_entity != nullptr) ? _entity->GetUUID() : UUID(0);
             payload.velocity = _velocity;
             InsertPoint(m_rootIndex, payload);
         }

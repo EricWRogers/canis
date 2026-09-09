@@ -108,7 +108,7 @@ namespace Canis
         m_surfaces[_surfaceEntity.GetHandle()] = std::move(runtime);
         /*Debug::Log(
             "Nav mesh '%s' built with %zu walkable points.",
-            _surfaceEntity.name.c_str(),
+            _surfaceEntity.GetName().c_str(),
             pointCount);*/
         return pointCount > 0u;
     }
@@ -304,7 +304,7 @@ namespace Canis
             {
                 if (hit.entity == _surface.entity)
                     continue;
-                if (hit.entity != nullptr && hit.entity->active &&
+                if (hit.entity != nullptr && hit.entity->Active() &&
                     hit.entity->HasComponent<Rigidbody>() &&
                     hit.entity->GetComponent<Rigidbody>().motionType == RigidbodyMotionType::STATIC &&
                     hit.distance < distance - 0.05f)
@@ -318,7 +318,7 @@ namespace Canis
         const NavMeshSurface& _surface,
         const Entity* _entity) const
     {
-        if (_entity == nullptr || !_entity->active || !_entity->HasComponent<Rigidbody>())
+        if (_entity == nullptr || !_entity->Active() || !_entity->HasComponent<Rigidbody>())
             return false;
         const Rigidbody& rigidbody = _entity->GetComponent<Rigidbody>();
         if (!rigidbody.active || rigidbody.motionType != RigidbodyMotionType::STATIC)

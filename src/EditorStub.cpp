@@ -88,6 +88,9 @@ namespace Canis
         (void)_value;
     }
 
+    void Editor::InputEntity(const std::string&, Entity&) {}
+    void Editor::InputEntity(const std::string&, const char*, Entity&) {}
+
     void Editor::InputEntity(const std::string& _name, Canis::Entity*& _variable)
     {
         (void)_name;

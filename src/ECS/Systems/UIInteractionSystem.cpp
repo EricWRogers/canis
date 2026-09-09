@@ -2,7 +2,7 @@
 
 #include <Canis/App.hpp>
 #include <Canis/ConfigData.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Window.hpp>
@@ -173,7 +173,7 @@ namespace Canis
             if (_scene.app == nullptr || _inputField.targetScript.empty() || _inputField.targetProperty.empty())
                 return;
 
-            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity : _inputField.entity;
+            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity.TryGet() : _inputField.entity;
             if (targetEntity == nullptr)
                 return;
 
@@ -199,7 +199,7 @@ namespace Canis
             if (_scene.app == nullptr || _inputField.targetScript.empty() || _inputField.targetProperty.empty())
                 return;
 
-            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity : _inputField.entity;
+            Entity* targetEntity = (_inputField.targetEntity != nullptr) ? _inputField.targetEntity.TryGet() : _inputField.entity;
             if (targetEntity == nullptr)
                 return;
 
@@ -315,7 +315,7 @@ namespace Canis
         };
 
         if (m_pressedButton != nullptr &&
-            (!m_pressedButton->active ||
+            (!m_pressedButton->Active() ||
              !m_pressedButton->HasComponents<RectTransform, UIButton>() ||
              !m_pressedButton->GetComponent<UIButton>().active ||
              !m_pressedButton->GetComponent<RectTransform>().IsActiveInHierarchy()))
@@ -324,7 +324,7 @@ namespace Canis
         }
 
         if (m_focusedInputField != nullptr &&
-            (!m_focusedInputField->active ||
+            (!m_focusedInputField->Active() ||
              !m_focusedInputField->HasComponents<RectTransform, UIInputField>() ||
              !m_focusedInputField->GetComponent<UIInputField>().active ||
              !m_focusedInputField->GetComponent<RectTransform>().IsActiveInHierarchy()))
@@ -333,7 +333,7 @@ namespace Canis
         }
 
         if (m_dragSource != nullptr &&
-            (!m_dragSource->active ||
+            (!m_dragSource->Active() ||
              !m_dragSource->HasComponents<RectTransform, UIDragSource>() ||
              !m_dragSource->GetComponent<UIDragSource>().active ||
              !m_dragSource->GetComponent<RectTransform>().IsActiveInHierarchy()))
@@ -596,7 +596,7 @@ namespace Canis
                 if (m_pressedButton == hoveredButton && m_pressedButton->HasComponent<UIButton>())
                 {
                     UIButton& button = m_pressedButton->GetComponent<UIButton>();
-                    Entity* receiver = button.targetEntity != nullptr ? button.targetEntity : m_pressedButton;
+                    Entity* receiver = button.targetEntity != nullptr ? button.targetEntity.TryGet() : m_pressedButton.TryGet();
                     UIActionContext context = {};
                     context.sourceEntity = m_pressedButton;
                     context.targetEntity = receiver;
@@ -615,7 +615,7 @@ namespace Canis
             if (hoveredDropTarget != nullptr && hoveredDropTarget->HasComponent<UIDropTarget>())
             {
                 UIDropTarget& dropTarget = hoveredDropTarget->GetComponent<UIDropTarget>();
-                Entity* receiver = dropTarget.targetEntity != nullptr ? dropTarget.targetEntity : hoveredDropTarget;
+                Entity* receiver = dropTarget.targetEntity != nullptr ? dropTarget.targetEntity.TryGet() : hoveredDropTarget;
 
                 UIActionContext context = {};
                 context.sourceEntity = m_dragSource;

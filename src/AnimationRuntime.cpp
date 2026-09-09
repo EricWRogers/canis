@@ -4,7 +4,7 @@
 #include <sstream>
 
 #include <Canis/App.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 namespace Canis
 {
@@ -44,7 +44,7 @@ namespace Canis
                 if (child == nullptr)
                     continue;
 
-                std::string childPath = child->name;
+                std::string childPath = child->GetName();
                 if (BuildAnimationRelativePathRecursive(*child, _target, childPath))
                 {
                     _outPath = childPath;
@@ -79,7 +79,7 @@ namespace Canis
             Entity* next = nullptr;
             for (Entity* child : GetAnimationChildren(*current))
             {
-                if (child != nullptr && child->name == segment)
+                if (child != nullptr && child->GetName() == segment)
                 {
                     next = child;
                     break;

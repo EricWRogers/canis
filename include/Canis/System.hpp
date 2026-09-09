@@ -21,6 +21,7 @@ namespace Canis
         bool m_isCreated = false;
 
         System(){};
+        virtual ~System() = default;
 
         virtual void Create() {}
         virtual void Ready() {}

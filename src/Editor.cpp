@@ -7,7 +7,7 @@
 #include <Canis/OpenGL.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Shader.hpp>
@@ -1922,7 +1922,7 @@ namespace Canis
             if (_scriptType == GameScriptType::System)
                 header << "#include <Canis/System.hpp>\n\n";
             else
-                header << "#include <Canis/Entity.hpp>\n\n";
+                header << "#include <Canis/Components.hpp>\n\n";
             header << "namespace Canis\n{\n    class App;\n}\n";
 
             if (!pathParts.empty())
@@ -3381,7 +3381,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (&_root != &_current && !BuildAnimationRelativePath(_root, _current, relativePath))
                 return;
 
-            const std::string entityLabel = relativePath.empty() ? _current.name : relativePath;
+            const std::string entityLabel = relativePath.empty() ? _current.GetName() : relativePath;
             for (ScriptConf &conf : _app.GetScriptRegistry())
             {
                 if (conf.Has == nullptr || conf.Get == nullptr || conf.registry.animationGetters.empty())
@@ -4152,7 +4152,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             for (Entity *entity : _scene.GetEntities())
             {
-                if (entity != nullptr && entity->name == _name)
+                if (entity != nullptr && entity->GetName() == _name)
                     return true;
             }
 
@@ -4329,7 +4329,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 ParentNewHierarchyEntity(entity, _parent);
 
-                Entity *label = _scene.CreateEntity(MakeUniqueEntityName(_scene, entity->name + " Label"));
+                Entity *label = _scene.CreateEntity(MakeUniqueEntityName(_scene, entity->GetName() + " Label"));
                 if (label != nullptr)
                 {
                     addRequired(*label, Text::ScriptName);
@@ -7033,7 +7033,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const std::vector<Entity*> &entities = m_scene->GetEntities();
         if (m_index >= 0 && m_index < static_cast<int>(entities.size()) && entities[m_index] != nullptr)
-            state.selectedEntityUUID = entities[m_index]->uuid;
+            state.selectedEntityUUID = entities[m_index]->GetUUID();
         state.selectedEntityUUIDs = m_selectedEntityUUIDs;
 
         return state;
@@ -7375,11 +7375,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             for (int i = 0; i < static_cast<int>(entities.size()); ++i)
             {
-                if (entities[i] != nullptr && entities[i]->uuid == _state.selectedEntityUUID)
+                if (entities[i] != nullptr && entities[i]->GetUUID() == _state.selectedEntityUUID)
                 {
                     m_index = i;
                     if (m_selectedEntityUUIDs.empty())
-                        m_selectedEntityUUIDs.push_back(entities[i]->uuid);
+                        m_selectedEntityUUIDs.push_back(entities[i]->GetUUID());
                     break;
                 }
             }
@@ -7392,7 +7392,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (entities[i] != nullptr)
                 {
                     m_index = i;
-                    m_selectedEntityUUIDs.push_back(entities[i]->uuid);
+                    m_selectedEntityUUIDs.push_back(entities[i]->GetUUID());
                     break;
                 }
             }
@@ -7477,11 +7477,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     bool Editor::RemoveSceneEntity(Canis::Entity *_entity)
     {
-        if (!CanTrackSceneHistory() || _entity == nullptr || _entity->editorLocked)
+        if (!CanTrackSceneHistory() || _entity == nullptr || _entity->EditorLocked())
             return false;
 
         std::vector<Entity*> &entities = m_scene->GetEntities();
-        const int entityIndex = _entity->id;
+        const int entityIndex = m_scene->GetEntityIndex(*_entity);
         if (entityIndex < 0 ||
             entityIndex >= static_cast<int>(entities.size()) ||
             entities[entityIndex] != _entity)
@@ -7489,7 +7489,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return false;
         }
 
-        const UUID removedUUID = _entity->uuid;
+        const UUID removedUUID = _entity->GetUUID();
         const SceneHistoryState beforeRemoveState = CaptureSceneHistoryState();
         m_scene->Destroy(entityIndex);
 
@@ -7517,7 +7517,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 [&](Entity *_candidate)
                 {
                     return _candidate != nullptr &&
-                        _candidate->uuid == m_hierarchyRevealTargetUUID;
+                        _candidate->GetUUID() == m_hierarchyRevealTargetUUID;
                 });
         if (!revealTargetStillExists)
         {
@@ -7553,12 +7553,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             const SceneHistoryState beforeState = CaptureSceneHistoryState();
             std::vector<UUID> targets = {};
             for (Entity *entity : selected)
-                targets.push_back(entity->uuid);
+                targets.push_back(entity->GetUUID());
             for (const UUID uuid : targets)
             {
                 if (Entity *entity = m_scene->GetEntityWithUUID(uuid))
                 {
-                    if (!entity->editorLocked)
+                    if (!entity->EditorLocked())
                     {
                         m_hierarchyRootOrder.erase(
                             std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), uuid),
@@ -8115,7 +8115,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             const std::vector<Entity*> selected = GetSelectedEntities();
                             for (Entity *target : selected)
                             {
-                                if (target == nullptr || target->editorLocked)
+                                if (target == nullptr || target->EditorLocked())
                                     continue;
                                 Entity *replacement = nullptr;
                                 if (!InstantiateSceneAssetIntoHierarchy(*m_scene, dropped, nullptr, -1, &m_hierarchyRootOrder, -1, replacement) || replacement == nullptr)
@@ -8129,7 +8129,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     destination.rotation = source.rotation;
                                     destination.scale = source.scale;
                                 }
-                                const UUID removedUUID = target->uuid;
+                                const UUID removedUUID = target->GetUUID();
                                 m_scene->Destroy(*target);
                                 m_hierarchyRootOrder.erase(
                                     std::remove(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), removedUUID),
@@ -8153,7 +8153,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             m_selectedEntityUUIDs.clear();
                             for (Entity *entity : spawned)
-                                m_selectedEntityUUIDs.push_back(entity->uuid);
+                                m_selectedEntityUUIDs.push_back(entity->GetUUID());
                             SelectEntity(spawned.back(), true, false);
                             CommitSceneHistoryImmediateChange(beforeState);
                             m_forceRefresh = true;
@@ -8196,7 +8196,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     "assets/defaults/materials/whitebox_preview.material");
                             }
                             RebuildBlockoutEntity(*created);
-                            m_blockoutDrawEntity = created->uuid;
+                            m_blockoutDrawEntity = created->GetUUID();
                             m_blockoutDrawActive = true;
                         }
                     }
@@ -8299,7 +8299,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         std::vector<Entity*> inside = {};
                         for (Entity *entity : m_scene->GetEntities())
                         {
-                            if (entity == nullptr || !entity->active || entity->editorLocked ||
+                            if (entity == nullptr || !entity->Active() || entity->EditorLocked() ||
                                 !entity->HasComponent<Transform>() || !entity->HasComponent<Model>())
                                 continue;
                             const Vector4 clip = viewProjection * Vector4(entity->GetComponent<Transform>().GetGlobalPosition(), 1.0f);
@@ -8317,7 +8317,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         for (Entity *entity : inside)
                         {
                             if (!IsEntitySelected(entity))
-                                m_selectedEntityUUIDs.push_back(entity->uuid);
+                                m_selectedEntityUUIDs.push_back(entity->GetUUID());
                         }
                         if (!m_selectedEntityUUIDs.empty())
                         {
@@ -8585,7 +8585,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
-        if (selected->editorLocked)
+        if (selected->EditorLocked())
         {
             ResetVertexSnapDrag();
             return;
@@ -8753,7 +8753,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 for (Entity *other : GetSelectedEntities())
                 {
-                    if (other == nullptr || other == selected || other->editorLocked || !other->HasComponent<Transform>())
+                    if (other == nullptr || other == selected || other->EditorLocked() || !other->HasComponent<Transform>())
                         continue;
 
                     Transform &otherTransform = other->GetComponent<Transform>();
@@ -9067,7 +9067,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_playTextureHeight = 0;
     }
 
-    static std::vector<Canis::Entity*>* GetHierarchyChildren(Canis::Entity *_entity);
+    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity *_entity);
     static Canis::Entity* GetHierarchyParent(Canis::Entity *_entity);
     static bool SetHierarchyParentAtIndexKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent, std::size_t _index);
     static bool SetHierarchyParentKeepingLocal(Canis::Entity *_child, Canis::Entity *_parent);
@@ -9082,10 +9082,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return;
 
-        m_hierarchyRevealTargetUUID = _entity->uuid;
+        m_hierarchyRevealTargetUUID = _entity->GetUUID();
 
         for (Canis::Entity *current = GetHierarchyParent(_entity); current != nullptr; current = GetHierarchyParent(current))
-            m_hierarchyRevealPath.push_back(current->uuid);
+            m_hierarchyRevealPath.push_back(current->GetUUID());
     }
 
     void Editor::FocusEntity(Canis::Entity *_entity)
@@ -9096,7 +9096,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (m_scene->GetEntities()[i] == _entity)
             {
                 m_index = i;
-                m_selectedEntityUUIDs.push_back(_entity->uuid);
+                m_selectedEntityUUIDs.push_back(_entity->GetUUID());
                 m_selectedAssetPath.clear();
                 RequestHierarchyReveal(_entity);
                 return;
@@ -9119,7 +9119,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         auto selected = std::find(
             m_selectedEntityUUIDs.begin(),
             m_selectedEntityUUIDs.end(),
-            _entity->uuid);
+            _entity->GetUUID());
         if (selected != m_selectedEntityUUIDs.end())
         {
             if (_toggle)
@@ -9127,7 +9127,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
         else
         {
-            m_selectedEntityUUIDs.push_back(_entity->uuid);
+            m_selectedEntityUUIDs.push_back(_entity->GetUUID());
         }
 
         std::vector<Entity*> &entities = m_scene->GetEntities();
@@ -9140,7 +9140,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const UUID primary = m_selectedEntityUUIDs.back();
         for (int i = 0; i < static_cast<int>(entities.size()); ++i)
         {
-            if (entities[i] != nullptr && entities[i]->uuid == primary)
+            if (entities[i] != nullptr && entities[i]->GetUUID() == primary)
             {
                 m_index = i;
                 m_selectedAssetPath.clear();
@@ -9155,7 +9155,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return _entity != nullptr && std::find(
             m_selectedEntityUUIDs.begin(),
             m_selectedEntityUUIDs.end(),
-            _entity->uuid) != m_selectedEntityUUIDs.end();
+            _entity->GetUUID()) != m_selectedEntityUUIDs.end();
     }
 
     std::vector<Canis::Entity*> Editor::GetSelectedEntities() const
@@ -9190,7 +9190,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         bool changed = false;
         for (Entity *entity : selected)
         {
-            if (entity == nullptr || entity->editorLocked || !entity->HasComponent<Transform>())
+            if (entity == nullptr || entity->EditorLocked() || !entity->HasComponent<Transform>())
                 continue;
 
             Transform &transform = entity->GetComponent<Transform>();
@@ -9226,7 +9226,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return false;
 
         std::string stem = {};
-        for (const char character : _entity->name)
+        for (const char character : _entity->GetName())
         {
             const unsigned char value = static_cast<unsigned char>(character);
             if (std::isalnum(value))
@@ -9241,11 +9241,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const std::filesystem::path outputPath = std::filesystem::path("assets") /
             "generated" / "blockouts" /
-            (stem + "_" + std::to_string(static_cast<uint64_t>(_entity->uuid)) + ".obj");
+            (stem + "_" + std::to_string(static_cast<uint64_t>(_entity->GetUUID())) + ".obj");
         std::string error = {};
         if (!ExportBlockoutObj(_entity->GetComponent<BlockoutShape>(), outputPath, &error))
         {
-            Debug::Warning("Could not bake blockout '%s': %s", _entity->name.c_str(), error.c_str());
+            Debug::Warning("Could not bake blockout '%s': %s", _entity->GetName().c_str(), error.c_str());
             return false;
         }
 
@@ -9270,7 +9270,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
         m_assetPaths = FindFilesInFolder("assets", "");
         CommitSceneHistoryImmediateChange(beforeState);
-        Debug::Log("Baked blockout '%s' to '%s'.", _entity->name.c_str(), outputPath.generic_string().c_str());
+        Debug::Log("Baked blockout '%s' to '%s'.", _entity->GetName().c_str(), outputPath.generic_string().c_str());
         return true;
     }
 
@@ -9348,7 +9348,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 root = m_scene->GetEntities()[m_index];
 
             if (root != nullptr)
-                m_animationTargetUUID = root->uuid;
+                m_animationTargetUUID = root->GetUUID();
         }
 
         if (root == nullptr)
@@ -9394,10 +9394,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr || !_entity->HasComponent<PrefabInstance>())
             return;
 
-        if (std::find(m_queuedPrefabInstanceRebuilds.begin(), m_queuedPrefabInstanceRebuilds.end(), _entity->uuid) ==
+        if (std::find(m_queuedPrefabInstanceRebuilds.begin(), m_queuedPrefabInstanceRebuilds.end(), _entity->GetUUID()) ==
             m_queuedPrefabInstanceRebuilds.end())
         {
-            m_queuedPrefabInstanceRebuilds.push_back(_entity->uuid);
+            m_queuedPrefabInstanceRebuilds.push_back(_entity->GetUUID());
         }
     }
 
@@ -9423,7 +9423,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         std::vector<Canis::Entity*> exportRoots = {};
         if (prefabInstance.firstEntity != nullptr && prefabInstance.firstEntity != _entity)
         {
-            if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(_entity))
+            if (std::vector<Canis::Entity>*children = GetHierarchyChildren(_entity))
             {
                 for (Canis::Entity *child : *children)
                 {
@@ -9545,7 +9545,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         int childIndex = -1;
         if (parent != nullptr)
         {
-            if (std::vector<Canis::Entity*> *siblings = GetHierarchyChildren(parent))
+            if (std::vector<Canis::Entity>*siblings = GetHierarchyChildren(parent))
             {
                 auto it = std::find(siblings->begin(), siblings->end(), _entity);
                 if (it != siblings->end())
@@ -9556,16 +9556,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         int rootIndex = -1;
         if (parent == nullptr)
         {
-            auto it = std::find(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), _entity->uuid);
+            auto it = std::find(m_hierarchyRootOrder.begin(), m_hierarchyRootOrder.end(), _entity->GetUUID());
             if (it != m_hierarchyRootOrder.end())
                 rootIndex = static_cast<int>(std::distance(m_hierarchyRootOrder.begin(), it));
             else
                 rootIndex = static_cast<int>(m_hierarchyRootOrder.size());
         }
 
-        const std::string instanceName = _entity->name;
-        const std::string instanceTag = _entity->tag;
-        const bool instanceActive = _entity->active;
+        const std::string instanceName = _entity->GetName();
+        const TagId instanceTag = _entity->GetTag();
+        const bool instanceActive = _entity->Active();
         const SavedTransformState rootTransformState = saveTransformState(_entity);
         const SavedRectTransformState rootRectState = saveRectTransformState(_entity);
         const SavedTransformState firstTransformState = saveTransformState(prefabInstance.firstEntity);
@@ -9575,7 +9575,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         std::vector<Canis::UUID> updatedRootOrder = m_hierarchyRootOrder;
         if (parent == nullptr)
         {
-            if (auto it = std::find(updatedRootOrder.begin(), updatedRootOrder.end(), _entity->uuid); it != updatedRootOrder.end())
+            if (auto it = std::find(updatedRootOrder.begin(), updatedRootOrder.end(), _entity->GetUUID()); it != updatedRootOrder.end())
                 updatedRootOrder.erase(it);
         }
 
@@ -9585,9 +9585,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (newTopLevel == nullptr)
             return nullptr;
 
-        newTopLevel->name = instanceName;
-        newTopLevel->tag = instanceTag;
-        newTopLevel->active = instanceActive;
+        newTopLevel->GetName() = instanceName;
+        newTopLevel->GetTag() = instanceTag;
+        newTopLevel->Active() = instanceActive;
 
         if (parent != nullptr)
         {
@@ -9662,7 +9662,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
                 }
                 if (!hasPrefabAncestor)
-                    targets.push_back(entity->uuid);
+                    targets.push_back(entity->GetUUID());
             }
         }
 
@@ -9673,7 +9673,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         Canis::UUID selectedUuid = Canis::UUID(0);
         if (m_index >= 0 && m_index < static_cast<int>(m_scene->GetEntities().size()) && m_scene->GetEntities()[m_index] != nullptr)
-            selectedUuid = m_scene->GetEntities()[m_index]->uuid;
+            selectedUuid = m_scene->GetEntities()[m_index]->GetUUID();
 
         std::unordered_set<Canis::UUID> seen = {};
         const bool multipleTargets = targets.size() > 1;
@@ -9690,7 +9690,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             const bool focusSelection = !multipleTargets || uuid == selectedUuid;
             Canis::Entity *rebuilt = RebuildPrefabInstanceNow(entity, focusSelection);
             if (rebuilt != nullptr && uuid == selectedUuid)
-                selectedUuid = rebuilt->uuid;
+                selectedUuid = rebuilt->GetUUID();
 
             if (rebuildAll && rebuilt != nullptr)
             {
@@ -9709,17 +9709,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             return;
                         if (candidate->HasComponent<PrefabInstance>())
                         {
-                            nestedRoots.push_back(candidate->uuid);
+                            nestedRoots.push_back(candidate->GetUUID());
                             return;
                         }
-                        if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(candidate))
+                        if (std::vector<Canis::Entity>*children = GetHierarchyChildren(candidate))
                         {
                             for (Canis::Entity *child : *children)
                                 collectNested(child);
                         }
                     };
 
-                    if (std::vector<Canis::Entity*> *children = GetHierarchyChildren(parent))
+                    if (std::vector<Canis::Entity>*children = GetHierarchyChildren(parent))
                     {
                         for (Canis::Entity *child : *children)
                             collectNested(child);
@@ -9776,12 +9776,22 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         MarkSceneCameraConfigDirty();
     }
 
-    void Editor::InputEntity(const std::string &_name, Canis::Entity *&_variable)
+    void Editor::InputEntity(const std::string& name, Entity*& variable) { InputEntity(name, nullptr, variable); }
+    void Editor::InputEntity(const std::string& name, const char* suffix, Entity*& variable) {
+        Entity safe;
+        if (m_scene) for (auto* candidate : m_scene->GetEntities()) {
+            if (candidate && candidate == variable) { safe = *candidate; break; }
+        }
+        InputEntity(name, suffix, safe);
+        variable = safe.TryGet();
+    }
+
+    void Editor::InputEntity(const std::string &_name, Entity &_variable)
     {
         InputEntity(_name, nullptr, _variable);
     }
 
-    void Editor::InputEntity(const std::string &_name, const char *_idSuffix, Canis::Entity *&_variable)
+    void Editor::InputEntity(const std::string &_name, const char *_idSuffix, Entity &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
         ImGui::Text("%s", _name.c_str());
@@ -9789,11 +9799,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::SameLine();
 
         std::string label;
-        Canis::Entity *entity = *&_variable;
+        Canis::Entity *entity = _variable.TryGet();
         if (entity)
-            label = "[entity] " + entity->name;
+            label = "[entity] " + entity->GetName();
         else
-            label = "[ missing entity ]";
+            label = _variable.GetUUID() == UUID(0) ? "[ none ]" : "[ missing entity " + std::to_string(static_cast<uint64_t>(_variable.GetUUID())) + " ]";
 
         ImGui::Button(label.c_str(), ImVec2(150, 0));
 
@@ -9816,12 +9826,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 FocusEntity(entity);
         }
 
-        if (entity && ImGui::BeginPopupContextItem("ctx"))
+        if (ImGui::BeginPopupContextItem("ctx"))
         {
             if (ImGui::MenuItem("Clear"))
                 *&_variable = nullptr;
 
-            if (ImGui::MenuItem("Select in Hierarchy"))
+            if (ImGui::MenuItem("Select in Hierarchy", nullptr, false, entity != nullptr))
                 FocusEntity(entity);
 
             ImGui::EndPopup();
@@ -10244,7 +10254,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!_parent || !_potentialChild)
             return false;
 
-        std::vector<Canis::Entity*>* children = nullptr;
+        std::vector<Canis::Entity>* children = nullptr;
         if (auto *parentRT = (_parent != nullptr && _parent->HasComponent<RectTransform>() ? &_parent->GetComponent<RectTransform>() : nullptr))
             children = &parentRT->children;
         else if (auto *parentTransform = (_parent != nullptr && _parent->HasComponent<Transform>() ? &_parent->GetComponent<Transform>() : nullptr))
@@ -10253,7 +10263,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (children == nullptr)
             return false;
 
-        for (auto *child : *children)
+        for (Entity* child : *children)
         {
             if (!child)
                 continue;
@@ -10266,7 +10276,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return false;
     }
 
-    static std::vector<Canis::Entity*>* GetHierarchyChildren(Canis::Entity *_entity)
+    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity *_entity)
     {
         if (_entity == nullptr)
             return nullptr;
@@ -10411,7 +10421,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     static void GetHierarchyChildrenRecursive(Canis::Entity* _entity, std::vector<Canis::Entity*> &_entities)
     {
-        std::vector<Canis::Entity*>* children = GetHierarchyChildren(_entity);
+        std::vector<Canis::Entity>* children = GetHierarchyChildren(_entity);
         if (children == nullptr)
             return;
 
@@ -10468,7 +10478,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 continue;
 
             Entity *newRoot = duplicated.front();
-            newRoot->name = MakeUniqueEntityName(*m_scene, root->name);
+            newRoot->GetName() = MakeUniqueEntityName(*m_scene, root->GetName());
             if (newRoot->HasComponent<Transform>())
             {
                 Transform &transform = newRoot->GetComponent<Transform>();
@@ -10482,7 +10492,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         m_selectedEntityUUIDs.clear();
         for (Entity *entity : duplicatedRoots)
-            m_selectedEntityUUIDs.push_back(entity->uuid);
+            m_selectedEntityUUIDs.push_back(entity->GetUUID());
         SelectEntity(duplicatedRoots.back(), true, false);
         CommitSceneHistoryImmediateChange(beforeState);
         m_forceRefresh = true;
@@ -10510,7 +10520,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         for (Canis::Entity* entity : _entities)
         {
-            if (entity != nullptr && entity->uuid == _uuid)
+            if (entity != nullptr && entity->GetUUID() == _uuid)
                 return entity;
         }
 
@@ -10610,7 +10620,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_parent == nullptr)
             return SetHierarchyParent(_child, nullptr);
 
-        if (std::vector<Canis::Entity*>* children = GetHierarchyChildren(_parent))
+        if (std::vector<Canis::Entity>* children = GetHierarchyChildren(_parent))
             return SetHierarchyParentAtIndexKeepingLocal(_child, _parent, children->size());
 
         return false;
@@ -10665,7 +10675,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Canis::Entity* root = roots.front();
             if (root != nullptr)
             {
-                root->name = uniqueDisplayName;
+                root->GetName() = uniqueDisplayName;
                 AssignPrefabInstanceMetadata(root, _prefabHandle, root);
                 TryAssignPrefabHandle(root, _prefabHandle);
             }
@@ -10709,7 +10719,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 for (Canis::Entity* root : roots)
                 {
-                    if (root != nullptr && _scene.GetEntity(root->id) == root)
+                    if (root != nullptr && _scene.GetEntityIndex(*root) >= 0)
                         _scene.Destroy(*root);
                 }
 
@@ -10727,11 +10737,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return false;
 
-        if (auto it = std::find(_rootOrder.begin(), _rootOrder.end(), _entity->uuid); it != _rootOrder.end())
+        if (auto it = std::find(_rootOrder.begin(), _rootOrder.end(), _entity->GetUUID()); it != _rootOrder.end())
             _rootOrder.erase(it);
 
         _targetRootPos = std::clamp(_targetRootPos, 0, static_cast<int>(_rootOrder.size()));
-        _rootOrder.insert(_rootOrder.begin() + _targetRootPos, _entity->uuid);
+        _rootOrder.insert(_rootOrder.begin() + _targetRootPos, _entity->GetUUID());
         return true;
     }
 
@@ -10834,7 +10844,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         prefabSceneRoot["Environment"] = YAML::Node(YAML::NodeType::Map);
         prefabSceneRoot["Entities"] = entitiesNode;
 
-        const fs::path prefabPath = BuildUniquePrefabScenePath(_targetDirectory, _rootEntity.name);
+        const fs::path prefabPath = BuildUniquePrefabScenePath(_targetDirectory, _rootEntity.GetName());
         YAML::Emitter out;
         out << prefabSceneRoot;
 
@@ -11127,7 +11137,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Debug::Warning(
                     "Editor could not parent asset '%s' under '%s' because the hierarchy types do not match.",
                     droppedPath.c_str(),
-                    _parent->name.c_str());
+                    _parent->GetName().c_str());
                 _scene.Destroy(*topLevel);
                 return false;
             }
@@ -11146,7 +11156,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!_entity)
             return;
 
-        std::vector<Canis::Entity*> *children = GetHierarchyChildren(_entity);
+        std::vector<Canis::Entity>*children = GetHierarchyChildren(_entity);
 
         bool isSelected = IsEntitySelected(_entity) ||
             (m_selectedEntityUUIDs.empty() && m_index >= 0 && m_index < (int)_entities.size() && _entities[m_index] == _entity);
@@ -11160,15 +11170,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             flags |= ImGuiTreeNodeFlags_Selected;
 
         if (hasChildren &&
-            std::find(m_hierarchyRevealPath.begin(), m_hierarchyRevealPath.end(), _entity->uuid) != m_hierarchyRevealPath.end())
+            std::find(m_hierarchyRevealPath.begin(), m_hierarchyRevealPath.end(), _entity->GetUUID()) != m_hierarchyRevealPath.end())
         {
             ImGui::SetNextItemOpen(true, ImGuiCond_Always);
         }
 
-        std::string label = (_entity->editorLocked ? "[L] " : "") + _entity->name + "##" + std::to_string(_entity->uuid);
+        std::string label = (_entity->EditorLocked() ? "[L] " : "") + _entity->GetName() + "##" + std::to_string(_entity->GetUUID());
         bool nodeOpen = ImGui::TreeNodeEx(label.c_str(), flags);
 
-        if (m_hierarchyRevealTargetUUID == _entity->uuid)
+        if (m_hierarchyRevealTargetUUID == _entity->GetUUID())
         {
             ImGui::SetScrollHereY(0.5f);
             m_hierarchyRevealTargetUUID = UUID(0);
@@ -11193,9 +11203,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         // drag source
         if (ImGui::BeginDragDropSource(ImGuiDragDropFlags_SourceAllowNullID))
         {
-            Canis::UUID uuid = _entity->uuid;
+            Canis::UUID uuid = _entity->GetUUID();
             ImGui::SetDragDropPayload("ENTITY_DRAG", &uuid, sizeof(Canis::UUID));
-            ImGui::Text("Entity: %s", _entity->name.c_str());
+            ImGui::Text("Entity: %s", _entity->GetName().c_str());
             ImGui::TextUnformatted("Drop onto an Assets folder to create a prefab (including children).");
             ImGui::EndDragDropSource();
         }
@@ -11374,7 +11384,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             for (Canis::Entity* entity : entities)
             {
-                if (entity != nullptr && entity->uuid == _uuid)
+                if (entity != nullptr && entity->GetUUID() == _uuid)
                     return entity;
             }
 
@@ -11407,15 +11417,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (entity == nullptr || GetHierarchyParent(entity) != nullptr)
                 continue;
 
-            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->uuid) == rootOrderThisFrame.end())
-                rootOrderThisFrame.push_back(entity->uuid);
+            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->GetUUID()) == rootOrderThisFrame.end())
+                rootOrderThisFrame.push_back(entity->GetUUID());
         }
 
         // Append new roots not yet tracked.
         for (Canis::Entity* entity : rootsBySceneOrder)
         {
-            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->uuid) == rootOrderThisFrame.end())
-                rootOrderThisFrame.push_back(entity->uuid);
+            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->GetUUID()) == rootOrderThisFrame.end())
+                rootOrderThisFrame.push_back(entity->GetUUID());
         }
 
         m_hierarchyRootOrder = rootOrderThisFrame;
@@ -11446,11 +11456,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             std::vector<Canis::UUID> updatedOrder = rootOrderThisFrame;
 
-            if (auto it = std::find(updatedOrder.begin(), updatedOrder.end(), droppedEntity->uuid); it != updatedOrder.end())
+            if (auto it = std::find(updatedOrder.begin(), updatedOrder.end(), droppedEntity->GetUUID()); it != updatedOrder.end())
                 updatedOrder.erase(it);
 
             targetRootPos = std::clamp(targetRootPos, 0, static_cast<int>(updatedOrder.size()));
-            updatedOrder.insert(updatedOrder.begin() + targetRootPos, droppedEntity->uuid);
+            updatedOrder.insert(updatedOrder.begin() + targetRootPos, droppedEntity->GetUUID());
 
             if (updatedOrder != rootOrderThisFrame)
             {
@@ -11677,24 +11687,25 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::Text("active:");
             ImGui::SameLine();
-            ImGui::Checkbox("##entity_active", &entity.active);
+            ImGui::Checkbox("##entity_active", &entity.Active());
             ImGui::SameLine();
-            ImGui::Checkbox("Locked", &entity.editorLocked);
+            ImGui::Checkbox("Locked", &entity.EditorLocked());
             ImGui::Text("name: ");
             ImGui::SameLine();
-            ImGui::InputText("##name", &entity.name);
+            ImGui::InputText("##name", &entity.GetName());
             ImGui::Text("tag:  ");
             ImGui::SameLine();
             const auto& projectTags = Canis::GetProjectConfig().tags;
-            if (ImGui::BeginCombo("##tag", entity.tag.empty() ? "None" : entity.tag.c_str()))
+            const std::string& tagName = entity.GetTagName();
+            if (ImGui::BeginCombo("##tag", entity.GetTag() == NoTag ? "None" : tagName.c_str()))
             {
-                if (ImGui::Selectable("None", entity.tag.empty()))
-                    entity.tag.clear();
+                if (ImGui::Selectable("None", entity.GetTag() == NoTag))
+                    entity.GetTag() = NoTag;
                 for (const std::string& tag : projectTags)
-                    if (ImGui::Selectable(tag.c_str(), entity.tag == tag))
-                        entity.tag = tag;
-                if (!entity.tag.empty() &&
-                    std::find(projectTags.begin(), projectTags.end(), entity.tag) == projectTags.end())
+                    if (ImGui::Selectable(tag.c_str(), entity.HasTag(tag)))
+                        entity.SetTag(tag);
+                if (entity.GetTag() != NoTag &&
+                    std::find(projectTags.begin(), projectTags.end(), entity.GetTagName()) == projectTags.end())
                     ImGui::TextDisabled("Current tag is not in Project Settings.");
                 ImGui::EndCombo();
             }
@@ -13400,7 +13411,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (boundAnimator != nullptr)
         {
             ImGui::SameLine();
-            ImGui::TextDisabled("| Bound to %s", selectedEntity->name.c_str());
+            ImGui::TextDisabled("| Bound to %s", selectedEntity->GetName().c_str());
         }
 
         ImGui::TextDisabled("%s", controllerPath.c_str());
@@ -14182,7 +14193,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 m_animationRestoreBindings.push_back(binding);
             }
 
-            m_animationPreviewTargetUUID = _root.uuid;
+            m_animationPreviewTargetUUID = _root.GetUUID();
             m_animationPreviewClipPath = m_animationClipStatePath;
         };
 
@@ -14256,7 +14267,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ImGui::SameLine();
         if (ImGui::SmallButton("New##animation_clip"))
-            createNewClip((selectedEntity != nullptr) ? selectedEntity->name : std::string("new_animation"));
+            createNewClip((selectedEntity != nullptr) ? selectedEntity->GetName() : std::string("new_animation"));
 
         if (!m_animationClipStatePath.empty())
         {
@@ -14270,13 +14281,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        const char *rootName = (rootEntity != nullptr) ? rootEntity->name.c_str() : "[ none ]";
+        const char *rootName = (rootEntity != nullptr) ? rootEntity->GetName().c_str() : "[ none ]";
         ImGui::Text("Root: %s", rootName);
         if (selectedEntity != nullptr)
         {
             ImGui::SameLine();
             if (ImGui::SmallButton("Use Selected As Root"))
-                m_animationTargetUUID = selectedEntity->uuid;
+                m_animationTargetUUID = selectedEntity->GetUUID();
         }
 
         if (rootEntity != nullptr && clip != nullptr)
@@ -14883,7 +14894,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
 
         if (clip != nullptr && m_animationTargetUUID == UUID(0) && rootEntity != nullptr)
-            m_animationTargetUUID = rootEntity->uuid;
+            m_animationTargetUUID = rootEntity->GetUUID();
 
         const bool previewActive =
             (m_mode == EditorMode::EDIT) &&
@@ -14892,7 +14903,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             (m_animationPreviewEnabled || m_animationRecordEnabled);
 
         const bool previewTargetChanged =
-            m_animationPreviewTargetUUID != ((rootEntity != nullptr) ? rootEntity->uuid : UUID(0)) ||
+            m_animationPreviewTargetUUID != ((rootEntity != nullptr) ? rootEntity->GetUUID() : UUID(0)) ||
             m_animationPreviewClipPath != m_animationClipStatePath;
 
         if (!previewActive)
@@ -17049,7 +17060,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
 
         ImGui::SetTooltip("Create prefab: %s\nFolder: %s\nIncludes all children; existing files are kept.",
-                          entity->name.c_str(), _folderPath.generic_string().c_str());
+                          entity->GetName().c_str(), _folderPath.generic_string().c_str());
         if (!payload->IsDelivery())
             return;
 
@@ -18771,7 +18782,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (mouseClicked && !m_terrainStrokeActive)
         {
             m_terrainStrokeActive = true;
-            m_terrainStrokeEntity = selected->uuid;
+            m_terrainStrokeEntity = selected->GetUUID();
             m_terrainStrokeBeforeState = CaptureSceneHistoryState();
         }
 
@@ -19113,7 +19124,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if (entity == nullptr || !transform.IsActiveInHierarchy() || entity->id < 0 || modelRenderer.modelId < 0)
+            const int entityIndex = entity ? m_scene->GetEntityIndex(*entity) : -1;
+            if (entityIndex < 0 || !transform.IsActiveInHierarchy() || modelRenderer.modelId < 0)
                 continue;
 
             ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
@@ -19128,7 +19140,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     pose = &animation->pose;
             }
 
-            const uint32_t entityId = static_cast<uint32_t>(entity->id + 1);
+            const uint32_t entityId = static_cast<uint32_t>(entityIndex + 1);
             model->Draw(
                 pickingShader,
                 transform.GetModelMatrix(),

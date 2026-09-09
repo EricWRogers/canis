@@ -2,7 +2,7 @@
 
 #include <Canis/AssetManager.hpp>
 #include <Canis/Debug.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Math.hpp>
 
 #include <Jolt/Jolt.h>
@@ -650,7 +650,7 @@ namespace Canis
             return static_cast<uint64_t>(entt::to_integral(_entityHandle));
         }
 
-        entt::entity ToEntityHandle(uint64_t _userData)
+        entt::entity ToEntity(uint64_t _userData)
         {
             using EntityValue = std::underlying_type_t<entt::entity>;
             return static_cast<entt::entity>(static_cast<EntityValue>(_userData));
@@ -862,8 +862,8 @@ namespace Canis
                 std::scoped_lock lock(m_mutex);
 
                 auto [contactIt, inserted] = m_subShapeContacts.emplace(_pair, SubShapeContactData{
-                    .body1 = ToEntityHandle(_body1.GetUserData()),
-                    .body2 = ToEntityHandle(_body2.GetUserData())
+                    .body1 = ToEntity(_body1.GetUserData()),
+                    .body2 = ToEntity(_body2.GetUserData())
                 });
 
                 if (!inserted)
@@ -1170,7 +1170,7 @@ namespace Canis
             }
 
             Entity *entity = rigidbody->entity != nullptr ? rigidbody->entity : transform->entity;
-            if (entity == nullptr || !entity->active || !rigidbody->active)
+            if (entity == nullptr || !entity->Active() || !rigidbody->active)
             {
                 RemoveBody(_entityHandle);
                 return false;
@@ -1270,7 +1270,7 @@ namespace Canis
             const JPH::BodyID bodyID = bodyInterface->CreateAndAddBody(bodySettings, activation);
             if (bodyID.IsInvalid())
             {
-                Debug::Log("JoltPhysics3DSystem: failed to create body for entity '%s'.", entity->name.c_str());
+                Debug::Log("JoltPhysics3DSystem: failed to create body for entity '%s'.", entity->GetName().c_str());
                 RemoveBody(_entityHandle);
                 return false;
             }
@@ -1403,7 +1403,7 @@ namespace Canis
 
                     Entity *selfEntity = ResolveEntity(_registry, event.self);
                     Entity *otherEntity = ResolveEntity(_registry, event.other);
-                    if (selfEntity == nullptr || otherEntity == nullptr || !selfEntity->active || !otherEntity->active)
+                    if (selfEntity == nullptr || otherEntity == nullptr || !selfEntity->Active() || !otherEntity->Active())
                         continue;
 
                     ForEachCollider(_registry, event.self, [&](auto &_collider)
@@ -1599,7 +1599,7 @@ namespace Canis
                     continue;
 
                 const JPH::Body &body = bodyLock.GetBody();
-                const entt::entity entityHandle = ToEntityHandle(body.GetUserData());
+                const entt::entity entityHandle = ToEntity(body.GetUserData());
                 Entity *entity = ResolveEntity(_registry, entityHandle);
                 if (entity == nullptr)
                     continue;

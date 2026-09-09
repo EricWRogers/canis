@@ -1,5 +1,5 @@
 #pragma once
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 namespace Canis
 {

@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/Entity.hpp>
 
 #include <Canis/AssetHandle.hpp>
 #include <Canis/Math.hpp>
@@ -104,7 +105,7 @@ namespace Canis
 
         void Create() {}
 
-        Entity* entity = nullptr;
+        Entity entity = nullptr;
         NetworkObjectId netId = 0;
         NetworkClientId ownerClientId = 0;
         bool serverOwned = false;

@@ -4,7 +4,7 @@
 #include <algorithm>
 
 #include <Canis/AssetManager.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Time.hpp>
 
@@ -29,7 +29,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = modelAnimation.entity;
 
-            if (entity == nullptr || !entity->active)
+            if (entity == nullptr || !entity->Active())
                 continue;
 
             if (modelRenderer.modelId < 0)

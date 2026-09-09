@@ -1,6 +1,6 @@
 #pragma once
 
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/System.hpp>
 
 #include <string>

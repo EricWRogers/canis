@@ -1,5 +1,5 @@
 #include <Canis/App.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/AssetManager.hpp>
@@ -10,6 +10,40 @@
 
 
 namespace Canis {
+Scene& Entity::EmptyScene() { static Scene empty; return empty; }
+Entity::Entity() : Entity(EmptyScene(), entt::null) {}
+Entity::Entity(std::nullptr_t) : Entity() {}
+Entity::Entity(Entity* entity) : Entity(entity ? entity->scene : EmptyScene(), entity ? entity->GetHandle() : entt::null) {}
+Entity& Entity::operator=(const Entity& other) {
+    if (this != &other) {
+        // Reconstruct the value to bind its Scene& to the assigned reference's scene.
+        std::destroy_at(this);
+        return *std::construct_at(this, other);
+    }
+    return *this;
+}
+entt::registry& Entity::Registry() const { return scene.GetRegistry(); }
+ScriptableEntity* Entity::InvokeScriptCreate(ScriptableEntity* script) { return scene.InvokeScriptCallback(script, false); }
+Entity* Entity::ResolveIncludingPending() const {
+    return m_entityHandle != entt::null && Registry().valid(m_entityHandle)
+        ? Registry().try_get<Entity>(m_entityHandle) : nullptr;
+}
+Entity* Entity::CanonicalEntity() const {
+    if (auto* entity = ResolveIncludingPending()) return entity;
+    throw std::runtime_error("Missing entity owner");
+}
+bool Entity::IsValid() const {
+    if (m_entityHandle == entt::null || !Registry().valid(m_entityHandle)) return false;
+    auto* state = scene.GetEntityState(m_entityHandle);
+    return state && !state->pendingDestroy;
+}
+Entity* Entity::TryGet() const { return IsValid() ? Registry().try_get<Entity>(m_entityHandle) : nullptr; }
+Entity* Entity::operator->() const {
+    if (auto* entity = TryGet()) return entity;
+    throw std::runtime_error("Access to a missing or destroyed entity");
+}
+UUID Entity::GetUUID() const { return m_entityHandle == entt::null ? UUID(0) : scene.GetReferenceUUID(m_entityHandle); }
+
 
 namespace
 {
@@ -43,10 +77,11 @@ ScriptableEntity* Entity::AddScriptDirect(const ScriptConf& _conf, ScriptableEnt
         return existing;
     }
 
-    m_scriptComponents.push_back(_scriptableEntity);
+    if (!IsValid()) { delete _scriptableEntity; return nullptr; }
+    StoreScriptInstance(_scriptableEntity);
 
     if (_callCreate)
-        _scriptableEntity->Create();
+        return scene.InvokeScriptCallback(_scriptableEntity, false);
 
     return _scriptableEntity;
 }
@@ -73,16 +108,7 @@ void Entity::RemoveScriptDirect(const ScriptConf& _conf)
     if (script == nullptr)
         return;
 
-    for (size_t i = 0; i < m_scriptComponents.size(); ++i)
-    {
-        if (m_scriptComponents[i] != script)
-            continue;
-
-        script->Destroy();
-        delete script;
-        m_scriptComponents.erase(m_scriptComponents.begin() + i);
-        break;
-    }
+    RemoveScriptInstance(script);
 }
 
 ScriptableEntity* Entity::AttachScript(const std::string& _scriptName, ScriptableEntity* _scriptableEntity, bool _callCreate)
@@ -115,24 +141,46 @@ void Entity::RemoveScript(const std::string& _scriptName)
     RemoveScriptDirect(*conf);
 }
 
+const std::vector<ScriptableEntity*>& Entity::ScriptInstances() const
+{
+    static const std::vector<ScriptableEntity*> empty;
+    const auto* component = scene.GetRegistry().valid(m_entityHandle)
+        ? scene.GetRegistry().try_get<ScriptComponent>(m_entityHandle) : nullptr;
+    return component ? component->instances : empty;
+}
+void Entity::StoreScriptInstance(ScriptableEntity* script)
+{
+    auto& component = scene.GetRegistry().get_or_emplace<ScriptComponent>(m_entityHandle);
+    component.instances.push_back(script);
+    scene.QueueEntityForReady(*this);
+}
+void Entity::RemoveScriptInstance(ScriptableEntity* script)
+{
+    auto* component = scene.GetRegistry().try_get<ScriptComponent>(m_entityHandle);
+    if (!component) return;
+    auto& instances = component->instances;
+    const auto it = std::find(instances.begin(), instances.end(), script);
+    if (it == instances.end()) return;
+    instances.erase(it);
+    script->m_lifetime->script = nullptr;
+    // Remove storage before callbacks: a callback can attach a fresh first script.
+    if (instances.empty()) scene.GetRegistry().remove<ScriptComponent>(m_entityHandle);
+    scene.RetireScript(script);
+}
+std::vector<ScriptHandle<ScriptableEntity>> Entity::GetScripts() const
+{
+    std::vector<ScriptHandle<ScriptableEntity>> result;
+    for (auto* script : ScriptInstances()) result.emplace_back(script);
+    return result;
+}
 void Entity::RemoveAllScripts()
 {
-    for (int i = static_cast<int>(m_scriptComponents.size()) - 1; i >= 0; --i)
-    {
-        ScriptableEntity* script = m_scriptComponents[static_cast<size_t>(i)];
-
-        if (script != nullptr)
-        {
-            script->Destroy();
-            delete script;
-        }
-    }
-
-    m_scriptComponents.clear();
+    // Reacquire each time; removing the final instance also removes the component.
+    while (!ScriptInstances().empty()) RemoveScriptInstance(ScriptInstances().back());
 }
 
 void Entity::Destroy() {
-    scene.Destroy(id);
+    scene.Destroy(*this);
 }
 
 RectTransform::LayoutData RectTransform::GetLayout() const
@@ -357,7 +405,7 @@ unsigned int RectTransform::GetCanvasRenderMode() const
 
 bool RectTransform::IsActiveInHierarchy() const
 {
-    if (entity == nullptr || !entity->active || !active)
+    if (entity == nullptr || !entity->Active() || !active)
         return false;
 
     if (entity->HasComponent<Canvas>() && !entity->GetComponent<Canvas>().active)

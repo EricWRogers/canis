@@ -3,7 +3,7 @@
 #include <Canis/Yaml.hpp>
 #include <Canis/Editor.hpp>
 #include <Canis/Debug.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/System.hpp>
 #include <Canis/Time.hpp>
@@ -342,23 +342,19 @@ namespace Canis
         // Run Ready only on entities created since the last frame.
         for (size_t i = 0; i < m_entitiesToReady.size(); ++i)
         {
-            const int id = m_entitiesToReady[i];
-            if (id < 0 || id >= (int)m_entities.size())
+            Entity* e = m_entitiesToReady[i].TryGet();
+            if (e == nullptr || !e->Active())
                 continue;
 
-            Entity* e = m_entities[id];
-            if (e == nullptr || !e->active)
-                continue;
-
-            auto& scripts = e->m_scriptComponents;
-            for (size_t j = 0; j < scripts.size() && e->active; ++j)
+            const auto scripts = e->GetScripts();
+            for (size_t j = 0; j < scripts.size() && e->Active(); ++j)
             {
-                ScriptableEntity* se = scripts[j];
+                ScriptableEntity* se = scripts[j].TryGet();
                 if (!se || se->m_onReadyCalled)
                     continue;
 
-                se->Ready();
                 se->m_onReadyCalled = true;
+                se->Ready();
             }
         }
         m_entitiesToReady.clear();
@@ -366,13 +362,13 @@ namespace Canis
         for (size_t i = 0; i < m_entities.size(); ++i)
         {
             Entity* e = m_entities[i];
-            if (e == nullptr || !e->active)
+            if (e == nullptr || !e->Active())
                 continue;
 
-            auto& scripts = e->m_scriptComponents;
-            for (size_t j = 0; j < scripts.size() && e->active; ++j)
+            const auto scripts = e->GetScripts();
+            for (size_t j = 0; j < scripts.size() && e->Active(); ++j)
             {
-                ScriptableEntity* se = scripts[j];
+                ScriptableEntity* se = scripts[j].TryGet();
                 if (se && se->m_onReadyCalled)
                 {
                     if (m_paused && !se->UpdateWhenPaused())
@@ -396,11 +392,9 @@ namespace Canis
         }
 
         m_isUpdating = false;
-        for (int id : m_entitiesToDestroy)
-        {
-            DestroyNow(id);
-        }
-        m_entitiesToDestroy.clear();
+        FlushRetiredScripts();
+        auto pendingDestroy = std::move(m_entitiesToDestroy); m_entitiesToDestroy.clear();
+        for (const auto& handle : pendingDestroy) DestroyNow(handle);
     }
 
     void Scene::Render(float _deltaTime)
@@ -429,8 +423,39 @@ namespace Canis
         }
     }
 
+    ScriptableEntity* Scene::InvokeScriptCallback(ScriptableEntity* script, bool ready)
+    {
+        ScriptHandle<ScriptableEntity> handle(script);
+        ++m_scriptCallbackDepth;
+        try {
+            if (ready) script->Ready(); else script->Create();
+        } catch (...) {
+            --m_scriptCallbackDepth;
+            if (!m_isUpdating && !m_isLoadingEntityNodes && m_scriptCallbackDepth == 0) FlushRetiredScripts();
+            throw;
+        }
+        --m_scriptCallbackDepth;
+        if (!m_isUpdating && !m_isLoadingEntityNodes && m_scriptCallbackDepth == 0) FlushRetiredScripts();
+        return handle.TryGet();
+    }
+
+    void Scene::RetireScript(ScriptableEntity* script)
+    {
+        m_retiredScripts.push_back(script);
+        if (!m_isUpdating && !m_isLoadingEntityNodes && m_scriptCallbackDepth == 0) FlushRetiredScripts();
+    }
+    void Scene::FlushRetiredScripts()
+    {
+        while (!m_retiredScripts.empty()) {
+            auto scripts = std::move(m_retiredScripts); m_retiredScripts.clear();
+            for (auto* script : scripts) { script->Destroy(); delete script; }
+        }
+    }
     void Scene::Unload()
     {
+        m_isUpdating = m_isLoadingEntityNodes = false;
+        FlushRetiredScripts();
+        for (auto* entity : m_entities) if (entity) m_entityStates.at(entity->GetHandle()).pendingDestroy = true;
         for (Entity*& e : m_entities)
         {
             Entity* entity = e;
@@ -439,21 +464,25 @@ namespace Canis
             if (entity == nullptr)
                 continue;
             entity->RemoveAllScripts();
-            delete entity;
         }
 
+        m_entityStates.clear();
+        m_referenceUUIDs.clear();
+        m_missingReferences.clear();
         m_entities.clear();
+        m_entityIndices.clear();
         m_registry.clear();
         // Fully release EnTT storage pools now, while any game-code component
         // types are still loaded. Otherwise pool destruction can be deferred
         // until Scene itself dies after the game shared library unloads.
         entt::registry emptyRegistry = {};
+        // Retain EnTT generations across reloads so old two-field wrappers stay invalid.
+        emptyRegistry.storage<entt::entity>().swap(m_registry.storage<entt::entity>());
         m_registry.swap(emptyRegistry);
         m_paused = false;
         m_entitiesToReady.clear();
         m_entitiesToDestroy.clear();
-        m_targetUUIDNewUUID.clear();
-        m_entityConnectInfo.clear();
+        m_loadingEntities.clear();
         m_isUpdating = false;
         m_isLoadingEntityNodes = false;
         m_environmentSkyboxUUID = UUID(0);
@@ -601,28 +630,26 @@ namespace Canis
 
     std::vector<Entity*> Scene::LoadEntityNodes(YAML::Node &_entities, bool _copyUUID)
     {
-        m_targetUUIDNewUUID.clear();
-        m_entityConnectInfo.clear();
+        std::unordered_set<UUID> sourceIDs;
+        if (_entities) for (auto node : _entities) {
+            if (!sourceIDs.insert(node["Entity"].as<UUID>(0)).second)
+                throw std::runtime_error("Duplicate entity UUID in scene/prefab");
+        }
+        m_loadingEntities.clear();
         m_isLoadingEntityNodes = true;
         std::vector<Canis::Entity*> newEntitys = {};
 
         if (_entities)
         {
-            for (auto e : _entities)
-            {
-                newEntitys.push_back(&DecodeEntity(e, _copyUUID));
+            // Allocate all targets before decoding any reference fields.
+            for (auto node : _entities) {
+                const UUID sourceUUID = node["Entity"].as<UUID>(0);
+                auto created = CreateEntity();
+                if (_copyUUID) created.SetUUID(sourceUUID);
+                m_loadingEntities.emplace(sourceUUID, created);
+                newEntitys.push_back(created.TryGet());
             }
-
-            for (auto eci : m_entityConnectInfo)
-            {
-                Canis::UUID uuid = eci.targetUUID;
-
-                if (m_targetUUIDNewUUID.contains(uuid))
-                    uuid = m_targetUUIDNewUUID[uuid];
-                
-                (*eci.variable) = GetEntityWithUUID(uuid);
-            }
-
+            for (auto node : _entities) DecodeEntity(node, _copyUUID);
             // Keep bidirectional hierarchy links in sync after pointer remapping.
             for (Canis::Entity* entity : newEntitys)
             {
@@ -701,30 +728,22 @@ namespace Canis
                 }
             }
 
-            for (auto e : newEntitys)
-            {
-                for (ScriptableEntity* se : e->m_scriptComponents)
-                {
-                    if (se)
-                    {
-                        se->Create();
-                    }
-                }
+            for (auto* e : newEntitys) {
+                const auto scripts = e->GetScripts();
+                for (const auto& handle : scripts) if (auto* script = handle.TryGet()) script->Create();
             }
         }
 
+        m_loadingEntities.clear();
         m_isLoadingEntityNodes = false;
+        FlushRetiredScripts();
 
         if (!m_entitiesToDestroy.empty())
         {
-            std::vector<int> pendingDestroyIds = m_entitiesToDestroy;
+            auto pendingDestroyIds = std::move(m_entitiesToDestroy);
             m_entitiesToDestroy.clear();
 
-            std::sort(pendingDestroyIds.begin(), pendingDestroyIds.end());
-            pendingDestroyIds.erase(std::unique(pendingDestroyIds.begin(), pendingDestroyIds.end()), pendingDestroyIds.end());
-
-            for (const int id : pendingDestroyIds)
-                DestroyNow(id);
+            for (const auto& handle : pendingDestroyIds) DestroyNow(handle);
         }
 
         return newEntitys;
@@ -732,18 +751,15 @@ namespace Canis
 
     Canis::Entity& Scene::DecodeEntity(YAML::Node _node, bool _copyUUID)
     {
-        Entity& entity = *CreateEntity();
-        
-        if (_copyUUID) {
-            entity.uuid = _node["Entity"].as<Canis::UUID>(0);
-        } else {
-            m_targetUUIDNewUUID[_node["Entity"].as<Canis::UUID>(0)] = entity.uuid;
-        }
-        
-        entity.name = _node["Name"].as<std::string>("");
-        entity.tag = _node["Tag"].as<std::string>("");
-        entity.active = _node["Active"].as<bool>(true);
-        entity.editorLocked = _node["EditorLocked"].as<bool>(false);
+        const UUID sourceUUID = _node["Entity"].as<UUID>(0);
+        const auto prepared = m_loadingEntities.find(sourceUUID);
+        Entity& entity = m_isLoadingEntityNodes && prepared != m_loadingEntities.end()
+            ? *prepared->second : *CreateEntity();
+        if (_copyUUID) entity.SetUUID(sourceUUID);
+        entity.GetName() = _node["Name"].as<std::string>("");
+        entity.SetTag(_node["Tag"].as<std::string>(""));
+        entity.Active() = _node["Active"].as<bool>(true);
+        entity.EditorLocked() = _node["EditorLocked"].as<bool>(false);
 
         if (app != nullptr)
         {
@@ -761,26 +777,34 @@ namespace Canis
         return entity;
     }
 
-    void Scene::GetEntityAfterLoad(Canis::UUID _uuid, Canis::Entity* &_variable)
+    Scene::~Scene() { Unload(); }
+
+    UUID Scene::GetReferenceUUID(entt::entity handle) const
     {
-        if (_uuid == 0)
-        {
-            _variable = nullptr;
-            return;
+        if (m_registry.valid(handle)) {
+            if (const auto* metadata = m_registry.try_get<EntityMetadata>(handle)) return metadata->uuid;
         }
-
-        if (!m_isLoadingEntityNodes)
-        {
-            _variable = GetEntityWithUUID(_uuid);
-            return;
-        }
-
-        EntityConnectInfo eci;
-        eci.targetUUID = _uuid;
-        eci.variable = &_variable;
-
-        m_entityConnectInfo.push_back(eci);
+        const auto found = m_referenceUUIDs.find(handle);
+        return found == m_referenceUUIDs.end() ? UUID(0) : found->second;
     }
+    Entity Scene::ResolveReference(UUID uuid)
+    {
+        if (uuid == UUID(0)) return Entity(*this, entt::null);
+        if (m_isLoadingEntityNodes) {
+            const auto prepared = m_loadingEntities.find(uuid);
+            if (prepared != m_loadingEntities.end()) return prepared->second;
+        }
+        if (auto* target = GetEntityWithUUID(uuid)) return *target;
+        auto found = m_missingReferences.find(uuid);
+        if (found != m_missingReferences.end()) return Entity(*this, found->second);
+        // Reserve an invalid versioned ID, with its authored UUID stored only in Scene.
+        const auto missing = m_registry.create();
+        m_registry.destroy(missing);
+        m_referenceUUIDs.emplace(missing, uuid);
+        m_missingReferences.emplace(uuid, missing);
+        return Entity(*this, missing);
+    }
+    void Scene::GetEntityAfterLoad(UUID uuid, Entity& variable) { variable = ResolveReference(uuid); }
 
     std::vector<Entity*> Scene::Instantiate(const SceneAssetHandle &_sceneAssetHandle)
     {
@@ -827,14 +851,17 @@ namespace Canis
 
     void Scene::ForceReady(Entity& _entity)
     {
-        auto& scripts = _entity.m_scriptComponents;
-        for (ScriptableEntity* script : scripts)
+        const Entity owner(&_entity);
+        const auto scripts = _entity.GetScripts();
+        for (const auto& handle : scripts)
         {
+            if (!owner) break;
+            auto* script = handle.TryGet();
             if (script == nullptr || script->m_onReadyCalled)
                 continue;
 
-            script->Ready();
             script->m_onReadyCalled = true;
+            InvokeScriptCallback(script, true);
         }
     }
 
@@ -899,11 +926,11 @@ namespace Canis
     YAML::Node Scene::EncodeEntity(Entity &_entity)
     {
         YAML::Node node;
-        node["Entity"] = _entity.uuid;
-        node["Name"] = _entity.name;
-        node["Tag"] = _entity.tag;
-        node["Active"] = _entity.active;
-        node["EditorLocked"] = _entity.editorLocked;
+        node["Entity"] = _entity.GetUUID();
+        node["Name"] = _entity.GetName();
+        node["Tag"] = _entity.GetTagName();
+        node["Active"] = _entity.Active();
+        node["EditorLocked"] = _entity.EditorLocked();
 
         std::vector<ScriptConf>& scriptRegistry = app->GetScriptRegistry();
 
@@ -914,13 +941,14 @@ namespace Canis
         return node;
     }
 
-    Entity* Scene::CreateEntity(std::string _name, std::string _tag)
+    Entity Scene::CreateEntity(std::string _name, std::string _tag)
     {
-        Entity* entity = new Entity(*this);
-        entity->id = m_entities.size();
-        entity->name = _name;
-        entity->tag = _tag;
-        entity->m_entityHandle = m_registry.create();
+        const auto handle = m_registry.create();
+        m_registry.emplace<EntityMetadata>(handle);
+        Entity* entity = &m_registry.emplace<Entity>(handle, *this, handle);
+        m_entityStates.emplace(handle, EntityState{});
+        entity->GetName() = _name;
+        entity->SetTag(_tag);
 
         // TODO : handle better
         for (int i = 0; i < m_entities.size(); i++)
@@ -930,15 +958,32 @@ namespace Canis
                 if (i == 0)
                     Debug::Log("The Camera Just Died");
                 m_entities[i] = entity;
-                entity->id = i;
-                QueueEntityForReady(entity->id);
+                m_entityIndices.emplace(handle, i);
+                QueueEntityForReady(*entity);
                 return entity;
             }
         }
         
+        m_entityIndices.emplace(handle, static_cast<int>(m_entities.size()));
         m_entities.push_back(entity);
-        QueueEntityForReady(entity->id);
+        QueueEntityForReady(*entity);
         return entity;
+    }
+
+    Scene::EntityState* Scene::GetEntityState(entt::entity handle)
+    {
+        const auto entry = m_entityStates.find(handle);
+        return entry == m_entityStates.end() ? nullptr : &entry->second;
+    }
+
+    int Scene::GetEntityIndex(const Entity& entity) const
+    {
+        if (&entity.scene != this) return -1;
+        const auto entry = m_entityIndices.find(entity.GetHandle());
+        if (entry == m_entityIndices.end()) return -1;
+        const int index = entry->second;
+        return index >= 0 && index < static_cast<int>(m_entities.size()) && m_entities[index] && m_entities[index]->GetHandle() == entity.GetHandle()
+            ? index : -1;
     }
 
     Entity* Scene::GetEntity(int _id)
@@ -954,7 +999,7 @@ namespace Canis
     {
         for (int i = 0; i < m_entities.size(); i++)
             if (m_entities[i] != nullptr)
-                if (m_entities[i]->uuid == _uuid)
+                if (m_entities[i]->GetUUID() == _uuid)
                     return m_entities[i];
 
         
@@ -970,7 +1015,7 @@ namespace Canis
         for (const Entity* liveEntity : m_entities)
         {
             if (liveEntity == _entity)
-                return liveEntity->uuid;
+                return liveEntity->GetUUID();
         }
 
         return UUID(0);
@@ -983,28 +1028,28 @@ namespace Canis
             if (entity == nullptr)
                 continue;
             
-            if (entity->name == _name)
+            if (entity->GetName() == _name)
                 return entity;
         }
 
         return nullptr;
     }
 
-    Entity* Scene::GetEntityWithTag(std::string _tag)
+    Entity* Scene::GetEntityWithTag(TagId _tag)
     {
         for (Entity* entity : m_entities)
         {
             if (entity == nullptr)
                 continue;
             
-            if (entity->tag == _tag)
+            if (entity->GetTag() == _tag)
                 return entity;
         }
 
         return nullptr;
     }
 
-    std::vector<Entity*> Scene::GetEntitiesWithTag(std::string _tag)
+    std::vector<Entity*> Scene::GetEntitiesWithTag(TagId _tag)
     {
         std::vector<Entity*> entities = {};
 
@@ -1013,7 +1058,7 @@ namespace Canis
             if (entity == nullptr)
                 continue;
             
-            if (entity->tag == _tag)
+            if (entity->GetTag() == _tag)
                 entities.push_back(entity);
         }
 
@@ -1034,17 +1079,33 @@ namespace Canis
             return;
         }
 
-        if (m_isUpdating || m_isLoadingEntityNodes)
+        if (m_isUpdating || m_isLoadingEntityNodes || m_scriptCallbackDepth != 0)
         {
-            if (m_entities[_id]->active)
-            {
-                m_entities[_id]->active = false;
-                m_entitiesToDestroy.push_back(_id);
+            if (!m_entityStates.at(m_entities[_id]->GetHandle()).pendingDestroy) {
+                MarkPendingDestroy(m_entities[_id]);
+                m_entitiesToDestroy.emplace_back(m_entities[_id]);
             }
             return;
         }
 
         DestroyNow(_id);
+    }
+
+    void Scene::MarkPendingDestroy(Entity* entity)
+    {
+        if (!entity || m_entityStates.at(entity->GetHandle()).pendingDestroy) return;
+        m_entityStates.at(entity->GetHandle()).pendingDestroy = true;
+        entity->Active() = false;
+        if (auto* transform = m_registry.try_get<Transform>(entity->GetHandle()))
+            for (const auto& child : transform->children) MarkPendingDestroy(child.ResolveIncludingPending());
+        if (auto* transform = m_registry.try_get<RectTransform>(entity->GetHandle()))
+            for (const auto& child : transform->children) MarkPendingDestroy(child.ResolveIncludingPending());
+    }
+
+    void Scene::DestroyNow(const Entity& handle)
+    {
+        auto* entity = handle.ResolveIncludingPending();
+        if (entity) DestroyNow(GetEntityIndex(*entity));
     }
 
     void Scene::DestroyNow(int _id)
@@ -1056,22 +1117,25 @@ namespace Canis
         if (entity == nullptr)
             return;
 
+        if (m_entityStates.at(entity->GetHandle()).destroying) return;
+        m_entityStates.at(entity->GetHandle()).destroying = true;
+        MarkPendingDestroy(entity);
         // Capture child ids before component teardown mutates hierarchy links.
-        std::vector<int> childIdsToDestroy = {};
+        std::vector<Entity> childIdsToDestroy = {};
         auto queueChildForDestroy = [&](Entity* _child)
         {
             if (_child == nullptr || _child == entity)
                 return;
 
-            const int childId = _child->id;
+            const int childId = GetEntityIndex(*_child);
             if (childId < 0 || childId >= static_cast<int>(m_entities.size()))
                 return;
 
             if (m_entities[childId] != _child)
                 return;
 
-            if (std::find(childIdsToDestroy.begin(), childIdsToDestroy.end(), childId) == childIdsToDestroy.end())
-                childIdsToDestroy.push_back(childId);
+            if (std::find(childIdsToDestroy.begin(), childIdsToDestroy.end(), _child) == childIdsToDestroy.end())
+                childIdsToDestroy.emplace_back(_child);
         };
 
         if (entity->HasComponent<RectTransform>())
@@ -1088,8 +1152,8 @@ namespace Canis
                 rectTransform.parent = nullptr;
             }
 
-            for (Entity* child : rectTransform.children)
-                queueChildForDestroy(child);
+            for (const auto& child : rectTransform.children)
+                queueChildForDestroy(child.ResolveIncludingPending());
         }
 
         if (entity->HasComponent<Transform>())
@@ -1106,33 +1170,34 @@ namespace Canis
                 transform3D.parent = nullptr;
             }
 
-            for (Entity* child : transform3D.children)
-                queueChildForDestroy(child);
+            for (const auto& child : transform3D.children)
+                queueChildForDestroy(child.ResolveIncludingPending());
         }
 
-        for (int childId : childIdsToDestroy)
-            DestroyNow(childId);
+        for (const auto& child : childIdsToDestroy) DestroyNow(child);
 
         // Clear slot first to prevent recursive self-destroy during callbacks.
         m_entities[_id] = nullptr;
+        m_entityIndices.erase(entity->GetHandle());
 
+        m_entityStates.at(entity->GetHandle()).pendingDestroy = true;
         entity->RemoveAllScripts();
-        if (entity->m_entityHandle != entt::null && m_registry.valid(entity->m_entityHandle))
-            m_registry.destroy(entity->m_entityHandle);
-        delete entity;
+        const auto handle = entity->GetHandle();
+        m_referenceUUIDs[handle] = entity->GetUUID();
+        m_entityStates.erase(handle);
+        if (handle != entt::null && m_registry.valid(handle)) m_registry.destroy(handle);
     }
 
     void Scene::Destroy(Entity& _entity)
     {
-        Destroy(_entity.id);
+        const int index = GetEntityIndex(_entity);
+        if (index >= 0) Destroy(index);
     }
 
-    void Scene::QueueEntityForReady(int _id)
+    void Scene::QueueEntityForReady(Entity& entity)
     {
-        if (_id < 0 || _id >= (int)m_entities.size())
-            return;
-
-        m_entitiesToReady.push_back(_id);
+        if (GetEntityIndex(entity) >= 0)
+            m_entitiesToReady.emplace_back(&entity);
     }
 
     System* Scene::CreateSystem(System* _system)

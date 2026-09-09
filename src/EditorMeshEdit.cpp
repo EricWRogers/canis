@@ -17,7 +17,7 @@ namespace Canis
         if (!m_scene || m_mode != EditorMode::EDIT || m_meshEditEntity == UUID(0))
             return nullptr;
         Entity *e = m_scene->GetEntityWithUUID(m_meshEditEntity);
-        if (!e || e->editorLocked || !e->HasComponent<BlockoutShape>() || !e->HasComponent<Transform>())
+        if (!e || e->EditorLocked() || !e->HasComponent<BlockoutShape>() || !e->HasComponent<Transform>())
             return nullptr;
         return e->GetComponent<BlockoutShape>().meshEdited ? e : nullptr;
     }
@@ -30,7 +30,7 @@ namespace Canis
             return;
         }
         auto selected = GetSelectedEntities();
-        if (m_mode != EditorMode::EDIT || selected.size() != 1 || selected[0]->editorLocked ||
+        if (m_mode != EditorMode::EDIT || selected.size() != 1 || selected[0]->EditorLocked() ||
             !selected[0]->HasComponent<BlockoutShape>() || !selected[0]->HasComponent<Transform>() ||
             m_sceneCameraMode != SCENE_CAMERA_3D)
             return;
@@ -40,7 +40,7 @@ namespace Canis
             return;
         RebuildBlockoutEntity(e);
         CommitSceneHistoryImmediateChange(before);
-        m_meshEditEntity = e.uuid;
+        m_meshEditEntity = e.GetUUID();
         m_meshSelection.clear();
         m_meshEdges.clear();
         m_meshSelectMode = 2;
@@ -120,7 +120,7 @@ namespace Canis
         if (m_meshEditEntity != UUID(0) && !MeshEditEntity())
             ExitMeshEdit();
         auto selected = GetSelectedEntities();
-        if (m_meshEditEntity != UUID(0) && (selected.size() != 1 || selected[0]->uuid != m_meshEditEntity))
+        if (m_meshEditEntity != UUID(0) && (selected.size() != 1 || selected[0]->GetUUID() != m_meshEditEntity))
             ExitMeshEdit();
         bool keyboard = m_sceneViewFocused && !ImGui::GetIO().WantTextInput && !ImGui::IsAnyItemActive() &&
                         !ImGui::IsPopupOpen(nullptr, ImGuiPopupFlags_AnyPopupId);
@@ -130,7 +130,7 @@ namespace Canis
         if (!e)
         {
             if (selected.size() == 1 && selected[0]->HasComponent<BlockoutShape>() &&
-                !selected[0]->editorLocked && m_mode == EditorMode::EDIT)
+                !selected[0]->EditorLocked() && m_mode == EditorMode::EDIT)
             {
                 if (ImGui::Button("Edit Mesh (Tab)"))
                     ToggleMeshEdit();
@@ -146,7 +146,7 @@ namespace Canis
             return;
         }
         if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Editing %s", e->name.c_str());
+            ImGui::SetTooltip("Editing %s", e->GetName().c_str());
         ImGui::BeginDisabled(m_meshOperation != 0);
         const char *modes[] = {"Vertex", "Edge", "Face"};
         for (int i = 0; i < 3; ++i)

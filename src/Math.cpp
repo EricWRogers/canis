@@ -1,5 +1,5 @@
 #include <Canis/Math.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 #include <algorithm>
 #include <cmath>

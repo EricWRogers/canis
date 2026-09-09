@@ -6,7 +6,7 @@
 #include <Canis/AnimationRuntime.hpp>
 #include <Canis/App.hpp>
 #include <Canis/AssetManager.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 
 namespace Canis
@@ -398,7 +398,7 @@ namespace Canis
         {
             Animator& animator = animatorView.get<Animator>(entityHandle);
             Entity* entity = animator.entity;
-            if (entity == nullptr || !entity->active)
+            if (entity == nullptr || !entity->Active())
                 continue;
 
             const std::string controllerPath = AssetManager::ResolvePath(animator.controller);

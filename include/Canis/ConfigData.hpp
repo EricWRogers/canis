@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/Entity.hpp>
 #include <map>
 #include <string>
 #include <unordered_map>
@@ -30,8 +31,8 @@ enum class SystemPipeline
 
 struct UIActionContext
 {
-    Entity* sourceEntity = nullptr;
-    Entity* targetEntity = nullptr;
+    Entity sourceEntity = nullptr;
+    Entity targetEntity = nullptr;
     Vector2 pointerPosition = Vector2(0.0f);
     std::string payloadType = "";
     std::string payloadValue = "";
@@ -41,8 +42,8 @@ using UIActionInvoker = std::function<void(ScriptableEntity&, const UIActionCont
 
 struct AnimationEventContext
 {
-    Entity* sourceEntity = nullptr;
-    Entity* targetEntity = nullptr;
+    Entity sourceEntity = nullptr;
+    Entity targetEntity = nullptr;
     std::string clipPath = "";
     std::string eventName = "";
     std::string stringPayload = "";

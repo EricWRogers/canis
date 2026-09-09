@@ -1,7 +1,7 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 
 #include <Canis/AssetManager.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/OpenGL.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Shader.hpp>
@@ -446,7 +446,7 @@ namespace Canis
             {
                 DirectionalLight &light = directionalLightView.get<DirectionalLight>(entityHandle);
                 Entity *entity = light.entity;
-                if (entity == nullptr || !entity->active)
+                if (entity == nullptr || !entity->Active())
                     continue;
 
                 state.enabled = light.enabled;
@@ -957,7 +957,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if ((entity != nullptr && !entity->active) ||
+            if ((entity != nullptr && !entity->Active()) ||
                 !transform.IsActiveInHierarchy() ||
                 modelRenderer.modelId < 0 ||
                 !modelRenderer.castShadow)
@@ -1190,7 +1190,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if ((entity != nullptr && !entity->active) ||
+            if ((entity != nullptr && !entity->Active()) ||
                 !transform.IsActiveInHierarchy() ||
                 modelRenderer.modelId < 0)
                 continue;
@@ -1391,7 +1391,7 @@ namespace Canis
             if (entity == nullptr)
                 entity = transform.entity;
 
-            if ((entity != nullptr && !entity->active) ||
+            if ((entity != nullptr && !entity->Active()) ||
                 !transform.IsActiveInHierarchy() ||
                 modelRenderer.modelId < 0)
                 return;

@@ -1,12 +1,15 @@
 #pragma once
 #include <Canis/AssetHandle.hpp>
 #include <Canis/UUID.hpp>
+#include <Canis/Tag.hpp>
+#include <Canis/Entity.hpp>
 #include <Canis/Math.hpp>
 #include <Canis/External/entt.hpp>
 
 #include <string>
 #include <limits>
 #include <vector>
+#include <unordered_map>
 #include <algorithm>
 
 namespace YAML
@@ -22,12 +25,13 @@ namespace Canis
     class InputManager;
     class Entity;
     class System;
+    class ScriptableEntity;
     struct ScriptConf;
     struct SystemConf;
 
     struct RaycastHit
     {
-        Entity* entity = nullptr;
+        Entity entity = nullptr;
         Vector3 point = Vector3(0.0f);
         Vector3 normal = Vector3(0.0f);
         float distance = 0.0f;
@@ -49,6 +53,7 @@ namespace Canis
 
     class Scene
     {
+        friend class Entity;
         #if CANIS_EDITOR
             friend class Editor;
         #endif
@@ -63,6 +68,7 @@ namespace Canis
 
         App* app = nullptr;
         
+        ~Scene();
         void Init(App *_app, Window *_window, InputManager *_inputManger);
         void Update(float _deltaTime);
         void UpdateEditor();
@@ -77,7 +83,7 @@ namespace Canis
         void LoadSceneNode(YAML::Node &_root);
         std::vector<Entity*> LoadEntityNodes(YAML::Node &_entities, bool _copyUUID = true);
         Canis::Entity& DecodeEntity(YAML::Node _node, bool _copyUUID = true);
-        void GetEntityAfterLoad(Canis::UUID _uuid, Canis::Entity* &_variable);
+        void GetEntityAfterLoad(Canis::UUID uuid, Entity& variable);
         std::vector<Entity*> Instantiate(const SceneAssetHandle &_sceneAssetHandle);
         void ForceReady(Entity& _entity);
 
@@ -142,29 +148,37 @@ namespace Canis
         void QuitGame();
 
 
-        Entity* CreateEntity(std::string _name = "", std::string _tag = "");
+        Entity CreateEntity(std::string _name = "", std::string _tag = "");
+        Entity FindEntity(UUID uuid) { return GetEntityWithUUID(uuid); }
         Entity* GetEntity(int _id);
+        // Scene-owned transient ordering slot, not persistent entity identity.
+        int GetEntityIndex(const Entity& entity) const;
         Entity* GetEntityWithUUID(Canis::UUID _uuid);
         UUID GetLiveEntityUUID(const Entity* _entity) const;
+        UUID GetLiveEntityUUID(const Entity& entity) const { return entity.GetUUID(); }
+        UUID GetReferenceUUID(entt::entity handle) const;
         Entity* FindEntityWithName(std::string _name);
 
-        Entity* GetEntityWithTag(std::string _tag);
-        std::vector<Entity*> GetEntitiesWithTag(std::string _tag);
+        Entity* GetEntityWithTag(TagId tag);
+        Entity* GetEntityWithTag(std::string_view tag) { return GetEntityWithTag(TagIdFromName(tag)); }
+        std::vector<Entity*> GetEntitiesWithTag(TagId tag);
+        std::vector<Entity*> GetEntitiesWithTag(std::string_view tag) { return GetEntitiesWithTag(TagIdFromName(tag)); }
 
-        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        template <typename Tag> requires requires(Tag value) { ToTagId(value); }
         Entity* GetEntityWithTag(Tag value)
         {
-            return GetEntityWithTag(std::string(ToTagName(value)));
+            return GetEntityWithTag(ToTagId(value));
         }
 
-        template <typename Tag> requires requires(Tag value) { ToTagName(value); }
+        template <typename Tag> requires requires(Tag value) { ToTagId(value); }
         std::vector<Entity*> GetEntitiesWithTag(Tag value)
         {
-            return GetEntitiesWithTag(std::string(ToTagName(value)));
+            return GetEntitiesWithTag(ToTagId(value));
         }
 
         void Destroy(int _id);
         void Destroy(Entity& _entity);
+        void RetireScript(ScriptableEntity* script);
 
         template <typename T>
         T *GetSystem()
@@ -198,18 +212,30 @@ namespace Canis
     private:
         std::string m_name = "main";
         std::string m_path = "assets/scenes/main.scene";
-        Window *m_window;
-        InputManager *m_inputManager;
+        Window *m_window = nullptr;
+        InputManager *m_inputManager = nullptr;
 
         std::vector<Entity*> m_entities = {};
+        std::unordered_map<entt::entity, int> m_entityIndices;
+        struct EntityState { bool pendingDestroy = false; bool destroying = false; };
+        std::unordered_map<entt::entity, EntityState> m_entityStates;
+        // Serialization history for missing references; cleared when this scene unloads.
+        std::unordered_map<entt::entity, UUID> m_referenceUUIDs;
+        std::unordered_map<UUID, entt::entity> m_missingReferences;
+        EntityState* GetEntityState(entt::entity handle);
+        Entity ResolveReference(UUID uuid);
         entt::registry m_registry = {};
         std::vector<System*> m_systems = {};
         std::vector<System*> m_updateSystems = {};
         std::vector<System*> m_renderSystems = {};
         std::vector<SystemTiming> m_systemTimings = {};
         std::vector<DebugGizmoLine> m_debugGizmoLines = {};
-        std::vector<int> m_entitiesToReady = {};
-        std::vector<int> m_entitiesToDestroy = {};
+        std::vector<Entity> m_entitiesToReady = {};
+        std::vector<ScriptableEntity*> m_retiredScripts;
+        void FlushRetiredScripts();
+        ScriptableEntity* InvokeScriptCallback(ScriptableEntity* script, bool ready);
+        unsigned m_scriptCallbackDepth = 0;
+        std::vector<Entity> m_entitiesToDestroy = {};
         bool m_isUpdating = false;
         bool m_isLoadingEntityNodes = false;
         bool m_editorCamera3DOverrideEnabled = false;
@@ -232,17 +258,13 @@ namespace Canis
         bool m_paused = false;
 
         // this is used when duplicating entity
-        std::unordered_map<UUID, UUID> m_targetUUIDNewUUID;
 
-        struct EntityConnectInfo {
-            Canis::UUID targetUUID;
-            Canis::Entity** variable;
-        };
+        std::unordered_map<UUID, Entity> m_loadingEntities;
 
-        std::vector<EntityConnectInfo> m_entityConnectInfo = {};
-
-        void QueueEntityForReady(int _id);
+        void QueueEntityForReady(Entity& entity);
         void DestroyNow(int _id);
+        void DestroyNow(const Entity& handle);
+        void MarkPendingDestroy(Entity* entity);
         void ReadySystem(System *_system);
         SystemTiming* GetSystemTiming(System* _system);
     };

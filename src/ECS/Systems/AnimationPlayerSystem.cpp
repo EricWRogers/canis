@@ -5,7 +5,7 @@
 
 #include <Canis/AnimationRuntime.hpp>
 #include <Canis/AssetManager.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 
 namespace Canis
@@ -23,7 +23,7 @@ namespace Canis
             if (entity == nullptr)
                 continue;
 
-            if (!entity->active)
+            if (!entity->Active())
                 continue;
 
             if (entity->HasComponent<Animator>())

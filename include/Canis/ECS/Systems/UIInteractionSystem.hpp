@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/Entity.hpp>
 
 #include <Canis/System.hpp>
 
@@ -7,10 +8,10 @@ namespace Canis
     class UIInteractionSystem : public System
     {
     private:
-        Entity* m_pressedButton = nullptr;
-        Entity* m_focusedInputField = nullptr;
-        Entity* m_dragSource = nullptr;
-        Entity* m_hoveredDropTarget = nullptr;
+        Entity m_pressedButton = nullptr;
+        Entity m_focusedInputField = nullptr;
+        Entity m_dragSource = nullptr;
+        Entity m_hoveredDropTarget = nullptr;
 
     public:
         UIInteractionSystem() : System() { m_name = type_name<UIInteractionSystem>(); }

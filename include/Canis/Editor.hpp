@@ -1,3 +1,4 @@
+#include <Canis/Entity.hpp>
 #pragma once
 
 #include <functional>
@@ -85,6 +86,8 @@ namespace Canis
             const AnimationValue &_value);
 
         // inspector variables
+        void InputEntity(const std::string& _name, Entity& _variable);
+        void InputEntity(const std::string& _name, const char* _idSuffix, Entity& _variable);
         void InputEntity(const std::string& _name, Canis::Entity* &_variable);
         void InputEntity(const std::string& _name, const char* _idSuffix, Canis::Entity* &_variable);
         void InputAudioAsset(const std::string& _name, Canis::AudioAssetHandle &_variable);

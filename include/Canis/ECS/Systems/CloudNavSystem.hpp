@@ -6,7 +6,7 @@
 #include <vector>
 
 #include <Canis/DataStructure/AStar.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/System.hpp>
 
 namespace Canis

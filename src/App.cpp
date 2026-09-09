@@ -2537,6 +2537,9 @@ namespace Canis
 
     void App::RegisterDefaults(Editor& _editor)
     {
+        _editor.RegisterInspectorFieldDrawer<Entity>([](Editor& editor, const char* label, const char* suffix, Entity& value) {
+            editor.InputEntity(label, suffix, value);
+        });
         _editor.RegisterInspectorFieldDrawer<Canis::Entity*>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::Entity*& _value)
         {
             _editor.InputEntity(_label, _idSuffix, _value);
@@ -3597,7 +3600,7 @@ namespace Canis
 
                     if (transform->parent != nullptr)
                     {
-                        ImGui::Text("parent: %s", transform->parent->name.c_str());
+                        ImGui::Text("parent: %s", transform->parent->GetName().c_str());
                         if (ImGui::Button("Unparent##Transform"))
                             transform->Unparent();
                     }

@@ -1,5 +1,5 @@
 #include <Canis/Asset.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 #include <cassert>
 #include <filesystem>

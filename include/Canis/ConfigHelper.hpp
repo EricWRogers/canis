@@ -1,6 +1,7 @@
 #pragma once
+#include <Canis/App.hpp>
 #include <Canis/ConfigData.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Editor.hpp>
 #include <Canis/Yaml.hpp>
@@ -85,11 +86,16 @@ inline void SetRegisteredProperty(YAML::Node& _node, Component& _component, Prop
 }
 
 template <typename Component>
-inline void SetRegisteredProperty(YAML::Node& _node, Component& _component, Canis::Entity*& _value)
+void SetRegisteredProperty(YAML::Node&, Component&, Canis::Entity*&) = delete; // Persist Entity instead.
+
+template <typename Component>
+inline void SetRegisteredProperty(YAML::Node& node, Component& component, Entity& value)
 {
-    const Canis::UUID targetUUID = _node.as<Canis::UUID>(Canis::UUID(0));
-    GetRegisteredPropertyOwnerEntity(_component).scene.GetEntityAfterLoad(targetUUID, _value);
+    GetRegisteredPropertyOwnerEntity(component).scene.GetEntityAfterLoad(node.as<UUID>(UUID(0)), value);
 }
+inline YAML::Node GetRegisteredProperty(const Entity& value) { return YAML::Node(value.GetUUID()); }
+template <typename Component>
+inline YAML::Node GetRegisteredProperty(Component&, const Entity& value) { return YAML::Node(value.GetUUID()); }
 
 template <typename PropertyType>
 inline YAML::Node GetRegisteredProperty(const PropertyType& _value)
@@ -106,7 +112,7 @@ inline YAML::Node GetRegisteredProperty(Component& _component, const PropertyTyp
 
 inline YAML::Node GetRegisteredProperty(Canis::Entity* const& _value)
 {
-    return YAML::Node((_value == nullptr) ? Canis::UUID(0) : _value->uuid);
+    return YAML::Node(Entity(_value).GetUUID());
 }
 
 template <typename Component>
@@ -591,8 +597,6 @@ void UnRegister##type##System(Canis::App& _app)       \
 #define REGISTER_PROPERTY(config, component, property)                                            \
 {                                                                                                   \
     using PropertyType = std::remove_cvref_t<decltype(std::declval<component>().property)>;       \
-    static_assert(!std::is_same_v<PropertyType, Canis::Entity>,                                    \
-        "REGISTER_PROPERTY does not support Canis::Entity by value. Use Canis::Entity* for entity references."); \
     config.registry.setters[#property] = [](YAML::Node &node, void *componentPtr) {             	        \
         auto *typedComponent = static_cast<component *>(componentPtr);                              \
         SetRegisteredProperty(node, *typedComponent, typedComponent->property);                     \
@@ -645,8 +649,6 @@ inline void RegisterAccessorPropertyImpl(ScriptConf& _config, const char* _prope
     using PropertyType = std::remove_cvref_t<decltype(_accessor(std::declval<Component&>()))>;
     AccessorType accessor = std::forward<Accessor>(_accessor);
 
-    static_assert(!std::is_same_v<PropertyType, Canis::Entity>,
-        "REGISTER_PROPERTY does not support Canis::Entity by value. Use Canis::Entity* for entity references.");
 
     _config.registry.setters[_propertyName] =
         [accessor](YAML::Node& _node, void* _componentPtr)

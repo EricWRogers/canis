@@ -4,7 +4,7 @@
 #include <cmath>
 
 #include <Canis/AssetManager.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 
 namespace Canis
 {
@@ -16,7 +16,7 @@ namespace Canis
             BoneAttachment& attachment = view.get<BoneAttachment>(handle);
             Transform& transform = view.get<Transform>(handle);
             Entity* target = attachment.target;
-            if (target == nullptr || !target->active ||
+            if (target == nullptr || !target->Active() ||
                 !target->HasComponents<Transform, Model, ModelAnimation>())
             {
                 transform.ClearLocalMatrixPrefix();

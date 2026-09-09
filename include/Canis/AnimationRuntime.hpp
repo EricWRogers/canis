@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/Entity.hpp>
 
 #include <string>
 #include <vector>
@@ -13,7 +14,7 @@ namespace Canis
 
     struct AnimationBindingTarget
     {
-        Entity* entity = nullptr;
+        Entity entity = nullptr;
         const ScriptConf* conf = nullptr;
         void* component = nullptr;
     };

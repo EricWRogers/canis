@@ -4,7 +4,7 @@
 
 #include <Canis/Time.hpp>
 #include <Canis/Scene.hpp>
-#include <Canis/Entity.hpp>
+#include <Canis/Components.hpp>
 #include <Canis/AssetManager.hpp>
 
 namespace Canis

@@ -281,7 +281,7 @@ namespace Canis
         const CloudNavSurface& _surface,
         const Entity* _entity) const
     {
-        if (_entity == nullptr || _entity == _surface.entity || !_entity->active ||
+        if (_entity == nullptr || _entity == _surface.entity || !_entity->Active() ||
             !_entity->HasComponent<Rigidbody>())
             return false;
         const Rigidbody& body = _entity->GetComponent<Rigidbody>();
