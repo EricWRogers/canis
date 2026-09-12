@@ -252,12 +252,33 @@ namespace Canis
 	#if defined(__EMSCRIPTEN__)
 		Debug::Warning("OpenInVSCode is unavailable in web builds.");
 	#else
+		// Include the owning project so VS Code selects its window instead of
+		// whichever unrelated workspace was last active.
+		std::error_code ec;
+		const std::filesystem::path absolutePath = std::filesystem::absolute(_filePath, ec);
+		const std::string filePath = ec ? _filePath : absolutePath.lexically_normal().string();
+		std::string workspacePath;
+		for (auto directory = absolutePath.parent_path(); !ec && !directory.empty();)
+		{
+			if (std::filesystem::is_directory(directory / "game" / "include", ec) &&
+				std::filesystem::is_directory(directory / "game" / "src", ec))
+			{
+				workspacePath = directory.string();
+				break;
+			}
+			ec.clear();
+			const auto parent = directory.parent_path();
+			if (parent == directory)
+				break;
+			directory = parent;
+		}
+		const char *workspace = workspacePath.empty() ? nullptr : workspacePath.c_str();
 	#if defined(_WIN32)
-		const char *args[] = { "cmd.exe", "/C", "start", "", "code", "--reuse-window", "--goto", _filePath.c_str(), nullptr };
+		const char *args[] = { "cmd.exe", "/C", "start", "", "code", "--goto", filePath.c_str(), workspace, nullptr };
 	#elif defined(__APPLE__)
-		const char *args[] = { "open", "-a", "Visual Studio Code", _filePath.c_str(), nullptr };
+		const char *args[] = { "open", "-a", "Visual Studio Code", "--args", "--goto", filePath.c_str(), workspace, nullptr };
 	#else
-		const char *args[] = { "code", "--reuse-window", "--goto", _filePath.c_str(), nullptr };
+		const char *args[] = { "code", "--goto", filePath.c_str(), workspace, nullptr };
 	#endif
 		LaunchBackgroundProcess(args);
 	#endif
