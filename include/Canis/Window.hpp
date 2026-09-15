@@ -17,6 +17,7 @@ namespace Canis
         NativeWindowMode mode = NativeWindowMode::WINDOWED;
         bool resizable = true;
         bool startMaximized = false;
+        bool vrContext = false;
     };
 
     class Window

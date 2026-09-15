@@ -1,6 +1,7 @@
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
 #include <Canis/EditorSpawnPlacement.hpp>
+#include <Canis/ReloadLibraryBackup.hpp>
 
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
@@ -9,6 +10,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/App.hpp>
+#include <Canis/VR/VRSystem.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/IOManager.hpp>
@@ -2142,6 +2144,14 @@ namespace Canis
             return info;
         }
 
+        std::string ReloadTiming(const char* label, Uint64 start)
+        {
+            char text[160];
+            std::snprintf(text, sizeof(text), "[timing] %s: %.3f s\n", label,
+                static_cast<double>(SDL_GetTicks() - start) / 1000.0);
+            return text;
+        }
+
         bool BuildGameCodeForReload(
             const std::filesystem::path &_buildDir,
             std::string &_outCommand,
@@ -2216,14 +2226,6 @@ namespace Canis
                 return false;
             }
 
-            GameCodeObjectShutdownFunction(_gameCodeObject, _app);
-
-            if (_gameCodeObject->sharedObjectHandle != nullptr)
-            {
-                SDL_UnloadObject(_gameCodeObject->sharedObjectHandle);
-                _gameCodeObject->sharedObjectHandle = nullptr;
-            }
-
             if (_gameCodeObject->path != nullptr && _gameCodeObject->path[0] != '\0')
             {
                 std::error_code ec;
@@ -2231,17 +2233,21 @@ namespace Canis
                 if (std::filesystem::exists(sharedObjectPath))
                 {
                     const std::filesystem::path backupPath = sharedObjectPath.string() + ".reload.bak";
-                    std::filesystem::remove(backupPath, ec);
-                    ec.clear();
-                    std::filesystem::rename(sharedObjectPath, backupPath, ec);
-                    if (ec)
+                    if (!ReloadBuild::CopyLibrary(sharedObjectPath, backupPath, _outError))
                     {
-                        _outError = "Failed to move old game shared library aside before rebuild: " + ec.message();
                         return false;
                     }
 
                     _outBackupPath = backupPath.string();
                 }
+            }
+
+            GameCodeObjectShutdownFunction(_gameCodeObject, _app);
+
+            if (_gameCodeObject->sharedObjectHandle != nullptr)
+            {
+                SDL_UnloadObject(_gameCodeObject->sharedObjectHandle);
+                _gameCodeObject->sharedObjectHandle = nullptr;
             }
 
             _gameCodeObject->gameData = nullptr;
@@ -2634,29 +2640,6 @@ namespace Canis
 
             relativePath /= nameParts.back() + ".hpp";
             return _includeRoot / relativePath;
-        }
-
-        bool OpenScriptFromInspector(const ScriptConf &_conf)
-        {
-            namespace fs = std::filesystem;
-
-            const fs::path gameCodeRoot = FindGameCodeRoot();
-            if (gameCodeRoot.empty())
-                return false;
-
-            const fs::path includeRoot = gameCodeRoot / "game" / "include";
-            const fs::path sourceRoot = gameCodeRoot / "game" / "src";
-            const fs::path headerPath = GetScriptHeaderPathFromName(includeRoot, _conf.name);
-            if (headerPath.empty() || !fs::exists(headerPath))
-                return false;
-
-            OpenInVSCode(headerPath.string());
-
-            const fs::path pairedPath = GetPairedScriptPath(includeRoot, sourceRoot, headerPath);
-            if (!pairedPath.empty() && pairedPath != headerPath && fs::exists(pairedPath))
-                OpenInVSCode(pairedPath.string());
-
-            return true;
         }
 
         bool DeleteScriptPair(
@@ -5665,6 +5648,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         IMGUI_CHECKVERSION();
         ImGui::CreateContext();
+        RestoreScriptSession();
+        if (const char* script = std::getenv("CANIS_EDITOR_SCRIPT"))
+            OpenScriptDocument(script);
         ImGuiIO &io = ImGui::GetIO();
         (void)io;
         //ImGui::LoadIniSettingsFromMemory("");
@@ -5744,6 +5730,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     Editor::~Editor()
     {
+#if CANIS_EDITOR
+        SaveScriptSession();
+        m_panelMaximizer.Restore();
+#endif
         SaveSceneCameraConfig();
 
         if (m_reloadBuildThread.joinable())
@@ -6169,10 +6159,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
-        BeginPlayRender(m_window);
-        m_scene->Render(_deltaTime);
-        m_playRenderProjection = m_scene->GetLastRenderProjection();
-        EndGameRender(m_window);
+        if (m_app->GetVR() == nullptr)
+        {
+            BeginPlayRender(m_window);
+            m_scene->Render(_deltaTime);
+            m_playRenderProjection = m_scene->GetLastRenderProjection();
+            EndGameRender(m_window);
+        }
 
         // Pass 2: editor scene camera (used by Scene panel + gizmos).
         ApplyInternalSceneCamera(_deltaTime);
@@ -6210,6 +6203,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGuiIO& captureIo = ImGui::GetIO();
         const bool gameplayOwnsEditorInput =
             m_mode == EditorMode::PLAY &&
+            m_app->GetVR() == nullptr &&
             m_showGamePanel &&
             m_window != nullptr &&
             m_window->IsMouseLocked();
@@ -6237,6 +6231,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             captureIo.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
         }
         ImGui::NewFrame();
+        const auto* panelViewport = ImGui::GetMainViewport();
+        const float panelToolbarHeight = GetEditorToolbarHeight();
+        m_panelMaximizer.Update(panelViewport->WorkPos.x, panelViewport->WorkPos.y + panelToolbarHeight,
+            panelViewport->WorkSize.x, panelViewport->WorkSize.y - panelToolbarHeight, panelViewport->ID);
         DrawMainDockspace();
 
         bool refresh = false;
@@ -6258,10 +6256,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawShaderGraphWindow();
         if (m_showScriptsPanel)
             DrawScriptsPanel();
+        TickScriptWorkspace();
+        if (m_showScriptEditor)
+            DrawScriptEditor();
         if (m_showProjectSettingsPanel)
             DrawProjectSettings();
         if (m_showInputActionsPanel && m_scene)
-            DrawInputActionsEditor(m_scene->GetInputManager(), m_showInputActionsPanel);
+            DrawInputActionsEditor(m_scene->GetInputManager(), m_showInputActionsPanel, &m_panelMaximizer);
         if (m_showConsolePanel)
             DrawConsolePanel();
         if (m_showScenePanel)
@@ -6336,6 +6337,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         // rendering
+        m_panelMaximizer.Finish();
         ImGui::Render();
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
 
@@ -6554,6 +6556,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_scene->SetPaused(false);
         m_mode = EditorMode::EDIT;
         m_scene->Unload();
+        m_app->RequestStopEditorVR();
         m_scene->m_path = g_lastPlayScenePath;
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
         ResetSceneHistory();
@@ -6571,6 +6574,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         if (m_window == nullptr)
             return;
+
+        if (m_app != nullptr && m_app->GetVR() != nullptr)
+        {
+            ReleasePlayMouseCapture();
+            return;
+        }
 
         if (m_mode != EditorMode::PLAY || !m_showGamePanel)
         {
@@ -7991,7 +8000,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawSceneView()
     {
-        ImGui::Begin("Scene", &m_showScenePanel);
+        m_panelMaximizer.Begin("Scene", &m_showScenePanel);
         m_sceneViewClicked = false;
         m_sceneViewFocused =
             ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -8438,13 +8447,30 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_focusGamePanelNextFrame = false;
         }
 
-        ImGui::Begin("Game", &m_showGamePanel);
+        m_panelMaximizer.Begin("Game", &m_showGamePanel);
 
         m_playViewportPosX = 0.0f;
         m_playViewportPosY = 0.0f;
         m_playViewportDrawWidth = 0.0f;
         m_playViewportDrawHeight = 0.0f;
         m_playViewHovered = false;
+
+        if (auto* vr = m_app->GetVR())
+        {
+            ImGui::TextUnformatted(vr->IsSimulated() ? "VR Simulation" : "Headset view");
+            if (m_mode == EditorMode::PAUSE)
+            {
+                ImGui::SameLine();
+                ImGui::TextDisabled("Paused — head tracking continues");
+            }
+            const ImVec2 available = ImGui::GetContentRegionAvail();
+            const float aspect = static_cast<float>(vr->MirrorWidth()) / std::max(1, vr->MirrorHeight());
+            const float width = std::max(1.0f, std::min(available.x, available.y * aspect));
+            ImGui::Image((ImTextureID)(intptr_t)vr->MirrorTexture(), ImVec2(width, width / aspect), ImVec2(0,1), ImVec2(1,0));
+            m_scene->GetInputManager().ClearGameMouseViewport();
+            ImGui::End();
+            return;
+        }
 
         if (ImGuiViewport *viewport = ImGui::GetWindowViewport())
         {
@@ -9280,9 +9306,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_scene == nullptr || m_window == nullptr || m_mode != EditorMode::EDIT)
             return;
 
+        m_vrPlayError.clear();
+        if (m_playTarget != 0 && !m_app->StartEditorVR(m_playTarget == 2, m_vrPlayError))
+        {
+            Debug::Error("Headset Play: %s", m_vrPlayError.c_str());
+            return;
+        }
+
         FlushSceneHistoryPendingChange();
-        m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
-        Time::SetTargetFPS(Canis::GetProjectConfig().useFrameLimit
+        m_window->SetSync(m_app->GetVR() ? Window::IMMEDIATE : static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
+        Time::SetTargetFPS(!m_app->GetVR() && Canis::GetProjectConfig().useFrameLimit
             ? Canis::GetProjectConfig().frameLimit + 0.0f
             : 100000.0f);
         g_lastPlaySceneNode = m_scene->EncodeScene();
@@ -11368,7 +11401,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     bool Editor::DrawHierarchyPanel()
     {
-        ImGui::Begin("Hierarchy###Hierarchy", &m_showHierarchyPanel);
+        m_panelMaximizer.Begin("Hierarchy###Hierarchy", &m_showHierarchyPanel);
         bool refresh = false;
 
         std::vector<Canis::Entity *> &entities = m_scene->GetEntities();
@@ -11603,7 +11636,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawInspectorPanel(bool _refresh)
     {
-        ImGui::Begin("Inspector", &m_showInspectorPanel);
+        m_panelMaximizer.Begin("Inspector", &m_showInspectorPanel);
 
         if (!m_selectedAssetPath.empty())
         {
@@ -11722,8 +11755,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             if (ImGui::MenuItem(std::string("Open##" + conf.name).c_str()))
                             {
-                                if (!OpenScriptFromInspector(conf))
-                                    Debug::Warning("Failed to locate script source for '%s'.", conf.name.c_str());
+                                const auto root = FindGameCodeRoot();
+                                if (!root.empty())
+                                {
+                                    const auto header = GetScriptHeaderPathFromName(root / "game/include", conf.name);
+                                    OpenScriptDocument(header);
+                                    const auto source = GetPairedScriptPath(root / "game/include", root / "game/src", header);
+                                    if (!source.empty()) OpenScriptDocument(source);
+                                }
                             }
                         }
 
@@ -13345,7 +13384,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_animatorSelectedTransition = -1;
         }
 
-        if (!ImGui::Begin("Animator", &m_showAnimatorPanel))
+        if (!m_panelMaximizer.Begin("Animator", &m_showAnimatorPanel))
         {
             ImGui::End();
             return;
@@ -14234,7 +14273,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             RememberLastAnimationClipAssetPath(m_animationClipStatePath);
         };
 
-        ImGui::Begin("Animation", &m_showAnimationPanel);
+        m_panelMaximizer.Begin("Animation", &m_showAnimationPanel);
 
         std::string clipLabel = "[ none ]";
         if (clipMeta != nullptr)
@@ -15085,7 +15124,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawEnvironment()
     {
-        ImGui::Begin("Environment", &m_showEnvironmentPanel);
+        m_panelMaximizer.Begin("Environment", &m_showEnvironmentPanel);
         Color background = m_window->GetClearColor();
         ImGui::ColorEdit4("Background##", &background.r);
 
@@ -15326,6 +15365,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
+        // Renaming also rewrites includes in other files. Keep open buffers intact.
+        if (!m_scriptDocuments.empty())
+        {
+            m_scriptFolderRenameError = "Close script tabs before renaming folders.";
+            return;
+        }
         const fs::path oldIncludeFolderPath = m_scriptFolderRenamingPath;
         fs::path newIncludeFolderPath = {};
         std::string error = "";
@@ -16866,7 +16911,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 bool deleteScript = false;
                 if (ImGui::BeginPopupContextItem())
                 {
-                    if (ImGui::MenuItem("Delete"))
+                    if (ImGui::MenuItem("Open in Script Editor")) OpenScriptDocument(entry.path());
+                    if (ImGui::MenuItem("Open in VS Code")) OpenInVSCode(fullPath);
+                    const bool hasOpenDocument = std::any_of(m_scriptDocuments.begin(), m_scriptDocuments.end(),
+                        [&](const auto& doc) { return doc.path == fs::absolute(entry.path()).lexically_normal() ||
+                            doc.path == fs::absolute(GetPairedScriptPath(_includeRoot, _sourceRoot, entry.path())).lexically_normal(); });
+                    if (ImGui::MenuItem("Delete (close script tabs first)", nullptr, false, !hasOpenDocument))
                         deleteScript = true;
 
                     ImGui::EndPopup();
@@ -16891,11 +16941,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                 {
                     m_selectedScriptPath = fullPath;
-                    OpenInVSCode(fullPath);
+                    OpenScriptDocument(fullPath);
 
                     const fs::path pairedPath = GetPairedScriptPath(_includeRoot, _sourceRoot, entry.path());
                     if (!pairedPath.empty() && pairedPath != entry.path() && fs::exists(pairedPath))
-                        OpenInVSCode(pairedPath.string());
+                        OpenScriptDocument(pairedPath);
                 }
             }
         }
@@ -16905,7 +16955,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         namespace fs = std::filesystem;
 
-        ImGui::Begin("Scripts", &m_showScriptsPanel);
+        m_panelMaximizer.Begin("Scripts", &m_showScriptsPanel);
 
         const fs::path gameCodeRoot = FindGameCodeRoot();
         if (gameCodeRoot.empty())
@@ -16918,6 +16968,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const fs::path includeRoot = gameCodeRoot / "game" / "include";
         const fs::path sourceRoot = gameCodeRoot / "game" / "src";
 
+        if (ImGui::Button("New Script"))
+        {
+            m_scriptCreateTargetDir = includeRoot.string();
+            std::snprintf(m_scriptCreateNameBuffer, sizeof(m_scriptCreateNameBuffer), "%s", "NewScript");
+            m_scriptCreateError.clear();
+            m_focusScriptCreateNameInput = true;
+            m_openScriptCreatePopup = true;
+        }
+        ImGui::SameLine();
+        if (ImGui::Button("Script Editor")) m_showScriptEditor = true;
+        ImGui::TextDisabled("Double-click a script to edit its header and source.");
         ImGui::Text("Path: %s", includeRoot.string().c_str());
         ImGui::Separator();
 
@@ -17017,6 +17078,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (CreateGameScriptFiles(gameCodeRoot, scriptTarget, selectedType, {}, false, createdHeaderPath, createdSourcePath, error))
                     {
                         m_selectedScriptPath = createdHeaderPath;
+                        m_scriptsNeedBuild = true;
+                        OpenScriptDocument(createdHeaderPath);
+                        OpenScriptDocument(createdSourcePath);
                         m_scriptCreateError.clear();
                         m_scriptCreateTargetDir.clear();
                         ImGui::CloseCurrentPopup();
@@ -17091,7 +17155,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawAssetsPanel()
     {
-        ImGui::Begin("Assets", &m_showAssetsPanel);
+        m_panelMaximizer.Begin("Assets", &m_showAssetsPanel);
 
         ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 72.0f));
         ImGui::InputTextWithHint("##AssetSearch", "Search assets...", &m_assetSearch);
@@ -17123,7 +17187,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawSystemPanel()
     {
-        ImGui::Begin("Systems", &m_showSystemsPanel);
+        m_panelMaximizer.Begin("Systems", &m_showSystemsPanel);
 
         if (m_scene == nullptr)
         {
@@ -17181,7 +17245,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawConsolePanel()
     {
-        if (!ImGui::Begin("Canis Console", &m_showConsolePanel))
+        if (!m_panelMaximizer.Begin("Canis Console", &m_showConsolePanel))
         {
             ImGui::End();
             return;
@@ -17610,7 +17674,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawProjectSettings()
     {
-        ImGui::Begin("ProjectSettings", &m_showProjectSettingsPanel);
+        m_panelMaximizer.Begin("ProjectSettings", &m_showProjectSettingsPanel);
 
         if (ImGui::Button("Save Project", ImVec2(-1.0f, 0.0f)))
         {
@@ -17965,6 +18029,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_reloadBuildThread.joinable())
             m_reloadBuildThread.join();
 
+        const auto finalizeStart = SDL_GetTicks();
+        m_scriptsNeedBuild = !buildSucceeded;
         if (!buildSucceeded)
             Debug::Warning("GameCode build failed (exit code: %d). Attempting to reload existing game library.", buildExitCode);
 
@@ -17978,13 +18044,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 livePath.compare(livePath.size() - backupSuffix.size(), backupSuffix.size(), backupSuffix) == 0)
             {
                 livePath.erase(livePath.size() - backupSuffix.size());
-                std::filesystem::remove(livePath, ec);
-                ec.clear();
-                std::filesystem::rename(backupPath, livePath, ec);
-                if (ec)
-                    Debug::Warning("Failed to restore previous game shared library after build failure: %s", ec.message().c_str());
+                std::string restoreError;
+                if (!ReloadBuild::CopyLibrary(backupPath, livePath, restoreError))
+                    Debug::Warning("Failed to restore previous game shared library after build failure: %s", restoreError.c_str());
                 else
+                {
+                    std::filesystem::remove(backupPath, ec);
                     m_reloadBuildBackupPath.clear();
+                }
             }
         }
 
@@ -18001,6 +18068,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         m_scene->LoadSceneNode(g_lastPlaySceneNode);
         ResetSceneHistory();
+        {
+            std::scoped_lock lock(m_reloadBuildMutex);
+            m_reloadBuildOutput += ReloadTiming("Library and scene reload", finalizeStart);
+            m_reloadBuildOutput += ReloadTiming("Total reload", m_reloadBuildStartTicks);
+        }
     }
 
     void Editor::DrawReloadBuildPopup()
@@ -18041,7 +18113,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             exitCode = m_reloadBuildExitCode;
         }
 
-        const bool allowClose = finished && !inProgress;
+        const bool allowClose = !inProgress;
         bool popupOpen = true;
         ImGui::SetNextWindowSize(ImVec2(900.0f, 520.0f), ImGuiCond_FirstUseEver);
         if (ImGui::BeginPopupModal("Reload Build Output", allowClose ? &popupOpen : nullptr))
@@ -18060,7 +18132,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::Separator();
             ImGui::BeginChild("##ReloadBuildLog", ImVec2(0.0f, -ImGui::GetFrameHeightWithSpacing() - 4.0f), true, ImGuiWindowFlags_HorizontalScrollbar);
-            ImGui::TextUnformatted(output.c_str());
+            DrawScriptBuildLog(output);
             if (inProgress)
                 ImGui::SetScrollHereY(1.0f);
             ImGui::EndChild();
@@ -18075,7 +18147,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Canis::SaveEditorConfig();
             }
 
-            if (allowClose && succeeded && autoCloseOnSuccess)
+            if (allowClose && succeeded && autoCloseOnSuccess && !m_scriptBuildOutputPinned)
             {
                 popupOpen = false;
                 ImGui::CloseCurrentPopup();
@@ -18116,6 +18188,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::MenuItem("Systems", nullptr, &m_showSystemsPanel);
         ImGui::MenuItem("Assets", nullptr, &m_showAssetsPanel);
         ImGui::MenuItem("Scripts", nullptr, &m_showScriptsPanel);
+        ImGui::MenuItem("Script Editor", nullptr, &m_showScriptEditor);
         ImGui::MenuItem("Console", nullptr, &m_showConsolePanel);
         ImGui::Separator();
         ImGui::MenuItem("Animation", nullptr, &m_showAnimationPanel);
@@ -18207,7 +18280,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::EndDisabled();
 
             ImGui::SameLine();
-            if (ImGui::Button("Save##ScenePanel") || (ImGui::IsKeyDown(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
+            if (ImGui::Button("Save##ScenePanel") || (!ImGui::GetIO().WantTextInput && ImGui::IsKeyDown(ImGuiKey_S) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
                 SaveActiveSceneTab();
@@ -18218,6 +18291,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.56f, 0.38f, 1.0f));
             const bool playPressed = ImGui::Button("Play##ScenePanel");
             ImGui::PopStyleColor(3);
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(135.0f);
+            ImGui::Combo("##PlayTarget", &m_playTarget, "Desktop\0Headset\0VR Simulation\0");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Play the current scene with the live hierarchy and inspector. Stop restores pre-play edits.");
             if (playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
             {
                 hotKeyCoolDown = HOTKEYRESET;
@@ -18235,8 +18313,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Launch a separate no-editor runtime using Project Settings.");
             ImGui::SameLine();
-            if (ImGui::Button("Reload##ScenePanel") || (m_meshEditEntity == UUID(0) && ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
+            if ((ImGui::Button("Reload##ScenePanel") || m_scriptBuildRequested || (m_meshEditEntity == UUID(0) && ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)) && SaveScriptDocuments())
             {
+                m_scriptBuildRequested = false;
                 ExitMeshEdit();
                 hotKeyCoolDown = HOTKEYRESET;
 
@@ -18254,8 +18333,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
                 else
                 {
+                m_reloadBuildStartTicks = SDL_GetTicks();
                 FlushSceneHistoryPendingChange();
-                const std::filesystem::path buildDir = std::filesystem::path("..") / "build";
+                const std::filesystem::path buildDir = CANIS_GAME_BUILD_DIR;
                 const GameCodeBuildConfigInfo buildConfigInfo = ReadGameCodeBuildConfigInfo(buildDir);
                 if (!buildConfigInfo.singleConfigType.empty())
                 {
@@ -18298,8 +18378,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         std::scoped_lock lock(m_reloadBuildMutex);
                         m_reloadBuildCommand = "cmake --build \"" + buildDir.generic_string() + "\" --target GameCode --parallel --";
                         m_reloadBuildOutput = "[build] " + m_reloadBuildCommand + "\n";
+                        m_reloadBuildOutput += ReloadTiming("Preparation (assets, scene, backup)", m_reloadBuildStartTicks);
                         m_reloadBuildInProgress = true;
                         m_reloadBuildFinished = false;
+                        m_scriptBuildOutputPinned = false;
                         m_reloadBuildSucceeded = false;
                         m_reloadBuildAwaitingFinalize = true;
                         m_reloadBuildExitCode = -1;
@@ -18313,6 +18395,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         std::string buildError = "";
                         int buildExitCode = -1;
 
+                        const auto buildStart = SDL_GetTicks();
                         const bool buildSucceeded = BuildGameCodeForReload(
                             buildDir,
                             buildCommand,
@@ -18325,6 +18408,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             });
 
                         std::scoped_lock lock(m_reloadBuildMutex);
+                        m_reloadBuildOutput += ReloadTiming("GameCode build (generation, compilation, linking)", buildStart);
                         if (!buildCommand.empty())
                             m_reloadBuildCommand = buildCommand;
 
@@ -18408,6 +18492,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ImGui::End();
         DrawReloadBuildPopup();
+        if (!m_vrPlayError.empty()) ImGui::OpenPopup("Headset Play");
+        ImGui::SetNextWindowSize(ImVec2(580,0), ImGuiCond_Appearing);
+        if (ImGui::BeginPopupModal("Headset Play", nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            ImGui::TextWrapped("Unable to keep the headset session running: %s", m_vrPlayError.c_str());
+            ImGui::TextWrapped("Check the connected headset and active OpenXR runtime, then try Play again. VR Simulation works without a headset.");
+            if (ImGui::Button("Close")) { m_vrPlayError.clear(); ImGui::CloseCurrentPopup(); }
+            ImGui::EndPopup();
+        }
     }
 
     bool Editor::TryGetSceneViewMouseRay(Vector3 &_origin, Vector3 &_direction, float &_length) const

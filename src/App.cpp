@@ -1,5 +1,7 @@
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
+#include <Canis/VR/VRSystem.hpp>
+#include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
@@ -77,6 +79,9 @@ namespace Canis
         bool interactive = false;
         std::optional<bool> editorRuntimeOverride = std::nullopt;
         bool offscreen = false;
+        bool vr = false;
+        bool vrSimulated = false;
+        VR::FoveationMode vrFoveation = VR::FoveationMode::Off;
         bool captureFinal = true;
         std::string launchScene = {};
         std::string inputScript = {};
@@ -90,6 +95,9 @@ namespace Canis
     struct App::RuntimeContext
     {
         std::unique_ptr<Window> window;
+        std::unique_ptr<VR::System> vr;
+        bool stopEditorVR = false;
+        Window::Sync syncBeforeVR = Window::IMMEDIATE;
         std::unique_ptr<Editor> editor;
         std::unique_ptr<InputManager> inputManager;
         GameCodeObject gameCodeObject = {};
@@ -116,6 +124,59 @@ namespace Canis
         std::string interactiveCaptureLabel = "initial";
         size_t interactiveStep = 0u;
     };
+
+    VR::System* App::GetVR() { return m_runtime ? m_runtime->vr.get() : nullptr; }
+    const VR::System* App::GetVR() const { return m_runtime ? m_runtime->vr.get() : nullptr; }
+
+    bool App::StartEditorVR(bool simulated, std::string &error)
+    {
+        if (!m_runtime || !m_runtime->editorRuntimeEnabled || m_runtime->vr)
+        { error = "A headset session can only start from an idle editor."; return false; }
+#if CANIS_EDITOR
+        if (!m_runtime->editor || m_runtime->editor->GetMode() != EditorMode::EDIT)
+        { error = "Stop the current play session before starting headset play."; return false; }
+#endif
+        auto& runtime = *m_runtime;
+        if (!runtime.window->MakeContextCurrent())
+        { error = "The editor graphics context is unavailable."; return false; }
+        VR::Config config;
+        config.mode = simulated ? VR::Mode::Simulated : VR::Mode::OpenXR;
+        if (!VR::LoadPlayerSettings("project_settings/vr.canis", config.player, error) ||
+            !VR::LoadPlayerSettings("user_settings/vr.canis", config.player, error))
+            return false;
+        auto vr = std::make_unique<VR::System>();
+        if (!vr->Initialize(*runtime.window, config, error)) return false;
+        runtime.syncBeforeVR = runtime.window->GetSync();
+        runtime.window->SetSync(Window::IMMEDIATE);
+        runtime.stopEditorVR = false;
+        runtime.vr = std::move(vr);
+        Time::ResetFrameClock();
+        Debug::Log("Editor VR started: %s", runtime.vr->GetDiagnostics().runtime.c_str());
+        return true;
+    }
+
+    void App::RequestStopEditorVR()
+    {
+        if (m_runtime && m_runtime->editorRuntimeEnabled && m_runtime->vr)
+            m_runtime->stopEditorVR = true;
+    }
+
+    void App::FinishEditorVR()
+    {
+        auto& runtime = *m_runtime;
+        if (!runtime.stopEditorVR) return;
+        if (!runtime.window->MakeContextCurrent()) return;
+        if (runtime.vr)
+        {
+            const auto& d = runtime.vr->GetDiagnostics();
+            Debug::Log("Editor VR stopped: frames=%llu eyes=%llu", (unsigned long long)d.frames, (unsigned long long)d.renderedEyes);
+            runtime.vr.reset();
+        }
+        runtime.stopEditorVR = false;
+        runtime.window->SetSync(runtime.syncBeforeVR);
+        Time::SetTargetFPS(GetProjectConfig().frameLimitEditor + 0.0f);
+        Time::ResetFrameClock();
+    }
 
     void App::FailRuntimeTest(const std::string &_message)
     {
@@ -256,6 +317,25 @@ namespace Canis
             for (size_t index = 0u; index < _arguments.size(); ++index)
             {
                 const std::string &argument = _arguments[index];
+                if (argument == "--vr-foveation")
+                {
+                    if (++index >= _arguments.size()) { _outError = "--vr-foveation requires off, fixed, or eye."; return false; }
+                    const auto& mode = _arguments[index];
+                    if (mode == "off") _outOptions.vrFoveation = VR::FoveationMode::Off;
+                    else if (mode == "fixed") _outOptions.vrFoveation = VR::FoveationMode::Fixed;
+                    else if (mode == "eye") _outOptions.vrFoveation = VR::FoveationMode::EyeTracked;
+                    else { _outError = "--vr-foveation requires off, fixed, or eye."; return false; }
+                    continue;
+                }
+                if (argument == "--vr" || argument == "--vr-sim")
+                {
+                    if (_outOptions.vr && _outOptions.vrSimulated != (argument == "--vr-sim"))
+                    { _outError = "Choose either --vr or --vr-sim."; return false; }
+                    _outOptions.vr = true;
+                    _outOptions.vrSimulated = argument == "--vr-sim";
+                    if (!setEditorRuntimeOverride(false, argument)) return false;
+                    continue;
+                }
                 if (argument == "--editor")
                 {
                     if (!setEditorRuntimeOverride(true, argument))
@@ -269,11 +349,11 @@ namespace Canis
                         return false;
                     continue;
                 }
-                if (argument == "--interactive-test")
+                if (argument == "--interactive-test" || argument == "--interactive-editor-test")
                 {
                     _outOptions.active = true;
                     _outOptions.interactive = true;
-                    if (!setEditorRuntimeOverride(false, argument))
+                    if (!setEditorRuntimeOverride(argument == "--interactive-editor-test", argument))
                         return false;
                     continue;
                 }
@@ -370,6 +450,8 @@ namespace Canis
 
             if (_outOptions.forcedFPS > 0.0f && _outOptions.fixedDelta <= 0.0f)
                 _outOptions.fixedDelta = 1.0f / _outOptions.forcedFPS;
+            if (!_outOptions.vr && _outOptions.vrFoveation != VR::FoveationMode::Off)
+            { _outError = "--vr-foveation requires --vr or --vr-sim."; return false; }
             if (_outOptions.interactive && _outOptions.fixedDelta <= 0.0f)
                 _outOptions.fixedDelta = 1.0f / 60.0f;
             if (_outOptions.interactive && !_outOptions.inputScript.empty())
@@ -1916,11 +1998,40 @@ namespace Canis
             windowOptions.resizable = GetProjectConfig().windowResizable;
             windowOptions.startMaximized = GetProjectConfig().windowStartMaximized;
         }
+        windowOptions.vrContext = runtime.launch.vr && !runtime.launch.vrSimulated;
+#if CANIS_OPENXR
+        // Headset play shares the editor context; create a compatible context
+        // before any editor textures or platform viewports exist.
+        windowOptions.vrContext = windowOptions.vrContext || runtime.editorRuntimeEnabled;
+#endif
         SteamInputPlatform::Initialize();
         runtime.window = std::make_unique<Window>(
             windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen, windowOptions);
         runtime.window->SetClearColor(Color(1.0f));
         runtime.window->SetSync(static_cast<Window::Sync>(GetProjectConfig().syncMode));
+        if (runtime.launch.vr)
+        {
+            runtime.vr = std::make_unique<VR::System>();
+            VR::Config config;
+            config.foveation = runtime.launch.vrFoveation;
+            config.mode = runtime.launch.vrSimulated ? VR::Mode::Simulated : VR::Mode::OpenXR;
+            std::string error;
+            if (!VR::LoadPlayerSettings("project_settings/vr.canis",config.player,error) ||
+                !VR::LoadPlayerSettings("user_settings/vr.canis",config.player,error))
+            {
+                Debug::Error("VR settings: %s",error.c_str());
+                m_exitCode = 2; runtime.exitReason = "vr-settings-invalid"; return;
+            }
+            if (!runtime.vr->Initialize(*runtime.window, config, error))
+            {
+                Debug::Error("VR startup: %s", error.c_str());
+                m_exitCode = 7;
+                runtime.exitReason = "vr-startup-failed";
+                return;
+            }
+            Debug::Log("VR runtime: %s; foveation: %s", runtime.vr->GetDiagnostics().runtime.c_str(), runtime.vr->GetDiagnostics().foveation.c_str());
+            runtime.window->SetSync(Window::IMMEDIATE);
+        }
         AudioManager::Initialize();
 
         if (GetProjectConfig().iconUUID == UUID(0))
@@ -1962,6 +2073,8 @@ namespace Canis
             Time::SetTargetFPS(runtime.launch.forcedFPS);
         if (runtime.launch.fixedDelta > 0.0f)
             Time::SetFixedDelta(runtime.launch.fixedDelta);
+        if (runtime.vr && !runtime.launch.vrSimulated)
+            Time::SetTargetFPS(100000.0f);
 
         const char* startupSceneOverride = std::getenv("CANIS_START_SCENE");
         const std::string requestedStartupScenePath = !runtime.launch.launchScene.empty()
@@ -2031,6 +2144,7 @@ namespace Canis
         Editor &editor = *runtime.editor;
         InputManager &inputManager = *runtime.inputManager;
         GameCodeObject &gameCodeObject = runtime.gameCodeObject;
+        FinishEditorVR(); // Stop requested by the previous frame's toolbar.
 
         if (runtime.launch.interactive && runtime.interactiveWaitingForCommand)
         {
@@ -2102,6 +2216,37 @@ namespace Canis
         if (inputManager.ConsumeResumeFrameResetRequest())
             Time::ResetFrameClock();
 
+        if (runtime.vr && !runtime.stopEditorVR)
+        {
+            std::string error;
+            if (!runtime.vr->BeginFrame(error))
+            {
+                Debug::Error("VR frame: %s", error.c_str());
+#if CANIS_EDITOR
+                if (runtime.editorRuntimeEnabled)
+                {
+                    editor.SetVRPlayError(error);
+                    editor.StopPlayMode();
+                    RequestStopEditorVR();
+                    FinishEditorVR();
+                }
+                else
+#endif
+                {
+                m_exitCode = 7; runtime.exitReason = "vr-frame-failed";
+                return false;
+                }
+            }
+            if (runtime.vr && runtime.vr->GetState().exitRequested)
+            {
+#if CANIS_EDITOR
+                if (runtime.editorRuntimeEnabled)
+                { editor.StopPlayMode(); RequestStopEditorVR(); }
+                else
+#endif
+                { runtime.exitReason = "vr-exit-requested"; return false; }
+            }
+        }
         f32 deltaTime = Time::StartFrame();
 
         for (const unsigned int key : runtime.pulseKeys)
@@ -2199,6 +2344,19 @@ namespace Canis
 
         if (!window.MakeContextCurrent())
         {
+            if (runtime.vr)
+            {
+#if CANIS_EDITOR
+                if (runtime.editorRuntimeEnabled)
+                {
+                    editor.SetVRPlayError("The editor graphics context became unavailable.");
+                    editor.StopPlayMode();
+                    RequestStopEditorVR();
+                }
+                else
+#endif
+                { m_exitCode = 7; runtime.exitReason = "vr-context-lost"; return false; }
+            }
             Debug::Warning("Skipping render frame because the OpenGL context is unavailable after resume.");
             m_renderTimeMs = 0.0f;
             Time::ResetFrameClock();
@@ -2206,7 +2364,7 @@ namespace Canis
             return true;
         }
 
-        if (!window.HasDrawableSurface())
+        if (!window.HasDrawableSurface() && !runtime.vr)
         {
             m_renderTimeMs = 0.0f;
             Time::EndFrame();
@@ -2218,17 +2376,57 @@ namespace Canis
         int captureWidth = 0;
         int captureHeight = 0;
         window.Clear();
+        // Submit the headset frame before drawing the editor. The toolbar may
+        // start/stop a session during Draw; no acquired XR images outlive this pass.
+        if (runtime.vr)
+        {
+            const int width = window.GetScreenWidth(), height = window.GetScreenHeight();
+            std::string error;
+            const bool rendered = runtime.vr->RenderAndEndFrame(
+                [&](const VR::Eye& eye, const Matrix4& view, unsigned int framebuffer)
+                {
+                    glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+                    window.SetRenderSize(eye.width, eye.height);
+                    scene.SetVRCamera(view, eye.projection, 0.05f, 200.0f);
+                    // Screen-space UI and desktop post-processing need separate XR
+                    // composition paths. Render the existing 3D system explicitly.
+                    if (!runtime.stopEditorVR)
+                        if (auto* renderer = scene.GetSystem<MeshRenderer3DSystem>())
+                            renderer->Update(scene.GetRegistry(), deltaTime);
+                }, error);
+            scene.ClearVRCamera();
+            window.SetRenderSize(width, height);
+            if (!rendered)
+            {
+                Debug::Error("VR render: %s", error.c_str());
+#if CANIS_EDITOR
+                if (runtime.editorRuntimeEnabled)
+                { editor.SetVRPlayError(error); editor.StopPlayMode(); RequestStopEditorVR(); }
+                else
+#endif
+                { m_exitCode = 7; runtime.exitReason = "vr-render-failed"; return false; }
+            }
+            if (!runtime.editorRuntimeEnabled)
+            {
+                captureFramebuffer = runtime.vr->MirrorFramebuffer();
+                captureWidth = runtime.vr->MirrorWidth(); captureHeight = runtime.vr->MirrorHeight();
+                BlitFramebuffer(captureFramebuffer, captureWidth, captureHeight, 0, window.GetWindowWidth(), window.GetWindowHeight());
+            }
+            FinishEditorVR();
+        }
 #if CANIS_EDITOR
         if (runtime.editorRuntimeEnabled)
         {
             editor.Draw(&scene, &window, this, &gameCodeObject, deltaTime);
-            // Editor captures use the composed window framebuffer, including its UI.
+            // Editor captures include the scene, hierarchy, inspector and mirror.
+            captureFramebuffer = 0;
             captureWidth = window.GetWindowWidth();
             captureHeight = window.GetWindowHeight();
             inputManager.SetGameInputWindowID(editor.GetGameInputWindowID());
         }
         else
 #endif
+        if (!runtime.vr)
         {
             EnsureRenderTarget(runtime.runtimeRenderTarget, window.GetScreenWidth(), window.GetScreenHeight());
 
@@ -2443,6 +2641,12 @@ namespace Canis
             AudioManager::Shutdown();
         if (runtime->gameCodeInitialized)
             GameCodeObjectDestroy(&runtime->gameCodeObject);
+        if (runtime->vr)
+        {
+            const auto& d = runtime->vr->GetDiagnostics();
+            Debug::Log("VR summary: frames=%llu eyes=%llu skipped=%llu lastRenderCpuMs=%.3f", static_cast<unsigned long long>(d.frames), static_cast<unsigned long long>(d.renderedEyes), static_cast<unsigned long long>(d.skippedFrames), d.renderCpuMs);
+            runtime->vr.reset();
+        }
         DestroyRenderTarget(runtime->runtimeRenderTarget);
         DestroyRenderTarget(runtime->runtimePostProcessTarget);
         m_editor = nullptr;
@@ -2490,6 +2694,7 @@ namespace Canis
                 << "  --launch-scene PATH         Launch a scene path or a name under assets/scenes.\n"
                 << "  --input-script PATH         Replay timestamped JSON/YAML input events.\n"
                 << "  --interactive-test          Pause after each input batch and return a framebuffer.\n"
+                << "  --interactive-editor-test   Same capture protocol with the editor UI enabled.\n"
                 << "  --force-fps NUMBER          Fix simulation delta to 1/FPS and pace rendering.\n"
                 << "  --fixed-delta SECONDS       Use an exact simulation delta without changing pacing.\n"
                 << "  --seed NUMBER               Seed runtime randomness with an unsigned 32-bit integer.\n"
@@ -2497,6 +2702,9 @@ namespace Canis
                 << "  --capture-dir PATH          Write PNG captures and manifest.json here.\n"
                 << "  --capture-final             Capture the final rendered frame (default).\n"
                 << "  --no-final-capture          Disable automatic final-frame capture.\n"
+                << "  --vr                       Run the OpenXR headset path (requires runtime).\n"
+                << "  --vr-foveation MODE        off (default), fixed, eye; experimental NVIDIA GL path.\n"
+                << "  --vr-sim                   Run deterministic stereo simulation without a headset.\n"
                 << "  --offscreen                 Create a hidden OpenGL window for automated runs.\n";
             return 0;
         }

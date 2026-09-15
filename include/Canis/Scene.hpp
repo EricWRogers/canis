@@ -115,6 +115,17 @@ namespace Canis
         void ClearDebugGizmoLines();
         const std::vector<DebugGizmoLine>& GetDebugGizmoLines() const { return m_debugGizmoLines; }
 
+        struct VRCamera
+        {
+            Matrix4 view{1.0f}, projection{1.0f};
+            float nearClip = 0.05f, farClip = 200.0f;
+            bool enabled = false;
+        };
+        void SetVRCamera(const Matrix4& view, const Matrix4& projection, float nearClip, float farClip)
+        { m_vrCamera = {view, projection, nearClip, farClip, true}; }
+        void ClearVRCamera() { m_vrCamera.enabled = false; }
+        const VRCamera& GetVRCamera() const { return m_vrCamera; }
+
         void SetEditorCamera3DOverride(const Matrix4 &_view, const Matrix4 &_projection);
         void SetEditorCamera2DOverride(const Matrix4 &_cameraMatrix, const Vector2 &_position);
         void ClearEditorCameraOverrides();
@@ -210,6 +221,7 @@ namespace Canis
         std::vector<Entity*>& GetEntities() { return m_entities; }
         const std::vector<SystemTiming>& GetSystemTimings() const { return m_systemTimings; }
     private:
+        VRCamera m_vrCamera;
         std::string m_name = "main";
         std::string m_path = "assets/scenes/main.scene";
         Window *m_window = nullptr;

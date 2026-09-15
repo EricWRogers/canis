@@ -1,5 +1,6 @@
 #if CANIS_EDITOR
 #include <Canis/InputActionsEditor.hpp>
+#include <Canis/EditorPanelMaximizer.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/SteamInput.hpp>
 #include <Canis/Canis.hpp>
@@ -62,7 +63,7 @@ std::string UniqueName(const InputDocument& d,std::string base,bool map)
     return result;
 }
 }
-void DrawInputActionsEditor(InputManager& input,bool& open)
+void DrawInputActionsEditor(InputManager& input,bool& open, EditorPanelMaximizer* panels)
 {
     static InputEditorState state;
     auto& runtime=input.Actions();
@@ -76,7 +77,7 @@ void DrawInputActionsEditor(InputManager& input,bool& open)
     }
     const auto* viewport=ImGui::GetMainViewport();
     ImGui::SetNextWindowSize(ImVec2(std::min(1100.0f,viewport->WorkSize.x*0.9f),std::min(700.0f,viewport->WorkSize.y*0.9f)),ImGuiCond_FirstUseEver);
-    if(!ImGui::Begin("Input Actions",&open)) {if(!open) runtime.CancelCapture();ImGui::End(); return;}
+    if(!(panels ? panels->Begin("Input Actions", &open) : ImGui::Begin("Input Actions", &open))) {if(!open) runtime.CancelCapture();ImGui::End(); return;}
     if(!open) runtime.CancelCapture();
     const auto before=state.document;
     const auto beforeText=SerializeInputDocument(before);

@@ -8,6 +8,7 @@
 namespace Canis
 {
 class Editor;
+namespace VR { class System; }
 
 class App
 {
@@ -15,6 +16,11 @@ public:
     Scene scene;
     ~App();
     int Run(int _argc = 0, char **_argv = nullptr);
+
+    VR::System* GetVR();
+    const VR::System* GetVR() const;
+    bool StartEditorVR(bool _simulated, std::string &_error);
+    void RequestStopEditorVR();
 
     // Time
     float FPS();
@@ -73,6 +79,7 @@ private:
     void InitializeRuntime();
     bool RunFrame();
     void ShutdownRuntime();
+    void FinishEditorVR();
 #if defined(__EMSCRIPTEN__)
     static void WebMainLoop(void *_appPtr);
 #endif

@@ -645,7 +645,8 @@ namespace Canis
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glLineWidth(3.0f);
+        // Forward-compatible core contexts only support width 1.
+        glLineWidth(1.0f);
 
         m_colliderDebugShader->Use();
         m_colliderDebugShader->SetMat4("P", _projection);
@@ -792,7 +793,8 @@ namespace Canis
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
-        glLineWidth(2.0f);
+        // Forward-compatible core contexts only support width 1.
+        glLineWidth(1.0f);
 
         m_colliderDebugShader->Use();
         m_colliderDebugShader->SetMat4("P", _projection);
@@ -934,6 +936,12 @@ namespace Canis
         const bool cullFaceEnabled = glIsEnabled(GL_CULL_FACE);
         const bool polygonOffsetEnabled = glIsEnabled(GL_POLYGON_OFFSET_FILL);
 
+#ifndef __EMSCRIPTEN__
+        const bool shadingRateEnabled = glewGetExtension("GL_NV_shading_rate_image") && glIsEnabled(GL_SHADING_RATE_IMAGE_NV);
+        if (shadingRateEnabled) glDisable(GL_SHADING_RATE_IMAGE_NV);
+#endif
+        const bool scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
+        glDisable(GL_SCISSOR_TEST);
         glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFramebuffer);
         glViewport(0, 0, kDirectionalShadowMapSize, kDirectionalShadowMapSize);
         glClear(GL_DEPTH_BUFFER_BIT);
@@ -1026,6 +1034,10 @@ namespace Canis
         glCullFace(GL_BACK);
         glBindFramebuffer(GL_FRAMEBUFFER, static_cast<GLuint>(previousFramebuffer));
         glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+        if (scissorWasEnabled) glEnable(GL_SCISSOR_TEST);
+#ifndef __EMSCRIPTEN__
+        if (shadingRateEnabled) glEnable(GL_SHADING_RATE_IMAGE_NV);
+#endif
     }
 
     void MeshRenderer3DSystem::DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view)
@@ -1092,7 +1104,16 @@ namespace Canis
         float cameraNearClip = 0.1f;
         float cameraFarClip = 100.0f;
 
-        if (scene->HasEditorCamera3DOverride())
+        if (scene->GetVRCamera().enabled)
+        {
+            const auto& camera = scene->GetVRCamera();
+            projection = camera.projection;
+            view = camera.view;
+            cameraNearClip = camera.nearClip;
+            cameraFarClip = camera.farClip;
+            cameraPosition = Vector3(glm::inverse(view)[3]);
+        }
+        else if (scene->HasEditorCamera3DOverride())
         {
             projection = scene->GetEditorCamera3DProjection();
             view = scene->GetEditorCamera3DView();

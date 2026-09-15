@@ -2,6 +2,7 @@
 #pragma once
 
 #include <functional>
+#include <cstdint>
 #include <filesystem>
 #include <string>
 #include <thread>
@@ -13,6 +14,9 @@
 #include <vector>
 
 #include <Canis/UUID.hpp>
+#include <Canis/ScriptDocument.hpp>
+#include <Canis/ScriptWorkspace.hpp>
+#include <Canis/EditorPanelMaximizer.hpp>
 #include <Canis/Asset.hpp>
 #include <Canis/AssetHandle.hpp>
 #include <Canis/PostProcessPipeline.hpp>
@@ -72,6 +76,7 @@ namespace Canis
             return requested;
         }
         void StopPlayMode();
+        void SetVRPlayError(const std::string &_error) { m_vrPlayError = _error; }
         void FocusEntity(Canis::Entity* _entity);
         bool BakeBlockoutEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
@@ -211,6 +216,7 @@ namespace Canis
         };
 
         void DrawMainDockspace();
+        EditorPanelMaximizer m_panelMaximizer;
         void ApplyInternalSceneCamera(float _deltaTime);
         void DrawSceneView();
         void DrawSceneTabs();
@@ -268,6 +274,27 @@ namespace Canis
         void DestroyAssetPreviewCache();
         void CacheSceneCameraFrameIfNeeded();
         void DrawScriptsPanel();
+        void DrawScriptEditor();
+        void TickScriptWorkspace();
+        void DrawScriptTools(ScriptEditing::Document* active);
+        void RestoreScriptSession();
+        void SaveScriptSession();
+        ScriptEditing::Workspace m_scriptWorkspace;
+        void OpenScriptDocument(const std::filesystem::path& path, int line = 0, int column = 1);
+        bool SaveScriptDocuments(const std::string& onlyPath = {});
+        bool m_syncScriptHeaders = true;
+        bool m_scriptBuildOutputPinned = false;
+        void DrawScriptBuildLog(const std::string& output);
+        std::vector<ScriptEditing::Document> m_scriptDocuments;
+        std::string m_activeScriptDocument;
+        std::unordered_map<std::string, std::string> m_scriptTabFiles;
+        std::string m_scriptEditorMessage;
+        std::string m_scriptSearch;
+        bool m_showScriptEditor = false;
+        bool m_focusScriptDocument = false;
+        bool m_scriptBuildRequested = false;
+        bool m_scriptsNeedBuild = false;
+        int m_scriptGotoLine = 1;
         void DrawScriptDirectoryRecursive(const std::filesystem::path &_includeRoot, const std::filesystem::path &_currentDir, const std::filesystem::path &_sourceRoot);
         void CommitAssetRename();
         void CommitScriptFolderRename(const std::filesystem::path &_includeRoot, const std::filesystem::path &_sourceRoot);
@@ -386,6 +413,8 @@ namespace Canis
         int m_index = 0;
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
+        int m_playTarget = 0; // Desktop, Headset, VR Simulation.
+        std::string m_vrPlayError;
         DebugDraw m_debugDraw = DebugDraw::NONE;
         SceneCameraMode m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_3D;
         GuizmoMode m_guizmoMode = GuizmoMode::WORLD;
@@ -552,6 +581,7 @@ namespace Canis
         bool m_openReloadBuildPopup = false;
         bool m_reloadBuildAutoCloseOnSuccess = false;
         int m_reloadBuildExitCode = -1;
+        std::uint64_t m_reloadBuildStartTicks = 0;
         std::vector<UUID> m_hierarchyRootOrder = {};
         std::vector<SceneTabState> m_sceneTabs = {};
         int m_activeSceneTab = -1;
