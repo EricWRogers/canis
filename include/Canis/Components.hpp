@@ -1254,6 +1254,9 @@ namespace Canis
         i32 poseModelId = -1;
         u64 poseGeometryRevision = 0u;
         ModelAsset::Pose3D pose = {};
+        // Runtime-only full local pose supplied by tracking/procedural animation.
+        // Empty restores normal clip playback. Each entity owns its own data.
+        std::vector<Matrix4> externalLocalNodeMatrices = {};
 
         // Runtime caching to skip redundant animation evaluation.
         bool poseInitialized = false;

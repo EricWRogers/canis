@@ -6,6 +6,7 @@
 #if CANIS_OPENXR
 #include <Canis/OpenGL.hpp>
 #include <Canis/Window.hpp>
+#include <Canis/Debug.hpp>
 #include <SDL3/SDL.h>
 #ifdef _WIN32
 #ifndef NOMINMAX
@@ -59,6 +60,11 @@ namespace Canis::VR
             XrSpace headSpace = XR_NULL_HANDLE;
             XrActionSet actions = XR_NULL_HANDLE;
             bool gazeSupported = false;
+            std::array<XrHandTrackerEXT, 2> handTrackers{};
+            PFN_xrCreateHandTrackerEXT createHandTracker = nullptr;
+            PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
+            PFN_xrLocateHandJointsEXT locateHandJoints = nullptr;
+            std::array<bool, 2> handLocateWarned{};
             XrAction gazeAction = XR_NULL_HANDLE;
             XrSpace gazeSpace = XR_NULL_HANDLE;
             XrAction gripAction = XR_NULL_HANDLE, aimAction = XR_NULL_HANDLE;
@@ -160,6 +166,73 @@ namespace Canis::VR
                 Check(xrLocateSpace(target, space, displayTime, &location), "xrLocateSpace");
                 return ConvertPose(location.pose, (location.locationFlags & validPose) == validPose, floorOffset);
             }
+            void HandTrackingSetup(Diagnostics& diagnostics)
+            {
+                XrSystemHandTrackingPropertiesEXT support{XR_TYPE_SYSTEM_HAND_TRACKING_PROPERTIES_EXT};
+                XrSystemProperties properties{XR_TYPE_SYSTEM_PROPERTIES}; properties.next = &support;
+                const auto result = xrGetSystemProperties(instance, system, &properties);
+                if (XR_FAILED(result) || !support.supportsHandTracking) return;
+                if (XR_FAILED(xrGetInstanceProcAddr(instance, "xrCreateHandTrackerEXT", reinterpret_cast<PFN_xrVoidFunction*>(&createHandTracker))) ||
+                    XR_FAILED(xrGetInstanceProcAddr(instance, "xrDestroyHandTrackerEXT", reinterpret_cast<PFN_xrVoidFunction*>(&destroyHandTracker))) ||
+                    XR_FAILED(xrGetInstanceProcAddr(instance, "xrLocateHandJointsEXT", reinterpret_cast<PFN_xrVoidFunction*>(&locateHandJoints))) ||
+                    !createHandTracker || !destroyHandTracker || !locateHandJoints) return;
+                for (unsigned i = 0; i < 2; ++i)
+                {
+                    XrHandTrackerCreateInfoEXT info{XR_TYPE_HAND_TRACKER_CREATE_INFO_EXT};
+                    info.hand = i == 0 ? XR_HAND_LEFT_EXT : XR_HAND_RIGHT_EXT;
+                    info.handJointSet = XR_HAND_JOINT_SET_DEFAULT_EXT;
+                    const auto created = createHandTracker(session, &info, &handTrackers[i]);
+                    if (XR_FAILED(created))
+                    {
+                        handTrackers[i] = XR_NULL_HANDLE;
+                        Debug::Warning("OpenXR hand tracker %u unavailable (%d); using controller animation for that hand", i, created);
+                    }
+                }
+                diagnostics.handTrackingSupported = handTrackers[0] || handTrackers[1];
+                if (diagnostics.handTrackingSupported)
+                    diagnostics.handTracking = "XR_EXT_hand_tracking available; individual joints used when active";
+            }
+            void ReadHandJoints(State& state)
+            {
+                static_assert(static_cast<unsigned>(HandJoint::Count) == XR_HAND_JOINT_COUNT_EXT);
+                if (!state.focused || !state.shouldRender) return;
+                for (unsigned i = 0; i < 2; ++i)
+                {
+                    if (!handTrackers[i]) continue;
+                    std::array<XrHandJointLocationEXT, XR_HAND_JOINT_COUNT_EXT> joints{};
+                    XrHandJointLocationsEXT locations{XR_TYPE_HAND_JOINT_LOCATIONS_EXT};
+                    locations.jointCount = joints.size(); locations.jointLocations = joints.data();
+                    XrHandJointsLocateInfoEXT info{XR_TYPE_HAND_JOINTS_LOCATE_INFO_EXT};
+                    info.baseSpace = space; info.time = displayTime;
+                    const auto result = locateHandJoints(handTrackers[i], &info, &locations);
+                    if (XR_FAILED(result))
+                    {
+                        if (!handLocateWarned[i]) Debug::Warning("OpenXR hand joints %u unavailable (%d); using controller animation", i, result);
+                        handLocateWarned[i] = true;
+                        continue;
+                    }
+                    handLocateWarned[i] = false;
+                    if (!locations.isActive) continue;
+                    auto& skeleton = state.hands[i].skeleton;
+                    bool valid = true;
+                    for (unsigned j = 0; j < joints.size(); ++j)
+                    {
+                        const auto& source = joints[j];
+                        auto& target = skeleton.joints[j];
+                        target.pose = ConvertPose(source.pose, (source.locationFlags & validPose) == validPose, floorOffset);
+                        const auto& p = target.pose.position; const auto& q = target.pose.orientation;
+                        target.pose.valid = target.pose.valid && std::isfinite(p.x) && std::isfinite(p.y) && std::isfinite(p.z) &&
+                            std::isfinite(q.x) && std::isfinite(q.y) && std::isfinite(q.z) && std::isfinite(q.w) && glm::length(q) > 0.001f;
+                        if (target.pose.valid) target.pose.orientation = glm::normalize(q);
+                        constexpr auto tracked = XR_SPACE_LOCATION_POSITION_TRACKED_BIT | XR_SPACE_LOCATION_ORIENTATION_TRACKED_BIT;
+                        target.tracked = target.pose.valid && (source.locationFlags & tracked) == tracked;
+                        target.radius = target.pose.valid && std::isfinite(source.radius) ? std::max(0.0f, source.radius) : 0;
+                        valid = valid && target.pose.valid;
+                    }
+                    skeleton.active = valid;
+                    if (!valid) skeleton = {};
+                }
+            }
             void ReadInput(State& state)
             {
                 state.hands = {};
@@ -167,7 +240,7 @@ namespace Canis::VR
                 XrActiveActionSet active{actions, XR_NULL_PATH};
                 XrActionsSyncInfo sync{XR_TYPE_ACTIONS_SYNC_INFO}; sync.countActiveActionSets = 1; sync.activeActionSets = &active;
                 const auto result = xrSyncActions(session, &sync);
-                if (result == XR_SESSION_NOT_FOCUSED) return;
+                if (result == XR_SESSION_NOT_FOCUSED) { state.focused = false; return; }
                 Check(result, "xrSyncActions");
                 if (gazeSupported)
                 {
@@ -225,6 +298,7 @@ namespace Canis::VR
                 if (gazeSpace) xrDestroySpace(gazeSpace);
                 if (headSpace) xrDestroySpace(headSpace);
                 if (space) xrDestroySpace(space);
+                for (auto tracker : handTrackers) if (tracker && destroyHandTracker) destroyHandTracker(tracker);
                 if (session) xrDestroySession(session);
                 if (actions) xrDestroyActionSet(actions);
                 if (instance) xrDestroyInstance(instance);
@@ -244,6 +318,8 @@ namespace Canis::VR
                 const bool gazeExtension = config.foveation == FoveationMode::EyeTracked &&
                     std::find(diagnostics.extensions.begin(), diagnostics.extensions.end(), XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME) != diagnostics.extensions.end();
                 if (gazeExtension) enabled.push_back(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME);
+                const bool handExtension = std::find(diagnostics.extensions.begin(), diagnostics.extensions.end(), XR_EXT_HAND_TRACKING_EXTENSION_NAME) != diagnostics.extensions.end();
+                if (handExtension) enabled.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
                 XrInstanceCreateInfo instanceInfo{XR_TYPE_INSTANCE_CREATE_INFO};
                 std::strcpy(instanceInfo.applicationInfo.applicationName, "Canis VR Foodtruck");
                 std::strcpy(instanceInfo.applicationInfo.engineName, "Canis");
@@ -301,6 +377,7 @@ namespace Canis::VR
 #endif
                 XrSessionCreateInfo sessionInfo{XR_TYPE_SESSION_CREATE_INFO}; sessionInfo.systemId = system; sessionInfo.next = &binding;
                 Check(xrCreateSession(instance, &sessionInfo, &session), "xrCreateSession");
+                if (handExtension) HandTrackingSetup(diagnostics);
                 Check(xrEnumerateReferenceSpaces(session, 0, &count, nullptr), "xrEnumerateReferenceSpaces");
                 std::vector<XrReferenceSpaceType> spaces(count);
                 Check(xrEnumerateReferenceSpaces(session, count, &count, spaces.data()), "xrEnumerateReferenceSpaces");
@@ -399,6 +476,7 @@ namespace Canis::VR
                     state.eyes[i].width = chains[i].width; state.eyes[i].height = chains[i].height;
                 }
                 ReadInput(state);
+                ReadHandJoints(state);
             }
             void RenderEnd(State& state, const System::RenderEye& render, const Matrix4& origin, unsigned int mirror, int mirrorWidth, int mirrorHeight) override
             {

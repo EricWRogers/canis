@@ -54,6 +54,20 @@ namespace Canis
                 modelAnimation.lastEvaluatedRootMotionMask = Vector3(0.0f);
             }
 
+            if (!modelAnimation.externalLocalNodeMatrices.empty())
+            {
+                if (!modelAnimation.poseInitialized) model->ResetPose(modelAnimation.pose);
+                if (model->BlendPoseFromLocalMatrices(modelAnimation.pose, modelAnimation.externalLocalNodeMatrices, 0.0f))
+                {
+                    modelAnimation.poseInitialized = true;
+                    // Force resampling the clip when external tracking ends,
+                    // even when its animation time has not changed.
+                    modelAnimation.lastEvaluatedAnimationIndex = -1;
+                    continue;
+                }
+                modelAnimation.poseInitialized = false;
+            }
+
             const i32 animationCount = model->GetAnimationCount();
             if (animationCount <= 0)
             {

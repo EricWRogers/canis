@@ -359,25 +359,21 @@ namespace Canis
         }
         m_entitiesToReady.clear();
 
-        for (size_t i = 0; i < m_entities.size(); ++i)
-        {
-            Entity* e = m_entities[i];
-            if (e == nullptr || !e->Active())
-                continue;
-
-            const auto scripts = e->GetScripts();
-            for (size_t j = 0; j < scripts.size() && e->Active(); ++j)
+        // Snapshot once: scripts attached during Update start on the next frame.
+        // Handles invalidate immediately on removal, including later phases.
+        std::vector<ScriptHandle<ScriptableEntity>> frameScripts;
+        for (Entity* e : m_entities)
+            if (e && e->Active())
+                for (auto handle : e->GetScripts()) frameScripts.push_back(handle);
+        for (int phase = 0; phase < static_cast<int>(ScriptUpdatePhase::Count); ++phase)
+            for (auto handle : frameScripts)
             {
-                ScriptableEntity* se = scripts[j].TryGet();
-                if (se && se->m_onReadyCalled)
-                {
-                    if (m_paused && !se->UpdateWhenPaused())
-                        continue;
-
-                    se->Update(_deltaTime);
-                }
+                auto* se = handle.TryGet();
+                if (!se || !se->entity.Active() || !se->m_onReadyCalled ||
+                    static_cast<int>(se->UpdatePhase()) != phase ||
+                    (m_paused && !se->UpdateWhenPaused())) continue;
+                se->Update(_deltaTime);
             }
-        }
 
         // Animation state and model assets are commonly selected by scripts.
         // Evaluate post-script systems before rendering so a newly selected

@@ -152,6 +152,7 @@ namespace Canis
         runtime.vr = std::move(vr);
         Time::ResetFrameClock();
         Debug::Log("Editor VR started: %s", runtime.vr->GetDiagnostics().runtime.c_str());
+        Debug::Log("VR hand tracking: %s", runtime.vr->GetDiagnostics().handTracking.c_str());
         return true;
     }
 

@@ -2,6 +2,7 @@
 #include <Canis/VR/VRMath.hpp>
 #include <Canis/VR/Foveation.hpp>
 #include <Canis/VR/PlayerSettings.hpp>
+#include <Canis/VR/HandTracking.hpp>
 #include <array>
 #include <cstdint>
 #include <functional>
@@ -25,6 +26,7 @@ namespace Canis::VR
     };
     struct Hand
     {
+        HandSkeleton skeleton;
         Pose grip;
         Pose aim;
         float trigger = 0.0f;
@@ -58,6 +60,8 @@ namespace Canis::VR
         std::vector<std::string> extensions;
         std::string foveation = "off";
         bool eyeGazeSupported = false;
+        bool handTrackingSupported = false;
+        std::string handTracking = "unavailable: controller animation fallback";
         uint64_t frames = 0;
         uint64_t renderedEyes = 0;
         uint64_t skippedFrames = 0;

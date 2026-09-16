@@ -283,6 +283,10 @@ namespace Canis
         void Destroy();
     };
 
+    // Named stages keep cross-entity behavior independent of hierarchy order.
+    // Existing scripts retain the Gameplay default and their relative order.
+    enum class ScriptUpdatePhase { Input, Intent, Resolution, Interaction, Gameplay, Presentation, Observe, Count };
+
     class ScriptableEntity
     {
     friend Scene;
@@ -299,6 +303,7 @@ namespace Canis
         virtual void Create() {}
         virtual void Ready() {}
         virtual void Destroy() {}
+        virtual ScriptUpdatePhase UpdatePhase() const { return ScriptUpdatePhase::Gameplay; }
         virtual void Update(float _dt) {}
         virtual bool UpdateWhenPaused() const { return false; }
     };
