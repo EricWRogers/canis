@@ -45,6 +45,7 @@ namespace Canis
 
         struct ShaderGraphEditorViewState
         {
+            bool fitted = false;
             GraphEditor::Options options = {};
             GraphEditor::ViewState viewState = {};
             ImVec2 contextMousePos = ImVec2(0.0f, 0.0f);
@@ -99,10 +100,16 @@ namespace Canis
             ShaderGraphTemplate_Preview,
             ShaderGraphTemplate_VertexOutput,
             ShaderGraphTemplate_Output,
+            ShaderGraphTemplate_ToonLighting,
+            ShaderGraphTemplate_Posterize,
+            ShaderGraphTemplate_Fresnel,
             ShaderGraphTemplate_Count
         };
 
         const char *kTextureUvInputNames[] = { "UV" };
+        const char *kToonInputs[] = { "Normal", "Bands" };
+        const char *kPosterizeInputs[] = { "Value", "Steps" };
+        const char *kFresnelInputs[] = { "Normal", "Power" };
         const char *kTextureOutputNames[] = { "Color" };
         const char *kMathInputNames[] = { "A", "B" };
         const char *kMathOutputNames[] = { "Value" };
@@ -349,7 +356,7 @@ namespace Canis
             const Vector3 center = (minBounds + maxBounds) * 0.5f;
             const Vector3 size = glm::max(maxBounds - minBounds, Vector3(0.001f));
             const float maxDimension = std::max(size.x, std::max(size.y, size.z));
-            const float fitScale = (maxDimension > 0.0001f) ? (1.6f / maxDimension) : 1.0f;
+            const float fitScale = (maxDimension > 0.0001f) ? (1.2f / maxDimension) : 1.0f;
 
             Matrix4 modelMatrix(1.0f);
             if (_node.previewMesh != kShaderGraphPreviewMeshPlane)
@@ -390,6 +397,7 @@ namespace Canis
             }
 
             std::string errorMessage = {};
+            if(!SaveShaderGraphDocument(previewGraphPath,BuildShaderGraphPreviewDocument(_document,_previewNode)))return false;
             if (!GenerateShaderGraphAssets(previewGraphPath, BuildShaderGraphPreviewDocument(_document, _previewNode), &errorMessage))
             {
                 if (!errorMessage.empty())
@@ -397,9 +405,7 @@ namespace Canis
                 return false;
             }
 
-            const std::string vertexPath = GetShaderGraphGeneratedVertexPath(previewGraphPath);
-            std::filesystem::path shaderBasePath(vertexPath);
-            shaderBasePath.replace_extension("");
+            std::filesystem::path shaderBasePath(previewGraphPath);
 
             if (const int shaderId = AssetManager::GetID(shaderBasePath.string()); shaderId >= 0)
             {
@@ -509,6 +515,13 @@ namespace Canis
             shader->SetMat4("V", view);
             shader->SetVec3("ambientLightColor", 0.24f, 0.26f, 0.32f);
             shader->SetFloat("ambientLightIntensity", 1.0f);
+            shader->SetVec3("cameraPosition",cameraPosition);
+            shader->SetBool("useDirectionalLight",true);
+            shader->SetBool("useDirectionalShadow",false);
+            shader->SetVec3("directionalLightDirection",-.4f,-1.0f,-.6f);
+            shader->SetVec3("directionalLightColor",1.0f,.95f,.85f);
+            shader->SetFloat("directionalLightIntensity",.85f);
+            shader->SetInt("pointLightCount",0);
             shader->SetFloat("TIME", static_cast<float>(Time::TimeSinceLaunch()) / 1000.0f);
             (void)materialAsset->materialFields.Use(*shader, 5);
             model->Draw(*shader, modelMatrix, nullptr, materialAsset->albedoId, Color(1.0f), nullptr);
@@ -1077,7 +1090,7 @@ namespace Canis
             const ImRect contentRect(
                 ImVec2(_rect.Min.x + ScaleShaderGraphUi(10.0f, _zoom, 4.0f), _rect.Min.y + ScaleShaderGraphUi(8.0f, _zoom, 4.0f)),
                 ImVec2(_rect.Max.x - ScaleShaderGraphUi(10.0f, _zoom, 4.0f), _rect.Max.y - ScaleShaderGraphUi(8.0f, _zoom, 4.0f)));
-            const float footerHeight = ScaleShaderGraphUi(48.0f, _zoom, 26.0f);
+            const float footerHeight = ScaleShaderGraphUi(64.0f, _zoom, 36.0f);
             const ImRect previewRect(
                 contentRect.Min,
                 ImVec2(contentRect.Max.x, std::max(contentRect.Min.y + ScaleShaderGraphUi(32.0f, _zoom, 18.0f), contentRect.Max.y - footerHeight)));
@@ -1088,10 +1101,11 @@ namespace Canis
             _drawList->AddRectFilled(previewRect.Min, previewRect.Max, IM_COL32(28, 33, 40, 255), rounding);
             _drawList->AddRect(previewRect.Min, previewRect.Max, IM_COL32(84, 96, 112, 255), rounding, 0, 1.0f);
 
+            bool rendered = false;
             if (_graphPath != nullptr && _document != nullptr && _previewNode != nullptr)
             {
                 DrawShaderGraphCheckerboard(_drawList, previewRect, ScaleShaderGraphUi(12.0f, _zoom, 6.0f), IM_COL32(84, 88, 96, 255), IM_COL32(54, 58, 66, 255), rounding);
-                if (DrawShaderGraphRenderedPreview(_drawList, previewRect, *_graphPath, *_document, *_previewNode))
+                if ((rendered=DrawShaderGraphRenderedPreview(_drawList, previewRect, *_graphPath, *_document, *_previewNode)))
                     goto shader_graph_preview_footer;
             }
 
@@ -1165,8 +1179,8 @@ shader_graph_preview_footer:
             _drawList->AddRect(footerRect.Min, footerRect.Max, IM_COL32(74, 82, 94, 255), rounding, 0, 1.0f);
 
             ImVec2 footerCursor(footerRect.Min.x + ScaleShaderGraphUi(10.0f, _zoom, 4.0f), footerRect.Min.y + ScaleShaderGraphUi(7.0f, _zoom, 3.0f));
-            DrawShaderGraphNodeText(_drawList, footerRect, footerCursor, GetShaderGraphPreviewSummary(_preview), IM_COL32(230, 236, 244, 255), _zoom);
-            DrawShaderGraphNodeText(_drawList, footerRect, footerCursor, "Source: " + _sourceLabel, IM_COL32(164, 174, 188, 255), _zoom);
+            DrawShaderGraphNodeText(_drawList, footerRect, footerCursor, rendered?GetShaderGraphPreviewMeshDisplayName(_previewNode->previewMesh):GetShaderGraphPreviewSummary(_preview), IM_COL32(230, 236, 244, 255), _zoom);
+            DrawShaderGraphNodeText(_drawList, footerRect, footerCursor, _sourceLabel, IM_COL32(164, 174, 188, 255), _zoom);
         }
 
         GraphEditor::Template GetShaderGraphTemplate(size_t _index)
@@ -1208,7 +1222,12 @@ shader_graph_preview_footer:
                 case ShaderGraphTemplate_Texture2D:
                     return MakeTemplate(IM_COL32(182, 148, 46, 255), IM_COL32(106, 86, 26, 255), IM_COL32(124, 100, 30, 255), 1, kTextureUvInputNames, kTextureInputColors, 1, kTextureOutputNames, kTextureOutputColors);
                 case ShaderGraphTemplate_Add:
-                    return MakeTemplate(IM_COL32(142, 78, 62, 255), IM_COL32(84, 44, 34, 255), IM_COL32(100, 52, 40, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
+                case ShaderGraphTemplate_ToonLighting:
+                case ShaderGraphTemplate_Posterize:
+                case ShaderGraphTemplate_Fresnel:
+                    return MakeTemplate(IM_COL32(142, 78, 62, 255), IM_COL32(84, 44, 34, 255), IM_COL32(100, 52, 40, 255), 2,
+                        _index==ShaderGraphTemplate_ToonLighting?kToonInputs:_index==ShaderGraphTemplate_Posterize?kPosterizeInputs:_index==ShaderGraphTemplate_Fresnel?kFresnelInputs:kMathInputNames,
+                        kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
                 case ShaderGraphTemplate_Multiply:
                     return MakeTemplate(IM_COL32(112, 72, 148, 255), IM_COL32(66, 40, 88, 255), IM_COL32(82, 50, 106, 255), 2, kMathInputNames, kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
                 case ShaderGraphTemplate_Subtract:
@@ -1242,6 +1261,9 @@ shader_graph_preview_footer:
 
         size_t GetShaderGraphTemplateIndex(const ShaderGraphNode &_node)
         {
+            if(_node.type=="ToonLighting")return ShaderGraphTemplate_ToonLighting;
+            if(_node.type=="Posterize")return ShaderGraphTemplate_Posterize;
+            if(_node.type=="Fresnel")return ShaderGraphTemplate_Fresnel;
             if (_node.type == "Property")
             {
                 switch (_node.propertyType)
@@ -1302,7 +1324,7 @@ shader_graph_preview_footer:
             if (_node.type == "StickyNote")
                 return ImVec2(std::max(280.0f, ImGui::GetFontSize() * 14.0f), std::max(176.0f, ImGui::GetFontSize() * 8.0f));
             if (_node.type == "Preview")
-                return ImVec2(std::max(260.0f, ImGui::GetFontSize() * 12.5f), std::max(220.0f, ImGui::GetFontSize() * 10.5f));
+                return ImVec2(std::max(260.0f, ImGui::GetFontSize() * 12.5f), std::max(248.0f, ImGui::GetFontSize() * 12.0f));
 
             return ImVec2(baseWidth, baseHeight);
         }
@@ -1376,9 +1398,7 @@ shader_graph_preview_footer:
 
         std::string GetGeneratedShaderBasePath(const std::string &_graphPath)
         {
-            std::filesystem::path vertexPath(GetShaderGraphGeneratedVertexPath(_graphPath));
-            vertexPath.replace_extension();
-            return vertexPath.generic_string();
+            return _graphPath;
         }
 
         struct ShaderGraphResolvedLink
@@ -2445,37 +2465,9 @@ shader_graph_preview_footer:
 
         void RefreshGeneratedShaderGraphAssets(const std::string &_graphPath)
         {
-            const std::string shaderBasePath = GetGeneratedShaderBasePath(_graphPath);
-            const std::string vertexPath = GetShaderGraphGeneratedVertexPath(_graphPath);
-            const std::string fragmentPath = GetShaderGraphGeneratedFragmentPath(_graphPath);
+            (void)AssetManager::ReloadAsset(_graphPath);
             const std::string materialPath = GetShaderGraphGeneratedMaterialPath(_graphPath);
-
-            (void)AssetManager::GetMetaFile(vertexPath);
-            (void)AssetManager::GetMetaFile(fragmentPath);
             (void)AssetManager::GetMetaFile(materialPath);
-
-            if (const int shaderId = AssetManager::GetID(shaderBasePath); shaderId >= 0)
-            {
-                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(shaderId))
-                {
-                    shaderAsset->Load(shaderBasePath);
-                    if (!shaderAsset->GetShader()->IsLinked())
-                        shaderAsset->GetShader()->Link();
-                }
-            }
-            else
-            {
-                const int loadedShaderId = AssetManager::LoadShader(shaderBasePath);
-                if (loadedShaderId >= 0)
-                {
-                    if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(loadedShaderId))
-                    {
-                        if (!shaderAsset->GetShader()->IsLinked())
-                            shaderAsset->GetShader()->Link();
-                    }
-                }
-            }
-
             (void)AssetManager::ReloadMaterial(materialPath);
         }
 
@@ -2655,6 +2647,11 @@ shader_graph_preview_footer:
                         _documentChanged = true;
                         _semanticChanged = true;
                     }
+                }
+                else if(selectedNode->type=="ToonLighting" || selectedNode->type=="Posterize" || selectedNode->type=="Fresnel")
+                {
+                    if(ImGui::DragFloat(selectedNode->type=="Fresnel"?"Power":"Bands",&selectedNode->floatValue,0.1f,1.0f,16.0f))
+                        _documentChanged=_semanticChanged=true;
                 }
                 else if (selectedNode->type == "Texture2D")
                 {
@@ -2940,11 +2937,12 @@ shader_graph_preview_footer:
         bool documentChanged = false;
         bool semanticChanged = false;
         bool manualGenerate = false;
-        GraphEditor::FitOnScreen fitRequest = GraphEditor::Fit_None;
+        GraphEditor::FitOnScreen fitRequest = viewState.fitted?GraphEditor::Fit_None:GraphEditor::Fit_AllNodes;
+        viewState.fitted=true;
 
         ImGui::Text("Asset: %s", meta->name.c_str());
         ImGui::SameLine();
-        if (ImGui::Button("Generate Shader"))
+        if (ImGui::Button("Rebuild"))
             manualGenerate = true;
         ImGui::SameLine();
         if (ImGui::Button("Fit Graph"))
@@ -3066,6 +3064,9 @@ shader_graph_preview_footer:
             {
                 addNodeMenuItem("Position (World)", "Position");
                 addNodeMenuItem("Normal (World)", "Normal");
+                addNodeMenuItem("Toon Lighting", "ToonLighting");
+                addNodeMenuItem("Posterize", "Posterize");
+                addNodeMenuItem("Fresnel", "Fresnel");
                 addNodeMenuItem("UV", "UV");
                 ImGui::EndMenu();
             }
@@ -3185,13 +3186,11 @@ shader_graph_preview_footer:
         ImGui::Text("Asset: %s", meta->name.c_str());
         ImGui::Text("Path: %s", meta->path.c_str());
 
-        if (ImGui::Button("Generate Shader"))
+        if (ImGui::Button("Rebuild"))
             manualGenerate = true;
         ImGui::SameLine();
         ImGui::TextDisabled("Canvas: ShaderGraph window");
 
-        ImGui::Text("Generated VS: %s", GetShaderGraphGeneratedVertexPath(_shaderGraphPath).c_str());
-        ImGui::Text("Generated FS: %s", GetShaderGraphGeneratedFragmentPath(_shaderGraphPath).c_str());
         ImGui::Text("Generated Material: %s", GetShaderGraphGeneratedMaterialPath(_shaderGraphPath).c_str());
         ImGui::Separator();
         ImGui::TextUnformatted("Node Properties");

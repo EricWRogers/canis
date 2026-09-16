@@ -1,6 +1,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/IOManager.hpp>
+#include <Canis/ShaderGraph.hpp>
 
 #include <filesystem>
 #include <algorithm>
@@ -336,8 +337,9 @@ namespace Canis
                 }
             }
 
-            void PopulateMaterialAssetFromRoot(MaterialAsset &_material, const YAML::Node &_root)
+            void PopulateMaterialAssetFromRoot(MaterialAsset &_material, const YAML::Node &sourceRoot)
             {
+                const auto _root=ResolveShaderGraphMaterial(sourceRoot);
                 _material = MaterialAsset();
 
                 if (YAML::Node shaderNode = _root["shader"])
@@ -350,7 +352,6 @@ namespace Canis
                         {
                             if (ShaderAsset *shaderAsset = Get<ShaderAsset>(_material.shaderId))
                             {
-                                shaderAsset->Load(shaderPath);
                                 if (!shaderAsset->GetShader()->IsLinked())
                                     shaderAsset->GetShader()->Link();
                             }
@@ -821,7 +822,7 @@ namespace Canis
 
             // create shader
             Asset *shader = new ShaderAsset();
-            shader->Load(_pathWithOutExtension);
+            if(!shader->Load(_pathWithOutExtension)) { shader->Free();delete shader;return -1; }
             int id = assetLibrary.nextId;
 
             // cache shader
@@ -1296,6 +1297,21 @@ namespace Canis
                     return ReloadLoadedAssetInPlace<SkyboxAsset>(path);
                 case MetaFileAsset::FileType::POSTPROCESS:
                     return ReloadLoadedAssetInPlace<PostProcessAsset>(path);
+                case MetaFileAsset::FileType::SHADERGRAPH:
+                {
+                    const int id=FindAssetIdForPath(path);
+                    if(id>=0) {
+                        auto* shader=Get<ShaderAsset>(id);
+                        if(!shader || !shader->Load(path))return false;
+                        shader->GetShader()->Link();
+                    }
+                    std::vector<std::string> materials;
+                    for(const auto& [assetPath,assetId]:GetAssetLibrary().assetPath)
+                        if(std::filesystem::path(assetPath).extension()==".material" &&
+                            ResolveShaderPath(YAML::LoadFile(assetPath)["shader"])==path)materials.push_back(assetPath);
+                    for(const auto& material:materials)ReloadMaterial(material);
+                    return true;
+                }
                 case MetaFileAsset::FileType::VERTEX:
                 case MetaFileAsset::FileType::FRAGMENT:
                 {

@@ -5,6 +5,7 @@
 #include <Canis/OpenGL.hpp>
 #include <Canis/IOManager.hpp>
 #include <Canis/AssetManager.hpp>
+#include <Canis/ShaderGraph.hpp>
 #define TINYGLTF_NO_STB_IMAGE
 #define TINYGLTF_NO_STB_IMAGE_WRITE
 #include <Canis/External/tinygltf/tiny_gltf.h>
@@ -820,6 +821,18 @@ namespace Canis
 
     bool ShaderAsset::Load(std::string _path)
     {
+        if(std::filesystem::path(_path).extension()==".shadergraph") try {
+            ShaderGraphDocument document;
+            if(!LoadShaderGraphDocument(_path,document))return false;
+            std::string vertex,fragment;
+            BuildShaderGraphSources(document,vertex,fragment);
+            m_shader->CompileSource(vertex,fragment,_path);
+            (void)CacheShaderGraphSources(_path,vertex,fragment);
+            return true;
+        } catch(const std::exception& error) {
+            Debug::Warning("Shader graph '%s': %s",_path.c_str(),error.what());
+            return false;
+        }
         m_shader->Compile(
             _path + ".vs",
             _path + ".fs");
@@ -1236,6 +1249,8 @@ namespace Canis
     void MetaFileAsset::Save()
     {
         YAML::Node node;
+        if(type==FileType::SHADERGRAPH && std::filesystem::exists(path+".meta"))
+            node=YAML::LoadFile(path+".meta");
         node["FileType"] = FileTypeToString(type);
         node["UUID"] = std::to_string(uuid);
         node["name"] = name;

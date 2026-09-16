@@ -15,6 +15,7 @@ namespace Canis
         ~Shader();
 
         void Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath);
+        void CompileSource(const std::string &vertex, const std::string &fragment, const std::string &name);
         void Link();
         void AddAttribute(const std::string &_attributeName);
         void Use();
@@ -51,7 +52,7 @@ namespace Canis
 
         std::string m_path = "";
 
-        void CompileShaderFile(const std::string &_filePath, unsigned int &_id);
+        void CompileShaderSource(std::string source, const std::string &name, unsigned int &id);
     };
 
 } // end of Canis namespace

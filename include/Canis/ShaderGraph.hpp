@@ -4,6 +4,7 @@
 #include <vector>
 
 #include <Canis/Math.hpp>
+#include <yaml-cpp/yaml.h>
 
 namespace Canis
 {
@@ -102,6 +103,9 @@ namespace Canis
     bool LoadShaderGraphDocument(const std::string &_path, ShaderGraphDocument &_document);
     bool SaveShaderGraphDocument(const std::string &_path, const ShaderGraphDocument &_document);
     bool GenerateShaderGraphAssets(const std::string &_graphPath, const ShaderGraphDocument &_document, std::string *_errorMessage = nullptr);
+    void BuildShaderGraphSources(const ShaderGraphDocument &document, std::string &vertex, std::string &fragment);
+    bool CacheShaderGraphSources(const std::string &path, const std::string &vertex, const std::string &fragment);
+    YAML::Node ResolveShaderGraphMaterial(const YAML::Node &material);
 
     std::string GetShaderGraphGeneratedVertexPath(const std::string &_graphPath);
     std::string GetShaderGraphGeneratedFragmentPath(const std::string &_graphPath);

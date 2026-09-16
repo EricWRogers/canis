@@ -61,7 +61,17 @@ namespace Canis
 
     void Shader::Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath)
     {
-        m_path = _vertexShaderFilePath;
+        auto read = [](const std::string &path) {
+            size_t size=0;void* bytes=SDL_LoadFile(path.c_str(),&size);
+            if(!bytes)Debug::FatalError("Unable to open shader %s",path.c_str());
+            std::string source(static_cast<char*>(bytes),size);SDL_free(bytes);return source;
+        };
+        CompileSource(read(_vertexShaderFilePath),read(_fragmentShaderFilePath),_vertexShaderFilePath);
+    }
+
+    void Shader::CompileSource(const std::string &vertex, const std::string &fragment, const std::string &name)
+    {
+        m_path = name;
 
         if (m_programId != 0)
         {
@@ -103,8 +113,8 @@ namespace Canis
         for (size_t i = 0; i < m_attributes.size(); ++i)
             glBindAttribLocation(m_programId, static_cast<GLuint>(i), m_attributes[i].c_str());
 
-        CompileShaderFile(_vertexShaderFilePath, m_vertexShaderId);
-        CompileShaderFile(_fragmentShaderFilePath, m_fragmentShaderId);
+        CompileShaderSource(vertex, name+":vertex", m_vertexShaderId);
+        CompileShaderSource(fragment, name+":fragment", m_fragmentShaderId);
     }
 
     void Shader::Link()
@@ -291,16 +301,8 @@ namespace Canis
     }
 
 
-    void Shader::CompileShaderFile(const std::string &_filePath, unsigned int &_id)
+    void Shader::CompileShaderSource(std::string shaderFileCode, const std::string &_filePath, unsigned int &_id)
     {
-        SDL_IOStream* shaderFile = SDL_IOFromFile(_filePath.c_str(), "r");
-
-        if (shaderFile == nullptr)
-            Debug::FatalError("Unable to open file \"%s\"", _filePath.c_str());
-        
-        size_t shaderFileLength;// = static_cast<size_t>(SDL_RWsize(shaderFile));
-        void* shaderFileData = SDL_LoadFile_IO(shaderFile, &shaderFileLength, true);
-        std::string shaderFileCode(static_cast<char*>(shaderFileData), shaderFileLength);
 
         // Replace placeholder text with actual version directive
         std::string placeholder = "[OPENGL VERSION]";
@@ -336,9 +338,6 @@ namespace Canis
 
         int success = 0;
         glGetShaderiv(_id, GL_COMPILE_STATUS, &success);
-
-        if (shaderFileData != nullptr)
-            SDL_free(shaderFileData);
 
         if (success == GL_FALSE)
         {

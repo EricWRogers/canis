@@ -1,6 +1,7 @@
 #include <Canis/ShaderGraph.hpp>
 
 #include <Canis/Yaml.hpp>
+#include <Canis/AssetManager.hpp>
 
 #include <algorithm>
 #include <array>
@@ -560,7 +561,25 @@ namespace Canis
 
             ExpressionResult result = {};
 
-            if (_node.type == "Float")
+            if (_node.type == "ToonLighting" || _node.type == "Fresnel")
+            {
+                if(_context.stage!=ShaderGraphBuildStage::Fragment)
+                    throw std::runtime_error(_node.type+" is only available in the fragment stage.");
+                auto normal=BuildLinkExpression(_context,_node.inputA,{ShaderGraphValueType::VEC3,"normalize(fragmentNormal)"});
+                auto amount=BuildLinkExpression(_context,_node.inputB,{ShaderGraphValueType::FLOAT,FormatFloatLiteral(_node.floatValue)});
+                if(_node.type=="ToonLighting")
+                    result={ShaderGraphValueType::VEC3,"sgToonLighting("+ConvertExpression(normal,ShaderGraphValueType::VEC3)+", "+ConvertExpression(amount,ShaderGraphValueType::FLOAT)+")"};
+                else
+                    result={ShaderGraphValueType::FLOAT,"pow(1.0 - clamp(dot(normalize("+ConvertExpression(normal,ShaderGraphValueType::VEC3)+"), normalize(cameraPosition - fragmentWorldPos)), 0.0, 1.0), max("+ConvertExpression(amount,ShaderGraphValueType::FLOAT)+", 0.001))"};
+            }
+            else if (_node.type == "Posterize")
+            {
+                auto value=BuildLinkExpression(_context,_node.inputA,{ShaderGraphValueType::FLOAT,"0.5"});
+                auto steps=BuildLinkExpression(_context,_node.inputB,{ShaderGraphValueType::FLOAT,FormatFloatLiteral(_node.floatValue)});
+                auto count="max("+ConvertExpression(steps,ShaderGraphValueType::FLOAT)+", 1.0)";
+                result={value.type,"(floor(("+value.expression+") * "+count+") / "+count+")"};
+            }
+            else if (_node.type == "Float")
             {
                 result = { ShaderGraphValueType::FLOAT, FormatFloatLiteral(_node.floatValue) };
             }
@@ -848,6 +867,54 @@ namespace Canis
             WriteValueNoiseHelpers(shader);
 
             shader
+                << R"GLSL(
+uniform vec3 cameraPosition;
+uniform bool useDirectionalLight;
+uniform bool useDirectionalShadow;
+uniform vec3 directionalLightDirection;
+uniform vec3 directionalLightColor;
+uniform float directionalLightIntensity;
+uniform mat4 directionalLightSpaceMatrix;
+uniform sampler2D directionalShadowMap;
+uniform int pointLightCount;
+uniform vec3 pointLightPositions[8];
+uniform vec3 pointLightColors[8];
+uniform float pointLightIntensities[8];
+uniform float pointLightRanges[8];
+float sgShadow(vec3 n, vec3 l) {
+    if(!useDirectionalShadow)return 1.0;
+    vec4 p=directionalLightSpaceMatrix*vec4(fragmentWorldPos,1.0);
+    vec3 q=p.xyz/max(p.w,0.00001)*0.5+0.5;
+    if(any(lessThan(q,vec3(0.0))) || any(greaterThan(q,vec3(1.0))))return 1.0;
+    float bias=max(0.0008*(1.0-dot(n,l)),0.0006);
+    vec2 texel=1.0/vec2(textureSize(directionalShadowMap,0));
+    float visibility=0.0;
+    for(int y=-1;y<=1;++y)for(int x=-1;x<=1;++x)
+        visibility+=q.z-bias<=texture(directionalShadowMap,q.xy+vec2(float(x),float(y))*texel).r?1.0:0.0;
+    return visibility/9.0;
+}
+float sgBand(float value,float bands) {
+    float steps=max(floor(bands),2.0)-1.0;
+    return floor(clamp(value,0.0,1.0)*steps+0.5)/steps;
+}
+vec3 sgToonLighting(vec3 normal,float bands) {
+    vec3 n=normalize(normal);
+    vec3 light=ambientLightColor*max(ambientLightIntensity,0.0);
+    if(useDirectionalLight) {
+        vec3 l=normalize(-directionalLightDirection);
+        light+=directionalLightColor*directionalLightIntensity*sgBand(max(dot(n,l),0.0),bands)*sgShadow(n,l);
+    }
+    for(int i=0;i<8;++i) {
+        if(i>=pointLightCount)break;
+        vec3 delta=pointLightPositions[i]-fragmentWorldPos;
+        float d=length(delta);
+        float falloff=max(1.0-d/max(pointLightRanges[i],0.001),0.0);
+        float diffuse=sgBand(max(dot(n,delta/max(d,0.001)),0.0),bands);
+        light+=pointLightColors[i]*pointLightIntensities[i]*falloff*falloff*diffuse;
+    }
+    return light;
+}
+)GLSL"
                 << "\n"
                 << "out vec4 color;\n\n"
                 << "void main()\n"
@@ -959,6 +1026,7 @@ namespace Canis
         node.id = _id;
         node.type = _type;
         node.position = _position;
+        if(_type=="ToonLighting" || _type=="Posterize" || _type=="Fresnel")node.floatValue=3.0f;
 
         if (_type == "Float")
         {
@@ -1180,7 +1248,58 @@ namespace Canis
         return true;
     }
 
-    bool GenerateShaderGraphAssets(const std::string &_graphPath, const ShaderGraphDocument &_document, std::string *_errorMessage)
+    YAML::Node ResolveShaderGraphMaterial(const YAML::Node &material)
+    {
+        auto root=YAML::Clone(material);
+        auto ref=root["shader"];
+        if(!ref)return root;
+        std::string path=ref.IsScalar()?ref.as<std::string>():ref["path"].as<std::string>("");
+        if(ref.IsMap() && ref["uuid"]) {
+            auto resolved=AssetManager::GetPath(UUID(ref["uuid"].as<uint64_t>(0)));
+            if(!resolved.empty() && resolved!="Path was not found in AssetLibrary")path=resolved;
+        }
+        if(std::filesystem::path(path).extension()!=".shadergraph")return root;
+        ShaderGraphDocument document;
+        if(!LoadShaderGraphDocument(path,document))return root;
+        for(const auto& property:document.properties) {
+            auto name=GetShaderGraphPropertyUniformName(property);
+            root["uniforms"][name]=MakePropertyUniformNode(property,root["uniforms"][name]);
+        }
+        std::vector<TextureUniformInfo> textures;std::vector<PropertyUniformInfo> properties;
+        BuildVertexShaderSource(document,textures,properties);
+        std::vector<TextureUniformInfo> fragmentTextures;
+        BuildFragmentShaderSource(document,fragmentTextures,properties);
+        AppendTextureUniforms(textures,fragmentTextures);
+        for(const auto& texture:textures) {
+            root["uniforms"][texture.uniformName]["type"]="texture";
+            root["uniforms"][texture.uniformName]["value"]["path"]=texture.texturePath;
+        }
+        return root;
+    }
+
+    void BuildShaderGraphSources(const ShaderGraphDocument &document, std::string &vertex, std::string &fragment)
+    {
+        std::vector<TextureUniformInfo> textures;
+        std::vector<PropertyUniformInfo> properties;
+        vertex=BuildVertexShaderSource(document,textures,properties);
+        textures.clear();properties.clear();
+        fragment=BuildFragmentShaderSource(document,textures,properties);
+    }
+
+    bool CacheShaderGraphSources(const std::string &path, const std::string &vertex, const std::string &fragment) try
+    {
+        (void)AssetManager::GetMetaFile(path);
+        auto metadata=YAML::LoadFile(path+".meta");
+        auto cached=metadata["ShaderGraph"];
+        if(cached && cached["generatorVersion"].as<int>(0)==1 &&
+            cached["vertexSource"].as<std::string>("")==vertex && cached["fragmentSource"].as<std::string>("")==fragment)return true;
+        metadata["ShaderGraph"]["generatorVersion"]=1;
+        metadata["ShaderGraph"]["vertexSource"]=vertex;
+        metadata["ShaderGraph"]["fragmentSource"]=fragment;
+        return WriteTextFile(path+".meta",YAML::Dump(metadata));
+    } catch(const std::exception&) { return false; }
+
+    bool GenerateShaderGraphAssets(const std::string &_graphPath, const ShaderGraphDocument &_document, std::string *_errorMessage) try
     {
         std::vector<TextureUniformInfo> vertexTextureUniforms = {};
         std::vector<PropertyUniformInfo> vertexPropertyUniforms = {};
@@ -1199,17 +1318,9 @@ namespace Canis
         AppendPropertyUniforms(propertyUniforms, vertexPropertyUniforms);
         AppendPropertyUniforms(propertyUniforms, fragmentPropertyUniforms);
 
-        if (!WriteTextFile(vertexPath, vertexSource))
-        {
-            if (_errorMessage != nullptr)
-                *_errorMessage = "Failed to write generated vertex shader.";
-            return false;
-        }
-
-        if (!WriteTextFile(fragmentPath, fragmentSource))
-        {
-            if (_errorMessage != nullptr)
-                *_errorMessage = "Failed to write generated fragment shader.";
+        // Generated sources are derived metadata, never independent authored shader assets.
+        if(!CacheShaderGraphSources(_graphPath,vertexSource,fragmentSource)) {
+            if(_errorMessage)*_errorMessage="Failed to write shader graph metadata.";
             return false;
         }
 
@@ -1222,7 +1333,7 @@ namespace Canis
         }
 
         YAML::Node shaderNode(YAML::NodeType::Map);
-        shaderNode["path"] = vertexPath;
+        shaderNode["path"] = _graphPath;
         materialRoot["shader"] = shaderNode;
 
         if (!materialRoot["color"])
@@ -1255,7 +1366,9 @@ namespace Canis
         for (const PropertyUniformInfo &uniform : propertyUniforms)
         {
             const YAML::Node existingUniform = uniformsNode[uniform.uniformName];
-            uniformsNode[uniform.uniformName] = MakePropertyUniformNode(uniform.property, existingUniform);
+            // Unset values inherit graph defaults on load; only authored overrides persist.
+            if(existingUniform)
+                uniformsNode[uniform.uniformName] = MakePropertyUniformNode(uniform.property, existingUniform);
         }
 
         if (uniformsNode.size() > 0u)
@@ -1277,6 +1390,10 @@ namespace Canis
             _errorMessage->clear();
         return true;
     }
+    catch(const std::exception& error) {
+        if(_errorMessage)*_errorMessage=error.what();
+        return false;
+    }
 
     std::string GetShaderGraphGeneratedVertexPath(const std::string &_graphPath)
     {
@@ -1295,6 +1412,9 @@ namespace Canis
 
     const char *GetShaderGraphNodeDisplayName(const std::string &_type)
     {
+        if (_type == "ToonLighting") return "Toon Lighting";
+        if (_type == "Posterize") return "Posterize";
+        if (_type == "Fresnel") return "Fresnel";
         if (_type == "Float") return "Float";
         if (_type == "Vector2") return "Vector2";
         if (_type == "Vector3") return "Vector3";
@@ -1363,6 +1483,10 @@ namespace Canis
 
     std::vector<ShaderGraphPinInfo> GetShaderGraphNodeInputPins(const ShaderGraphNode &_node)
     {
+        if(_node.type=="ToonLighting" || _node.type=="Fresnel")
+            return {{"a",ShaderGraphValueType::VEC3},{"b",ShaderGraphValueType::FLOAT}};
+        if(_node.type=="Posterize")
+            return {{"a",ShaderGraphValueType::UNKNOWN},{"b",ShaderGraphValueType::FLOAT}};
         if (_node.type == "Property" && _node.propertyType == ShaderGraphPropertyType::TEXTURE)
             return { ShaderGraphPinInfo{ .name = "uv", .type = ShaderGraphValueType::VEC2 } };
         if (_node.type == "Texture2D")
@@ -1393,6 +1517,8 @@ namespace Canis
 
     std::vector<ShaderGraphPinInfo> GetShaderGraphNodeOutputPins(const ShaderGraphNode &_node)
     {
+        if(_node.type=="ToonLighting")return {{"value",ShaderGraphValueType::VEC3}};
+        if(_node.type=="Fresnel")return {{"value",ShaderGraphValueType::FLOAT}};
         if (_node.type == "Property")
         {
             if (_node.propertyType == ShaderGraphPropertyType::TEXTURE)

@@ -5510,8 +5510,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return result;
     }
 
-    static void ApplyMaterialNodeToAsset(const YAML::Node &_root, MaterialAsset *_material)
+    static void ApplyMaterialNodeToAsset(const YAML::Node &sourceRoot, MaterialAsset *_material)
     {
+        const auto _root=ResolveShaderGraphMaterial(sourceRoot);
         if (_material == nullptr)
             return;
 
@@ -11959,6 +11960,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return false;
         }
 
+        root=ResolveShaderGraphMaterial(root);
+
         bool dirty = false;
         constexpr float kMaterialNumberFieldMaxWidth = 240.0f;
         auto setMaterialNumberFieldWidth = []() -> void
@@ -11998,7 +12001,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(path))
                         {
                             valid = droppedMeta->type == MetaFileAsset::FileType::VERTEX ||
-                                    droppedMeta->type == MetaFileAsset::FileType::FRAGMENT;
+                                    droppedMeta->type == MetaFileAsset::FileType::FRAGMENT ||
+                                    droppedMeta->type == MetaFileAsset::FileType::SHADERGRAPH;
                         }
                     }
                     else
@@ -15809,8 +15813,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     Debug::Warning("%s", errorMessage.c_str());
 
                 (void)AssetManager::GetMetaFile(targetPath.string());
-                (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedVertexPath(targetPath.string()));
-                (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedFragmentPath(targetPath.string()));
                 (void)AssetManager::GetMetaFile(GetShaderGraphGeneratedMaterialPath(targetPath.string()));
 
                 m_selectedAssetPath = targetPath.string();
