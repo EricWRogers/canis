@@ -25,11 +25,14 @@
 #include <Canis/InputManager.hpp>
 #include <Canis/SteamInput.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/AudioComponents.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ConfigHelper.hpp>
 #include <Canis/Network.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/VFX/Trails.hpp>
 #include <Canis/Terrain.hpp>
 #include <Canis/Blockout.hpp>
 
@@ -1126,27 +1129,47 @@ namespace Canis
             ImGui::ColorEdit4(widgetId.c_str(), &_value.r);
         }
 
-        void ResolveProjectWorkingDirectory()
+        bool ResolveProjectWorkingDirectory()
         {
             if (HasAssetsFolder(fs::current_path()))
-                return;
+                return true;
 
-            std::vector<fs::path> candidatePaths = {};
-            if (const char *basePath = SDL_GetBasePath())
-            {
+            std::vector<fs::path> candidatePaths;
+            const char *basePath = SDL_GetBasePath();
+            if (basePath != nullptr)
                 candidatePaths.emplace_back(basePath);
-            }
-
             candidatePaths.push_back(fs::current_path() / "project");
+
+            // Development binaries can live in build/<preset>/runtime, away
+            // from the project assets. Packaged assets beside the executable
+            // and an explicitly selected working directory take precedence.
+            if (basePath != nullptr)
+            {
+                fs::path ancestor = WeaklyCanonicalPath(basePath);
+                while (!ancestor.empty())
+                {
+                    candidatePaths.push_back(ancestor / "project");
+                    const fs::path parent = ancestor.parent_path();
+                    if (parent == ancestor)
+                        break;
+                    ancestor = parent;
+                }
+            }
 
             for (const fs::path &candidatePath : candidatePaths)
             {
                 if (!HasAssetsFolder(candidatePath))
                     continue;
 
-                fs::current_path(candidatePath);
-                break;
+                std::error_code ec;
+                fs::current_path(candidatePath, ec);
+                if (!ec)
+                {
+                    Debug::Log("Project directory: %s", fs::current_path().generic_string().c_str());
+                    return true;
+                }
             }
+            return false;
         }
 
         void LoadProjectAssetMetadata()
@@ -1907,7 +1930,13 @@ namespace Canis
             return;
 
         Debug::Log("App Run");
-        ResolveProjectWorkingDirectory();
+        if (!ResolveProjectWorkingDirectory())
+        {
+            Debug::Error("Cannot locate project assets. Launch from the project folder or place assets beside the executable. Working directory: %s",
+                         fs::current_path().generic_string().c_str());
+            m_exitCode = 2;
+            return;
+        }
         LoadProjectAssetMetadata();
         Canis::Init();
 
@@ -2581,6 +2610,9 @@ namespace Canis
                 std::cout << "CANIS_INTERACTIVE_FRAME {\"time\":"
                           << runtime.simulationTime
                           << ",\"frame\":" << runtime.simulationFrame
+                          << ",\"scriptEditor\":" << (runtime.editor && runtime.editor->IsScriptEditorVisible() ? "true" : "false")
+                          << ",\"playPending\":" << (runtime.editor && runtime.editor->IsPlayPending() ? "true" : "false")
+                          << ",\"playing\":" << (runtime.editor && runtime.editor->GetMode() == EditorMode::PLAY ? "true" : "false")
                           << ",\"label\":\""
                           << EscapeJson(capture != nullptr ? capture->label : "")
                           << "\",\"path\":\""
@@ -2925,6 +2957,8 @@ namespace Canis
         RegisterScript(prefabInstanceConf);
 
         RegisterParticleEmitterComponent(*this);
+        RegisterTrailComponents(*this);
+        RegisterAudioComponents(*this);
         RegisterParticleEmitterSystem(*this);
 
         ScriptConf canvasConf = {

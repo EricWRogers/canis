@@ -1,335 +1,469 @@
-#include <Canis/Audio.hpp>
-
 #include <Canis/Asset.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/Canis.hpp>
 #include <Canis/Debug.hpp>
-
 #include <SDL3/SDL.h>
-#include <SDL3/SDL_audio.h>
-#include <SDL3/SDL_init.h>
-
+#if CANIS_STEAM_AUDIO
+#include <phonon.h>
+#endif
 #include <algorithm>
+#include <array>
 #include <cmath>
-#include <vector>
+#include <limits>
+#include <mutex>
 
 namespace Canis::Audio
 {
-    namespace
+namespace
+{
+constexpr int BlockSize = 512;
+constexpr int MaxVoices = 128;
+struct Voice
+{
+    int id = -1;
+    std::shared_ptr<const std::vector<float>> samples;
+    PlaybackSettings settings;
+    double cursor = 0;
+    int loops = 0;
+    bool active = false, paused = false, inputEnded = false;
+#if CANIS_STEAM_AUDIO
+    IPLBinauralEffect effect = nullptr;
+#endif
+    std::array<float, BlockSize> mono{}, left{}, right{};
+    std::array<float, BlockSize * 2> dry{};
+};
+struct AudioState
+{
+    std::mutex mutex;
+    SDL_AudioStream *stream = nullptr;
+    bool initialized = false, ownsSDL = false, offline = false;
+    std::array<Voice, MaxVoices> voices;
+    int nextId = 1; // Never reset: a handle must not refer to another sound after reinitialization.
+    float master = 1, music = 1, sfx = 1, listenerVolume = 1;
+    bool muted = false, scenePaused = false, listenerActive = false;
+    Vector3 listenerPosition = Vector3(0);
+    Quaternion listenerRotation = Quaternion(1, 0, 0, 0);
+#if CANIS_STEAM_AUDIO
+    IPLContext context = nullptr;
+    IPLHRTF hrtf = nullptr;
+#endif
+};
+AudioState &State()
+{
+    static AudioState state;
+    return state;
+}
+float Clamp(float value, float lo, float hi, float fallback)
+{
+    return std::isfinite(value) ? std::clamp(value, lo, hi) : fallback;
+}
+PlaybackSettings Sanitize(PlaybackSettings s)
+{
+    s.volume = Clamp(s.volume, 0, 1, 1);
+    s.pitch = Clamp(s.pitch, .01f, 3, 1);
+    s.spatialBlend = Clamp(s.spatialBlend, 0, 1, 0);
+    s.minDistance = Clamp(s.minDistance, .01f, 100000, 1);
+    s.maxDistance = Clamp(s.maxDistance, s.minDistance + .01f, 100001, s.minDistance + 30);
+    s.rolloffMode = std::clamp(s.rolloffMode, 0, 2);
+    s.loops = std::max(-1, s.loops);
+    if (!std::isfinite(s.position.x) || !std::isfinite(s.position.y) || !std::isfinite(s.position.z))
+        s.position = Vector3(0);
+    return s;
+}
+void MixLevels(AudioState &s)
+{
+    const auto &c = GetProjectConfig();
+    s.master = Clamp(c.volume, 0, 1, 1);
+    s.music = Clamp(c.musicVolume, 0, 1, 1);
+    s.sfx = Clamp(c.sfxVolume, 0, 1, 1);
+    s.muted = c.mute;
+}
+void Release(Voice &v)
+{
+#if CANIS_STEAM_AUDIO
+    if (v.effect)
+        iplBinauralEffectRelease(&v.effect);
+#endif
+    v.samples.reset();
+    v.active = false;
+    v.id = -1;
+}
+bool CreateEffect(AudioState &s, Voice &v)
+{
+#if CANIS_STEAM_AUDIO
+    if (s.hrtf && v.settings.spatialBlend > 0 && !v.effect)
     {
-        struct Voice
-        {
-            int id = -1;
-            AudioClipAsset* clip = nullptr;
-            Bus bus = Bus::SFX;
-            float volume = 1.0f;
-            int loops = 0;
-            int frameCursor = 0;
-            bool active = false;
-        };
-
-        struct AudioState
-        {
-            SDL_AudioStream* stream = nullptr;
-            std::vector<Voice> voices = {};
-            int nextVoiceId = 1;
-            float masterVolume = 1.0f;
-            float musicVolume = 1.0f;
-            float sfxVolume = 1.0f;
-            bool muted = false;
-        };
-
-        AudioState& GetAudioState()
-        {
-            static AudioState state = {};
-            return state;
-        }
-
-        float ClampVolume(const float _volume)
-        {
-            if (!std::isfinite(_volume))
-                return 1.0f;
-
-            return std::clamp(_volume, 0.0f, 1.0f);
-        }
-
-        void SyncMixerFromProjectConfig(AudioState& _state)
-        {
-            const ProjectConfig& config = GetProjectConfig();
-            _state.masterVolume = ClampVolume(config.volume);
-            _state.musicVolume = ClampVolume(config.musicVolume);
-            _state.sfxVolume = ClampVolume(config.sfxVolume);
-            _state.muted = config.mute;
-        }
-
-        float GetBusVolume(const AudioState& _state, const Bus _bus)
-        {
-            return (_bus == Bus::Music) ? _state.musicVolume : _state.sfxVolume;
-        }
-
-        void SDLCALL AudioStreamCallback(void* _userdata, SDL_AudioStream* _stream, int _additionalAmount, int _totalAmount)
-        {
-            (void)_totalAmount;
-
-            AudioState& state = *static_cast<AudioState*>(_userdata);
-
-            if (_stream == nullptr || _additionalAmount <= 0)
-                return;
-
-            const SDL_AudioSpec& mixSpec = GetMixSpec();
-            const int channels = mixSpec.channels;
-            const int sampleCount = _additionalAmount / static_cast<int>(sizeof(float));
-            const int frameCount = channels > 0 ? sampleCount / channels : 0;
-            if (frameCount <= 0)
-                return;
-
-            std::vector<float> mixBuffer(static_cast<size_t>(sampleCount), 0.0f);
-            const float masterVolume = state.muted ? 0.0f : state.masterVolume;
-
-            for (Voice& voice : state.voices)
-            {
-                if (!voice.active || voice.clip == nullptr || !voice.clip->IsLoaded())
-                {
-                    voice.active = false;
-                    continue;
-                }
-
-                const float finalVolume = masterVolume * GetBusVolume(state, voice.bus) * voice.volume;
-                const float* samples = voice.clip->GetSamples();
-                const int clipFrameCount = voice.clip->GetFrameCount();
-                if (samples == nullptr || clipFrameCount <= 0)
-                {
-                    voice.active = false;
-                    continue;
-                }
-
-                for (int frameIndex = 0; frameIndex < frameCount; ++frameIndex)
-                {
-                    if (voice.frameCursor >= clipFrameCount)
-                    {
-                        if (voice.loops == -1)
-                        {
-                            voice.frameCursor = 0;
-                        }
-                        else if (voice.loops > 0)
-                        {
-                            voice.loops--;
-                            voice.frameCursor = 0;
-                        }
-                        else
-                        {
-                            voice.active = false;
-                            break;
-                        }
-                    }
-
-                    const int mixOffset = frameIndex * channels;
-                    const int clipOffset = voice.frameCursor * channels;
-                    for (int channel = 0; channel < channels; ++channel)
-                        mixBuffer[static_cast<size_t>(mixOffset + channel)] += samples[clipOffset + channel] * finalVolume;
-
-                    voice.frameCursor++;
-                }
-            }
-
-            std::erase_if(state.voices, [](const Voice& _voice)
-            {
-                return !_voice.active;
-            });
-
-            for (float& sample : mixBuffer)
-                sample = std::clamp(sample, -1.0f, 1.0f);
-
-            if (!SDL_PutAudioStreamData(_stream, mixBuffer.data(), static_cast<int>(mixBuffer.size() * sizeof(float))))
-                Debug::Warning("Failed to queue mixed audio: %s", SDL_GetError());
-        }
-    } // namespace
-
-    const SDL_AudioSpec& GetMixSpec()
-    {
-        static SDL_AudioSpec spec = { SDL_AUDIO_F32, 2, 48000 };
-        return spec;
-    }
-
-    bool Initialize()
-    {
-        AudioState& state = GetAudioState();
-        if (state.stream != nullptr)
-            return true;
-
-        SyncMixerFromProjectConfig(state);
-
-        if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
-        {
-            Debug::Warning("SDL audio init failed: %s", SDL_GetError());
+        IPLAudioSettings audio{48000, BlockSize};
+        IPLBinauralEffectSettings effect{s.hrtf};
+        if (iplBinauralEffectCreate(s.context, &audio, &effect, &v.effect) != IPL_STATUS_SUCCESS)
             return false;
-        }
-
-        state.stream = SDL_OpenAudioDeviceStream(
-            SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK,
-            &GetMixSpec(),
-            AudioStreamCallback,
-            &state);
-
-        if (state.stream == nullptr)
-        {
-            Debug::Warning("Failed to open audio device stream: %s", SDL_GetError());
-            return false;
-        }
-
-        if (!SDL_ResumeAudioStreamDevice(state.stream))
-        {
-            Debug::Warning("Failed to resume audio device stream: %s", SDL_GetError());
-            SDL_DestroyAudioStream(state.stream);
-            state.stream = nullptr;
-            return false;
-        }
-
-        return true;
     }
-
-    void Shutdown()
+#endif
+    return true;
+}
+bool InitializeProcessor(AudioState &s)
+{
+    MixLevels(s);
+#if CANIS_STEAM_AUDIO
+    IPLContextSettings context{};
+    context.version = STEAMAUDIO_VERSION;
+    context.simdLevel = IPL_SIMDLEVEL_SSE2;
+    if (iplContextCreate(&context, &s.context) != IPL_STATUS_SUCCESS)
+        return false;
+    IPLAudioSettings audio{48000, BlockSize};
+    IPLHRTFSettings hrtf{};
+    hrtf.type = IPL_HRTFTYPE_DEFAULT;
+    hrtf.volume = 1;
+    hrtf.normType = IPL_HRTFNORMTYPE_RMS;
+    if (iplHRTFCreate(s.context, &audio, &hrtf, &s.hrtf) != IPL_STATUS_SUCCESS)
     {
-        AudioState& state = GetAudioState();
-
-        if (state.stream != nullptr)
-        {
-            SDL_LockAudioStream(state.stream);
-            state.voices.clear();
-            SDL_UnlockAudioStream(state.stream);
-            SDL_DestroyAudioStream(state.stream);
-            state.stream = nullptr;
-        }
-        else
-        {
-            state.voices.clear();
-        }
-
-        state.nextVoiceId = 1;
-
-        SDL_QuitSubSystem(SDL_INIT_AUDIO);
-    }
-
-    bool IsInitialized()
-    {
-        return GetAudioState().stream != nullptr;
-    }
-
-    PlaybackHandle Play(AudioClipAsset &_clip, const PlaybackSettings &_settings)
-    {
-        AudioState& state = GetAudioState();
-        if (!_clip.IsLoaded())
-            return {};
-
-        if (state.stream == nullptr && !Initialize())
-            return {};
-
-        Voice voice = {};
-        voice.id = state.nextVoiceId++;
-        voice.clip = &_clip;
-        voice.bus = _settings.bus;
-        voice.volume = ClampVolume(_settings.volume);
-        voice.loops = std::max(-1, _settings.loops);
-        voice.frameCursor = 0;
-        voice.active = true;
-
-        SDL_LockAudioStream(state.stream);
-        state.voices.push_back(voice);
-        SDL_UnlockAudioStream(state.stream);
-
-        return { voice.id };
-    }
-
-    bool SetVolume(PlaybackHandle _handle, float _volume)
-    {
-        AudioState& state = GetAudioState();
-        if (state.stream == nullptr || !_handle.IsValid())
-            return false;
-
-        const float clampedVolume = ClampVolume(_volume);
-
-        SDL_LockAudioStream(state.stream);
-        for (Voice& voice : state.voices)
-        {
-            if (voice.id == _handle.id)
-            {
-                voice.volume = clampedVolume;
-                SDL_UnlockAudioStream(state.stream);
-                return true;
-            }
-        }
-        SDL_UnlockAudioStream(state.stream);
-
+        iplContextRelease(&s.context);
         return false;
     }
+#endif
+    s.initialized = true;
+    return true;
+}
+Voice *Find(AudioState &s, PlaybackHandle h)
+{
+    for (auto &v : s.voices)
+        if (v.active && v.id == h.id)
+            return &v;
+    return nullptr;
+}
 
-    void Stop(PlaybackHandle _handle)
+// Called with the state lock held. All buffers/effects are created on the main thread.
+// Finished voices keep their resources until reused/stopped, avoiding callback deallocation.
+void MixBlock(AudioState &s, float *output)
+{
+    std::fill_n(output, BlockSize * 2, 0.f);
+    for (auto &v : s.voices)
     {
-        AudioState& state = GetAudioState();
-        if (state.stream == nullptr || !_handle.IsValid())
-            return;
-
-        SDL_LockAudioStream(state.stream);
-        std::erase_if(state.voices, [_handle](const Voice& _voice)
+        if (!v.active || v.paused || (v.settings.sceneOwned && s.scenePaused))
+            continue;
+        const auto &p = v.settings;
+        v.dry.fill(0);
+        v.mono.fill(0);
+        const size_t frames = v.samples->size() / 2;
+        bool hadInput = false;
+        for (int i = 0; i < BlockSize && !v.inputEnded; ++i)
         {
-            return _voice.id == _handle.id;
-        });
-        SDL_UnlockAudioStream(state.stream);
-    }
-
-    void StopBus(Bus _bus)
-    {
-        AudioState& state = GetAudioState();
-        if (state.stream == nullptr)
-            return;
-
-        SDL_LockAudioStream(state.stream);
-        std::erase_if(state.voices, [_bus](const Voice& _voice)
-        {
-            return _voice.bus == _bus;
-        });
-        SDL_UnlockAudioStream(state.stream);
-    }
-
-    void StopAll()
-    {
-        AudioState& state = GetAudioState();
-        if (state.stream == nullptr)
-        {
-            state.voices.clear();
-            return;
+            while (v.cursor >= frames)
+            {
+                if (v.loops == 0)
+                {
+                    v.inputEnded = true;
+                    break;
+                }
+                if (v.loops > 0)
+                    --v.loops;
+                v.cursor -= frames;
+            }
+            if (v.inputEnded)
+                break;
+            const auto a = static_cast<size_t>(v.cursor);
+            const auto b = a + 1 < frames ? a + 1 : (v.loops != 0 ? 0 : a);
+            const float fraction = static_cast<float>(v.cursor - a);
+            for (int c = 0; c < 2; ++c)
+                v.dry[2 * i + c] = (*v.samples)[2 * a + c] * (1 - fraction) + (*v.samples)[2 * b + c] * fraction;
+            v.mono[i] = .5f * (v.dry[2 * i] + v.dry[2 * i + 1]);
+            v.cursor += p.pitch;
+            hadInput = true;
         }
-
-        SDL_LockAudioStream(state.stream);
-        state.voices.clear();
-        SDL_UnlockAudioStream(state.stream);
-    }
-
-    void RefreshMixerFromProjectConfig()
-    {
-        AudioState& state = GetAudioState();
-        if (state.stream == nullptr)
+        const auto delta = p.position - s.listenerPosition;
+        const float distance = glm::length(delta);
+        const auto direction =
+            distance > .0001f ? glm::inverse(s.listenerRotation) * (delta / distance) : Vector3(0, 0, -1);
+        const float attenuation =
+            s.listenerActive ? DistanceGain(distance, p.minDistance, p.maxDistance, p.rolloffMode) : 0;
+        bool tail = false;
+#if CANIS_STEAM_AUDIO
+        if (v.effect && p.spatialBlend > 0)
         {
-            SyncMixerFromProjectConfig(state);
-            return;
+            float *inChannels[]{v.mono.data()};
+            float *outChannels[]{v.left.data(), v.right.data()};
+            IPLAudioBuffer in{1, BlockSize, inChannels}, out{2, BlockSize, outChannels};
+            if (hadInput)
+            {
+                IPLBinauralEffectParams params{};
+                params.direction = {direction.x, direction.y, direction.z};
+                params.interpolation = IPL_HRTFINTERPOLATION_BILINEAR;
+                params.spatialBlend = 1;
+                params.hrtf = s.hrtf;
+                tail = iplBinauralEffectApply(v.effect, &params, &in, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
+            }
+            else
+                tail = iplBinauralEffectGetTail(v.effect, &out) == IPL_AUDIOEFFECTSTATE_TAILREMAINING;
         }
-
-        SDL_LockAudioStream(state.stream);
-        SyncMixerFromProjectConfig(state);
-        SDL_UnlockAudioStream(state.stream);
-    }
-
-    void SetMuted(const bool _muted)
-    {
-        AudioState& state = GetAudioState();
-
-        if (state.stream == nullptr)
+        else
+#endif
         {
-            state.muted = _muted;
-            return;
+            const float pan = std::clamp(direction.x, -1.f, 1.f);
+            const float l = std::sqrt(.5f * (1 - pan)), r = std::sqrt(.5f * (1 + pan));
+            for (int i = 0; i < BlockSize; ++i)
+            {
+                v.left[i] = v.mono[i] * l;
+                v.right[i] = v.mono[i] * r;
+            }
         }
-
-        SDL_LockAudioStream(state.stream);
-        state.muted = _muted;
-        SDL_UnlockAudioStream(state.stream);
+        const float gain = (s.muted ? 0 : s.master) * (p.bus == Bus::Music ? s.music : s.sfx) * p.volume;
+        const float listener = p.sceneOwned ? (s.listenerActive ? s.listenerVolume : 0) : 1;
+        for (int i = 0; i < BlockSize; ++i)
+        {
+            output[2 * i] +=
+                gain * listener * ((1 - p.spatialBlend) * v.dry[2 * i] + p.spatialBlend * attenuation * v.left[i]);
+            output[2 * i + 1] +=
+                gain * listener * ((1 - p.spatialBlend) * v.dry[2 * i + 1] + p.spatialBlend * attenuation * v.right[i]);
+        }
+        if (v.inputEnded && !tail)
+            v.active = false;
+    }
+    for (int i = 0; i < BlockSize * 2; ++i)
+        output[i] = std::clamp(output[i], -1.f, 1.f);
+}
+void SDLCALL Callback(void *data, SDL_AudioStream *stream, int additional, int)
+{
+    auto &s = *static_cast<AudioState *>(data);
+    std::array<float, BlockSize * 2> output;
+    while (additional > 0)
+    {
+        {
+            std::lock_guard lock(s.mutex);
+            MixBlock(s, output.data());
+        }
+        if (!SDL_PutAudioStreamData(stream, output.data(), sizeof(output)))
+            break;
+        additional -= sizeof(output);
     }
 }
+} // namespace
+const SDL_AudioSpec &GetMixSpec()
+{
+    static const SDL_AudioSpec spec{SDL_AUDIO_F32, 2, 48000};
+    return spec;
+}
+const char *SpatialBackend()
+{
+#if CANIS_STEAM_AUDIO
+    return "Steam Audio 4.8.1 HRTF";
+#else
+    return "Stereo panning (Steam Audio disabled)";
+#endif
+}
+bool InitializeOffline()
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    if (s.initialized)
+        return s.offline;
+    s.offline = true;
+    return InitializeProcessor(s);
+}
+bool Initialize()
+{
+    auto &s = State();
+    if (s.initialized)
+        return true;
+    if (!SDL_InitSubSystem(SDL_INIT_AUDIO))
+        return false;
+    s.ownsSDL = true;
+    if (!InitializeProcessor(s))
+    {
+        Shutdown();
+        Debug::Warning("Spatial audio initialization failed");
+        return false;
+    }
+    s.offline = false;
+    s.stream = SDL_OpenAudioDeviceStream(SDL_AUDIO_DEVICE_DEFAULT_PLAYBACK, &GetMixSpec(), Callback, &s);
+    if (!s.stream || !SDL_ResumeAudioStreamDevice(s.stream))
+    {
+        Debug::Warning("Audio device unavailable: %s", SDL_GetError());
+        Shutdown();
+        return false;
+    }
+    Debug::Log("Audio backend: %s", SpatialBackend());
+    return true;
+}
+void Shutdown()
+{
+    auto &s = State();
+    // Destroy joins the callback; never wait for it while holding the mixer mutex.
+    if (s.stream)
+    {
+        SDL_DestroyAudioStream(s.stream);
+        s.stream = nullptr;
+    }
+    std::lock_guard lock(s.mutex);
+    for (auto &v : s.voices)
+        Release(v);
+#if CANIS_STEAM_AUDIO
+    if (s.hrtf)
+        iplHRTFRelease(&s.hrtf);
+    if (s.context)
+        iplContextRelease(&s.context);
+#endif
+    s.initialized = false;
+    s.offline = false;
+    s.scenePaused = false;
+    s.listenerActive = false;
+    if (s.ownsSDL)
+    {
+        SDL_QuitSubSystem(SDL_INIT_AUDIO);
+        s.ownsSDL = false;
+    }
+}
+bool IsInitialized()
+{
+    return State().initialized;
+}
+bool RenderOffline(float *stereo, int frames)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    if (!s.initialized || !s.offline || !stereo || frames < 0 || frames % BlockSize != 0)
+        return false;
+    for (int i = 0; i < frames; i += BlockSize)
+        MixBlock(s, stereo + 2 * i);
+    return true;
+}
+float DistanceGain(float distance, float minimum, float maximum, int mode)
+{
+    if (!std::isfinite(distance))
+        return 0;
+    minimum = std::max(.01f, minimum);
+    maximum = std::max(minimum + .01f, maximum);
+    if (mode == 2 || distance <= minimum)
+        return 1;
+    distance = std::min(distance, maximum);
+    return mode == 1 ? 1 - (distance - minimum) / (maximum - minimum) : minimum / distance;
+}
+PlaybackHandle Play(AudioClipAsset &clip, const PlaybackSettings &settings)
+{
+    if (!clip.IsLoaded() || !Initialize())
+        return {};
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    for (auto &v : s.voices)
+        if (!v.active)
+        {
+            Release(v);
+            if (s.nextId == std::numeric_limits<int>::max())
+                return {};
+            v.id = s.nextId++;
+            v.samples = clip.GetSampleData();
+            v.settings = Sanitize(settings);
+            v.loops = v.settings.loops;
+            v.cursor = 0;
+            v.paused = false;
+            v.inputEnded = false;
+            if (!CreateEffect(s, v))
+            {
+                Release(v);
+                return {};
+            }
+            v.active = true;
+            return {v.id};
+        }
+    return {}; // Bounded voice pool: no allocations or unbounded CPU work in the callback.
+}
+bool Configure(PlaybackHandle handle, const PlaybackSettings &settings)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    auto *v = Find(s, handle);
+    if (!v)
+        return false;
+    const auto updated = Sanitize(settings);
+    if (v->settings.loops != updated.loops)
+        v->loops = updated.loops;
+#if CANIS_STEAM_AUDIO
+    if (v->effect && v->settings.spatialBlend <= 0 && updated.spatialBlend > 0)
+        iplBinauralEffectReset(v->effect);
+#endif
+    v->settings = updated;
+    return CreateEffect(s, *v);
+}
+bool SetVolume(PlaybackHandle handle, float volume)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    auto *v = Find(s, handle);
+    if (!v)
+        return false;
+    v->settings.volume = Clamp(volume, 0, 1, 1);
+    return true;
+}
+bool IsPlaying(PlaybackHandle handle)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    auto *v = Find(s, handle);
+    return v && !v->paused && !(v->settings.sceneOwned && s.scenePaused);
+}
+bool IsAlive(PlaybackHandle handle)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    return Find(s, handle) != nullptr;
+}
+void Pause(PlaybackHandle handle, bool paused)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    if (auto *v = Find(s, handle))
+        v->paused = paused;
+}
+void Stop(PlaybackHandle handle)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    for (auto &v : s.voices)
+        if (v.id == handle.id)
+            Release(v);
+}
+void StopBus(Bus bus)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    for (auto &v : s.voices)
+        if (v.settings.bus == bus)
+            Release(v);
+}
+void StopAll()
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    for (auto &v : s.voices)
+        Release(v);
+}
+void RefreshMixerFromProjectConfig()
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    MixLevels(s);
+}
+void SetMuted(bool muted)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    s.muted = muted;
+}
+void SetScenePaused(bool paused)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    s.scenePaused = paused;
+}
+void SetListener(Vector3 position, Quaternion orientation, float volume, bool active)
+{
+    auto &s = State();
+    std::lock_guard lock(s.mutex);
+    s.listenerPosition =
+        std::isfinite(position.x) && std::isfinite(position.y) && std::isfinite(position.z) ? position : Vector3(0);
+    const auto length = glm::length(orientation);
+    s.listenerRotation =
+        std::isfinite(length) && length > .00001f ? glm::normalize(orientation) : Quaternion(1, 0, 0, 0);
+    s.listenerVolume = Clamp(volume, 0, 1, 1);
+    s.listenerActive = active;
+}
+} // namespace Canis::Audio

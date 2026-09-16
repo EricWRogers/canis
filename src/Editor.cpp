@@ -20,6 +20,7 @@
 #include <Canis/GameCodeObject.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/AnimationRuntime.hpp>
 #include <Canis/ShaderGraph.hpp>
 #include <Canis/ShaderGraphGraphEditor.hpp>
@@ -6266,6 +6267,24 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_csharp = m_app->GetCSharp();
             m_csharp->SetReloadOnSave(m_csharpReloadOnSave);
         }
+        if (m_playPending)
+        {
+            if (m_mode != EditorMode::EDIT || !m_scene || m_scene->ScriptingEpoch() != m_pendingPlayEpoch)
+            {
+                m_playPending = false;
+                m_playStatus.clear();
+            }
+            else if (m_csharp->HasBuildError() && !m_csharp->Busy())
+            {
+                m_playPending = false;
+                m_playStatus = "C# build failed";
+            }
+            else if (m_csharp->ReadyToPlay())
+            {
+                m_playPending = false;
+                StartPlayModeAt(m_pendingPlayHasPosition ? &m_pendingPlayPosition : nullptr);
+            }
+        }
 #endif
         TickScriptWorkspace();
         if (m_showScriptEditor)
@@ -9316,7 +9335,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
 #if !CANIS_CSHARP
         if(m_scene && Scripting::HasManagedScripts(*m_scene)) {
-            m_scriptEditorMessage="This scene requires CANIS_ENABLE_CSHARP=ON.";return;
+            m_playStatus="This scene requires CANIS_ENABLE_CSHARP=ON.";return;
         }
 #endif
         ExitMeshEdit();
@@ -9330,12 +9349,23 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_csharp->Tick(false, false, 0, false);
             if (!m_csharp->ReadyToPlay())
             {
-                m_scriptEditorMessage = "C#: wait for compilation/reload and fix errors before Play.";
-                m_showScriptEditor = true;
+                if (m_csharp->HasBuildError() && !m_csharp->Busy())
+                {
+                    m_playStatus = "C# build failed";
+                    return;
+                }
+                m_playPending = true;
+                m_pendingPlayEpoch = m_scene->ScriptingEpoch();
+                m_pendingPlayHasPosition = _position != nullptr;
+                if (_position) m_pendingPlayPosition = *_position;
+                m_playStatus = "Compiling C#...";
+                if (!m_csharp->Busy() && !m_csharp->ReloadOnSave()) m_csharp->RequestBuild();
                 return;
             }
         }
 #endif
+        m_playPending = false;
+        m_playStatus.clear();
 
         m_vrPlayError.clear();
         if (m_playTarget != 0 && !m_app->StartEditorVR(m_playTarget == 2, m_vrPlayError))
@@ -17430,7 +17460,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::PopStyleColor();
 
                 if (rowClicked && canOpenSource)
-                    OpenInVSCode(openTarget);
+                {
+                    if(std::filesystem::path(entry.file).extension()==".cs")OpenScriptDocument(entry.file,entry.line);
+                    else OpenInVSCode(openTarget);
+                }
 
                 if (ImGui::IsItemHovered())
                 {
@@ -18350,14 +18383,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::PushStyleColor(ImGuiCol_Button, ImVec4(0.13f, 0.36f, 0.25f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonHovered, ImVec4(0.17f, 0.46f, 0.32f, 1.0f));
             ImGui::PushStyleColor(ImGuiCol_ButtonActive, ImVec4(0.20f, 0.56f, 0.38f, 1.0f));
+            ImGui::BeginDisabled(m_playPending);
             const bool playPressed = ImGui::Button("Play##ScenePanel");
             ImGui::PopStyleColor(3);
             ImGui::SameLine();
             ImGui::SetNextItemWidth(135.0f);
             ImGui::Combo("##PlayTarget", &m_playTarget, "Desktop\0Headset\0VR Simulation\0");
+            ImGui::EndDisabled();
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Play the current scene with the live hierarchy and inspector. Stop restores pre-play edits.");
-            if (playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f))
+            if (!m_playPending && (playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)))
             {
                 hotKeyCoolDown = HOTKEYRESET;
                 StartPlayModeAt(nullptr);
@@ -18499,6 +18534,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     hotKeyCoolDown = HOTKEYRESET;
                     ReleasePlayMouseCapture();
                     m_mode = EditorMode::PAUSE;
+                    Audio::SetScenePaused(true);
                 }
             }
             else if (m_mode == EditorMode::PAUSE)
@@ -18513,6 +18549,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     hotKeyCoolDown = HOTKEYRESET;
                     ReleasePlayMouseCapture();
                     m_mode = EditorMode::PLAY;
+                    Audio::SetScenePaused(false);
                 }
             }
 
@@ -18531,6 +18568,28 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         hotKeyCoolDown -= Time::UnscaledDeltaTime();
+
+        if (m_mode == EditorMode::EDIT && !m_playStatus.empty())
+        {
+            ImGui::SameLine();
+            ImGui::TextUnformatted(m_playStatus.c_str());
+            if (m_playPending)
+            {
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel##PendingPlay"))
+                {
+                    m_playPending = false;
+                    m_playStatus.clear();
+                }
+            }
+#if CANIS_CSHARP
+            else if (m_csharp && m_csharp->HasBuildError())
+            {
+                ImGui::SameLine();
+                if (ImGui::Button("Build errors##PendingPlay")) m_showScriptEditor = true;
+            }
+#endif
+        }
 
         ImGui::SameLine();
         DrawEditorWindowMenu();

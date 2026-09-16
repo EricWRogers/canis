@@ -237,13 +237,24 @@ namespace Canis
             bool complete = false;
             std::string* message;
             bool indent = false, unindent = false, comment = false;
+            bool selectIdentifier = false;
+            bool suppressNewline = false;
         };
 
         int EditCallback(ImGuiInputTextCallbackData* data)
         {
-            if (data->EventFlag == ImGuiInputTextFlags_CallbackCharFilter) return data->EventChar == '\t' ? 1 : 0;
             auto& action = *static_cast<EditAction*>(data->UserData);
+            if (data->EventFlag == ImGuiInputTextFlags_CallbackCharFilter)
+                return data->EventChar == '\t' || (action.suppressNewline && (data->EventChar == '\n' || data->EventChar == '\r')) ? 1 : 0;
             auto& doc = *action.document;
+            if (action.selectIdentifier)
+            {
+                const auto [begin, end] = ScriptEditing::IdentifierSelection(
+                    std::string(data->Buf, data->BufTextLen), data->SelectionStart, data->SelectionEnd);
+                data->SelectionStart = begin;
+                data->SelectionEnd = data->CursorPos = end;
+                action.selectIdentifier = false;
+            }
             if (doc.jump >= 0)
             {
                 data->CursorPos = std::clamp(doc.jump, 0, data->BufTextLen);
@@ -559,12 +570,15 @@ namespace Canis
             { m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = "Sync preview"; }
             if (ImGui::BeginMenu(csharp ? "C# navigation" : "C++ navigation", active != nullptr))
             {
+                if (csharp && ImGui::MenuItem("Rename symbol", "F2"))
+                { m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = "textDocument/rename"; m_scriptWorkspace.results.clear(); }
                 for (const auto& entry : std::vector<std::pair<const char*, const char*>>{
                     {"Complete (Ctrl+Space)", "textDocument/completion"}, {"Parameter hints (Ctrl+Shift+Space)", "textDocument/signatureHelp"},
                     {"Go to definition (F12)", "textDocument/definition"}, {"Find references (Shift+F12)", "textDocument/references"},
                     {"Methods and symbols (Ctrl+Shift+O)", "textDocument/documentSymbol"}})
                     if (ImGui::MenuItem(entry.first))
                     {
+                        if (csharp && std::string(entry.second) == "textDocument/completion") { RequestScriptCompletion(*active); continue; }
                         m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = entry.second; m_scriptWorkspace.results.clear();
 #if CANIS_CSHARP
                         if(csharp && m_csharp){std::map<std::string,std::string> overlays;for(auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs")overlays[doc.path.string()]=doc.text;m_csharp->RequestLanguage(entry.second,active->path.string(),active->text,active->cursor,overlays);}else
@@ -670,15 +684,20 @@ namespace Canis
                 m_scriptWorkspace.zoom = std::clamp(m_scriptWorkspace.zoom + io.MouseWheel * 0.1f, 0.7f, 2.0f);
             std::string method;
             if (ImGui::IsKeyPressed(ImGuiKey_F12, false)) method = io.KeyShift ? "textDocument/references" : "textDocument/definition";
+            if (csharp && ImGui::IsKeyPressed(ImGuiKey_F2, false))
+            { m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = "textDocument/rename"; m_scriptWorkspace.results.clear(); }
             if (io.KeyCtrl && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_O, false)) method = "textDocument/documentSymbol";
             if (io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Space, false)) method = io.KeyShift ? "textDocument/signatureHelp" : "textDocument/completion";
             if (!method.empty())
             {
+                if (csharp && method == "textDocument/completion") RequestScriptCompletion(*active);
+                else {
                 m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = method; m_scriptWorkspace.results.clear();
 #if CANIS_CSHARP
                 if(csharp && m_csharp){std::map<std::string,std::string> overlays;for(auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs")overlays[doc.path.string()]=doc.text;m_csharp->RequestLanguage(method,active->path.string(),active->text,active->cursor,overlays);}else
 #endif
                 if (!csharp) m_scriptWorkspace.language->Request(method, active->path.string(), active->text, active->cursor);
+                }
             }
         }
         DrawScriptTools(active);
@@ -744,13 +763,34 @@ namespace Canis
         {
             auto& doc = *active;
             ImGui::PushID(doc.path.string().c_str());
+            ImGui::PushID(doc.revision);
             const bool editing = ImGui::GetActiveID() == ImGui::GetID("##code");
             if (editing) ImGui::SetKeyOwner(ImGuiKey_Tab, ImGui::GetID("##code"));
             EditAction action{&doc, false, &m_scriptEditorMessage};
+            std::vector<std::pair<ImGuiKey, ImGuiKeyData>> consumedKeys;
+            auto& suggestions = m_scriptWorkspace;
+            if (csharp && editing && (suggestions.completionOpen || suggestions.completionPending) && suggestions.completionPath == doc.path.string() &&
+                suggestions.completionSnapshot == doc.text && suggestions.completionCursor == doc.cursor)
+            {
+                for (auto key : {ImGuiKey_UpArrow, ImGuiKey_DownArrow, ImGuiKey_Enter, ImGuiKey_Tab, ImGuiKey_Escape})
+                {
+                    if (!ImGui::IsKeyPressed(key) || (!suggestions.completionOpen && key != ImGuiKey_Escape)) continue;
+                    if (key == ImGuiKey_Escape) suggestions.completionOpen = suggestions.completionPending = suggestions.completionQueued = false;
+                    else if (key == ImGuiKey_Enter || key == ImGuiKey_Tab) { AcceptScriptCompletion(doc); action.suppressNewline = true; }
+                    else if (!suggestions.suggestions.empty()) {
+                        const int count = (int)suggestions.suggestions.size();
+                        suggestions.suggestionIndex = (suggestions.suggestionIndex + (key == ImGuiKey_DownArrow ? 1 : count - 1)) % count;
+                        suggestions.suggestionScroll = true;
+                    }
+                    // InputText owns these keys internally; hide consumed suggestion keys for this widget only.
+                    auto* data = ImGui::GetKeyData(key); consumedKeys.emplace_back(key, *data);
+                    data->Down = false; data->DownDuration = data->DownDurationPrev = -1;
+                }
+            }
             action.indent = editing && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Tab, false);
             action.unindent = editing && io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_Tab, false);
             action.comment = editing && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_Slash, false);
-            if (doc.pendingEdit || (doc.jump >= 0 && doc.foldedLines.empty()) || (m_focusScriptDocument && doc.path.string() == m_activeScriptDocument))
+            if (!ImGui::IsPopupOpen("CSharpContext") && (doc.pendingEdit || (doc.jump >= 0 && doc.foldedLines.empty()) || (m_focusScriptDocument && doc.path.string() == m_activeScriptDocument)))
             {
                 ImGui::SetKeyboardFocusHere();
                 m_focusScriptDocument = false;
@@ -769,6 +809,9 @@ namespace Canis
             if (doc.editorHeight > 0 && std::abs(doc.editorHeight - editorHeight) > 1)
                 if (auto* state = ImGui::GetInputTextState(codeId)) state->CursorFollow = true;
             doc.editorHeight = editorHeight;
+            const auto inputPosition = ImGui::GetCursorScreenPos();
+            action.selectIdentifier = io.MouseClickedCount[0] == 2 && !io.KeyShift &&
+                ImGui::IsMouseHoveringRect(inputPosition, ImVec2(inputPosition.x + ImGui::GetContentRegionAvail().x, inputPosition.y + editorHeight));
             ImGui::InputTextMultiline("##code", &doc.text,
                 ImVec2(-1, editorHeight),
                 ImGuiInputTextFlags_AllowTabInput | ImGuiInputTextFlags_CallbackCharFilter | ImGuiInputTextFlags_CallbackAlways | ImGuiInputTextFlags_CallbackEdit, EditCallback, &action);
@@ -777,8 +820,13 @@ namespace Canis
             for (const auto& diagnostic : m_scriptWorkspace.buildDiagnostics)
                 if (diagnostic.path == doc.path.string()) diagnostics.push_back(diagnostic);
             DrawHighlightedCode(codeParent, codeId, doc, diagnostics);
+            for (const auto& [key, data] : consumedKeys) *ImGui::GetKeyData(key) = data;
+            consumedKeys.clear();
+            DrawScriptIntellisense(doc, codeId);
             }
+            for (const auto& [key, data] : consumedKeys) *ImGui::GetKeyData(key) = data;
             ImGui::SetWindowFontScale(1.0f);
+            ImGui::PopID();
             ImGui::PopID();
         }
         else

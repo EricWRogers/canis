@@ -45,6 +45,14 @@ public sealed class Entity : IEquatable<Entity>
         return true;
     }
     public Transform Transform=>GetComponent<Transform>()??throw new MissingObjectException("Entity has no Transform.");
+    internal Component? GetComponent(Type type) {
+        if(!typeof(NativeComponent).IsAssignableFrom(type))return ComponentStore.Get(this,type);
+        if(components.TryGetValue(type,out var cached) && cached.IsValid)return cached;
+        var token=NativeBridge.Call<ulong>("Component.Token",Handle,type.Name);
+        if(token==0)return null;
+        var component=(NativeComponent)Activator.CreateInstance(type)!;
+        component.Owner=this;component.Attachment=token;components[type]=component;return component;
+    }
     public T? GetComponent<T>() where T:Component {
         if(!IsValid)throw new MissingObjectException("Entity no longer exists.");
         if(!typeof(NativeComponent).IsAssignableFrom(typeof(T)))return ComponentStore.Get<T>(this);
@@ -122,6 +130,10 @@ internal sealed class RegisteredNativeComponent(string name) : NativeComponent
 }
 public sealed class Transform : NativeComponent
 {
+    public Entity? Parent { get {Validate();return Entity.FromHandle(NativeBridge.Call<ulong>("Transform.Parent",Owner!.Handle));} }
+    public void SetParent(Entity? parent, bool worldPositionStays=true) {
+        Validate();NativeBridge.Call("Transform.SetParent",Owner!.Handle,parent?.Handle??0,worldPositionStays);
+    }
     public Vector3 Position {get {Validate();return NativeBridge.Call<Vector3>("Transform.Position",Owner!.Handle);}set {Validate();NativeBridge.Call("Transform.SetPosition",Owner!.Handle,value);}}
     public Quaternion Rotation {get {Validate();return NativeBridge.Call<Quaternion>("Transform.Rotation",Owner!.Handle);}set {Validate();NativeBridge.Call("Transform.SetRotation",Owner!.Handle,value);}}
     public Vector3 LocalScale {get {Validate();return NativeBridge.Call<Vector3>("Transform.Scale",Owner!.Handle);}set {Validate();NativeBridge.Call("Transform.SetScale",Owner!.Handle,value);}}
@@ -129,6 +141,7 @@ public sealed class Transform : NativeComponent
 }
 public sealed class Model : NativeComponent
 {
+    public ModelAsset? Asset { set => ApplyFields(new() { ["ModelAsset"] = new System.Text.Json.Nodes.JsonObject { ["uuid"] = value?.UUID??0 } }); }
     public Vector4 Color {get {Validate();return NativeBridge.Call<Vector4>("Presentation.Color",Owner!.Handle);}set {Validate();NativeBridge.Call("Presentation.SetColor",Owner!.Handle,value);}}
 }
 public sealed class Text : NativeComponent

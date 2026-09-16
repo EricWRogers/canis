@@ -1,3 +1,5 @@
+#include <Canis/AudioComponents.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/App.hpp>
@@ -391,6 +393,7 @@ namespace Canis
             updateSystem(system);
         }
 
+        UpdateSceneAudio(*this);
         m_isUpdating = false;
         FlushRetiredScripts();
         auto pendingDestroy = std::move(m_entitiesToDestroy); m_entitiesToDestroy.clear();
@@ -451,8 +454,15 @@ namespace Canis
             for (auto* script : scripts) { script->Destroy(); delete script; }
         }
     }
+    void Scene::SetPaused(bool paused)
+    {
+        m_paused=paused;
+        Audio::SetScenePaused(paused);
+    }
     void Scene::Unload()
     {
+        Audio::SetScenePaused(false);
+        Audio::SetListener(Vector3(0),Quaternion(1,0,0,0),1,false);
         if (managedStop) managedStop();
         ++m_scriptingEpoch;
         m_isUpdating = m_isLoadingEntityNodes = false;

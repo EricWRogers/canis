@@ -134,7 +134,7 @@ public static unsafe class EntryPoint
         catch (Exception error)
         {
             instance.Failed = true;
-            Write($"C# {instance.System.GetType().FullName}: {error}");
+            Log.ReportException(error,$"C# system {instance.System.GetType().FullName}");
         }
     }
     private static void Stop()

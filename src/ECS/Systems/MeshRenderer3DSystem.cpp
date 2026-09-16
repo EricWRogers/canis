@@ -1,4 +1,5 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
+#include <Canis/VFX/Trails.hpp>
 
 #include <Canis/AssetManager.hpp>
 #include <Canis/Components.hpp>
@@ -551,6 +552,10 @@ namespace Canis
 
     void MeshRenderer3DSystem::OnDestroy()
     {
+        if (m_trailVbo) glDeleteBuffers(1, &m_trailVbo);
+        if (m_trailVao) glDeleteVertexArrays(1, &m_trailVao);
+        m_trailVao = m_trailVbo = 0;
+        m_trailShader = nullptr;
         if (m_skyboxVbo != 0)
             glDeleteBuffers(1, &m_skyboxVbo);
         if (m_skyboxVao != 0)
@@ -1795,11 +1800,70 @@ namespace Canis
             currentShader->UnUse();
         }
 
+        DrawTrails(_registry, projection, view, cameraPosition);
         DrawColliderDebugLines(_registry, projection, view);
         DrawDebugGizmoLines(projection, view);
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);
+    }
+    void MeshRenderer3DSystem::DrawTrails(entt::registry& registry, const Matrix4& projection,
+                                        const Matrix4& view, Vector3 cameraPosition)
+    {
+        std::vector<TrailVertex> vertices;
+        for (auto [handle, trail, transform] : registry.view<TrailRenderer, Transform>().each())
+        {
+            if (!transform.IsActiveInHierarchy()) continue;
+            auto mesh = BuildTrailMesh(trail, cameraPosition);
+            vertices.insert(vertices.end(), mesh.begin(), mesh.end());
+        }
+        if (vertices.empty()) return;
+        // Sort transparent triangles for this eye without writing to scene depth.
+        std::vector<size_t> order(vertices.size()/3);
+        for (size_t i = 0; i < order.size(); ++i) order[i] = i;
+        auto depth = [&](size_t i) {
+            auto center = (vertices[i*3].position + vertices[i*3+1].position + vertices[i*3+2].position)/3.f;
+            return (view * Vector4(center,1)).z;
+        };
+        std::stable_sort(order.begin(), order.end(), [&](size_t a, size_t b) { return depth(a) < depth(b); });
+        std::vector<TrailVertex> sorted;
+        sorted.reserve(vertices.size());
+        for (size_t i : order) sorted.insert(sorted.end(), vertices.begin()+i*3, vertices.begin()+i*3+3);
+        if (!m_trailShader)
+        {
+            auto id = AssetManager::LoadShader("assets/shaders/trail");
+            m_trailShader = AssetManager::Get<ShaderAsset>(id)->GetShader();
+            if (!m_trailShader->IsLinked())
+            {
+                m_trailShader->AddAttribute("vertexPosition");
+                m_trailShader->AddAttribute("vertexColor");
+                m_trailShader->Link();
+            }
+            glGenVertexArrays(1, &m_trailVao);
+            glGenBuffers(1, &m_trailVbo);
+            glBindVertexArray(m_trailVao);
+            glBindBuffer(GL_ARRAY_BUFFER, m_trailVbo);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0, 3, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, position));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1, 4, GL_FLOAT, GL_FALSE, sizeof(TrailVertex), (void*)offsetof(TrailVertex, color));
+        }
+        glEnable(GL_DEPTH_TEST);
+        glDisable(GL_CULL_FACE);
+        glEnable(GL_BLEND);
+        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        glDepthMask(GL_FALSE);
+        m_trailShader->Use();
+        m_trailShader->SetMat4("P", projection);
+        m_trailShader->SetMat4("V", view);
+        glBindVertexArray(m_trailVao);
+        glBindBuffer(GL_ARRAY_BUFFER, m_trailVbo);
+        glBufferData(GL_ARRAY_BUFFER, sorted.size()*sizeof(TrailVertex), sorted.data(), GL_STREAM_DRAW);
+        glDrawArrays(GL_TRIANGLES, 0, static_cast<GLsizei>(sorted.size()));
+        glBindBuffer(GL_ARRAY_BUFFER, 0);
+        glBindVertexArray(0);
+        m_trailShader->UnUse();
+        glDepthMask(GL_TRUE);
     }
 } // end of Canis namespace

@@ -19,7 +19,7 @@ namespace Canis::Scripting
         void RunGameplay(bool paused, float dt);
         void StopSession();
         std::string ProjectPath() const;
-        void RequestLanguage(const std::string& method, const std::string& path, const std::string& text, int cursor, const std::map<std::string,std::string>& overlays = {});
+        void RequestLanguage(const std::string& method, const std::string& path, const std::string& text, int cursor, const std::map<std::string,std::string>& overlays = {}, const std::string& newName = "");
         std::vector<ScriptEditing::LanguageReply> PollLanguage();
         void ExportPlayer(const std::filesystem::path& destination) const;
         bool HasBuildError() const;

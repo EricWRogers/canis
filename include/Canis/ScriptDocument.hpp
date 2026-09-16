@@ -22,6 +22,7 @@ namespace Canis::ScriptEditing
         CppHighlightCache highlight;
         float editorHeight = 0;
         int cursor = 0;
+        int revision = 0;
         int selectionStart = 0, selectionFinish = 0;
         std::optional<TextEdit> pendingEdit;
         std::vector<int> foldedLines;

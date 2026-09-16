@@ -159,7 +159,7 @@ namespace Canis
         float GetLastRenderCameraFarClip() const { return m_lastRenderCameraFarClip; }
         bool HasLastRenderCamera() const { return m_lastRenderCameraValid; }
         bool IsPaused() const { return m_paused; }
-        void SetPaused(bool _paused) { m_paused = _paused; }
+        void SetPaused(bool paused);
         void QuitGame();
 
 

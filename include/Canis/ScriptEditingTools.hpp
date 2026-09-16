@@ -1,12 +1,38 @@
 #pragma once
 #include <Canis/CppSyntax.hpp>
 #include <algorithm>
+#include <cctype>
 #include <string>
+#include <utility>
 #include <vector>
 
 namespace Canis::ScriptEditing
 {
+    inline std::pair<int, int> IdentifierSelection(const std::string& text, int start, int end)
+    {
+        int begin = std::clamp(std::min(start, end), 0, (int)text.size());
+        int finish = std::clamp(std::max(start, end), 0, (int)text.size());
+        auto identifier = [](unsigned char c) { return std::isalnum(c) || c == '_' || c >= 128; };
+        int at = begin;
+        while (at < finish && !identifier(text[at])) ++at;
+        if (at == finish) return {start, end};
+        begin = at;
+        while (begin > 0 && identifier(text[begin - 1])) --begin;
+        if (begin > 0 && text[begin - 1] == '@') --begin;
+        finish = at;
+        while (finish < (int)text.size() && identifier(text[finish])) ++finish;
+        return {begin, finish};
+    }
     struct TextEdit { int begin = 0, end = 0; std::string text; int cursor = 0; };
+    inline TextEdit CompleteIdentifier(const std::string& text, int cursor, const std::string& insertion)
+    {
+        int begin = std::clamp(cursor, 0, (int)text.size()), end = begin;
+        auto identifier = [](unsigned char c) { return std::isalnum(c) || c == '_' || c >= 128; };
+        while (begin > 0 && identifier(text[begin - 1])) --begin;
+        while (end < (int)text.size() && identifier(text[end])) ++end;
+        if (begin > 0 && text[begin - 1] == '@') --begin;
+        return {begin, end, insertion, begin + (int)insertion.size()};
+    }
     inline TextEdit IndentLines(const std::string& text, int start, int end, bool unindent, bool comment)
     {
         start = std::clamp(start, 0, (int)text.size());

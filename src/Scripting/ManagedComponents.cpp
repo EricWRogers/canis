@@ -5,6 +5,9 @@
 #include <Canis/Editor.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/Components.hpp>
+#include <Canis/Debug.hpp>
+#include <cctype>
+#include <charconv>
 #if CANIS_EDITOR
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -12,6 +15,42 @@
 namespace Canis::Scripting {
 namespace {
 ManagedJson manifest = ManagedJson::array();
+uint64_t ReferenceId(const ManagedJson& value) {
+    if(value.is_number_unsigned())return value.get<uint64_t>();
+    if(!value.is_string())return 0;
+    const auto& text=value.get_ref<const std::string&>();uint64_t id=0;
+    const auto parsed=std::from_chars(text.data(),text.data()+text.size(),id);
+    return parsed.ec==std::errc{} && parsed.ptr==text.data()+text.size()?id:0;
+}
+std::string AssetKind(uint64_t id) {
+    auto& paths=AssetManager::GetAssetLibrary().uuidAssetPath;
+    auto found=paths.find(UUID(id));if(found==paths.end())return "";
+    auto* meta=AssetManager::GetMetaFile(found->second);if(!meta)return "";
+    switch(meta->type) {
+        case MetaFileAsset::AUDIO:return "audio";case MetaFileAsset::SCENE:return "scene";
+        case MetaFileAsset::MODEL:return "model";case MetaFileAsset::MATERIAL:return "material";
+        case MetaFileAsset::TEXTURE:return "texture";default:return "other";
+    }
+}
+bool CompatibleEntity(Entity& e,const std::string& type) {
+    if(type.empty())return true;
+    if(type.starts_with("Canis::")) {
+        for(auto& conf:e.scene.app->GetComponentRegistry())if(conf.name==type && conf.Has)return conf.Has(e);
+    }
+    int matches=0;
+    if(auto* data=e.TryGetComponent<ManagedComponents>())for(auto& a:data->items)for(auto& d:manifest) {
+        if(d["id"]!=a->type && std::find(d["aliases"].begin(),d["aliases"].end(),a->type)==d["aliases"].end())continue;
+        if(d["id"]==type || (d.contains("assignableTo") && std::find(d["assignableTo"].begin(),d["assignableTo"].end(),type)!=d["assignableTo"].end()))++matches;
+    }
+    return matches==1;
+}
+std::string FieldLabel(const std::string& name) {
+    std::string result;for(size_t i=0;i<name.size();++i){auto c=name[i];
+        if(c=='_'){result+=' ';continue;}
+        if(i && std::isupper(static_cast<unsigned char>(c)) && std::islower(static_cast<unsigned char>(name[i-1])))result+=' ';
+        result+=result.empty()?static_cast<char>(std::toupper(static_cast<unsigned char>(c))):c;
+    }return result;
+}
 ManagedJson FromYaml(const YAML::Node& node) {
     if (!node || node.IsNull()) return nullptr;
     if (node.IsSequence()) { auto a=ManagedJson::array(); for(auto x:node) a.push_back(FromYaml(x)); return a; }
@@ -82,6 +121,21 @@ void RegisterManagedBindings(App& app, std::function<uint64_t(Entity*)> handle, 
     r.Method(owner,"Scene","Destroy",[resolve](uint64_t id){resolve(id).Destroy();});
     r.Method(owner,"Scene","SetName",[resolve](uint64_t id,std::string name){resolve(id).SetName(name);});
     r.Method(owner,"Assets","Path",[](uint64_t id)->std::string{return AssetManager::GetPath(UUID(id));});
+    r.Method(owner,"Assets","Kind",[](uint64_t id)->std::string{return AssetKind(id);});
+    r.Method(owner,"Assets","UUID",[](std::string path)->uint64_t {
+        if(!std::filesystem::is_regular_file(path))throw std::invalid_argument("Asset file does not exist: "+path);
+        auto* meta=AssetManager::GetMetaFile(path);if(!meta)throw std::invalid_argument("Asset metadata unavailable: "+path);
+        return static_cast<uint64_t>(meta->uuid);
+    });
+    r.Method(owner,"Managed","ReportError",[](std::string path,int line,std::string message){
+        Debug::LogFormat format("%s");format.file=path.c_str();format.line=line;Debug::Error(format,message.c_str());
+    });
+    r.Method(owner,"Scene","Instantiate",[&app,handle](uint64_t id)->std::string {
+        if(AssetKind(id)!="scene")throw std::invalid_argument("Instantiate requires a scene/prefab asset");
+        auto result=ManagedJson::array();for(auto* e:app.scene.Instantiate(SceneAssetHandle{UUID(id),""}))result.push_back(handle(e));
+        if(result.empty())throw std::runtime_error("Prefab contains no roots or could not be loaded");
+        return result.dump();
+    });
 }
 void DrawManagedInspector(Editor& editor, Entity& entity) {
 #if CANIS_EDITOR
@@ -98,35 +152,87 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
                 ImGui::EndPopup();
             }
             if(open) {
-                ImGui::Checkbox("Enabled",&a.enabled);
                 if(!description)ImGui::TextWrapped("Saved fields are preserved. Restore the type or declare its former ID with ScriptAlias.");
-                else for(auto& field:(*description)["fields"]) {
-                    auto name=field["name"].get<std::string>(),kind=field["kind"].get<std::string>();
-                    auto value=a.fields.contains(name)?a.fields[name]:field["default"];
-                    if(!a.fields.contains(name))for(auto& alias:field.value("aliases",ManagedJson::array()))if(a.fields.contains(alias.get<std::string>())){value=a.fields[alias.get<std::string>()];break;}
-                    bool changed=false;ImGui::PushID(name.c_str());
-                    if(kind=="bool"){bool v=value.is_boolean()?value.get<bool>():false;changed=ImGui::Checkbox(name.c_str(),&v);value=v;}
-                    else if(kind=="int"){int v=value.is_number()?value.get<int>():0;changed=ImGui::InputInt(name.c_str(),&v);value=v;}
-                    else if(kind=="float" || kind=="double"){double v=value.is_number()?value.get<double>():0;changed=ImGui::InputDouble(name.c_str(),&v);value=v;}
-                    else if(kind=="enum") {std::string v=value.is_string()?value.get<std::string>():"";if(ImGui::BeginCombo(name.c_str(),v.c_str())){for(auto& option:field["options"]){auto text=option.get<std::string>();if(ImGui::Selectable(text.c_str(),text==v)){value=text;changed=true;}}ImGui::EndCombo();}}
-                    else if(kind=="vector3" || kind=="vector4" || kind=="quaternion") {float v[4]={0,0,0,kind=="quaternion"?1.f:0.f};int n=kind=="vector3"?3:4;for(int j=0;j<n && value.is_array() && j<value.size();++j)v[j]=value[j].get<float>();changed=n==3?ImGui::InputFloat3(name.c_str(),v):ImGui::InputFloat4(name.c_str(),v);value=ManagedJson::array();for(int j=0;j<n;++j)value.push_back(v[j]);}
-                    else if(kind=="entity") {
-                        auto& ref=a.references[name];if(!ref && value.is_object() && value.contains("entity"))ref=entity.scene.FindEntity(UUID(std::stoull(value["entity"].get<std::string>())));
-                        const char* preview=ref?ref.GetName().c_str():"None";
-                        if(ImGui::BeginCombo(name.c_str(),preview)){if(ImGui::Selectable("None",!ref)){ref=nullptr;changed=true;}for(auto* e:entity.scene.GetEntities())if(e && e->IsValid()){ImGui::PushID(e);if(ImGui::Selectable(e->GetName().c_str(),ref==e)){ref=e;changed=true;}ImGui::PopID();}ImGui::EndCombo();}
-                        value={{"entity",std::to_string(static_cast<uint64_t>(ref.GetUUID()))}};
-                    }
-                    else {std::string v=value.is_string()?value.get<std::string>():"";changed=ImGui::InputText(name.c_str(),&v);value=v;}
-                    if((kind=="entity" || kind=="asset") && ImGui::BeginDragDropTarget()) {
-                        if(kind=="entity")if(auto* payload=ImGui::AcceptDragDropPayload("ENTITY_DRAG")) {
-                            auto id=*static_cast<const UUID*>(payload->Data);a.references[name]=entity.scene.FindEntity(id);value={{"entity",std::to_string(static_cast<uint64_t>(id))}};changed=true;
+                else if(ImGui::BeginTable("ManagedFields",2,ImGuiTableFlags_SizingStretchProp)) {
+                    ImGui::TableSetupColumn("Label",ImGuiTableColumnFlags_WidthStretch,.38f);
+                    ImGui::TableSetupColumn("Value",ImGuiTableColumnFlags_WidthStretch,.62f);
+                    ImGui::TableNextRow();ImGui::TableSetColumnIndex(0);ImGui::AlignTextToFramePadding();ImGui::TextUnformatted("Enabled");
+                    ImGui::TableSetColumnIndex(1);ImGui::Checkbox("##Enabled",&a.enabled);
+                    for(auto& field:(*description)["fields"]) {
+                        auto name=field["name"].get<std::string>(),kind=field["kind"].get<std::string>();
+                        auto value=a.fields.contains(name)?a.fields[name]:field["default"];
+                        if(!a.fields.contains(name))for(auto& alias:field.value("aliases",ManagedJson::array()))if(a.fields.contains(alias.get<std::string>())){value=a.fields[alias.get<std::string>()];break;}
+                        if(auto header=field.value("header","");!header.empty()){ImGui::TableNextRow();ImGui::TableSetColumnIndex(0);ImGui::TextUnformatted(header.c_str());}
+                        ImGui::TableNextRow();ImGui::TableSetColumnIndex(0);ImGui::AlignTextToFramePadding();
+                        ImGui::TextWrapped("%s",FieldLabel(name).c_str());
+                        if(ImGui::IsItemHovered() && !field.value("tooltip","").empty())ImGui::SetTooltip("%s",field["tooltip"].get<std::string>().c_str());
+                        ImGui::TableSetColumnIndex(1);ImGui::PushID(name.c_str());ImGui::SetNextItemWidth(-1);
+                        bool changed=false;
+                        if(kind=="bool"){bool v=value.is_boolean()?value.get<bool>():false;changed=ImGui::Checkbox("##value",&v);value=v;}
+                        else if(kind=="int"){int v=value.is_number()?value.get<int>():0;changed=ImGui::InputInt("##value",&v);value=v;}
+                        else if(kind=="float" || kind=="double"){double v=value.is_number()?value.get<double>():0;changed=ImGui::InputDouble("##value",&v);value=v;}
+                        else if(kind=="enum"){std::string v=value.is_string()?value.get<std::string>():"";if(ImGui::BeginCombo("##value",v.c_str())){for(auto& option:field["options"]){auto text=option.get<std::string>();if(ImGui::Selectable(text.c_str(),text==v)){value=text;changed=true;}}ImGui::EndCombo();}}
+                        else if(kind=="vector3" || kind=="vector4" || kind=="quaternion"){float v[4]={0,0,0,kind=="quaternion"?1.f:0.f};int n=kind=="vector3"?3:4;for(int j=0;j<n && value.is_array() && j<value.size();++j)v[j]=value[j].get<float>();changed=n==3?ImGui::InputFloat3("##value",v):ImGui::InputFloat4("##value",v);value=ManagedJson::array();for(int j=0;j<n;++j)value.push_back(v[j]);}
+                        else if(kind=="entity" || kind=="component") {
+                            auto type=field.value("componentType","");
+                            auto& ref=a.references[name];
+                            if(!ref && value.is_object() && value.contains("entity")) {
+                                const auto id=ReferenceId(value["entity"]);
+                                ref=entity.scene.FindEntity(UUID(id));
+                            }
+                            const std::string preview=ref?ref.GetName():"None";
+                            if(ImGui::BeginCombo("##value",preview.c_str())) {
+                                if(ImGui::Selectable("None",!ref)){ref=nullptr;changed=true;}
+                                for(auto* e:entity.scene.GetEntities())if(e && e->IsValid() && CompatibleEntity(*e,type)){ImGui::PushID(e);if(ImGui::Selectable(e->GetName().c_str(),ref==e)){ref=e;changed=true;}ImGui::PopID();}
+                                ImGui::EndCombo();
+                            }
+                            if(ImGui::BeginDragDropTarget()){
+                                if(auto* payload=ImGui::AcceptDragDropPayload("ENTITY_DRAG",ImGuiDragDropFlags_AcceptBeforeDelivery)){
+                                    auto id=*static_cast<const UUID*>(payload->Data);auto e=entity.scene.FindEntity(id);
+                                    if(e.IsValid() && CompatibleEntity(e,type)){if(payload->IsDelivery()){ref=e;changed=true;}}
+                                    else ImGui::SetTooltip("Requires %s",type.c_str());
+                                }ImGui::EndDragDropTarget();
+                            }
+                            if(ref && ImGui::BeginPopupContextItem("ReferenceActions")){
+                                if(ImGui::MenuItem("Select entity"))editor.FocusEntity(ref.TryGet());
+                                if(ImGui::MenuItem("Clear")){ref=nullptr;changed=true;}
+                                ImGui::EndPopup();
+                            }
+                            value={{"entity",std::to_string(static_cast<uint64_t>(ref.GetUUID()))}};
                         }
-                        if(kind=="asset")if(auto* payload=ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
-                            auto& data=*static_cast<const AssetDragData*>(payload->Data);value=std::to_string(static_cast<uint64_t>(data.uuid));changed=true;
+                        else if(kind=="asset") {
+                            uint64_t id=ReferenceId(value);
+                            auto required=field.value("assetType","");
+                            auto accepts=[&](uint64_t candidate){return required.empty() || AssetKind(candidate)==required;};
+                            const auto path=id?AssetManager::GetPath(UUID(id)):"";
+                            const auto preview=id?(path.empty()?"Missing ("+std::to_string(id)+")":std::filesystem::path(path).filename().string()):"None";
+                            if(ImGui::BeginCombo("##value",preview.c_str())) {
+                                if(ImGui::Selectable("None",id==0)){id=0;changed=true;}
+                                const auto paths=AssetManager::GetAssetLibrary().uuidAssetPath;
+                                for(auto& [uuid,p]:paths)if(accepts(static_cast<uint64_t>(uuid))){
+                                    ImGui::PushID(p.c_str());if(ImGui::Selectable(p.c_str(),uuid==UUID(id))){id=static_cast<uint64_t>(uuid);changed=true;}ImGui::PopID();
+                                }ImGui::EndCombo();
+                            }
+                            if(ImGui::BeginDragDropTarget()){
+                                if(auto* payload=ImGui::AcceptDragDropPayload("ASSET_DRAG",ImGuiDragDropFlags_AcceptBeforeDelivery)){
+                                    auto& dropped=*static_cast<const AssetDragData*>(payload->Data);
+                                    auto candidate=static_cast<uint64_t>(dropped.uuid);
+                                    if(accepts(candidate)){if(payload->IsDelivery()){id=candidate;changed=true;}}
+                                    else ImGui::SetTooltip("Requires a %s asset",required.c_str());
+                                }ImGui::EndDragDropTarget();
+                            }
+                            if(id && ImGui::BeginPopupContextItem("AssetActions")){
+                                if(ImGui::MenuItem("Locate asset"))editor.RevealAsset(path);
+                                if(ImGui::MenuItem("Clear")){id=0;changed=true;}
+                                ImGui::EndPopup();
+                            }
+                            value=std::to_string(id);
                         }
-                        ImGui::EndDragDropTarget();
+                        else {std::string v=value.is_string()?value.get<std::string>():"";changed=ImGui::InputText("##value",&v);value=v;}
+                        if(changed)a.fields[name]=value;
+                        ImGui::PopID();
                     }
-                    if(changed)a.fields[name]=value;ImGui::PopID();
+                    ImGui::EndTable();
                 }
             }
             ImGui::PopID();++i;

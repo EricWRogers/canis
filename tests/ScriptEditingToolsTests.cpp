@@ -7,6 +7,17 @@ int main()
 {
     try
     {
+        const std::string declaration = "upperString, scoreText, statusText;";
+        auto selected = IdentifierSelection(declaration, 12, 22);
+        Check(declaration.substr(selected.first, selected.second - selected.first) == "scoreText", "double click excludes spaces and comma");
+        Check(IdentifierSelection(declaration, 22, 12) == selected, "backwards selection");
+        Check(IdentifierSelection("thing.member_2()", 6, 14) == std::pair<int,int>{6,14}, "whole identifier including underscore and digits");
+        Check(IdentifierSelection("@class,", 0, 7) == std::pair<int,int>{0,6}, "escaped C# identifier");
+        Check(IdentifierSelection(", ", 0, 2) == std::pair<int,int>{0,2}, "punctuation-only selection unchanged");
+        auto completion = CompleteIdentifier("entity.Tranform;", 11, "Transform");
+        Check(completion.begin == 7 && completion.end == 15 && completion.text == "Transform", "completion replaces identifier suffix as well as prefix");
+        completion = CompleteIdentifier("entity.", 7, "Name");
+        Check(completion.begin == 7 && completion.end == 7 && completion.cursor == 11, "member completion inserts after dot");
         auto edit = IndentLines("one\n  two\nthree", 0, 10, false, false);
         Check(edit.text == "    one\n      two", "selection ending at newline must not indent next line");
         edit = IndentLines("    one\n\ttwo", 0, 12, true, false);

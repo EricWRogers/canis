@@ -16,6 +16,9 @@ internal static class ComponentStore
     private static readonly HashSet<string> reportedMissing=[];
     internal static bool Running;
     internal static string Id(Type t)=>t.GetCustomAttribute<ScriptIdAttribute>()?.Id ?? t.FullName!;
+    private static IEnumerable<string> ReferenceTypes(Type type) {
+        for(Type? t=type;t is not null && typeof(Component).IsAssignableFrom(t);t=t.BaseType)yield return Id(t);
+    }
     private static IEnumerable<FieldInfo> Fields(Type type)
     {
         for(Type? t=type;t is not null && t!=typeof(Component) && t!=typeof(Behaviour) && t!=typeof(ScriptableEntity);t=t.BaseType)
@@ -34,10 +37,12 @@ internal static class ComponentStore
         }
         return result;
     }
-    internal static string Kind(Type t) => t==typeof(bool)?"bool":t==typeof(int)?"int":t==typeof(float)?"float":t==typeof(double)?"double":t==typeof(string)?"string":t.IsEnum?"enum":t==typeof(Vector3)?"vector3":t==typeof(Vector4)?"vector4":t==typeof(Quaternion)?"quaternion":t==typeof(Entity)?"entity":t==typeof(AssetReference)?"asset":throw new InvalidOperationException($"Unsupported serialized field type {t}. Mark runtime-only fields [NonSerialized].");
+    internal static string Kind(Type t) => t==typeof(bool)?"bool":t==typeof(int)?"int":t==typeof(float)?"float":t==typeof(double)?"double":t==typeof(string)?"string":t.IsEnum?"enum":t==typeof(Vector3)?"vector3":t==typeof(Vector4)?"vector4":t==typeof(Quaternion)?"quaternion":t==typeof(Entity)?"entity":typeof(Component).IsAssignableFrom(t)?"component":t==typeof(AssetReference) || typeof(Asset).IsAssignableFrom(t)?"asset":throw new InvalidOperationException($"Unsupported serialized field type {t}. Mark runtime-only fields [NonSerialized].");
     internal static JsonNode? Encode(object? value,Type t)
     {
         if(t==typeof(Entity))return new JsonObject{{"entity",(value is Entity e && e.IsValid?e.UUID:0).ToString()}};
+        if(typeof(Component).IsAssignableFrom(t))return new JsonObject{{"entity",(value is Component c && c.IsValid?c.Entity.UUID:0).ToString()}};
+        if(typeof(Asset).IsAssignableFrom(t))return JsonValue.Create((value is Asset asset?asset.UUID:0).ToString());
         if(t==typeof(AssetReference))return JsonValue.Create(((AssetReference?)value)?.UUID.ToString()??"0");
         if(value is Vector3 v)return new JsonArray(v.X,v.Y,v.Z);
         if(value is Vector4 v4)return new JsonArray(v4.X,v4.Y,v4.Z,v4.W);
@@ -45,8 +50,19 @@ internal static class ComponentStore
         if(t.IsEnum)return JsonValue.Create(value?.ToString()??Enum.GetNames(t).FirstOrDefault()??"0");
         return JsonSerializer.SerializeToNode(value,t);
     }
-    private static object? Decode(JsonNode? value,Type t)
+    private static object? Decode(JsonNode? value,Type t, bool resolveReferences = true)
     {
+        if(typeof(Component).IsAssignableFrom(t)) {
+            var id=ulong.Parse(value?["entity"]?.ToString()??"0");
+            return resolveReferences ? Entity.FromUUID(id)?.GetComponent(t) : null;
+        }
+        if(typeof(Asset).IsAssignableFrom(t)) {
+            var id=ulong.Parse(value?.ToString()??"0");
+            if(id==0)return null;
+            var kind=NativeBridge.Call<string>("Assets.Kind",id);
+            if(kind!="" && kind!=Asset.Kind(t))throw new InvalidOperationException($"Asset {id} is {kind}, expected {Asset.Kind(t)}");
+            return Activator.CreateInstance(t,id);
+        }
         if(t==typeof(Entity))return Entity.FromUUID(ulong.Parse(value?["entity"]?.GetValue<string>()??"0"));
         if(t==typeof(AssetReference))return new AssetReference(ulong.Parse(value?.GetValue<string>()??"0"));
         if(t==typeof(Vector3))return new Vector3(value![0]!.GetValue<float>(),value[1]!.GetValue<float>(),value[2]!.GetValue<float>());
@@ -72,8 +88,8 @@ internal static class ComponentStore
             object defaults;
             NativeBridge.MetadataMode=true;try {defaults=Activator.CreateInstance(d.Type)!;}finally{NativeBridge.MetadataMode=false;}
             var fields=new JsonArray();
-            foreach(var f in d.Fields)fields.Add(new JsonObject{{"name",f.Name},{"aliases",new JsonArray(f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>(JsonNode?)JsonValue.Create(a.Name)).ToArray())},{"kind",Kind(f.FieldType)},{"default",Encode(f.GetValue(defaults),f.FieldType)},{"options",new JsonArray((f.FieldType.IsEnum?Enum.GetNames(f.FieldType):[]).Select(n=>(JsonNode?)JsonValue.Create(n)).ToArray())}});
-            list.Add(new JsonObject{{"id",d.Id},{"name",d.Type.FullName},{"source",Source(d.Type)},{"aliases",new JsonArray(d.Aliases.Select(a=>(JsonNode?)JsonValue.Create(a)).ToArray())},{"fields",fields}});
+            foreach(var f in d.Fields)fields.Add(new JsonObject{{"name",f.Name},{"aliases",new JsonArray(f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>(JsonNode?)JsonValue.Create(a.Name)).ToArray())},{"kind",Kind(f.FieldType)},{"assetType",typeof(Asset).IsAssignableFrom(f.FieldType)?Asset.Kind(f.FieldType):""},{"componentType",typeof(Component).IsAssignableFrom(f.FieldType)?(typeof(NativeComponent).IsAssignableFrom(f.FieldType)?"Canis::"+f.FieldType.Name:Id(f.FieldType)):""},{"header",f.GetCustomAttribute<HeaderAttribute>()?.Text??""},{"tooltip",f.GetCustomAttribute<TooltipAttribute>()?.Text??""},{"default",Encode(f.GetValue(defaults),f.FieldType)},{"options",new JsonArray((f.FieldType.IsEnum?Enum.GetNames(f.FieldType):[]).Select(n=>(JsonNode?)JsonValue.Create(n)).ToArray())}});
+            list.Add(new JsonObject{{"id",d.Id},{"name",d.Type.FullName},{"source",Source(d.Type)},{"assignableTo",new JsonArray(ReferenceTypes(d.Type).Select(a=>(JsonNode?)JsonValue.Create(a)).ToArray())},{"aliases",new JsonArray(d.Aliases.Select(a=>(JsonNode?)JsonValue.Create(a)).ToArray())},{"fields",fields}});
         }
         return list.ToJsonString();
     }
@@ -84,6 +100,7 @@ internal static class ComponentStore
         catch(InvalidOperationException error) when(descriptions.Length==0 && error.Message.Contains("Native binding unavailable: Managed.Publish")) { }
     }
     internal static void Start(){Running=true;Time.Elapsed=0;Synchronize();}
+    internal static void SynchronizeSpawned(){if(Running)Synchronize();}
     private static void Restore(Component c,Description d,JsonObject fields)
     {
         foreach(var f in d.Fields) {
@@ -130,7 +147,11 @@ internal static class ComponentStore
             if(b.IsActiveAndEnabled && !s.Failed)Try(s,()=>b.Update(dt));
         }
     }
-    private static void Try(State s,Action action){try{action();}catch(Exception error){s.Failed=true;Log.Info($"C# {s.Component.GetType().FullName} entity={s.Component.Owner?.Handle}: {error}");}}
+    private static void Try(State s,Action action){try{action();}catch(Exception error){
+        s.Failed=true;
+        string owner=s.Component.Owner is { IsValid:true } e ? $"{e.Name} (UUID {e.UUID})" : "destroyed entity";
+        Log.ReportException(error,$"{s.Component.GetType().FullName} on {owner}");
+    }}
     private static void Detach(State s){if(s.Component is ScriptableEntity b){if(s.Active)Try(s,b.OnDisable);Try(s,b.OnDestroy);}s.Component.Detached=true;}
     internal static void Stop(){foreach(var s in instances.Values.ToArray())Detach(s);instances.Clear();Running=false;Entity.ClearCache();}
     internal static void Clear(){Stop();types.Clear();reportedMissing.Clear();}
@@ -140,6 +161,8 @@ internal static class ComponentStore
         if(matches.Length>1)throw new InvalidOperationException($"Ambiguous {typeof(T).Name}; use GetComponents<T>().");return matches.SingleOrDefault();
     }
     internal static T[] GetAll<T>(Entity owner) where T:Component=>instances.Values.Select(s=>s.Component).OfType<T>().Where(c=>c.Owner==owner && c.IsValid).ToArray();
+    internal static Component? Get(Entity owner,Type type) => instances.Values.Select(s=>s.Component)
+        .Where(c=>c.Owner==owner && c.IsValid && type.IsInstanceOfType(c)).SingleOrDefault();
     internal static T Add<T>(Entity owner) where T:Component,new()
     {
         if(!Running)throw new InvalidOperationException("Add components during gameplay, after attachment.");
@@ -166,7 +189,7 @@ internal static class ComponentStore
         foreach(var e in snapshot)foreach(var a in e!["scripts"]!.AsArray()) {
             var id=a!["type"]!.GetValue<string>();var d=candidate.FirstOrDefault(d=>d.Id==id || d.Aliases.Contains(id));
             if(d is null)throw new InvalidOperationException($"Reload would remove attached script {id}; stop Play to change attachments.");
-            var fields=a["fields"]!.AsObject();foreach(var f in d.Fields){var key=fields.ContainsKey(f.Name)?f.Name:f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>a.Name).FirstOrDefault(fields.ContainsKey);if(key is not null)_ = Decode(fields[key],f.FieldType);}
+            var fields=a["fields"]!.AsObject();foreach(var f in d.Fields){var key=fields.ContainsKey(f.Name)?f.Name:f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>a.Name).FirstOrDefault(fields.ContainsKey);if(key is not null)_ = Decode(fields[key],f.FieldType,false);}
         }
     }
     internal static void StartRestored(JsonArray snapshot){

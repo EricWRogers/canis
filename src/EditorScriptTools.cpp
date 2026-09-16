@@ -2,11 +2,15 @@
 #include <Canis/ScriptSync.hpp>
 #include <Canis/External/tinygltf/json.hpp>
 #include <imgui.h>
+#include <imgui_internal.h>
 #include <imgui_stdlib.h>
 #include <SDL3/SDL.h>
 #include <fstream>
 #include <sstream>
 #include <functional>
+#include <cmath>
+#include <cfloat>
+#include <cstring>
 namespace Canis
 {
 using Json = nlohmann::json;
@@ -76,6 +80,36 @@ void Editor::RestoreScriptSession()
 void Editor::TickScriptWorkspace()
 {
     auto& work = m_scriptWorkspace;
+    if (work.renameApply)
+    {
+        work.renameApply = false;
+        try
+        {
+            const auto changes = Json::parse(work.results).at("result").at("changes");
+            auto staged = m_scriptDocuments;
+            // Validate every snapshot before changing any document. Disk writes still use Save.
+            for (const auto& change : changes)
+            {
+                const std::filesystem::path path = change.at("path").get<std::string>();
+                auto doc = std::find_if(staged.begin(), staged.end(), [&](const auto& d) { return d.path == path; });
+                if (doc == staged.end())
+                {
+                    ScriptEditing::Document added;
+                    if (!added.Load(path)) throw std::runtime_error("Cannot open " + path.string());
+                    staged.push_back(std::move(added)); doc = std::prev(staged.end());
+                }
+                if (doc->text != change.at("before").get<std::string>() || doc->pendingEdit)
+                    throw std::runtime_error("Rename preview expired: " + path.string());
+                doc->text = change.at("text").get<std::string>();
+                ++doc->revision;
+                doc->foldedLines.clear(); doc->jump = 0;
+            }
+            m_scriptDocuments = std::move(staged);
+            work.results.clear(); work.tools = false;
+            m_scriptEditorMessage = "Rename applied to buffers. Save All to write changes.";
+        }
+        catch (const std::exception& error) { m_scriptEditorMessage = error.what(); }
+    }
     if (!work.language && m_scriptDocuments.empty()) return;
     if (!work.navigatePath.empty())
     {
@@ -104,6 +138,18 @@ void Editor::TickScriptWorkspace()
                 for (const auto& item : json.at("diagnostics"))
                     diagnostics.push_back({reply.path, item["range"]["start"].value("line", 0) + 1,
                         item["range"]["start"].value("character", 0) + 1, item.value("message", ""), item.value("severity", 1)});
+            }
+            else if (reply.method == "textDocument/completion" && std::filesystem::path(reply.path).extension() == ".cs")
+            {
+                if (!work.completionPending || work.completionPath != reply.path || work.completionSnapshot != reply.snapshot) continue;
+                if (json.contains("error")) { work.completionPending = false; m_scriptEditorMessage = json["error"].get<std::string>(); continue; }
+                const auto& result = json.at("result");
+                if (result.value("cursor", -1) != work.completionCursor) continue;
+                work.completionPending = false; work.suggestions.clear(); work.suggestionIndex = 0;
+                for (const auto& item : result.value("items", Json::array()))
+                    work.suggestions.push_back({item.value("label", ""), item.value("insertText", item.value("label", "")), item.value("detail", "")});
+                work.completionOpen = !work.suggestions.empty();
+                work.suggestionScroll = true;
             }
             else if (reply.method != "initialize")
             {
@@ -151,6 +197,150 @@ void Editor::TickScriptWorkspace()
     }
     if (now - work.lastRecovery > 2.0) { SaveScriptSession(); work.lastRecovery = now; }
 }
+void Editor::RequestScriptCompletion(ScriptEditing::Document& doc)
+{
+#if CANIS_CSHARP
+    if (!m_csharp || doc.path.extension() != ".cs") return;
+    auto& work = m_scriptWorkspace;
+    work.completionPath = doc.path.string(); work.completionSnapshot = doc.text;
+    work.completionCursor = doc.cursor; work.completionPending = true;
+    work.completionOpen = false; work.completionQueued = false;
+    work.observedPath = doc.path.string(); work.observedText = doc.text; work.observedCursor = doc.cursor;
+    std::map<std::string,std::string> overlays;
+    for (const auto& document : m_scriptDocuments) if (document.path.extension() == ".cs") overlays[document.path.string()] = document.text;
+    m_csharp->RequestLanguage("textDocument/completion", doc.path.string(), doc.text, doc.cursor, overlays);
+#endif
+}
+void Editor::AcceptScriptCompletion(ScriptEditing::Document& doc)
+{
+    auto& work = m_scriptWorkspace;
+    if (work.completionPath == doc.path.string() && work.completionSnapshot == doc.text && work.completionCursor == doc.cursor &&
+        work.suggestionIndex >= 0 && work.suggestionIndex < (int)work.suggestions.size())
+    {
+        auto edit = ScriptEditing::CompleteIdentifier(doc.text, doc.cursor, work.suggestions[work.suggestionIndex].insertion);
+        doc.pendingEdit = edit;
+        work.observedText = doc.text; work.observedText.replace(edit.begin, edit.end - edit.begin, edit.text);
+        work.observedCursor = edit.cursor;
+        m_focusScriptDocument = true;
+    }
+    work.completionOpen = work.completionPending = work.completionQueued = false;
+}
+void Editor::DrawScriptIntellisense(ScriptEditing::Document& doc, unsigned int codeId)
+{
+    auto& work = m_scriptWorkspace;
+    if (doc.path.extension() != ".cs") { work.completionOpen = work.completionPending = work.completionQueued = false; return; }
+    ImGuiWindow* child = nullptr;
+    for (auto* window : ImGui::GetCurrentWindow()->DC.ChildWindows)
+        if (window->ChildId == codeId && window->LastFrameActive == ImGui::GetFrameCount()) child = window;
+    if (!child) return;
+    auto* state = ImGui::GetInputTextState(codeId);
+    const auto& padding = ImGui::GetStyle().FramePadding;
+    const ImVec2 origin(child->Pos.x + child->WindowPadding.x + child->DecoOuterSizeX1 + padding.x - child->Scroll.x - (state ? state->Scroll.x : 0),
+        child->Pos.y + child->WindowPadding.y + child->DecoOuterSizeY1 + padding.y - child->Scroll.y);
+    auto& io = ImGui::GetIO();
+    const auto* suggestionWindow = ImGui::FindWindowByName("C# Suggestions##Script");
+    const bool overSuggestions = suggestionWindow && suggestionWindow->WasActive && suggestionWindow->Rect().Contains(io.MousePos);
+    if (ImGui::GetActiveID() != codeId && !overSuggestions && !m_focusScriptDocument)
+        work.completionOpen = work.completionPending = work.completionQueued = false;
+    if (work.completionPending && ImGui::IsMouseClicked(0)) work.completionPending = work.completionQueued = false;
+    const float height = ImGui::GetFontSize();
+    auto* font = ImGui::GetFont();
+    if (child->InnerClipRect.Contains(io.MousePos) && ImGui::IsWindowHovered(ImGuiHoveredFlags_ChildWindows) && ImGui::IsMouseClicked(ImGuiMouseButton_Right))
+    {
+        const int line = std::max(0, (int)std::floor((io.MousePos.y - origin.y) / height));
+        int at = ScriptEditing::LineOffset(doc.text, line + 1);
+        float x = origin.x;
+        while (at < (int)doc.text.size() && doc.text[at] != '\n')
+        {
+            int next = at + 1;
+            while (next < (int)doc.text.size() && ((unsigned char)doc.text[next] & 0xc0) == 0x80) ++next;
+            float width = font->CalcTextSizeA(height, FLT_MAX, 0, doc.text.data() + at, doc.text.data() + next).x;
+            if (io.MousePos.x < x + width) break;
+            x += width; at = next;
+        }
+        auto range = ScriptEditing::IdentifierSelection(doc.text, at, std::min(at + 1, (int)doc.text.size()));
+        const int begin = std::min(doc.selectionStart, doc.selectionFinish), end = std::max(doc.selectionStart, doc.selectionFinish);
+        if (at < begin || at >= end)
+        {
+            doc.selectionStart = doc.selectionEnd = range.first;
+            doc.selectionFinish = doc.jump = range.second;
+            doc.cursor = range.second;
+        }
+        work.completionOpen = work.completionPending = work.completionQueued = false;
+        ImGui::OpenPopup("CSharpContext");
+    }
+    if (ImGui::BeginPopup("CSharpContext"))
+    {
+        auto request = [&](const char* method) {
+#if CANIS_CSHARP
+            if (m_csharp) {
+                std::map<std::string,std::string> overlays;
+                for (const auto& document : m_scriptDocuments) if (document.path.extension() == ".cs") overlays[document.path.string()] = document.text;
+                work.panel = method; work.results.clear(); work.tools = true;
+                m_csharp->RequestLanguage(method, doc.path.string(), doc.text, doc.cursor, overlays);
+            }
+#endif
+        };
+        if (ImGui::MenuItem("Go to Definition", "F12")) request("textDocument/definition");
+        if (ImGui::MenuItem("Find References", "Shift+F12")) request("textDocument/references");
+        if (ImGui::MenuItem("Rename Symbol", "F2")) { work.panel = "textDocument/rename"; work.results.clear(); work.tools = true; }
+        if (ImGui::MenuItem("Suggest Completions", "Ctrl+Space")) { RequestScriptCompletion(doc); m_focusScriptDocument = true; }
+        ImGui::Separator();
+        const int begin = std::clamp(std::min(doc.selectionStart, doc.selectionFinish), 0, (int)doc.text.size());
+        const int end = std::clamp(std::max(doc.selectionStart, doc.selectionFinish), begin, (int)doc.text.size());
+        if (ImGui::MenuItem("Cut", "Ctrl+X", false, begin != end)) { ImGui::SetClipboardText(doc.text.substr(begin, end - begin).c_str()); doc.pendingEdit = ScriptEditing::TextEdit{begin, end, "", begin}; }
+        if (ImGui::MenuItem("Copy", "Ctrl+C", false, begin != end)) ImGui::SetClipboardText(doc.text.substr(begin, end - begin).c_str());
+        if (ImGui::MenuItem("Paste", "Ctrl+V")) if (const char* text = ImGui::GetClipboardText()) doc.pendingEdit = ScriptEditing::TextEdit{begin, end, text, begin + (int)std::strlen(text)};
+        ImGui::Separator();
+        if (ImGui::MenuItem("Select All", "Ctrl+A")) { doc.jump = 0; doc.selectionEnd = doc.text.size(); m_focusScriptDocument = true; }
+        ImGui::EndPopup();
+    }
+    const bool changed = work.observedPath != doc.path.string() || work.observedText != doc.text || work.observedCursor != doc.cursor;
+    if (changed)
+    {
+        const bool typed = work.observedPath == doc.path.string() && work.observedText != doc.text;
+        work.completionOpen = work.completionPending = work.completionQueued = false;
+        work.observedPath = doc.path.string(); work.observedText = doc.text; work.observedCursor = doc.cursor;
+        if (typed && ImGui::GetActiveID() == codeId && doc.selectionStart == doc.selectionFinish && doc.cursor > 0)
+        {
+            auto edit = ScriptEditing::CompleteIdentifier(doc.text, doc.cursor, "");
+            const char previous = doc.text[doc.cursor - 1];
+            work.completionQueued = previous == '.' || doc.cursor - edit.begin >= 2;
+            work.completionChanged = ImGui::GetTime();
+        }
+    }
+    if (work.completionQueued && ImGui::GetActiveID() == codeId && ImGui::GetTime() - work.completionChanged > .22)
+        RequestScriptCompletion(doc);
+    if (!work.completionOpen || work.completionPath != doc.path.string() || work.completionSnapshot != doc.text || work.completionCursor != doc.cursor) return;
+    const int cursor = std::clamp(doc.cursor, 0, (int)doc.text.size());
+    const auto newline = cursor ? doc.text.rfind('\n', cursor - 1) : std::string::npos;
+    const int lineStart = newline == std::string::npos ? 0 : (int)newline + 1;
+    const int line = std::count(doc.text.begin(), doc.text.begin() + cursor, '\n');
+    ImVec2 position(origin.x + font->CalcTextSizeA(height, FLT_MAX, 0, doc.text.data() + lineStart, doc.text.data() + cursor).x, origin.y + (line + 1) * height);
+    const auto* viewport = ImGui::GetWindowViewport();
+    const float width = std::min(460.f, viewport->WorkSize.x);
+    const float popupHeight = std::min({250.f, viewport->WorkSize.y, 75.f + (float)work.suggestions.size() * ImGui::GetTextLineHeightWithSpacing()});
+    if (position.y + popupHeight > viewport->WorkPos.y + viewport->WorkSize.y) position.y -= popupHeight + height;
+    position.x = std::clamp(position.x, viewport->WorkPos.x, viewport->WorkPos.x + viewport->WorkSize.x - width);
+    position.y = std::clamp(position.y, viewport->WorkPos.y, viewport->WorkPos.y + viewport->WorkSize.y - popupHeight);
+    ImGui::SetNextWindowPos(position); ImGui::SetNextWindowSize(ImVec2(width, popupHeight));
+    ImGui::Begin("C# Suggestions##Script", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoFocusOnAppearing | ImGuiWindowFlags_NoNavFocus);
+    ImGui::BeginChild("SuggestionList", ImVec2(0, popupHeight - 75));
+    for (int i = 0; i < (int)work.suggestions.size(); ++i)
+    {
+        ImGui::PushID(i);
+        if (ImGui::Selectable(work.suggestions[i].label.c_str(), i == work.suggestionIndex, ImGuiSelectableFlags_SelectOnClick)) { work.suggestionIndex = i; AcceptScriptCompletion(doc); }
+        if (i == work.suggestionIndex && work.suggestionScroll) ImGui::SetScrollHereY();
+        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", work.suggestions[i].detail.c_str());
+        ImGui::PopID();
+    }
+    work.suggestionScroll = false;
+    ImGui::EndChild(); ImGui::Separator();
+    if (work.suggestionIndex >= 0 && work.suggestionIndex < (int)work.suggestions.size()) ImGui::TextWrapped("%s", work.suggestions[work.suggestionIndex].detail.c_str());
+    const bool hovered = ImGui::GetCurrentWindow()->Rect().Contains(io.MousePos);
+    ImGui::End();
+    if (ImGui::IsMouseClicked(0) && !hovered) work.completionOpen = work.completionPending = work.completionQueued = false;
+}
 void Editor::DrawScriptTools(ScriptEditing::Document* active)
 {
     auto& work = m_scriptWorkspace;
@@ -158,7 +348,8 @@ void Editor::DrawScriptTools(ScriptEditing::Document* active)
     ImGui::BeginChild("ScriptTools", ImVec2(0, 205), ImGuiChildFlags_Borders);
     if (ImGui::SmallButton("Close tools")) work.tools = false;
     std::string title = work.panel;
-    if (title == "textDocument/completion") title = "C++ completion";
+    if (title == "textDocument/completion") title = "Completion";
+    else if (title == "textDocument/rename") title = "Rename symbol";
     else if (title == "textDocument/definition") title = "Definitions";
     else if (title == "textDocument/references") title = "References";
     else if (title == "textDocument/signatureHelp") title = "Parameter hints";
@@ -199,12 +390,12 @@ void Editor::DrawScriptTools(ScriptEditing::Document* active)
         if (ImGui::Button("Search all scripts") && !m_scriptSearch.empty())
         {
             Json matches = Json::array();
-            const auto root = std::filesystem::path(CANIS_GAME_SOURCE_DIR);
+            for (const auto& root : {std::filesystem::path(CANIS_GAME_SOURCE_DIR), std::filesystem::current_path() / "assets"}) {
             std::error_code error;
             for (auto it = std::filesystem::recursive_directory_iterator(root, error); !error && it != std::filesystem::recursive_directory_iterator(); it.increment(error))
             {
                 const auto path = it->path(); auto extension = path.extension();
-                if (extension != ".cpp" && extension != ".hpp" && extension != ".h") continue;
+                if (extension != ".cpp" && extension != ".hpp" && extension != ".h" && extension != ".cs") continue;
                 std::string text;
                 const auto doc = std::find_if(m_scriptDocuments.begin(), m_scriptDocuments.end(), [&](const auto& d) { return d.path == path; });
                 if (doc != m_scriptDocuments.end()) text = doc->text;
@@ -215,6 +406,8 @@ void Editor::DrawScriptTools(ScriptEditing::Document* active)
                     if (matches.size() >= 1000) break;
                 }
                 if (matches.size() >= 1000) break;
+            }
+            if (matches.size() >= 1000) break;
             }
             work.results = matches.dump();
         }
@@ -228,6 +421,37 @@ void Editor::DrawScriptTools(ScriptEditing::Document* active)
                 if (ImGui::Selectable(label.c_str())) { work.navigatePath = path; work.navigateLine = line; work.navigateColumn = 1; }
             }
         }
+    }
+    else if (work.panel == "textDocument/rename")
+    {
+        ImGui::SetNextItemWidth(240); ImGui::InputText("New name", &work.renameName);
+#if CANIS_CSHARP
+        if (active && m_csharp && active->path.extension() == ".cs")
+        {
+            ImGui::SameLine();
+            if (ImGui::Button("Preview rename"))
+            {
+                std::map<std::string,std::string> overlays;
+                for (const auto& doc : m_scriptDocuments) if (doc.path.extension() == ".cs") overlays[doc.path.string()] = doc.text;
+                work.results.clear();
+                m_csharp->RequestLanguage(work.panel, active->path.string(), active->text, active->cursor, overlays, work.renameName);
+            }
+        }
+#endif
+        if (!work.results.empty()) try
+        {
+            const auto reply = Json::parse(work.results);
+            if (reply.contains("error")) ImGui::TextWrapped("%s", reply["error"].dump().c_str());
+            else if (reply.contains("result"))
+            {
+                const auto& result = reply.at("result");
+                const auto& changes = result.at("changes");
+                ImGui::BeginDisabled(changes.empty() || result.value("name", "") != work.renameName);
+                if (ImGui::Button("Apply rename")) work.renameApply = true;
+                ImGui::EndDisabled();
+                for (const auto& change : changes) ImGui::TextUnformatted(change.at("path").get<std::string>().c_str());
+            }
+        } catch (const std::exception& error) { ImGui::TextWrapped("%s", error.what()); }
     }
     else if (work.panel == "Sync preview")
     {

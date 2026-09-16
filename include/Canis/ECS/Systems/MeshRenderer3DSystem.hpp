@@ -21,6 +21,9 @@ namespace Canis
         static constexpr int kDirectionalShadowMapSize = 2048;
 
         Shader *m_shader = nullptr;
+        Shader *m_trailShader = nullptr;
+        unsigned int m_trailVao = 0, m_trailVbo = 0;
+        void DrawTrails(entt::registry& registry, const Matrix4& projection, const Matrix4& view, Vector3 cameraPosition);
         Shader *m_skyboxShader = nullptr;
         Shader *m_shadowShader = nullptr;
         Shader *m_colliderDebugShader = nullptr;

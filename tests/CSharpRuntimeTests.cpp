@@ -46,6 +46,18 @@ int main()
         {
             CSharpRuntime runtime(root / "assets", root / "cache");
             Wait(runtime, [&] { return runtime.ReadyToPlay(); });
+            // Interactive requests overtake queued diagnostics and reuse the worker.
+            const std::string completion="using Canis; class Probe { void Run(Entity entity) { entity.tr } }";
+            runtime.RequestLanguage("diagnostics",script.string(),completion,0);
+            runtime.RequestLanguage("textDocument/completion",script.string(),completion,static_cast<int>(completion.find("entity.tr")+9));
+            int languageReplies=0;
+            Wait(runtime,[&] {
+                for(const auto& reply:runtime.PollLanguage()) {
+                    if(languageReplies++==0)Check(reply.method=="textDocument/completion" && reply.json.find("Transform")!=std::string::npos,"completion priority or worker response failed: "+reply.json);
+                    else Check(reply.method=="diagnostics" && reply.json.find("diagnostics")!=std::string::npos,"warm worker diagnostics failed: "+reply.json);
+                }
+                return languageReplies==2;
+            });
             runtime.Tick(true, false, .016f);
             Check(Read(trace).find("v1-start-1") != std::string::npos, "initial managed system did not execute");
             const auto pausedTrace = Read(trace);

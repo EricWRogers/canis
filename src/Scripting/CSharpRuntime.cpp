@@ -8,6 +8,7 @@
 #include <hostfxr.h>
 #include <coreclr_delegates.h>
 #include <algorithm>
+#include <atomic>
 #include <chrono>
 #include <fstream>
 #include <future>
@@ -201,7 +202,15 @@ struct CSharpRuntime::Impl
     Sources observed, requested;
     std::future<ScriptEditing::LanguageReply> languageJob;
     std::deque<nlohmann::json> languageQueue;
-    unsigned languageSequence=0;
+    SDL_Process* languageProcess=nullptr;
+    std::atomic<bool> languageStopping{false};
+    void StopLanguage() {
+        if(languageProcess) {
+            SDL_KillProcess(languageProcess,true);
+            SDL_WaitProcess(languageProcess,true,nullptr);
+            SDL_DestroyProcess(languageProcess);languageProcess=nullptr;
+        }
+    }
     std::future<BuildResult> build;
     Dispatch dispatch = nullptr;
     Clock::time_point scanAt{}, changedAt{};
@@ -213,7 +222,12 @@ struct CSharpRuntime::Impl
     std::string status = "C#: waiting for asset scan", output;
     int Call(int op, const void* data = nullptr, int length = 0, float dt = 0)
     { Command command{op, length, data, dt}; return dispatch ? dispatch(&command, sizeof(command)) : -1; }
-    ~Impl() { if (build.valid()) build.wait(); if (dispatch) Call(6); }
+    ~Impl() {
+        languageStopping=true;
+        if(languageJob.valid())languageJob.wait();
+        StopLanguage();
+        if (build.valid()) build.wait(); if (dispatch) Call(6);
+    }
 };
 CSharpRuntime::CSharpRuntime(const std::filesystem::path& assets, const std::filesystem::path& cache) : impl(std::make_unique<Impl>())
 {
@@ -223,28 +237,53 @@ CSharpRuntime::CSharpRuntime(const std::filesystem::path& assets, const std::fil
 }
 CSharpRuntime::~CSharpRuntime() = default;
 std::string CSharpRuntime::ProjectPath() const {return (impl->cache.parent_path()/"IDE/Game.Runtime.csproj").string();}
-void CSharpRuntime::RequestLanguage(const std::string& method,const std::string& path,const std::string& text,int cursor,const std::map<std::string,std::string>& overlays) {
+void CSharpRuntime::RequestLanguage(const std::string& method,const std::string& path,const std::string& text,int cursor,const std::map<std::string,std::string>& overlays,const std::string& newName) {
     auto& s=*impl;
     std::erase_if(s.languageQueue,[&](const auto& request){return request["path"]==path && request["method"]==method;});
-    s.languageQueue.push_back({{"method",method},{"path",path},{"text",text},{"cursor",cursor},{"project",ProjectPath()},{"overlays",overlays}});
+    nlohmann::json request={{"method",method},{"path",path},{"text",text},{"cursor",cursor},{"project",ProjectPath()},{"overlays",overlays},{"newName",newName}};
+    if(method=="diagnostics")s.languageQueue.push_back(std::move(request));
+    else s.languageQueue.insert(std::find_if(s.languageQueue.begin(),s.languageQueue.end(),[](const auto& queued){return queued["method"]=="diagnostics";}),std::move(request));
 }
 std::vector<ScriptEditing::LanguageReply> CSharpRuntime::PollLanguage() {
     auto& s=*impl;std::vector<ScriptEditing::LanguageReply> replies;
     if(s.languageJob.valid() && s.languageJob.wait_for(std::chrono::seconds(0))==std::future_status::ready)replies.push_back(s.languageJob.get());
     if(!s.languageJob.valid() && !s.languageQueue.empty() && std::filesystem::exists(ProjectPath())) {
-        auto request=s.languageQueue.front();s.languageQueue.pop_front();auto file=s.cache/("language-"+std::to_string(++s.languageSequence)+".json");
-        s.languageJob=std::async(std::launch::async,[request,file]() {
+        auto request=s.languageQueue.front();s.languageQueue.pop_front();
+        s.languageJob=std::async(std::launch::async,[request,&s]() {
             ScriptEditing::LanguageReply reply{request["method"],request["path"],request["text"],"null"};
             try {
-                Write(file,request.dump());const auto input=file.string();
-                const char* args[]={CANIS_DOTNET_EXECUTABLE,CANIS_LANGUAGE_TOOLS_PATH,input.c_str(),nullptr};
-                auto* process=SDL_CreateProcess(args,true);if(!process)throw std::runtime_error(SDL_GetError());
-                size_t size=0;int code=0;void* bytes=SDL_ReadProcess(process,&size,&code);
-                if(bytes){reply.json.assign(static_cast<const char*>(bytes),size);SDL_free(bytes);}SDL_DestroyProcess(process);
-                if(code)throw std::runtime_error(reply.json);
-                if(reply.method!="diagnostics")reply.json=nlohmann::json{{"result",nlohmann::json::parse(reply.json)}}.dump();
-            }catch(const std::exception& error){reply.json=nlohmann::json{{"error",error.what()}}.dump();}
-            std::error_code ignored;std::filesystem::remove(file,ignored);return reply;
+                if(!s.languageProcess) {
+                    const char* args[]={CANIS_DOTNET_EXECUTABLE,CANIS_LANGUAGE_TOOLS_PATH,"--server",nullptr};
+                    s.languageProcess=SDL_CreateProcess(args,true);
+                    if(!s.languageProcess)throw std::runtime_error(SDL_GetError());
+                }
+                auto* input=SDL_GetProcessInput(s.languageProcess);auto* output=SDL_GetProcessOutput(s.languageProcess);
+                if(!input || !output)throw std::runtime_error(SDL_GetError());
+                const auto deadline=Clock::now()+std::chrono::seconds(30);
+                auto check=[&]() {
+                    if(s.languageStopping || Clock::now()>deadline)throw std::runtime_error("C# language worker stopped or timed out.");
+                };
+                const auto payload=request.dump()+"\n";
+                for(size_t sent=0;sent<payload.size();) {
+                    check();auto count=SDL_WriteIO(input,payload.data()+sent,payload.size()-sent);sent+=count;
+                    if(!count) {
+                        if(SDL_GetIOStatus(input)!=SDL_IO_STATUS_NOT_READY)throw std::runtime_error("C# language worker input closed.");
+                        SDL_Delay(1);
+                    }
+                }
+                std::string response;char buffer[4096];
+                while(response.empty() || response.back()!='\n') {
+                    check();auto count=SDL_ReadIO(output,buffer,sizeof(buffer));
+                    if(count)response.append(buffer,count);
+                    else {
+                        if(SDL_GetIOStatus(output)!=SDL_IO_STATUS_NOT_READY)throw std::runtime_error("C# language worker output closed.");
+                        SDL_Delay(1);
+                    }
+                }
+                auto envelope=nlohmann::json::parse(response);
+                reply.json=(reply.method=="diagnostics" && envelope.contains("result")?envelope["result"]:envelope).dump();
+            }catch(const std::exception& error){s.StopLanguage();reply.json=nlohmann::json{{"error",error.what()}}.dump();}
+            return reply;
         });
     }
     return replies;

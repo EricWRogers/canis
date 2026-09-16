@@ -1070,15 +1070,16 @@ namespace Canis
         Free();
 
         const std::string extension = ToLower(GetFileExtension(_path));
+        std::vector<float> samples;
         bool loaded = false;
 
         if (extension == "wav")
         {
-            loaded = LoadWaveAudioSamples(_path, m_samples);
+            loaded = LoadWaveAudioSamples(_path, samples);
         }
         else if (extension == "ogg")
         {
-            loaded = LoadOggAudioSamples(_path, m_samples);
+            loaded = LoadOggAudioSamples(_path, samples);
         }
         else
         {
@@ -1092,6 +1093,7 @@ namespace Canis
         }
 
         m_path = _path;
+        m_samples = std::make_shared<const std::vector<float>>(std::move(samples));
         m_sampleRate = Audio::GetMixSpec().freq;
         m_channels = Audio::GetMixSpec().channels;
         return true;
@@ -1100,8 +1102,7 @@ namespace Canis
     bool AudioClipAsset::Free()
     {
         m_path.clear();
-        m_samples.clear();
-        m_samples.shrink_to_fit();
+        m_samples.reset();
         m_sampleRate = 0;
         m_channels = 0;
         return true;

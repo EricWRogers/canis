@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/AudioComponents.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Scene.hpp>
 

@@ -72,6 +72,8 @@ namespace Canis
         unsigned int GetGameInputWindowID() const { return m_gameInputWindowID; }
 
         EditorMode GetMode() { return m_mode; }
+        bool IsScriptEditorVisible() const { return m_showScriptEditor; }
+        bool IsPlayPending() const { return m_playPending; }
         void RequestStopPlayMode() { m_stopPlayModeRequested = true; }
         bool ConsumeStopPlayModeRequest()
         {
@@ -82,6 +84,7 @@ namespace Canis
         void StopPlayMode();
         void SetVRPlayError(const std::string &_error) { m_vrPlayError = _error; }
         void FocusEntity(Canis::Entity* _entity);
+        void RevealAsset(const std::string& path) { m_selectedAssetPath=path;m_assetSearch=std::filesystem::path(path).filename().string();m_showAssetsPanel=true; }
         bool BakeBlockoutEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
@@ -281,6 +284,9 @@ namespace Canis
         void DrawScriptEditor();
         void TickScriptWorkspace();
         void DrawScriptTools(ScriptEditing::Document* active);
+        void RequestScriptCompletion(ScriptEditing::Document& document);
+        void AcceptScriptCompletion(ScriptEditing::Document& document);
+        void DrawScriptIntellisense(ScriptEditing::Document& document, unsigned int codeId);
         void RestoreScriptSession();
         void SaveScriptSession();
         ScriptEditing::Workspace m_scriptWorkspace;
@@ -422,6 +428,11 @@ namespace Canis
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
         int m_playTarget = 0; // Desktop, Headset, VR Simulation.
+        bool m_playPending = false;
+        bool m_pendingPlayHasPosition = false;
+        Vector3 m_pendingPlayPosition = Vector3(0);
+        uint64_t m_pendingPlayEpoch = 0;
+        std::string m_playStatus;
         std::string m_vrPlayError;
         DebugDraw m_debugDraw = DebugDraw::NONE;
         SceneCameraMode m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_3D;

@@ -5,10 +5,12 @@
 #include <Canis/App.hpp>
 #include <Canis/Canis.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/VFX/Trails.hpp>
 #include <Canis/Terrain.hpp>
 #include <Canis/Blockout.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/AudioManager.hpp>
+#include <Canis/Audio.hpp>
 #include <Canis/VR/VRSystem.hpp>
 #include <SDL3/SDL.h>
 #include <cmath>
@@ -38,6 +40,8 @@ namespace
         }
         explicit Context(App& app) : app(app) {
             auto& r = app.scene.GetRegistry();
+            r.on_destroy<AudioSource>().connect<&Context::Removed<AudioSource>>(this);
+            r.on_destroy<AudioListener>().connect<&Context::Removed<AudioListener>>(this);
             r.on_destroy<AnimationPlayer>().connect<&Context::Removed<AnimationPlayer>>(this);
             r.on_destroy<Animator>().connect<&Context::Removed<Animator>>(this);
             r.on_destroy<BlockoutShape>().connect<&Context::Removed<BlockoutShape>>(this);
@@ -57,6 +61,7 @@ namespace
             r.on_destroy<NavMeshSurface>().connect<&Context::Removed<NavMeshSurface>>(this);
             r.on_destroy<NetworkIdentity>().connect<&Context::Removed<NetworkIdentity>>(this);
             r.on_destroy<ParticleEmitter>().connect<&Context::Removed<ParticleEmitter>>(this);
+            r.on_destroy<TrailRenderer>().connect<&Context::Removed<TrailRenderer>>(this);
             r.on_destroy<PointLight>().connect<&Context::Removed<PointLight>>(this);
             r.on_destroy<PrefabInstance>().connect<&Context::Removed<PrefabInstance>>(this);
             r.on_destroy<RectTransform>().connect<&Context::Removed<RectTransform>>(this);
@@ -74,6 +79,8 @@ namespace
         }
         ~Context() {
             auto& r = app.scene.GetRegistry();
+            r.on_destroy<AudioSource>().disconnect(this);
+            r.on_destroy<AudioListener>().disconnect(this);
             r.on_destroy<AnimationPlayer>().disconnect(this);
             r.on_destroy<Animator>().disconnect(this);
             r.on_destroy<BlockoutShape>().disconnect(this);
@@ -93,6 +100,7 @@ namespace
             r.on_destroy<NavMeshSurface>().disconnect(this);
             r.on_destroy<NetworkIdentity>().disconnect(this);
             r.on_destroy<ParticleEmitter>().disconnect(this);
+            r.on_destroy<TrailRenderer>().disconnect(this);
             r.on_destroy<PointLight>().disconnect(this);
             r.on_destroy<PrefabInstance>().disconnect(this);
             r.on_destroy<RectTransform>().disconnect(this);
@@ -226,6 +234,18 @@ void RegisterSceneBindings(App& app)
         try { conf.Decode(node,e,false); }
         catch (...) { conf.Decode(original,e,false); throw; }
     });
+    bindings.Method(owner,"AudioSource","Play",[context](uint64_t id)->bool {return context->Component<AudioSource>(id).Play();});
+    bindings.Method(owner,"AudioSource","PlayOneShot",[context](uint64_t id,std::string path,float scale)->bool {return context->Component<AudioSource>(id).PlayOneShot(AudioAssetHandle{UUID(0),path},scale);});
+    bindings.Method(owner,"AudioSource","Stop",[context](uint64_t id){context->Component<AudioSource>(id).Stop();});
+    bindings.Method(owner,"TrailRenderer","Clear",[context](uint64_t id){context->Component<TrailRenderer>(id).Clear();});
+    bindings.Method(owner,"AudioSource","Pause",[context](uint64_t id){context->Component<AudioSource>(id).Pause();});
+    bindings.Method(owner,"AudioSource","UnPause",[context](uint64_t id){context->Component<AudioSource>(id).UnPause();});
+    bindings.Method(owner,"AudioSource","IsPlaying",[context](uint64_t id)->bool{return context->Component<AudioSource>(id).IsPlaying();});
+    bindings.Method(owner,"AudioSource","ClipUUID",[context](uint64_t id)->uint64_t{return static_cast<uint64_t>(context->Component<AudioSource>(id).clip.uuid);});
+    bindings.Method(owner,"AudioSource","SetClipUUID",[context](uint64_t id,uint64_t uuid){context->Component<AudioSource>(id).clip={UUID(uuid),""};});
+    bindings.Method(owner,"AudioSource","ClipPath",[context](uint64_t id)->std::string{return context->Component<AudioSource>(id).clip.path;});
+    bindings.Method(owner,"AudioSource","SetClipPath",[context](uint64_t id,std::string path){context->Component<AudioSource>(id).clip={UUID(0),path};});
+    bindings.Method(owner,"Audio","Backend",[]()->std::string{return Audio::SpatialBackend();});
     bindings.Method(owner,"Presentation","Color",[context](uint64_t id)->Vector4{return context->Component<Model>(id).color;});
     bindings.Method(owner,"Presentation","Text",[context](uint64_t id)->std::string{return context->Component<Text>(id).text;});
     bindings.Method(owner, "Scene", "Find", [context](std::string name) -> uint64_t { return context->Handle(context->app.scene.FindEntityWithName(name)); });
@@ -234,6 +254,14 @@ void RegisterSceneBindings(App& app)
     bindings.Method(owner, "Scene", "SetActive", [context](uint64_t id, bool active) { context->Resolve(id).SetActive(active); });
     bindings.Method(owner, "Scene", "Active", [context](uint64_t id) -> bool { return context->Resolve(id).IsActive(); });
     bindings.Method(owner, "Transform", "Position", [context](uint64_t id) -> Vector3 { return context->Component<Transform>(id).GetGlobalPosition(); });
+    bindings.Method(owner, "Transform", "Parent", [context](uint64_t id)->uint64_t {return context->Handle(context->Component<Transform>(id).parent.TryGet());});
+    bindings.Method(owner, "Transform", "SetParent", [context](uint64_t id,uint64_t parent,bool worldPositionStays) {
+        auto& t=context->Component<Transform>(id);auto p=parent?context->Resolve(parent):Entity{};
+        if(parent && !p.HasComponent<Transform>())throw std::invalid_argument("Parent requires Transform");
+        const auto position=t.position;const auto rotation=t.rotation;const auto scale=t.scale;
+        t.SetParent(parent? p.TryGet() : nullptr);
+        if(!worldPositionStays){t.position=position;t.rotation=rotation;t.scale=scale;}
+    });
     bindings.Method(owner, "Transform", "SetPosition", [context](uint64_t id, Vector3 position)
     {
         Finite(position); auto& t = context->Component<Transform>(id);
@@ -276,6 +304,11 @@ void RegisterSceneBindings(App& app)
     });
     bindings.Method(owner, "VR", "Position", [&app](int index) -> Vector3 { return Runtime(app).WorldPose(Hand(app,index).grip).position; });
     bindings.Method(owner, "VR", "Rotation", [&app](int index) -> Quaternion { return Runtime(app).WorldPose(Hand(app,index).grip).orientation; });
+    bindings.Method(owner, "VR", "AimRotation", [&app](int index) -> Quaternion
+    {
+        const auto hand = Hand(app, index);
+        return Runtime(app).WorldPose(hand.aim.valid ? hand.aim : hand.grip).orientation;
+    });
     bindings.Method(owner, "VR", "Squeeze", [&app](int index) -> float { return Hand(app,index).squeeze; });
     bindings.Method(owner, "VR", "Trigger", [&app](int index) -> float { return Hand(app,index).trigger; });
     bindings.Method(owner, "VR", "Haptic", [&app](int index, float amplitude, float seconds) -> bool
