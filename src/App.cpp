@@ -1,7 +1,13 @@
+#include <Canis/Scripting/ManagedComponents.hpp>
+#if CANIS_CSHARP
+#include <Canis/Scripting/CSharpRuntime.hpp>
+#include <Canis/Scripting/SceneBindings.hpp>
+#endif
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
 #include <Canis/VR/VRSystem.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
+#include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_error.h>
@@ -2025,13 +2031,20 @@ namespace Canis
             }
             if (!runtime.vr->Initialize(*runtime.window, config, error))
             {
-                Debug::Error("VR startup: %s", error.c_str());
-                m_exitCode = 7;
-                runtime.exitReason = "vr-startup-failed";
-                return;
+                if (runtime.launch.vrSimulated)
+                {
+                    Debug::Error("VR simulation startup: %s", error.c_str());
+                    m_exitCode = 7; runtime.exitReason = "vr-startup-failed"; return;
+                }
+                Debug::Warning("Headset unavailable; using desktop keyboard/mouse: %s", error.c_str());
+                runtime.vr.reset();
+                runtime.launch.vr = false;
             }
-            Debug::Log("VR runtime: %s; foveation: %s", runtime.vr->GetDiagnostics().runtime.c_str(), runtime.vr->GetDiagnostics().foveation.c_str());
-            runtime.window->SetSync(Window::IMMEDIATE);
+            if (runtime.vr)
+            {
+                Debug::Log("VR runtime: %s; foveation: %s", runtime.vr->GetDiagnostics().runtime.c_str(), runtime.vr->GetDiagnostics().foveation.c_str());
+                runtime.window->SetSync(Window::IMMEDIATE);
+            }
         }
         AudioManager::Initialize();
 
@@ -2103,6 +2116,9 @@ namespace Canis
         }
 
         scene.Init(this, runtime.window.get(), runtime.inputManager.get());
+#if CANIS_CSHARP
+        Scripting::RegisterSceneBindings(*this);
+#endif
         m_network = std::make_unique<NetworkSession>(*this);
 
         runtime.gameCodeObject = GameCodeObjectInit(GetGameCodeSharedObjectPath());
@@ -2112,6 +2128,29 @@ namespace Canis
         runtime.gameCodeInitialized = true;
 
         scene.Load(startupScenePath);
+#if !CANIS_CSHARP
+        if(!runtime.editorRuntimeEnabled && Scripting::HasManagedScripts(scene)) {
+            Debug::Error("This scene contains C# components. Rebuild with CANIS_ENABLE_CSHARP=ON.");m_exitCode=8;runtime.exitReason="csharp-not-enabled";return;
+        }
+#endif
+#if CANIS_CSHARP
+        m_csharp = std::make_shared<Scripting::CSharpRuntime>("assets", "Library/Managed");
+        std::weak_ptr<Scripting::CSharpRuntime> managed = m_csharp;
+        scene.managedUpdate = [managed](float dt) { if (auto host = managed.lock()) host->RunGameplay(false, dt); };
+        scene.managedStop = [managed] { if (auto host = managed.lock()) host->StopSession(); };
+        if (!runtime.editorRuntimeEnabled)
+        {
+            const Uint64 deadline = SDL_GetTicks() + 30000;
+            do { m_csharp->Tick(false, false, 0, false); if (!m_csharp->ReadyToPlay()) SDL_Delay(20); }
+            while (!m_csharp->ReadyToPlay() && !m_csharp->HasBuildError() && SDL_GetTicks() < deadline);
+            if(m_csharp->ReadyToPlay())if(const char* destination=SDL_getenv("CANIS_EXPORT_MANAGED"))m_csharp->ExportPlayer(destination);
+            if (!m_csharp->ReadyToPlay())
+            {
+                Debug::Error("C# startup: %s", m_csharp->Status().c_str());
+                m_exitCode = 8; runtime.exitReason = "csharp-startup-error"; return;
+            }
+        }
+#endif
         runtime.launch.launchScene = startupScenePath;
         if (runtime.launch.interactive)
         {
@@ -2294,6 +2333,16 @@ namespace Canis
 #endif
 
         inputManager.EvaluateActions(runGameTick);
+#if CANIS_CSHARP
+        if (m_csharp)
+        {
+            bool session = runGameTick;
+#if CANIS_EDITOR
+            session = session || (runtime.editorRuntimeEnabled && editor.m_mode == EditorMode::PAUSE);
+#endif
+            m_csharp->Tick(session, !runGameTick, deltaTime, false);
+        }
+#endif
 
         if (runGameTick)
         {
@@ -2389,11 +2438,15 @@ namespace Canis
                     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
                     window.SetRenderSize(eye.width, eye.height);
                     scene.SetVRCamera(view, eye.projection, 0.05f, 200.0f);
-                    // Screen-space UI and desktop post-processing need separate XR
-                    // composition paths. Render the existing 3D system explicitly.
+                    // Render world geometry and world-space canvases with the eye camera.
+                    // Screen-space UI still requires a separate XR composition path.
                     if (!runtime.stopEditorVR)
+                    {
                         if (auto* renderer = scene.GetSystem<MeshRenderer3DSystem>())
                             renderer->Update(scene.GetRegistry(), deltaTime);
+                        if (auto* ui = scene.GetSystem<SpriteRenderer2DSystem>())
+                            ui->Update(scene.GetRegistry(), deltaTime);
+                    }
                 }, error);
             scene.ClearVRCamera();
             window.SetRenderSize(width, height);
@@ -2625,6 +2678,13 @@ namespace Canis
             SaveProjectConfig();
         }
 
+#if CANIS_CSHARP
+        if (m_csharp) m_csharp->StopSession();
+        scene.managedUpdate = {}; scene.managedStop = {};
+        if (runtime->editor) runtime->editor->m_csharp.reset();
+        m_csharp.reset();
+        Scripting::UnregisterSceneBindings();
+#endif
         if (runtime->window != nullptr)
             scene.Unload();
         if (runtime->timeInitialized)

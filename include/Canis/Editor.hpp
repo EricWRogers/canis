@@ -1,4 +1,7 @@
 #include <Canis/Entity.hpp>
+#if CANIS_CSHARP
+#include <Canis/Scripting/CSharpRuntime.hpp>
+#endif
 #pragma once
 
 #include <functional>
@@ -57,6 +60,7 @@ namespace Canis
     friend class App;
 
     public:
+        void OpenScriptDocument(const std::filesystem::path& path, int line = 0, int column = 1);
         Editor() = default;
         ~Editor();
         void Init(Window* _window);
@@ -280,7 +284,7 @@ namespace Canis
         void RestoreScriptSession();
         void SaveScriptSession();
         ScriptEditing::Workspace m_scriptWorkspace;
-        void OpenScriptDocument(const std::filesystem::path& path, int line = 0, int column = 1);
+
         bool SaveScriptDocuments(const std::string& onlyPath = {});
         bool m_syncScriptHeaders = true;
         bool m_scriptBuildOutputPinned = false;
@@ -292,6 +296,10 @@ namespace Canis
         std::string m_scriptSearch;
         bool m_showScriptEditor = false;
         bool m_focusScriptDocument = false;
+#if CANIS_CSHARP
+        std::shared_ptr<Scripting::CSharpRuntime> m_csharp;
+#endif
+        bool m_csharpReloadOnSave = true;
         bool m_scriptBuildRequested = false;
         bool m_scriptsNeedBuild = false;
         int m_scriptGotoLine = 1;

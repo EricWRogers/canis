@@ -3,11 +3,13 @@
 #include <Canis/ScriptDocument.hpp>
 #include <memory>
 #include <map>
+#include <unordered_map>
 namespace Canis::ScriptEditing
 {
     struct Workspace
     {
         std::shared_ptr<ScriptLanguageClient> language;
+        std::unordered_map<std::string,std::string> managedSynced;
         double lastSync = 0, lastRecovery = 0;
         float zoom = 1.0f;
         bool tools = false, selectionOnly = false, recoveryWritable = true;

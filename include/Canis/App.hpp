@@ -9,11 +9,15 @@ namespace Canis
 {
 class Editor;
 namespace VR { class System; }
+namespace Scripting { class CSharpRuntime; }
 
 class App
 {
 public:
     Scene scene;
+#if CANIS_CSHARP
+    std::shared_ptr<Scripting::CSharpRuntime> GetCSharp() const { return m_csharp; }
+#endif
     ~App();
     int Run(int _argc = 0, char **_argv = nullptr);
 
@@ -34,6 +38,8 @@ public:
 
     void RegisterComponent(ComponentConf& _conf);
     void UnregisterComponent(ComponentConf& _conf);
+    // Register built-in component codecs without initializing a graphics window.
+    void RegisterDefaults(Editor& _editor);
     std::vector<ComponentConf>& GetComponentRegistry() { return m_scriptRegistry; }
     ComponentConf* GetComponentConf(const std::string& _name);
 
@@ -71,6 +77,9 @@ public:
     std::vector<InspectorItemRightClick>& GetInspectorItemRegistry() { return m_inspectorItemRegistry; }
 private:
     struct RuntimeContext;
+#if CANIS_CSHARP
+    std::shared_ptr<Scripting::CSharpRuntime> m_csharp;
+#endif
 
     std::vector<ScriptConf> m_scriptRegistry = {};
     std::vector<SystemConf> m_systemRegistry = {};
@@ -83,7 +92,7 @@ private:
 #if defined(__EMSCRIPTEN__)
     static void WebMainLoop(void *_appPtr);
 #endif
-    void RegisterDefaults(Editor& _editor);
+
     void ProcessPendingSceneLoad();
     Editor* m_editor;
     mutable std::unique_ptr<NetworkSession> m_network = nullptr;

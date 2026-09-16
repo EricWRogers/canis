@@ -1,4 +1,5 @@
 set(CANIS_ENGINE_LIB CanisEngine)
+option(CANIS_ENABLE_CSHARP "Enable experimental desktop C# asset scripting" OFF)
 
 set(CANISENGINE_INCLUDE_DIRS "${PROJECT_SOURCE_DIR}/include")
 message(STATUS "CANISENGINE_INCLUDE_DIRS ${CANISENGINE_INCLUDE_DIRS}")
@@ -30,6 +31,10 @@ endif()
 set(CANIS_ENGINE_LIBRARY_TYPE SHARED)
 if(CANIS_PLATFORM_WEB)
     set(CANIS_ENGINE_LIBRARY_TYPE STATIC)
+endif()
+
+if(NOT CANIS_ENABLE_CSHARP)
+    list(REMOVE_ITEM CANIS_SOURCES "${CMAKE_CURRENT_SOURCE_DIR}/src/Scripting/CSharpRuntime.cpp")
 endif()
 
 add_library(${CANIS_ENGINE_LIB} ${CANIS_ENGINE_LIBRARY_TYPE} ${CANIS_HEADERS} ${CANIS_SOURCES})
@@ -241,9 +246,17 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
 endif()
 
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
+    add_executable(CanisNativeBindingsTests tests/NativeBindingsTests.cpp)
+    target_link_libraries(CanisNativeBindingsTests PRIVATE CanisEngine)
+    add_test(NAME CanisNativeBindingsTests COMMAND CanisNativeBindingsTests)
     add_executable(CanisEntityLifetimeTests tests/EntityLifetimeTests.cpp)
     target_link_libraries(CanisEntityLifetimeTests PRIVATE CanisEngine)
     add_test(NAME CanisEntityLifetimeTests COMMAND CanisEntityLifetimeTests)
 endif()
 
 include(cmake/OpenXR.cmake)
+
+target_compile_definitions(${CANIS_ENGINE_LIB} PUBLIC CANIS_CSHARP=$<BOOL:${CANIS_ENABLE_CSHARP}>)
+if(CANIS_ENABLE_CSHARP)
+    include(cmake/CSharp.cmake)
+endif()

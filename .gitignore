@@ -12,3 +12,6 @@ _deps
 
 build/
 .vscode/
+
+/managed/**/bin/
+/managed/**/obj/

@@ -38,6 +38,21 @@ int main()
         Check(cache.lines == std::vector<size_t>({0,7,14}), "line offsets");
         cache.Update("int x;");
         Check(cache.lines.size() == 1 && cache.spans.front().color == CppColor::Type, "refresh after edit");
+        const std::string cs = "public sealed partial class Demo { string path = @\"a\\b\"\"c\nsecond\"; var raw = \"\"\"text\n// still string\"\"\"; await Work(); }";
+        const auto csSpans = HighlightCSharp(cs);
+        auto csAt = [&](const std::string& word) {
+            const auto offset = cs.find(word);
+            for (const auto& span : csSpans) if (span.begin <= offset && offset < span.end) return span.color;
+            return CppColor::Text;
+        };
+        Check(csAt("sealed") == CppColor::Keyword && csAt("partial") == CppColor::Keyword, "C# modifiers");
+        Check(csAt("await") == CppColor::Keyword && csAt("var") == CppColor::Type, "C# await/var");
+        Check(csAt("second") == CppColor::String, "C# multiline verbatim string");
+        Check(csAt("still string") == CppColor::String, "C# raw string");
+        cache.Update(cs, true);
+        Check(cache.csharp, "C# cache mode");
+        cache.Update(cs, false);
+        Check(!cache.csharp, "switching language invalidates highlight cache");
         std::cout << "C++ syntax checks passed\n";
         return 0;
     }

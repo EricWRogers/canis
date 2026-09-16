@@ -547,8 +547,9 @@ namespace Canis
         bool cameraFound = false;
         bool editorCameraOverride = scene->HasEditorCamera2DOverride();
         const bool editor3DOverride = scene->HasEditorCamera3DOverride();
-        const bool renderScreenSpaceUi = !editor3DOverride;
-        const bool renderWorldSpaceUi = !editorCameraOverride;
+        const bool vrCamera = scene->GetVRCamera().enabled;
+        const bool renderScreenSpaceUi = !editor3DOverride && !vrCamera;
+        const bool renderWorldSpaceUi = vrCamera || !editorCameraOverride;
         Matrix4 overrideProjection = Matrix4(1.0f);
         camera2D = nullptr;
 
@@ -751,7 +752,12 @@ namespace Canis
         {
             Matrix4 worldProjection = Matrix4(1.0f);
             bool hasWorldProjection = false;
-            if (scene->HasEditorCamera3DOverride())
+            if (vrCamera)
+            {
+                worldProjection = scene->GetVRCamera().projection * scene->GetVRCamera().view;
+                hasWorldProjection = true;
+            }
+            else if (scene->HasEditorCamera3DOverride())
             {
                 worldProjection =
                     scene->GetEditorCamera3DProjection() *

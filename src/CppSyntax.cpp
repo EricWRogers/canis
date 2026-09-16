@@ -24,8 +24,19 @@ namespace Canis::ScriptEditing
             "unique_ptr", "shared_ptr", "optional", "size_t", "i8", "i16", "i32", "i64", "u8", "u16", "u32", "u64", "f32", "f64"};
     }
 
-    std::vector<CppSpan> HighlightCpp(const std::string& text)
+    static std::vector<CppSpan> HighlightCode(const std::string& text, bool csharp)
     {
+        static const std::unordered_set<std::string> csKeywords = {
+            "abstract", "as", "async", "await", "base", "break", "case", "catch", "checked", "class", "const", "continue",
+            "default", "delegate", "do", "else", "enum", "event", "explicit", "extern", "false", "finally", "fixed", "for",
+            "foreach", "get", "global", "if", "implicit", "in", "init", "interface", "internal", "is", "lock", "namespace",
+            "new", "null", "operator", "out", "override", "params", "partial", "private", "protected", "public", "readonly",
+            "record", "ref", "required", "return", "scoped", "sealed", "set", "sizeof", "stackalloc", "static", "struct",
+            "switch", "this", "throw", "true", "try", "typeof", "unchecked", "unsafe", "using", "virtual", "volatile",
+            "when", "where", "while", "with", "yield"};
+        static const std::unordered_set<std::string> csTypes = {
+            "bool", "byte", "char", "decimal", "double", "dynamic", "float", "int", "long", "nint", "nuint", "object",
+            "sbyte", "short", "string", "uint", "ulong", "ushort", "var", "void"};
         std::vector<CppSpan> spans;
         bool lineStart = true;
         bool includePath = false;
@@ -66,6 +77,27 @@ namespace Canis::ScriptEditing
                 if (i < text.size() && text[i] == '>') ++i;
                 color = CppColor::String;
                 includePath = false;
+            }
+            else if (csharp && (text.compare(i, 2, "@\"") == 0 || text.compare(i, 3, "$@\"") == 0 || text.compare(i, 3, "@$\"") == 0))
+            {
+                i = text.find('"', i) + 1;
+                while (i < text.size())
+                {
+                    if (text[i++] == '"')
+                    {
+                        if (i < text.size() && text[i] == '"') { ++i; continue; }
+                        break;
+                    }
+                }
+                color = CppColor::String; lineStart = false;
+            }
+            else if (csharp && text.compare(i, 3, "\"\"\"") == 0)
+            {
+                size_t count = 3;
+                while (i + count < text.size() && text[i + count] == '"') ++count;
+                const auto end = text.find(std::string(count, '"'), i + count);
+                i = end == std::string::npos ? text.size() : end + count;
+                color = CppColor::String; lineStart = false;
             }
             else
             {
@@ -126,8 +158,8 @@ namespace Canis::ScriptEditing
                     while (next < text.size() && std::isspace(static_cast<unsigned char>(text[next]))) ++next;
                     bool uppercase = word.size() > 1;
                     for (unsigned char c : word) if (std::islower(c)) uppercase = false;
-                    if (keywords.count(word)) color = CppColor::Keyword;
-                    else if (types.count(word)) color = CppColor::Type;
+                    if ((csharp ? csKeywords : keywords).count(word)) color = CppColor::Keyword;
+                    else if ((csharp ? csTypes : types).count(word)) color = CppColor::Type;
                     else if (uppercase) color = CppColor::Preprocessor;
                     else if (next < text.size() && text[next] == '(') color = CppColor::Function;
                     else if (std::isupper(static_cast<unsigned char>(word[0]))) color = CppColor::Type;
@@ -140,11 +172,15 @@ namespace Canis::ScriptEditing
         return spans;
     }
 
-    void CppHighlightCache::Update(const std::string& source)
+    std::vector<CppSpan> HighlightCpp(const std::string& text) { return HighlightCode(text, false); }
+    std::vector<CppSpan> HighlightCSharp(const std::string& text) { return HighlightCode(text, true); }
+
+    void CppHighlightCache::Update(const std::string& source, bool isCSharp)
     {
-        if (text == source && !lines.empty()) return;
+        if (text == source && csharp == isCSharp && !lines.empty()) return;
         text = source;
-        spans = HighlightCpp(text);
+        csharp = isCSharp;
+        spans = csharp ? HighlightCSharp(text) : HighlightCpp(text);
         brackets.assign(text.size(), -1);
         std::vector<size_t> stack;
         for (const auto& span : spans)

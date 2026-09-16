@@ -1,3 +1,4 @@
+#include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Yaml.hpp>
@@ -366,6 +367,8 @@ namespace Canis
             if (e && e->Active())
                 for (auto handle : e->GetScripts()) frameScripts.push_back(handle);
         for (int phase = 0; phase < static_cast<int>(ScriptUpdatePhase::Count); ++phase)
+        {
+            if (phase == static_cast<int>(ScriptUpdatePhase::Gameplay) && !m_paused && managedUpdate) managedUpdate(_deltaTime);
             for (auto handle : frameScripts)
             {
                 auto* se = handle.TryGet();
@@ -375,6 +378,7 @@ namespace Canis
                 se->Update(_deltaTime);
             }
 
+        }
         // Animation state and model assets are commonly selected by scripts.
         // Evaluate post-script systems before rendering so a newly selected
         // skinned model never reaches the renderer with an invalid/old pose.
@@ -449,6 +453,8 @@ namespace Canis
     }
     void Scene::Unload()
     {
+        if (managedStop) managedStop();
+        ++m_scriptingEpoch;
         m_isUpdating = m_isLoadingEntityNodes = false;
         FlushRetiredScripts();
         for (auto* entity : m_entities) if (entity) m_entityStates.at(entity->GetHandle()).pendingDestroy = true;
@@ -770,6 +776,7 @@ namespace Canis
             }
         }
 
+        Scripting::DecodeManagedComponents(_node, entity);
         return entity;
     }
 
@@ -922,6 +929,7 @@ namespace Canis
     YAML::Node Scene::EncodeEntity(Entity &_entity)
     {
         YAML::Node node;
+        Scripting::EncodeManagedComponents(node, _entity);
         node["Entity"] = _entity.GetUUID();
         node["Name"] = _entity.GetName();
         node["Tag"] = _entity.GetTagName();

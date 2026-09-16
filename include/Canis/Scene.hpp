@@ -71,6 +71,10 @@ namespace Canis
         ~Scene();
         void Init(App *_app, Window *_window, InputManager *_inputManger);
         void Update(float _deltaTime);
+        // Optional managed host participates before Gameplay scripts, after Interaction.
+        std::function<void(float)> managedUpdate;
+        std::function<void()> managedStop;
+        uint64_t ScriptingEpoch() const { return m_scriptingEpoch; }
         void UpdateEditor();
         void Render(float _deltaTime);
         void Unload();
@@ -241,6 +245,7 @@ namespace Canis
         std::vector<System*> m_updateSystems = {};
         std::vector<System*> m_renderSystems = {};
         std::vector<SystemTiming> m_systemTimings = {};
+        uint64_t m_scriptingEpoch = 1;
         std::vector<DebugGizmoLine> m_debugGizmoLines = {};
         std::vector<Entity> m_entitiesToReady = {};
         std::vector<ScriptableEntity*> m_retiredScripts;

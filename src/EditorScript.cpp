@@ -1,3 +1,4 @@
+#include <SDL3/SDL.h>
 #include <Canis/Editor.hpp>
 #include <Canis/ScriptSync.hpp>
 #include <set>
@@ -69,7 +70,7 @@ namespace Canis
                 child->Pos.y + child->WindowPadding.y + child->DecoOuterSizeY1 + padding.y - child->Scroll.y);
             const auto clip = child->InnerClipRect;
             if (clip.Max.y <= clip.Min.y || clip.Max.x <= clip.Min.x) return;
-            doc.highlight.Update(doc.text);
+            doc.highlight.Update(doc.text, doc.path.extension() == ".cs");
             const auto& cache = doc.highlight;
             const float height = ImGui::GetFontSize();
             const auto first = static_cast<size_t>(std::max(0.0f, std::floor((clip.Min.y - origin.y) / height)));
@@ -133,7 +134,7 @@ namespace Canis
             const float fontSize = ImGui::GetFontSize();
             ImGui::BeginChild("FoldedCode", size, ImGuiChildFlags_Borders, ImGuiWindowFlags_HorizontalScrollbar);
             ImGui::PushStyleVar(ImGuiStyleVar_ItemSpacing, ImVec2(0, 0));
-            doc.highlight.Update(doc.text);
+            doc.highlight.Update(doc.text, doc.path.extension() == ".cs");
             const auto& cache = doc.highlight;
             const auto& lines = cache.lines;
             auto* window = ImGui::GetCurrentWindow();
@@ -447,7 +448,7 @@ namespace Canis
         for (auto& doc : staged)
             if (savePaths.count(doc.path.string()))
             {
-                m_scriptsNeedBuild = m_scriptsNeedBuild || doc.Dirty();
+                m_scriptsNeedBuild = m_scriptsNeedBuild || (doc.path.extension() != ".cs" && doc.Dirty());
                 if (!doc.Save())
                 {
                     // Retain staged edits and the exact saved state of any earlier writes.
@@ -476,7 +477,9 @@ namespace Canis
                 {
                     auto path = std::filesystem::path(diagnostic.path);
                     if (path.is_relative()) path = std::filesystem::path(CANIS_GAME_BUILD_DIR) / path;
-                    OpenScriptDocument(path, diagnostic.line, diagnostic.column);
+                    m_scriptWorkspace.navigatePath = path.string();
+                    m_scriptWorkspace.navigateLine = diagnostic.line;
+                    m_scriptWorkspace.navigateColumn = diagnostic.column;
                     std::scoped_lock lock(m_reloadBuildMutex);
                     if (m_reloadBuildFinished)
                     {
@@ -510,6 +513,8 @@ namespace Canis
         std::string savePath = active && focused && io.KeyCtrl && !io.KeyShift && ImGui::IsKeyPressed(ImGuiKey_S, false)
             ? active->path.string() : "";
         bool build = false, play = false, reopen = false, help = false;
+        const bool csharp = active && active->path.extension() == ".cs";
+        if (csharp && focused && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_R, false)) build = true;
         bool goTo = focused && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_G, false);
         bool findNext = focused && ImGui::IsKeyPressed(ImGuiKey_F3, false);
         const bool focusFind = focused && io.KeyCtrl && ImGui::IsKeyPressed(ImGuiKey_F, false);
@@ -531,7 +536,7 @@ namespace Canis
             if (ImGui::MenuItem("Save All", "Ctrl+Shift+S", false, !m_scriptDocuments.empty())) saveAll = true;
             if (ImGui::MenuItem("Reopen disk version...", nullptr, false, active != nullptr)) reopen = true;
             ImGui::Separator();
-            if (ImGui::MenuItem("Save + Build / Reload", "Ctrl+R", false, m_mode == EditorMode::EDIT)) build = true;
+            if (ImGui::MenuItem(csharp ? "Save + Compile / Reload C#" : "Save + Build / Reload", "Ctrl+R", false, csharp || m_mode == EditorMode::EDIT)) build = true;
             if (ImGui::MenuItem("Play", "Ctrl+P", false, m_mode == EditorMode::EDIT)) play = true;
             if (ImGui::MenuItem("Build Output"))
             {
@@ -540,13 +545,19 @@ namespace Canis
                 m_scriptBuildOutputPinned = true;
             }
             ImGui::Separator();
-            ImGui::MenuItem("Sync headers on save", nullptr, &m_syncScriptHeaders);
+            if (!csharp) ImGui::MenuItem("Sync headers on save", nullptr, &m_syncScriptHeaders);
+#if CANIS_CSHARP
+            if (ImGui::MenuItem("C# reload on save", nullptr, &m_csharpReloadOnSave) && m_csharp)
+                m_csharp->SetReloadOnSave(m_csharpReloadOnSave);
+            if(csharp && m_csharp && ImGui::MenuItem("Open generated C# project")){auto uri=std::string("file://")+m_csharp->ProjectPath();SDL_OpenURL(uri.c_str());}
+            if(m_csharp) {bool live=m_csharp->LiveReload();if(ImGui::MenuItem("C# reload during Play (serialized fields)",nullptr,&live))m_csharp->SetLiveReload(live);}
+#endif
             if (ImGui::MenuItem("Go to line...", "Ctrl+G", false, active != nullptr)) goTo = true;
             if (ImGui::MenuItem("Find and replace / Search scripts", "Ctrl+H"))
             { m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = "Search"; m_scriptWorkspace.results.clear(); }
             if (ImGui::MenuItem("Preview header synchronization"))
             { m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = "Sync preview"; }
-            if (ImGui::BeginMenu("C++ navigation", active != nullptr))
+            if (ImGui::BeginMenu(csharp ? "C# navigation" : "C++ navigation", active != nullptr))
             {
                 for (const auto& entry : std::vector<std::pair<const char*, const char*>>{
                     {"Complete (Ctrl+Space)", "textDocument/completion"}, {"Parameter hints (Ctrl+Shift+Space)", "textDocument/signatureHelp"},
@@ -555,6 +566,9 @@ namespace Canis
                     if (ImGui::MenuItem(entry.first))
                     {
                         m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = entry.second; m_scriptWorkspace.results.clear();
+#if CANIS_CSHARP
+                        if(csharp && m_csharp){std::map<std::string,std::string> overlays;for(auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs")overlays[doc.path.string()]=doc.text;m_csharp->RequestLanguage(entry.second,active->path.string(),active->text,active->cursor,overlays);}else
+#endif
                         m_scriptWorkspace.language->Request(entry.second, active->path.string(), active->text, active->cursor);
                     }
                 ImGui::EndMenu();
@@ -570,11 +584,14 @@ namespace Canis
             for (const auto& doc : m_scriptDocuments)
                 if (ScriptTabPath(doc.path) == ScriptTabPath(active->path) && IsScriptHeader(doc.path) != IsScriptHeader(active->path))
                     paired = doc.path;
+        if (!csharp)
+        {
         ImGui::BeginDisabled(paired.empty());
         if (ImGui::Button(active && IsScriptHeader(active->path) ? "Switch to Source" : "Switch to Header") || switchKey)
             switchPath = paired;
         ImGui::EndDisabled();
         tooltip(paired.empty() ? "No paired header/source file exists." : "Alt+O — switch between header and source");
+        }
         ImGui::SameLine();
         const float nextWidth = ImGui::CalcTextSize("Find Next").x + ImGui::GetStyle().FramePadding.x * 2;
         ImGui::SetNextItemWidth(std::max(60.0f, ImGui::GetContentRegionAvail().x - nextWidth - ImGui::GetStyle().ItemSpacing.x));
@@ -658,7 +675,10 @@ namespace Canis
             if (!method.empty())
             {
                 m_scriptWorkspace.tools = true; m_scriptWorkspace.panel = method; m_scriptWorkspace.results.clear();
-                m_scriptWorkspace.language->Request(method, active->path.string(), active->text, active->cursor);
+#if CANIS_CSHARP
+                if(csharp && m_csharp){std::map<std::string,std::string> overlays;for(auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs")overlays[doc.path.string()]=doc.text;m_csharp->RequestLanguage(method,active->path.string(),active->text,active->cursor,overlays);}else
+#endif
+                if (!csharp) m_scriptWorkspace.language->Request(method, active->path.string(), active->text, active->cursor);
             }
         }
         DrawScriptTools(active);
@@ -707,6 +727,18 @@ namespace Canis
             }
             ImGui::EndTabBar();
         }
+#if CANIS_CSHARP
+        if (csharp && m_csharp)
+        {
+            ImGui::TextWrapped("%s", m_csharp->Status().c_str());
+            if (ImGui::CollapsingHeader("C# Build Output"))
+            {
+                ImGui::BeginChild("CSharpBuildOutput", ImVec2(0, 150));
+                DrawScriptBuildLog(m_csharp->BuildOutput());
+                ImGui::EndChild();
+            }
+        }
+#endif
         const float statusHeight = ImGui::GetFrameHeightWithSpacing();
         if (active)
         {
@@ -777,9 +809,21 @@ namespace Canis
             if (ImGui::IsWindowHovered()) ImGui::SetTooltip("%s", m_scriptEditorMessage.c_str());
         }
         ImGui::EndChild();
+
         if (!savePath.empty()) SaveScriptDocuments(savePath);
         if (saveAll || build)
-            if (SaveScriptDocuments() && build) m_scriptBuildRequested = true;
+            if (SaveScriptDocuments() && build)
+            {
+                if (csharp)
+                {
+#if CANIS_CSHARP
+                    if (m_csharp) m_csharp->RequestBuild();
+#else
+                    m_scriptEditorMessage = "Configure with CANIS_ENABLE_CSHARP=ON to compile C# assets.";
+#endif
+                }
+                else m_scriptBuildRequested = true;
+            }
         if (play)
         {
             const bool dirty = std::any_of(m_scriptDocuments.begin(), m_scriptDocuments.end(), [](const auto& d) { return d.Dirty(); });

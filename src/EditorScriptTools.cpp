@@ -24,7 +24,7 @@ void Editor::SaveScriptSession()
 {
     if (!m_scriptWorkspace.recoveryWritable) return;
     Json state = {{"version", 1}, {"root", CANIS_GAME_BUILD_DIR}, {"active", m_activeScriptDocument},
-                  {"tabs", m_scriptTabFiles}, {"zoom", m_scriptWorkspace.zoom}, {"visible", m_showScriptEditor}, {"documents", Json::array()}};
+                  {"tabs", m_scriptTabFiles}, {"zoom", m_scriptWorkspace.zoom}, {"visible", m_showScriptEditor}, {"csharpReloadOnSave", m_csharpReloadOnSave}, {"documents", Json::array()}};
     for (const auto& doc : m_scriptDocuments)
         state["documents"].push_back({{"path", doc.path.string()}, {"text", doc.text}, {"saved", doc.savedText},
             {"cursor", doc.cursor}, {"folds", doc.foldedLines}});
@@ -68,6 +68,7 @@ void Editor::RestoreScriptSession()
         m_scriptTabFiles = state.value("tabs", std::unordered_map<std::string, std::string>{});
         m_scriptWorkspace.zoom = std::clamp(state.value("zoom", 1.0f), 0.7f, 2.0f);
         m_showScriptEditor = state.value("visible", false);
+        m_csharpReloadOnSave = state.value("csharpReloadOnSave", true);
         m_focusScriptDocument = m_showScriptEditor;
     }
     catch (const std::exception& error) { m_scriptWorkspace.recoveryWritable = false; m_scriptEditorMessage = "Script recovery could not be read: " + std::string(error.what()); }
@@ -84,10 +85,18 @@ void Editor::TickScriptWorkspace()
     if (!work.language)
         work.language = std::make_shared<ScriptEditing::ScriptLanguageClient>(
             std::filesystem::path(CANIS_GAME_SOURCE_DIR).parent_path().string(), CANIS_GAME_BUILD_DIR);
-    for (const auto& reply : work.language->Poll())
+    auto replies=work.language->Poll();
+#if CANIS_CSHARP
+    if(m_csharp){auto managed=m_csharp->PollLanguage();replies.insert(replies.end(),managed.begin(),managed.end());}
+#endif
+    for (const auto& reply : replies)
     {
         try
         {
+            if(std::filesystem::path(reply.path).extension()==".cs") {
+                auto doc=std::find_if(m_scriptDocuments.begin(),m_scriptDocuments.end(),[&](const auto& d){return d.path.string()==reply.path;});
+                if(doc==m_scriptDocuments.end() || doc->text!=reply.snapshot)continue;
+            }
             auto json = Json::parse(reply.json);
             if (reply.method == "diagnostics")
             {
@@ -102,14 +111,25 @@ void Editor::TickScriptWorkspace()
                 work.panel = reply.method; work.tools = true;
             }
         }
-        catch (...) { m_scriptEditorMessage = "Invalid response from clangd."; }
+        catch (...) { m_scriptEditorMessage = "Invalid response from script language service."; }
     }
     const auto now = ImGui::GetTime();
     if (now - work.lastSync > 0.8)
     {
-        for (const auto& doc : m_scriptDocuments) work.language->Sync(doc.path.string(), doc.text);
+        for (const auto& doc : m_scriptDocuments) if (doc.path.extension() != ".cs") work.language->Sync(doc.path.string(), doc.text);
+#if CANIS_CSHARP
+        if(m_csharp) {
+            std::map<std::string,std::string> overlays;for(const auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs")overlays[doc.path.string()]=doc.text;
+            for(const auto& doc:m_scriptDocuments)if(doc.path.extension()==".cs" && (!work.managedSynced.contains(doc.path.string()) || work.managedSynced[doc.path.string()]!=doc.text)) {
+                work.managedSynced[doc.path.string()]=doc.text;m_csharp->RequestLanguage("diagnostics",doc.path.string(),doc.text,doc.cursor,overlays);
+            }
+        }
+#endif
         std::string output;
         { std::scoped_lock lock(m_reloadBuildMutex); output = m_reloadBuildOutput; }
+#if CANIS_CSHARP
+        if (m_csharp) output += "\n" + m_csharp->BuildOutput();
+#endif
         if (output != work.buildLog)
         {
             work.buildLog = output; work.buildDiagnostics.clear();
@@ -122,7 +142,7 @@ void Editor::TickScriptWorkspace()
                     std::filesystem::path path = diagnostic.path;
                     if (path.is_relative()) path = std::filesystem::path(CANIS_GAME_BUILD_DIR) / path;
                     diagnostic.path = path.lexically_normal().string();
-                    diagnostic.severity = diagnostic.message.find("error:") == std::string::npos ? 2 : 1;
+                    diagnostic.severity = diagnostic.message.find("error") == std::string::npos ? 2 : 1;
                     work.buildDiagnostics.push_back(std::move(diagnostic));
                 }
             }

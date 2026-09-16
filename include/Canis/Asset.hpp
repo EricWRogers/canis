@@ -170,6 +170,7 @@ namespace Canis
             POSTPROCESS,
             SHADERGRAPH,
             TERRAIN,
+            CSHARP,
         };
 
         MetaFileAsset() {}

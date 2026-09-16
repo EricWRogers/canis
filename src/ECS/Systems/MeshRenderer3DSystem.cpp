@@ -1294,8 +1294,9 @@ namespace Canis
                 currentShader->SetFloat("directionalLightIntensity", directionalLight.intensity);
                 currentShader->SetBool("useDirectionalShadow", directionalLight.enabled && m_shadowDepthTexture != 0);
                 currentShader->SetMat4("directionalLightSpaceMatrix", m_shadowLightSpaceMatrix);
-                currentShader->SetInt("directionalShadowMap", 4);
-                glActiveTexture(GL_TEXTURE4);
+                // Units 0-4 belong to material maps; shadows must survive per-material binding.
+                currentShader->SetInt("directionalShadowMap", 5);
+                glActiveTexture(GL_TEXTURE5);
                 glBindTexture(GL_TEXTURE_2D, m_shadowDepthTexture);
 
                 currentShader->SetInt("pointLightCount", static_cast<int>(pointLights.size()));
@@ -1463,7 +1464,7 @@ namespace Canis
             // tiled surface (for example, the dining floor's uvScale) cannot
             // leak into models rendered afterward.
             currentShader->SetVec2("uvScale", Vector2(1.0f));
-            int nextCustomTextureUnit = 5;
+            int nextCustomTextureUnit = 6;
             if (materialAsset != nullptr)
             {
                 if ((materialAsset->info & MATERIAL_HAS_COLOR) != 0u)
@@ -1786,6 +1787,8 @@ namespace Canis
 
         if (currentShader != nullptr)
         {
+            glActiveTexture(GL_TEXTURE5);
+            glBindTexture(GL_TEXTURE_2D, 0);
             glActiveTexture(GL_TEXTURE4);
             glBindTexture(GL_TEXTURE_2D, 0);
             glActiveTexture(GL_TEXTURE0);

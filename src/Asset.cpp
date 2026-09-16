@@ -1137,6 +1137,8 @@ namespace Canis
                 return "POSTPROCESS";
             case MetaFileAsset::FileType::SHADERGRAPH:
                 return "SHADERGRAPH";
+            case MetaFileAsset::FileType::CSHARP:
+                return "CSHARP";
             case MetaFileAsset::FileType::TERRAIN:
                 return "TERRAIN";
             default:
@@ -1172,6 +1174,8 @@ namespace Canis
             return MetaFileAsset::FileType::POSTPROCESS;
         else if (_type == "SHADERGRAPH")
             return MetaFileAsset::FileType::SHADERGRAPH;
+        else if (_type == "CSHARP")
+            return MetaFileAsset::FileType::CSHARP;
         else if (_type == "TERRAIN")
             return MetaFileAsset::FileType::TERRAIN;
         else
@@ -1214,6 +1218,8 @@ namespace Canis
                 type = FileType::POSTPROCESS;
             else if (extension == "shadergraph")
                 type = FileType::SHADERGRAPH;
+            else if (extension == "cs")
+                type = FileType::CSHARP;
             else if (extension == "terrain")
                 type = FileType::TERRAIN;
             else
@@ -1253,6 +1259,7 @@ namespace Canis
             size = root["size"].as<u64>();
             modified = root["modified"].as<i64>();
 
+            if (type == FileType::FILE_UNKNOWN && extension == "cs") type = FileType::CSHARP;
             if (type == FileType::FILE_UNKNOWN && (extension == "gltf" || extension == "glb" || extension == "obj"))
                 type = FileType::MODEL;
         }

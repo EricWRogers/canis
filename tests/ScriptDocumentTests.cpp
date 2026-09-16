@@ -44,6 +44,8 @@ int main()
         Check(diagnostic.line == 8 && diagnostic.column == 2, "MSVC location");
         Check(ParseDiagnostic("C:\\Game\\Foo.cpp(8): warning C4100: parameter", diagnostic), "MSVC line only");
         Check(ParseDiagnostic("/tmp/Foo.cpp:3: warning: unused value", diagnostic), "gcc line only");
+        Check(ParseDiagnostic("/tmp/Game.cs(4,12): error CS1002: ; expected [/tmp/Game.Runtime.csproj]", diagnostic), "C# compiler diagnostic");
+        Check(diagnostic.path == "/tmp/Game.cs" && diagnostic.line == 4 && diagnostic.column == 12, "C# asset location");
         Check(!ParseDiagnostic("[100%] Built target GameCode", diagnostic), "ordinary output");
         Check(!ParseDiagnostic("foo.cpp:9999999999999999999999:1: error: overflow", diagnostic), "malformed location");
         std::filesystem::remove_all(root);

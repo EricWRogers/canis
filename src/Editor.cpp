@@ -1,3 +1,4 @@
+#include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
 #include <Canis/EditorSpawnPlacement.hpp>
@@ -5730,6 +5731,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     Editor::~Editor()
     {
+#if CANIS_CSHARP
+        m_csharp.reset();
+#endif
 #if CANIS_EDITOR
         SaveScriptSession();
         m_panelMaximizer.Restore();
@@ -6256,6 +6260,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawShaderGraphWindow();
         if (m_showScriptsPanel)
             DrawScriptsPanel();
+#if CANIS_CSHARP
+        if (!m_csharp)
+        {
+            m_csharp = m_app->GetCSharp();
+            m_csharp->SetReloadOnSave(m_csharpReloadOnSave);
+        }
+#endif
         TickScriptWorkspace();
         if (m_showScriptEditor)
             DrawScriptEditor();
@@ -9302,15 +9313,39 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::StartPlayModeAt(const Canis::Vector3 *_position)
     {
+
+#if !CANIS_CSHARP
+        if(m_scene && Scripting::HasManagedScripts(*m_scene)) {
+            m_scriptEditorMessage="This scene requires CANIS_ENABLE_CSHARP=ON.";return;
+        }
+#endif
         ExitMeshEdit();
         if (m_scene == nullptr || m_window == nullptr || m_mode != EditorMode::EDIT)
             return;
+#if CANIS_CSHARP
+        if (m_csharp)
+        {
+            // A save followed immediately by Play must not bypass the polling interval.
+            m_csharp->RefreshSources();
+            m_csharp->Tick(false, false, 0, false);
+            if (!m_csharp->ReadyToPlay())
+            {
+                m_scriptEditorMessage = "C#: wait for compilation/reload and fix errors before Play.";
+                m_showScriptEditor = true;
+                return;
+            }
+        }
+#endif
 
         m_vrPlayError.clear();
         if (m_playTarget != 0 && !m_app->StartEditorVR(m_playTarget == 2, m_vrPlayError))
         {
-            Debug::Error("Headset Play: %s", m_vrPlayError.c_str());
-            return;
+            if (m_playTarget == 2)
+            {
+                Debug::Error("VR simulation Play: %s", m_vrPlayError.c_str());
+                return;
+            }
+            Debug::Warning("Headset unavailable; starting desktop Play: %s", m_vrPlayError.c_str());
         }
 
         FlushSceneHistoryPendingChange();
@@ -11780,6 +11815,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
+            Scripting::DrawManagedInspector(*this, entity);
             DrawAddComponentDropDown(_refresh);
         }
 
@@ -15402,6 +15438,29 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!ImGui::BeginMenu("Create"))
             return;
 
+#if CANIS_CSHARP
+        if(ImGui::MenuItem("C# Entity Script")) {
+            int suffix=0;fs::path path;std::string name;
+            do{name="NewBehaviour"+(suffix?std::to_string(suffix):"");path=_folderPath/(name+".cs");++suffix;}while(fs::exists(path));
+            std::ofstream file(path);file<<"using Canis;\n\n[ScriptId(\""<<std::to_string(static_cast<uint64_t>(UUID()))<<"\")]\npublic sealed class "<<name<<" : ScriptableEntity\n{\n    [SerializeField] private float speed = 1f;\n    public override void OnCreate() { }\n    public override void Update(float deltaTime) { }\n}\n";file.close();
+            if(file){(void)AssetManager::GetMetaFile(path.string());OpenScriptDocument(path);}
+        }
+        if (ImGui::MenuItem("C# System (experimental)"))
+        {
+            int suffix = 0;
+            fs::path path;
+            std::string name;
+            do { name = "NewSystem" + (suffix ? std::to_string(suffix) : ""); path = _folderPath / (name + ".cs"); ++suffix; } while (fs::exists(path));
+            std::ofstream file(path);
+            file << "using Canis;\n\npublic sealed class " << name << " : GameSystem\n{\n"
+                 << "    public override void Start() => Log.Info(\"" << name << " started\");\n"
+                 << "    public override void Update(float deltaTime) { }\n}\n";
+            file.close();
+            if (file) { (void)AssetManager::GetMetaFile(path.string()); OpenScriptDocument(path); }
+            else Debug::Warning("Could not create C# system: %s", path.string().c_str());
+        }
+#endif
+
         auto writeSceneAsset = [&](const fs::path &_targetPath, YAML::Node &_root) -> bool
         {
             std::ofstream out(_targetPath.string());
@@ -16595,6 +16654,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                     {
+                        if (entry.path().extension() == ".cs") OpenScriptDocument(entry.path());
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
                             if (meta->type == MetaFileAsset::FileType::MODEL ||
@@ -16853,6 +16913,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 if (ImGui::BeginPopupContextItem())
                 {
+                        if (entry.path().extension() == ".cs" && ImGui::MenuItem("Open in Script Editor")) OpenScriptDocument(entry.path());
                     if (ImGui::MenuItem("Rename Folder"))
                     {
                         m_isRenamingScriptFolder = true;
@@ -18313,7 +18374,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Launch a separate no-editor runtime using Project Settings.");
             ImGui::SameLine();
-            if ((ImGui::Button("Reload##ScenePanel") || m_scriptBuildRequested || (m_meshEditEntity == UUID(0) && ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)) && SaveScriptDocuments())
+            if ((ImGui::Button("Reload##ScenePanel") || m_scriptBuildRequested || (std::filesystem::path(m_activeScriptDocument).extension() != ".cs" && m_meshEditEntity == UUID(0) && ImGui::IsKeyDown(ImGuiKey_R) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)) && SaveScriptDocuments())
             {
                 m_scriptBuildRequested = false;
                 ExitMeshEdit();
