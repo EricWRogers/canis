@@ -8,6 +8,8 @@ namespace Canis
     {
     public:
         void Update(float x, float y, float width, float height, unsigned int viewport);
+        void Update(float x, float y, float width, float height, unsigned int viewport,
+            bool toggleRequested, float mouseX, float mouseY);
         bool Begin(const char* name, bool* open = nullptr, int flags = 0);
         void Finish();
         void Restore();

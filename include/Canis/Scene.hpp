@@ -79,7 +79,7 @@ namespace Canis
         void Render(float _deltaTime);
         void Unload();
         
-        void Save();
+        bool Save();
         YAML::Node EncodeScene();
         YAML::Node EncodeEntity(Entity &_entity);
 

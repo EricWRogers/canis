@@ -2,6 +2,7 @@
 #include <Canis/Audio.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scene.hpp>
+#include <Canis/Profiler.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Editor.hpp>
@@ -322,11 +323,13 @@ namespace Canis
 
     void Scene::Update(float _deltaTime)
     {
+        Profiler::Scope frameScope("Scene.Update", Profiler::Category::Other);
         ClearDebugGizmoLines();
         m_isUpdating = true;
 
         const auto updateSystem = [&](System* _system)
         {
+            Profiler::Scope scope(_system->GetName(), Profiler::SystemCategory(_system->GetName()));
             const Uint64 start = SDL_GetTicksNS();
             _system->Update(m_registry, _deltaTime);
             const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
@@ -370,13 +373,17 @@ namespace Canis
                 for (auto handle : e->GetScripts()) frameScripts.push_back(handle);
         for (int phase = 0; phase < static_cast<int>(ScriptUpdatePhase::Count); ++phase)
         {
-            if (phase == static_cast<int>(ScriptUpdatePhase::Gameplay) && !m_paused && managedUpdate) managedUpdate(_deltaTime);
+            if (phase == static_cast<int>(ScriptUpdatePhase::Gameplay) && !m_paused && managedUpdate) {
+                Profiler::Scope scope("C# Scripts.Update", Profiler::Category::Scripts);
+                managedUpdate(_deltaTime);
+            }
             for (auto handle : frameScripts)
             {
                 auto* se = handle.TryGet();
                 if (!se || !se->entity.Active() || !se->m_onReadyCalled ||
                     static_cast<int>(se->UpdatePhase()) != phase ||
                     (m_paused && !se->UpdateWhenPaused())) continue;
+                Profiler::Scope scope(se->entity.GetName(), Profiler::Category::Scripts);
                 se->Update(_deltaTime);
             }
 
@@ -393,7 +400,10 @@ namespace Canis
             updateSystem(system);
         }
 
-        UpdateSceneAudio(*this);
+        {
+            Profiler::Scope scope("Audio.Update", Profiler::Category::Audio);
+            UpdateSceneAudio(*this);
+        }
         m_isUpdating = false;
         FlushRetiredScripts();
         auto pendingDestroy = std::move(m_entitiesToDestroy); m_entitiesToDestroy.clear();
@@ -402,9 +412,11 @@ namespace Canis
 
     void Scene::Render(float _deltaTime)
     {
+        Profiler::Scope frameScope("Scene.Render", Profiler::Category::Rendering);
         //Canis::Debug::Log("Render Update %i", m_renderSystems.size());
         for (System* renderer : m_renderSystems)
         {
+            Profiler::Scope scope(renderer->GetName(), Profiler::Category::Rendering);
             const Uint64 start = SDL_GetTicksNS();
             renderer->Update(m_registry, _deltaTime);
             const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
@@ -415,6 +427,7 @@ namespace Canis
 
     void Scene::UpdateEditor()
     {
+        Profiler::Scope frameScope("Scene.UpdateEditor", Profiler::Category::Editor);
         // Edit mode intentionally does not run game scripts. A small subset
         // of systems still needs to evaluate derived authoring data before
         // rendering and gizmo interaction. A zero delta initializes the
@@ -422,7 +435,10 @@ namespace Canis
         for (System* system : m_updateSystems)
         {
             if (system != nullptr && system->UpdateInEditor())
+            {
+                Profiler::Scope scope(system->GetName(), Profiler::SystemCategory(system->GetName()));
                 system->Update(m_registry, 0.0f);
+            }
         }
     }
 
@@ -878,7 +894,7 @@ namespace Canis
         }
     }
 
-    void Scene::Save()
+    bool Scene::Save()
     {
         Debug::Log("Save Scene");
         
@@ -886,16 +902,16 @@ namespace Canis
 
         out << EncodeScene();
 
-        if (m_path.size() > 0)
+        const std::string path = m_path.empty() ? m_name : m_path;
+        std::ofstream fout(path);
+        fout << out.c_str();
+        fout.flush();
+        if (!out.good() || !fout.good())
         {
-            std::ofstream fout(m_path);
-            fout << out.c_str();
+            Debug::Warning("Failed to save scene '%s'.", path.c_str());
+            return false;
         }
-        else
-        {
-            std::ofstream fout(m_name);
-            fout << out.c_str();
-        }
+        return true;
     }
 
     YAML::Node Scene::EncodeScene()

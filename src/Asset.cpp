@@ -885,6 +885,7 @@ namespace Canis
             pass.saturation = settingsNode["saturation"].as<float>(pass.saturation);
             pass.bloomThreshold = settingsNode["bloomThreshold"].as<float>(pass.bloomThreshold);
             pass.bloomIntensity = settingsNode["bloomIntensity"].as<float>(pass.bloomIntensity);
+            pass.bloomRadius = glm::clamp(settingsNode["bloomRadius"].as<float>(pass.bloomRadius), 1.0f, 64.0f);
             pass.ssaoRadius = settingsNode["ssaoRadius"].as<float>(pass.ssaoRadius);
             pass.ssaoBias = settingsNode["ssaoBias"].as<float>(pass.ssaoBias);
             pass.ssaoStrength = settingsNode["ssaoStrength"].as<float>(pass.ssaoStrength);

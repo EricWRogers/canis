@@ -5,6 +5,7 @@
 #endif
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
+#include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
@@ -2316,6 +2317,7 @@ namespace Canis
                 { runtime.exitReason = "vr-exit-requested"; return false; }
             }
         }
+        Profiler::FrameScope profilerFrame;
         f32 deltaTime = Time::StartFrame();
 
         for (const unsigned int key : runtime.pulseKeys)
@@ -2369,6 +2371,7 @@ namespace Canis
 #if CANIS_EDITOR
             session = session || (runtime.editorRuntimeEnabled && editor.m_mode == EditorMode::PAUSE);
 #endif
+            Profiler::Scope scope("C# Host.Tick", Profiler::Category::Scripts);
             m_csharp->Tick(session, !runGameTick, deltaTime, false);
         }
 #endif
@@ -2391,7 +2394,10 @@ namespace Canis
             if (!stopPlayModeRequested)
             {
                 Uint64 gameCodeUpdateStart = SDL_GetTicksNS();
-                GameCodeObjectUpdateFunction(&gameCodeObject, this, deltaTime);
+                {
+                    Profiler::Scope scope("Game.Update", Profiler::Category::Scripts);
+                    GameCodeObjectUpdateFunction(&gameCodeObject, this, deltaTime);
+                }
                 m_gameCodeUpdateTimeMs = static_cast<float>(SDL_GetTicksNS() - gameCodeUpdateStart) / 1000000.0f;
 
 #if CANIS_EDITOR
@@ -2500,6 +2506,7 @@ namespace Canis
 #if CANIS_EDITOR
         if (runtime.editorRuntimeEnabled)
         {
+            Profiler::Scope scope("Editor.Draw", Profiler::Category::Editor);
             editor.Draw(&scene, &window, this, &gameCodeObject, deltaTime);
             // Editor captures include the scene, hierarchy, inspector and mirror.
             captureFramebuffer = 0;
@@ -2594,10 +2601,16 @@ namespace Canis
         }
         runtime.pendingCaptures.clear();
 
-        window.SwapBuffer();
+        {
+            Profiler::Scope scope("Present", Profiler::Category::Wait);
+            window.SwapBuffer();
+        }
         m_renderTimeMs = static_cast<float>(SDL_GetTicksNS() - renderStart) / 1000000.0f;
 
-        Time::EndFrame();
+        {
+            Profiler::Scope scope("Frame limiter", Profiler::Category::Wait);
+            Time::EndFrame();
+        }
         ++runtime.simulationFrame;
 
         if (runtime.launch.interactive && runtime.interactiveFramesRemaining > 0u)

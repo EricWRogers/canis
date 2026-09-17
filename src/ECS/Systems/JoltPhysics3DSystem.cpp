@@ -254,7 +254,13 @@ namespace Canis
 
         JPH::EAllowedDOFs BuildAllowedDOFs(const Rigidbody &_rigidbody)
         {
-            return JPH::EAllowedDOFs::All;
+            // Constrain contact impulses in the solver, before rotation can accumulate.
+            auto allowed = JPH::EAllowedDOFs::TranslationX |
+                JPH::EAllowedDOFs::TranslationY | JPH::EAllowedDOFs::TranslationZ;
+            if (!_rigidbody.lockRotationX) allowed |= JPH::EAllowedDOFs::RotationX;
+            if (!_rigidbody.lockRotationY) allowed |= JPH::EAllowedDOFs::RotationY;
+            if (!_rigidbody.lockRotationZ) allowed |= JPH::EAllowedDOFs::RotationZ;
+            return allowed;
         }
 
         bool ApplyLockedRotationAxes(
@@ -417,6 +423,9 @@ namespace Canis
             hash = HashCombine(hash, std::hash<u32>{}(_rigidbody.layer));
             hash = HashCombine(hash, std::hash<u32>{}(_rigidbody.mask));
             hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.allowSleeping));
+            hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.lockRotationX));
+            hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.lockRotationY));
+            hash = HashCombine(hash, std::hash<bool>{}(_rigidbody.lockRotationZ));
             hash = HashCombine(hash, HashVector(glm::abs(_transform.GetGlobalScale())));
             hash = HashCombine(hash, HashVector(_transform.GetGlobalScale()));
 

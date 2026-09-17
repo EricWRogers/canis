@@ -20,11 +20,19 @@ namespace Canis
 
     void EditorPanelMaximizer::Update(float x, float y, float width, float height, unsigned int viewport)
     {
+        const auto mouse = ImGui::GetIO().MousePos;
+        Update(x,y,width,height,viewport,ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) ||
+            ImGui::IsMouseClicked(ImGuiMouseButton_Right),mouse.x,mouse.y);
+    }
+
+    void EditorPanelMaximizer::Update(float x, float y, float width, float height, unsigned int viewport,
+        bool toggleRequested, float mouseX, float mouseY)
+    {
         m_x = x; m_y = y; m_width = std::max(1.0f, width); m_height = std::max(1.0f, height); m_viewport = viewport;
         if (m_restoreRequested) Restore();
         auto& context = *ImGui::GetCurrentContext();
-        if (!ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) || !context.OpenPopupStack.empty()) return;
-        const auto mouse = ImGui::GetIO().MousePos;
+        if (!toggleRequested || !context.OpenPopupStack.empty()) return;
+        const ImVec2 mouse(mouseX,mouseY);
         for (int i = context.Windows.Size - 1; i >= 0; --i)
         {
             auto* window = context.Windows[i];
@@ -35,6 +43,14 @@ namespace Canis
                 if (context.HoveredWindow != window->DockNode->HostWindow && context.HoveredWindow != window) continue;
                 if (!window->DockNode->TabBar->BarRect.Contains(mouse)) continue;
                 title = window->DC.DockTabItemRect;
+                // Dock tab close buttons are font-sized, not frame-height-sized.
+                // Match TabItemLabelAndCloseButton so the label's trailing area
+                // remains a valid maximize target on short tabs such as Game.
+                if (window->HasCloseButton) {
+                    const auto* tabBar = window->DockNode->TabBar;
+                    const float buttonSize = std::max(0.0f, tabBar->BarRect.GetHeight() - 2.0f * tabBar->FramePadding.y);
+                    title.Max.x -= tabBar->FramePadding.x + buttonSize;
+                }
             }
             else
             {
@@ -42,11 +58,12 @@ namespace Canis
                 title = window->TitleBarRect();
                 // Keep the collapse/menu button independent of title double-clicks.
                 if (!(window->Flags & ImGuiWindowFlags_NoCollapse)) title.Min.x += window->TitleBarHeight;
+                if (window->HasCloseButton) title.Max.x -= window->TitleBarHeight;
             }
-            if (window->HasCloseButton) title.Max.x -= ImGui::GetFrameHeight();
             if (title.GetWidth() <= 0 || !title.Contains(mouse)) continue;
             // Consume the title gesture before ImGui can collapse/move the panel.
             ImGui::SetKeyOwner(ImGuiKey_MouseLeft, window->ID);
+            ImGui::SetKeyOwner(ImGuiKey_MouseRight, window->ID, ImGuiInputFlags_LockThisFrame);
             ImGui::ClearActiveID();
             context.MovingWindow = nullptr;
             if (!m_window.empty()) { Restore(); return; }

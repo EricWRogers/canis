@@ -1,4 +1,5 @@
 #include <Canis/PostProcessPipeline.hpp>
+#include <Canis/Profiler.hpp>
 
 #include <Canis/Asset.hpp>
 #include <Canis/AssetManager.hpp>
@@ -23,6 +24,7 @@ namespace Canis
 
         InternalTarget g_pingTarget = {};
         InternalTarget g_pongTarget = {};
+        InternalTarget g_bloomTargets[2] = {};
         unsigned int g_fullscreenVao = 0;
         unsigned int g_fullscreenVbo = 0;
 
@@ -209,6 +211,8 @@ namespace Canis
             .colorTexture = _sourceColorTexture,
         };
 
+        Profiler::Scope scope("Post Processing", Profiler::Category::Rendering);
+
         if (_sourceColorTexture == 0 || _width <= 0 || _height <= 0)
             return result;
 
@@ -285,6 +289,7 @@ namespace Canis
                     shader->SetFloat("saturation", pass.saturation);
                     shader->SetFloat("bloomThreshold", pass.bloomThreshold);
                     shader->SetFloat("bloomIntensity", pass.bloomIntensity);
+                    shader->SetFloat("bloomRadius", pass.bloomRadius);
                     shader->SetFloat("ssaoRadius", pass.ssaoRadius);
                     shader->SetFloat("ssaoBias", pass.ssaoBias);
                     shader->SetFloat("ssaoStrength", pass.ssaoStrength);
@@ -294,10 +299,41 @@ namespace Canis
                     glActiveTexture(GL_TEXTURE1);
                     glBindTexture(GL_TEXTURE_2D, _sourceDepthTexture);
 
+                    // Opt-in bloom shaders blur a separate quarter-resolution buffer.
+                    if (glGetUniformLocation(shader->GetProgramID(), "bloomStage") >= 0)
+                    {
+                        const int bloomWidth = std::max(1, (_width + 3) / 4);
+                        const int bloomHeight = std::max(1, (_height + 3) / 4);
+                        for (auto& bloomTarget : g_bloomTargets)
+                            EnsureInternalTarget(bloomTarget, bloomWidth, bloomHeight);
+                        glActiveTexture(GL_TEXTURE0);
+                        unsigned int bloomInput = currentColorTexture;
+                        glBindVertexArray(g_fullscreenVao);
+                        for (int stage = 0; stage < 3; ++stage)
+                        {
+                            auto& bloomTarget = g_bloomTargets[stage % 2];
+                            glBindFramebuffer(GL_FRAMEBUFFER, bloomTarget.framebuffer);
+                            glViewport(0, 0, bloomWidth, bloomHeight);
+                            glBindTexture(GL_TEXTURE_2D, bloomInput);
+                            shader->SetInt("bloomStage", stage);
+                            glDrawArrays(GL_TRIANGLES, 0, 6);
+                            bloomInput = bloomTarget.colorTexture;
+                        }
+                        glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
+                        glViewport(0, 0, _width, _height);
+                        glBindTexture(GL_TEXTURE_2D, currentColorTexture);
+                        glActiveTexture(GL_TEXTURE2);
+                        glBindTexture(GL_TEXTURE_2D, bloomInput);
+                        shader->SetInt("bloomTexture", 2);
+                        shader->SetInt("bloomStage", 3);
+                    }
+
                     glBindVertexArray(g_fullscreenVao);
                     glDrawArrays(GL_TRIANGLES, 0, 6);
                     glBindVertexArray(0);
 
+                    glBindTexture(GL_TEXTURE_2D, 0);
+                    glActiveTexture(GL_TEXTURE1);
                     glBindTexture(GL_TEXTURE_2D, 0);
                     glActiveTexture(GL_TEXTURE0);
                     shader->UnUse();

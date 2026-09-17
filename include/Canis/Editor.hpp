@@ -58,6 +58,7 @@ namespace Canis
     {
     friend class Scene;
     friend class App;
+    friend struct EditorSceneTabsTestAccess;
 
     public:
         void OpenScriptDocument(const std::filesystem::path& path, int line = 0, int column = 1);
@@ -239,8 +240,10 @@ namespace Canis
         void StoreActiveSceneTab();
         void OpenSceneTab(const std::string &_path);
         void SwitchSceneTab(int _index);
-        void CloseSceneTab(int _index);
-        void SaveActiveSceneTab();
+        void CloseSceneTab(int _index, bool _discard = false);
+        bool SaveActiveSceneTab();
+        bool ResolveSceneTabClose(bool _save);
+        void DrawSceneTabCloseDialog();
         bool IsSceneTabDirty(int _index) const;
         void DrawGameView();
         void PrepareSceneViewGizmo();
@@ -389,7 +392,7 @@ namespace Canis
         void SaveSceneCameraConfig();
         void MarkSceneCameraConfigDirty();
         void UpdateSceneCameraConfigAutosave(float _deltaTime);
-        void SaveSceneTerrainAssets();
+        bool SaveSceneTerrainAssets();
         void SelectEntity(Canis::Entity *_entity, bool _additive, bool _toggle);
         bool IsEntitySelected(const Canis::Entity *_entity) const;
         std::vector<Canis::Entity*> GetSelectedEntities() const;
@@ -605,6 +608,8 @@ namespace Canis
         std::vector<SceneTabState> m_sceneTabs = {};
         int m_activeSceneTab = -1;
         int m_sceneTabSelectionRequest = -1;
+        int m_pendingSceneTabClose = -1;
+        std::string m_sceneTabCloseError;
         std::vector<UUID> m_queuedPrefabInstanceRebuilds = {};
         bool m_rebuildAllPrefabInstancesRequested = false;
         UUID m_hierarchyRevealTargetUUID = UUID(0);

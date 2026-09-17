@@ -70,6 +70,7 @@ namespace Canis
         m_wasRightClick = false;
         m_unfilteredRightClick = false;
         m_unfilteredMouseRel = Vector2(0.0f);
+        m_editorPanelToggle.reset();
 
         for (GameController &controller : m_gameControllers)
         {
@@ -234,6 +235,7 @@ namespace Canis
 
     bool InputManager::Update(void* _window)
     {
+        m_editorPanelToggle.reset();
         SwapMaps();
         mouseRel = Vector2(0.0f);
         m_unfilteredMouseRel = Vector2(0.0f);
@@ -274,6 +276,22 @@ namespace Canis
                 if (!gameplayOwnsMouse || !IsMouseInputEvent(event) || releaseEvent)
                     ImGui_ImplSDL3_ProcessEvent(&event);
                 ImGuiIO& io = ImGui::GetIO();
+                // Preserve the platform gesture before ImGui spreads queued
+                // button transitions over potentially slow rendered frames.
+                if (!gameplayOwnsMouse && event.type == SDL_EVENT_MOUSE_BUTTON_DOWN &&
+                    (event.button.button == SDL_BUTTON_RIGHT ||
+                     (event.button.button == SDL_BUTTON_LEFT && event.button.clicks == 2)))
+                {
+                    auto* eventWindow = SDL_GetWindowFromID(event.button.windowID);
+                    if (eventWindow && ImGui::FindViewportByPlatformHandle(reinterpret_cast<void*>(static_cast<intptr_t>(event.button.windowID)))) {
+                        Vector2 position(event.button.x,event.button.y);
+                        if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable) {
+                            int x=0,y=0; SDL_GetWindowPosition(eventWindow,&x,&y);
+                            position += Vector2(x,y);
+                        }
+                        m_editorPanelToggle = position;
+                    }
+                }
                 imguiWantsMouse = io.WantCaptureMouse;
                 imguiWantsKeyboard = io.WantCaptureKeyboard;
             }

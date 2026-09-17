@@ -262,9 +262,22 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisEntityLifetimeTests tests/EntityLifetimeTests.cpp)
     target_link_libraries(CanisEntityLifetimeTests PRIVATE CanisEngine)
     add_test(NAME CanisEntityLifetimeTests COMMAND CanisEntityLifetimeTests)
+    add_executable(CanisRigidbodyRotationTests tests/RigidbodyRotationTests.cpp)
+    target_link_libraries(CanisRigidbodyRotationTests PRIVATE CanisEngine)
+    add_test(NAME CanisRigidbodyRotationTests COMMAND CanisRigidbodyRotationTests)
+    add_executable(CanisProfilerTests tests/ProfilerTests.cpp)
+    target_link_libraries(CanisProfilerTests PRIVATE CanisEngine)
+    add_test(NAME CanisProfilerTests COMMAND CanisProfilerTests)
 endif()
 
 include(cmake/OpenXR.cmake)
+
+if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB AND CANIS_XVFB_RUN)
+    add_executable(CanisSceneTabsTests tests/SceneTabsTests.cpp)
+    target_link_libraries(CanisSceneTabsTests PRIVATE CanisEngine)
+    add_test(NAME CanisSceneTabsTests COMMAND "${CANIS_XVFB_RUN}" -a $<TARGET_FILE:CanisSceneTabsTests>
+        "${PROJECT_SOURCE_DIR}/project/assets/shaders")
+endif()
 
 target_compile_definitions(${CANIS_ENGINE_LIB} PUBLIC CANIS_CSHARP=$<BOOL:${CANIS_ENABLE_CSHARP}>)
 if(CANIS_ENABLE_CSHARP)

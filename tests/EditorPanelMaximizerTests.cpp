@@ -21,17 +21,22 @@ int main()
     unsigned char* pixels; int width, height; io.Fonts->GetTexDataAsRGBA32(&pixels, &width, &height);
     Canis::EditorPanelMaximizer panels;
     ImGuiID dock = 0;
-    bool showScene = true;
+    bool showScene = true, showGame = true;
+    bool platformGestures=false, platformDoubleClick=false;
     auto frame = [&](ImVec2 mouse = ImVec2(-100, -100), bool down = false)
     {
         io.AddMousePosEvent(mouse.x, mouse.y); io.AddMouseButtonEvent(0, down);
         ImGui::NewFrame();
-        panels.Update(0, 40, io.DisplaySize.x, io.DisplaySize.y - 40, ImGui::GetMainViewport()->ID);
+        if (platformGestures) {
+            panels.Update(0,40,io.DisplaySize.x,io.DisplaySize.y-40,ImGui::GetMainViewport()->ID,
+                platformDoubleClick,mouse.x,mouse.y);
+            platformDoubleClick=false;
+        } else panels.Update(0, 40, io.DisplaySize.x, io.DisplaySize.y - 40, ImGui::GetMainViewport()->ID);
         ImGui::SetNextWindowPos(ImVec2(0, 40)); ImGui::SetNextWindowSize(ImVec2(1000, 660));
         ImGui::Begin("DockHost", nullptr, ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoBringToFrontOnFocus);
         dock = ImGui::GetID("Dock"); ImGui::DockSpace(dock); ImGui::End();
         if (showScene) { panels.Begin("Scene", &showScene); ImGui::TextUnformatted("scene contents"); ImGui::End(); }
-        panels.Begin("Game"); ImGui::End();
+        if (showGame) { panels.Begin("Game", &showGame); ImGui::End(); }
         panels.Begin("Inspector"); ImGui::End();
         ImGui::SetNextWindowPos(ImVec2(400, 150), ImGuiCond_FirstUseEver);
         ImGui::SetNextWindowSize(ImVec2(350, 250), ImGuiCond_FirstUseEver);
@@ -77,6 +82,32 @@ int main()
         Check(io.IniFilename == ini.c_str(), "layout saving must resume after restoring");
         Check(ImGui::FindWindowByName("Game")->DockId == right && ImGui::FindWindowByName("Scene")->DockId == right &&
               ImGui::FindWindowByName("Inspector")->DockId == left, "dock layout not restored");
+        // A heavy scene can take longer than ImGui's double-click interval.
+        // The platform has already recognized the gesture before rendering.
+        platformGestures=true; io.DeltaTime=.5f;
+        auto tabRect=game->DC.DockTabItemRect;
+        ImVec2 tabPoint(tabRect.Min.x+15,(tabRect.Min.y+tabRect.Max.y)*.5f);
+        frame(tabPoint); frame(tabPoint,true); frame(tabPoint);
+        platformDoubleClick=true; frame(tabPoint,true);
+        Check(!ImGui::IsMouseDoubleClicked(0) && panels.Maximized(),"Platform double-click was lost on slow frame");
+        frame(tabPoint); frame(tabPoint);
+        Check(panels.Maximized(),"Consumed gesture toggled more than once");
+        auto title=game->TitleBarRect(); ImVec2 titlePoint(title.Min.x+35,title.Min.y+8);
+        frame(titlePoint); platformDoubleClick=true; frame(titlePoint,true); frame(titlePoint);
+        Check(!panels.Maximized() && game->DockId==right,"Slow-frame restore failed");
+        platformGestures=false; io.DeltaTime=1.f/60;
+        auto rightClick=[&](ImVec2 point) {
+            frame(point); io.AddMouseButtonEvent(1,true); frame(point);
+            io.AddMouseButtonEvent(1,false); frame(point); frame(point);
+        };
+        tabRect=game->DC.DockTabItemRect;
+        rightClick(ImVec2(tabRect.Min.x+15,(tabRect.Min.y+tabRect.Max.y)*.5f));
+        Check(panels.Maximized() && ImGui::GetCurrentContext()->OpenPopupStack.empty(),"Right-click tab did not maximize cleanly");
+        rightClick(ImVec2(game->Pos.x+100,game->Pos.y+100));
+        Check(panels.Maximized(),"Right-click content changed maximization");
+        title=game->TitleBarRect();
+        rightClick(ImVec2(title.Min.x+35,title.Min.y+8));
+        Check(!panels.Maximized() && game->DockId==right,"Right-click title did not restore");
         auto* script = ImGui::FindWindowByName("Script Editor");
         ImGui::FocusWindow(script);
         const ImVec2 content(script->Pos.x + 100, script->Pos.y + 100);
@@ -91,6 +122,14 @@ int main()
         clickTitle("Scene"); Check(panels.Maximized(), "inactive dock tab did not maximize");
         showScene = false; frame(); frame();
         Check(!panels.Maximized(), "hiding maximized panel did not restore layout");
+        for (int i = 0; i < 25; ++i) frame();
+        game = ImGui::FindWindowByName("Game");
+        const auto tab = game->DC.DockTabItemRect;
+        const float closeSize = game->DockNode->TabBar->BarRect.GetHeight() - 2 * game->DockNode->TabBar->FramePadding.y;
+        const ImVec2 close(tab.Max.x - game->DockNode->TabBar->FramePadding.x - closeSize * .5f,
+            (tab.Min.y + tab.Max.y) * .5f);
+        frame(close); frame(close, true); frame(close); frame(close, true); frame(close); frame();
+        Check(!panels.Maximized() && !showGame, "close button was intercepted by maximize");
         std::cout << "Panel maximize/restore, dock layout, floating geometry, resize and hidden-panel checks passed\n";
     }
     catch (const std::exception& error) { std::cerr << error.what() << '\n'; panels.Restore(); ImGui::DestroyContext(); std::filesystem::remove(ini); return 1; }

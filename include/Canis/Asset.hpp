@@ -69,6 +69,7 @@ namespace Canis
         float saturation = 1.0f;
         float bloomThreshold = 0.5f;
         float bloomIntensity = 0.85f;
+        float bloomRadius = 24.0f;
         float ssaoRadius = 0.85f;
         float ssaoBias = 0.025f;
         float ssaoStrength = 1.25f;

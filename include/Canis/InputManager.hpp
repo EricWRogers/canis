@@ -3,6 +3,7 @@
 #include <Canis/InputActions.hpp>
 #include <vector>
 #include <string>
+#include <optional>
 #include <unordered_map>
 #include <unordered_set>
 #include <Canis/Data/Key.hpp>
@@ -146,6 +147,7 @@ namespace Canis
         bool JustRightClicked();
         bool GetUnfilteredRightClick() const { return m_unfilteredRightClick; }
         Vector2 GetUnfilteredMouseDelta() const { return m_unfilteredMouseRel; }
+        const std::optional<Vector2>& EditorPanelToggle() const { return m_editorPanelToggle; }
         
         InputDevice GetLastDeviceType() { return m_lastInputDeviceType; }
 
@@ -199,6 +201,7 @@ namespace Canis
         bool m_wasRightClick = false;
         bool m_unfilteredRightClick = false;
         Vector2 m_unfilteredMouseRel = Vector2(0.0f);
+        std::optional<Vector2> m_editorPanelToggle;
 
         int m_scrollVertical = 0;
 

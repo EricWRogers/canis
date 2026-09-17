@@ -1,6 +1,7 @@
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/Profiler.hpp>
 #include <Canis/EditorSpawnPlacement.hpp>
 #include <Canis/ReloadLibraryBackup.hpp>
 
@@ -5848,11 +5849,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             SaveSceneCameraConfig();
     }
 
-    void Editor::SaveSceneTerrainAssets()
+    bool Editor::SaveSceneTerrainAssets()
     {
         if (m_scene == nullptr)
-            return;
+            return false;
 
+        bool succeeded = true;
         std::unordered_set<std::string> savedTerrainPaths = {};
         for (Entity *entity : m_scene->GetEntities())
         {
@@ -5868,6 +5870,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (terrainAsset == nullptr)
             {
                 Debug::Warning("Scene save skipped missing terrain asset '%s'.", terrainPath.c_str());
+                succeeded = false;
                 continue;
             }
 
@@ -5878,8 +5881,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             else
             {
                 Debug::Warning("Scene save failed to write terrain asset '%s'.", terrainPath.c_str());
+                succeeded = false;
             }
         }
+        return succeeded;
     }
 
     void Editor::BeginGameRender(Window* _window)
@@ -6239,8 +6244,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::NewFrame();
         const auto* panelViewport = ImGui::GetMainViewport();
         const float panelToolbarHeight = GetEditorToolbarHeight();
+        const auto& panelToggle = m_scene->GetInputManager().EditorPanelToggle();
         m_panelMaximizer.Update(panelViewport->WorkPos.x, panelViewport->WorkPos.y + panelToolbarHeight,
-            panelViewport->WorkSize.x, panelViewport->WorkSize.y - panelToolbarHeight, panelViewport->ID);
+            panelViewport->WorkSize.x, panelViewport->WorkSize.y - panelToolbarHeight, panelViewport->ID,
+            !gameplayOwnsEditorInput && panelToggle.has_value(),
+            panelToggle ? panelToggle->x : 0.f,panelToggle ? panelToggle->y : 0.f);
         DrawMainDockspace();
 
         bool refresh = false;
@@ -7619,6 +7627,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::InitializeSceneTabs()
     {
+        m_pendingSceneTabClose = -1;
+        m_sceneTabCloseError.clear();
         m_sceneTabs.clear();
         m_activeSceneTab = -1;
         m_sceneTabSelectionRequest = -1;
@@ -7771,18 +7781,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_forceRefresh = true;
     }
 
-    void Editor::CloseSceneTab(int _index)
+    void Editor::CloseSceneTab(int _index, bool _discard)
     {
-        if (_index < 0 || _index >= static_cast<int>(m_sceneTabs.size()) ||
+        if (m_mode != EditorMode::EDIT || _index < 0 || _index >= static_cast<int>(m_sceneTabs.size()) ||
             m_sceneTabs.size() <= 1u)
             return;
 
         if (_index == m_activeSceneTab)
             StoreActiveSceneTab();
-        if (IsSceneTabDirty(_index))
+        if (!_discard && IsSceneTabDirty(_index))
         {
-            Debug::Warning("Save '%s' before closing its scene tab.",
-                m_sceneTabs[static_cast<std::size_t>(_index)].path.c_str());
+            m_pendingSceneTabClose = _index;
+            m_sceneTabCloseError.clear();
+            m_sceneTabSelectionRequest = m_activeSceneTab;
             return;
         }
 
@@ -7798,20 +7809,87 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_sceneTabSelectionRequest = m_activeSceneTab;
     }
 
-    void Editor::SaveActiveSceneTab()
+    bool Editor::SaveActiveSceneTab()
     {
         FinishMeshOperation(false);
         if (m_scene == nullptr)
-            return;
+            return false;
 
         FlushSceneHistoryPendingChange();
-        SaveSceneTerrainAssets();
-        m_scene->Save();
+        if (!SaveSceneTerrainAssets() || !m_scene->Save())
+            return false;
         if (m_activeSceneTab >= 0 && m_activeSceneTab < static_cast<int>(m_sceneTabs.size()))
         {
             StoreActiveSceneTab();
             SceneTabState &tab = m_sceneTabs[static_cast<std::size_t>(m_activeSceneTab)];
             tab.savedState = tab.workingState;
+        }
+        return true;
+    }
+
+    bool Editor::ResolveSceneTabClose(bool _save)
+    {
+        const int closing = m_pendingSceneTabClose;
+        if (m_mode != EditorMode::EDIT || closing < 0 ||
+            closing >= static_cast<int>(m_sceneTabs.size()))
+            return false;
+        if (_save)
+        {
+            const int previous = m_activeSceneTab;
+            bool saved = false;
+            try
+            {
+                SwitchSceneTab(closing);
+                saved = SaveActiveSceneTab();
+            }
+            catch (const std::exception& error)
+            {
+                Debug::Warning("Scene save failed: %s", error.what());
+            }
+            SwitchSceneTab(previous);
+            if (!saved)
+            {
+                m_sceneTabCloseError = "Could not save the scene or its terrain assets. The tab is still open.";
+                return false;
+            }
+        }
+        CloseSceneTab(closing, true);
+        m_pendingSceneTabClose = -1;
+        m_sceneTabCloseError.clear();
+        return true;
+    }
+
+    void Editor::DrawSceneTabCloseDialog()
+    {
+        constexpr const char* title = "Unsaved Scene Changes";
+        if (m_pendingSceneTabClose >= 0 && !ImGui::IsPopupOpen(title))
+            ImGui::OpenPopup(title);
+        ImGui::SetNextWindowSize(ImVec2(460, 0), ImGuiCond_Appearing);
+        if (ImGui::BeginPopupModal(title, nullptr, ImGuiWindowFlags_AlwaysAutoResize))
+        {
+            if (m_pendingSceneTabClose < 0 || m_pendingSceneTabClose >= static_cast<int>(m_sceneTabs.size()))
+                ImGui::CloseCurrentPopup();
+            else
+            {
+                const auto& path = m_sceneTabs[static_cast<std::size_t>(m_pendingSceneTabClose)].path;
+                ImGui::TextWrapped("Save changes to '%s' before closing?", path.c_str());
+                if (!m_sceneTabCloseError.empty())
+                    ImGui::TextWrapped("%s", m_sceneTabCloseError.c_str());
+                ImGui::Spacing();
+                if (ImGui::Button("Save", ImVec2(100, 0)) && ResolveSceneTabClose(true))
+                    ImGui::CloseCurrentPopup();
+                ImGui::SameLine();
+                if (ImGui::Button("Discard", ImVec2(100, 0)) && ResolveSceneTabClose(false))
+                    ImGui::CloseCurrentPopup();
+                ImGui::SameLine();
+                if (ImGui::Button("Cancel", ImVec2(100, 0)) || ImGui::IsKeyPressed(ImGuiKey_Escape))
+                {
+                    m_pendingSceneTabClose = -1;
+                    m_sceneTabCloseError.clear();
+                    ImGui::CloseCurrentPopup();
+                }
+            }
+            ImGui::EndPopup();
         }
     }
 
@@ -7864,13 +7942,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::EndPopup();
             }
             ImGui::EndTabBar();
+            // A hidden dock panel does not submit its tab bar. Keep the scene
+            // selection pending until it can actually reach ImGui.
+            m_sceneTabSelectionRequest = -1;
         }
-        m_sceneTabSelectionRequest = -1;
 
-        if (requestedSwitch >= 0)
-            SwitchSceneTab(requestedSwitch);
         if (requestedClose >= 0)
             CloseSceneTab(requestedClose);
+        else if (requestedSwitch >= 0 && m_pendingSceneTabClose < 0)
+            SwitchSceneTab(requestedSwitch);
+        DrawSceneTabCloseDialog();
     }
 
     void Editor::DrawSceneToolbar()
@@ -12670,6 +12751,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 drawPassFloat("threshold", "bloomThreshold", 0.5f, 0.01f, 0.0f, 8.0f, "%.2f");
                 drawPassFloat("intensity", "bloomIntensity", 0.85f, 0.01f, 0.0f, 8.0f, "%.2f");
+                drawPassFloat("radius (720p pixels)", "bloomRadius", 24.0f, 0.25f, 1.0f, 64.0f, "%.1f");
             }
 
             if (showColorControls)
@@ -17280,59 +17362,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawSystemPanel()
     {
-        m_panelMaximizer.Begin("Systems", &m_showSystemsPanel);
-
-        if (m_scene == nullptr)
-        {
-            ImGui::TextUnformatted("No active scene.");
-            ImGui::End();
-            return;
-        }
-
-        const std::vector<Scene::SystemTiming>& timings = m_scene->GetSystemTimings();
-        if (timings.empty())
-        {
-            ImGui::TextUnformatted("No systems registered.");
-            ImGui::End();
-            return;
-        }
-
-        float totalUpdateMs = 0.0f;
-        float totalRenderMs = 0.0f;
-
-        if (ImGui::BeginTable("SystemTimingTable", 4, ImGuiTableFlags_Borders | ImGuiTableFlags_RowBg | ImGuiTableFlags_Resizable))
-        {
-            ImGui::TableSetupColumn("System");
-            ImGui::TableSetupColumn("Update (ms)");
-            ImGui::TableSetupColumn("Render (ms)");
-            ImGui::TableSetupColumn("Total (ms)");
-            ImGui::TableHeadersRow();
-
-            for (const Scene::SystemTiming& timing : timings)
-            {
-                const float totalMs = timing.updateMs + timing.renderMs;
-                totalUpdateMs += timing.updateMs;
-                totalRenderMs += timing.renderMs;
-
-                ImGui::TableNextRow();
-                ImGui::TableSetColumnIndex(0);
-                ImGui::Text("%s", timing.name.c_str());
-                ImGui::TableSetColumnIndex(1);
-                ImGui::Text("%.3f", timing.updateMs);
-                ImGui::TableSetColumnIndex(2);
-                ImGui::Text("%.3f", timing.renderMs);
-                ImGui::TableSetColumnIndex(3);
-                ImGui::Text("%.3f", totalMs);
-            }
-
-            ImGui::EndTable();
-        }
-
-        ImGui::Separator();
-        ImGui::Text("Update Total: %.3f ms", totalUpdateMs);
-        ImGui::Text("Render Total: %.3f ms", totalRenderMs);
-        ImGui::Text("Frame System Total: %.3f ms", totalUpdateMs + totalRenderMs);
-
+        if (m_panelMaximizer.Begin("Profiler###Systems", &m_showSystemsPanel))
+            Profiler::DrawPanel();
         ImGui::End();
     }
 
@@ -18281,7 +18312,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::MenuItem("Hierarchy", nullptr, &m_showHierarchyPanel);
         ImGui::MenuItem("Inspector", nullptr, &m_showInspectorPanel);
         ImGui::MenuItem("Environment", nullptr, &m_showEnvironmentPanel);
-        ImGui::MenuItem("Systems", nullptr, &m_showSystemsPanel);
+        ImGui::MenuItem("Profiler", nullptr, &m_showSystemsPanel);
         ImGui::MenuItem("Assets", nullptr, &m_showAssetsPanel);
         ImGui::MenuItem("Scripts", nullptr, &m_showScriptsPanel);
         ImGui::MenuItem("Script Editor", nullptr, &m_showScriptEditor);
