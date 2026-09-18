@@ -305,6 +305,7 @@ namespace Canis
         node["mute"] = projectConfig.mute;
         node["editor"] = projectConfig.editor;
         node["syncMode"] = NormalizeProjectSyncMode(projectConfig.syncMode);
+        node["gpuPreference"] = NormalizeGpuPreference(projectConfig.gpuPreference);
         node["iconUUID"] = std::to_string(projectConfig.iconUUID);
         node["launchScene"] = projectConfig.launchScene;
         node["launchExecutablePath"] = projectConfig.launchExecutablePath;
@@ -359,6 +360,7 @@ namespace Canis
                 sourceNode["targetGameWidth"] = projectConfig.targetGameWidth;
                 sourceNode["targetGameHeight"] = projectConfig.targetGameHeight;
                 sourceNode["windowMode"] = NormalizeProjectWindowMode(projectConfig.windowMode);
+                sourceNode["gpuPreference"] = NormalizeGpuPreference(projectConfig.gpuPreference);
                 sourceNode["windowResizable"] = projectConfig.windowResizable;
                 sourceNode["windowStartMaximized"] = projectConfig.windowStartMaximized;
                 if (!WriteProjectConfigNode(sourceConfigPath, sourceNode))
@@ -458,6 +460,7 @@ namespace Canis
         if (!node["syncMode"] && node["vsync"])
             projectConfig.syncMode = node["vsync"].as<bool>(false) ? PROJECT_SYNC_VSYNC : PROJECT_SYNC_OFF;
         projectConfig.syncMode = NormalizeProjectSyncMode(projectConfig.syncMode);
+        projectConfig.gpuPreference = NormalizeGpuPreference(node["gpuPreference"].as<int>(PROJECT_GPU_AUTOMATIC));
         projectConfig.iconUUID = node["iconUUID"].as<uint64_t>(projectConfig.iconUUID);
         projectConfig.launchScene = node["launchScene"].as<SceneAssetHandle>(projectConfig.launchScene);
         if (!node["launchScene"] && node["LaunchScene"])

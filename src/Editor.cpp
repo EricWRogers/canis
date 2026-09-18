@@ -6170,7 +6170,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         // Pass 1: runtime/game camera (used by Game panel).
         m_scene->ClearEditorCameraOverrides();
-        if (m_app->GetVR() == nullptr)
+        if (m_app->GetVR() == nullptr && m_panelMaximizer.ShouldRender("Game", m_showGamePanel))
         {
             BeginPlayRender(m_window);
             m_scene->Render(_deltaTime);
@@ -6179,13 +6179,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         // Pass 2: editor scene camera (used by Scene panel + gizmos).
-        ApplyInternalSceneCamera(_deltaTime);
-        BeginGameRender(m_window);
-        m_scene->Render(_deltaTime);
-        m_gameRenderProjection = m_scene->GetLastRenderProjection();
-        RenderGameDebug();
-        CacheSceneCameraFrameIfNeeded();
-        EndGameRender(m_window);
+        if (m_panelMaximizer.ShouldRender("Scene", m_showScenePanel)) {
+            ApplyInternalSceneCamera(_deltaTime);
+            BeginGameRender(m_window);
+            m_scene->Render(_deltaTime);
+            m_gameRenderProjection = m_scene->GetLastRenderProjection();
+            RenderGameDebug();
+            CacheSceneCameraFrameIfNeeded();
+            EndGameRender(m_window);
+        }
         m_scene->ClearEditorCameraOverrides();
         UpdateSceneCameraConfigAutosave(_deltaTime);
 
@@ -8112,7 +8114,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawSceneView()
     {
-        m_panelMaximizer.Begin("Scene", &m_showScenePanel);
+        if (!m_panelMaximizer.Begin("Scene", &m_showScenePanel)) {
+            m_sceneViewClicked = m_sceneViewFocused = m_gameViewHovered = false;
+            m_gameViewportDrawWidth = m_gameViewportDrawHeight = 0;
+            ImGui::End();
+            return;
+        }
         m_sceneViewClicked = false;
         m_sceneViewFocused =
             ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows);
@@ -8559,7 +8566,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_focusGamePanelNextFrame = false;
         }
 
-        m_panelMaximizer.Begin("Game", &m_showGamePanel);
+        if (!m_panelMaximizer.Begin("Game", &m_showGamePanel)) {
+            m_playViewHovered = false;
+            m_playViewportDrawWidth = m_playViewportDrawHeight = 0;
+            m_scene->GetInputManager().ClearGameMouseViewport();
+            ImGui::End();
+            return;
+        }
 
         m_playViewportPosX = 0.0f;
         m_playViewportPosY = 0.0f;
@@ -16797,6 +16810,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     {
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
+                            if (meta->type == MetaFileAsset::FileType::SCENE)
+                            {
+                                if (ImGui::MenuItem("Open Scene", nullptr, false, m_mode == EditorMode::EDIT))
+                                    OpenSceneTab(fullPath);
+                                ImGui::Separator();
+                            }
                             if (meta->type == MetaFileAsset::FileType::MODEL)
                             {
                                 const bool canExportMaterials = IsGltfModelAssetPath(fullPath);
@@ -17817,6 +17836,24 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (ImGui::InputText("##gameName", &gameName))
             Canis::SaveProjectConfig();
         ImGui::TextDisabled("Window title shown to players.");
+
+        static const char* gpuLabels[] = { "Automatic", "Integrated", "Dedicated" };
+        int gpuPreference = NormalizeGpuPreference(Canis::GetProjectConfig().gpuPreference);
+        ImGui::Text("preferred GPU");
+        ImGui::SameLine();
+        ImGui::SetNextItemWidth(160.0f);
+        if (ImGui::Combo("##gpuPreference", &gpuPreference, gpuLabels, IM_ARRAYSIZE(gpuLabels)))
+        {
+            Canis::GetProjectConfig().gpuPreference = gpuPreference;
+            Canis::SaveProjectConfig();
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Automatic inherits the launcher/system choice. Linux applies the preference when the GPU can be identified. Other platforms use OS graphics settings. VR may require the headset runtime to use the same GPU.");
+        ImGui::TextDisabled("(restart required)");
+        const auto* activeGpu = glGetString(GL_RENDERER);
+        ImGui::TextWrapped("Active GPU: %s", activeGpu ? reinterpret_cast<const char*>(activeGpu) : "Unknown");
+        if (!GetGpuPreferenceWarning().empty())
+            ImGui::TextWrapped("%s", GetGpuPreferenceWarning().c_str());
 
         std::string &executableName = Canis::GetProjectConfig().executableName;
         ImGui::Text("executable name");

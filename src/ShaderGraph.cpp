@@ -568,7 +568,14 @@ namespace Canis
                 auto normal=BuildLinkExpression(_context,_node.inputA,{ShaderGraphValueType::VEC3,"normalize(fragmentNormal)"});
                 auto amount=BuildLinkExpression(_context,_node.inputB,{ShaderGraphValueType::FLOAT,FormatFloatLiteral(_node.floatValue)});
                 if(_node.type=="ToonLighting")
-                    result={ShaderGraphValueType::VEC3,"sgToonLighting("+ConvertExpression(normal,ShaderGraphValueType::VEC3)+", "+ConvertExpression(amount,ShaderGraphValueType::FLOAT)+")"};
+                {
+                    std::string softness;
+                    if (_node.inputT.nodeId > 0) {
+                        auto value=BuildLinkExpression(_context,_node.inputT,{ShaderGraphValueType::FLOAT,"0.0"});
+                        softness=", "+ConvertExpression(value,ShaderGraphValueType::FLOAT);
+                    }
+                    result={ShaderGraphValueType::VEC3,"sgToonLighting("+ConvertExpression(normal,ShaderGraphValueType::VEC3)+", "+ConvertExpression(amount,ShaderGraphValueType::FLOAT)+softness+")"};
+                }
                 else
                     result={ShaderGraphValueType::FLOAT,"pow(1.0 - clamp(dot(normalize("+ConvertExpression(normal,ShaderGraphValueType::VEC3)+"), normalize(cameraPosition - fragmentWorldPos)), 0.0, 1.0), max("+ConvertExpression(amount,ShaderGraphValueType::FLOAT)+", 0.001))"};
             }
@@ -897,7 +904,7 @@ float sgBand(float value,float bands) {
     float steps=max(floor(bands),2.0)-1.0;
     return floor(clamp(value,0.0,1.0)*steps+0.5)/steps;
 }
-vec3 sgToonLighting(vec3 normal,float bands) {
+vec3 sgToonLighting(vec3 normal,float bands,float pointSoftness) {
     vec3 n=normalize(normal);
     vec3 light=ambientLightColor*max(ambientLightIntensity,0.0);
     if(useDirectionalLight) {
@@ -909,10 +916,14 @@ vec3 sgToonLighting(vec3 normal,float bands) {
         vec3 delta=pointLightPositions[i]-fragmentWorldPos;
         float d=length(delta);
         float falloff=max(1.0-d/max(pointLightRanges[i],0.001),0.0);
-        float diffuse=sgBand(max(dot(n,delta/max(d,0.001)),0.0),bands);
+        float lambert=max(dot(n,delta/max(d,0.001)),0.0);
+        float diffuse=mix(sgBand(lambert,bands),lambert,clamp(pointSoftness,0.0,1.0));
         light+=pointLightColors[i]*pointLightIntensities[i]*falloff*falloff*diffuse;
     }
     return light;
+}
+vec3 sgToonLighting(vec3 normal,float bands) {
+    return sgToonLighting(normal,bands,0.0);
 }
 )GLSL"
                 << "\n"
@@ -1483,7 +1494,9 @@ vec3 sgToonLighting(vec3 normal,float bands) {
 
     std::vector<ShaderGraphPinInfo> GetShaderGraphNodeInputPins(const ShaderGraphNode &_node)
     {
-        if(_node.type=="ToonLighting" || _node.type=="Fresnel")
+        if(_node.type=="ToonLighting")
+            return {{"a",ShaderGraphValueType::VEC3},{"b",ShaderGraphValueType::FLOAT},{"pointSoftness",ShaderGraphValueType::FLOAT}};
+        if(_node.type=="Fresnel")
             return {{"a",ShaderGraphValueType::VEC3},{"b",ShaderGraphValueType::FLOAT}};
         if(_node.type=="Posterize")
             return {{"a",ShaderGraphValueType::UNKNOWN},{"b",ShaderGraphValueType::FLOAT}};
@@ -1569,7 +1582,7 @@ vec3 sgToonLighting(vec3 normal,float bands) {
             return _node.inputA;
         if (_pinName == "b")
             return _node.inputB;
-        if (_pinName == "t")
+        if (_pinName == "t" || _pinName == "pointSoftness")
             return _node.inputT;
         if (_pinName == "uv")
             return _node.inputUV;
@@ -1597,7 +1610,7 @@ vec3 sgToonLighting(vec3 normal,float bands) {
             _node.inputB = _link;
             return true;
         }
-        if (_pinName == "t")
+        if (_pinName == "t" || _pinName == "pointSoftness")
         {
             _node.inputT = _link;
             return true;

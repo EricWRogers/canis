@@ -111,7 +111,7 @@ internal static class ComponentStore
     internal static void Synchronize(JsonArray? overrides=null)
     {
         if(types.Count==0)return;
-        var snapshot=overrides??JsonNode.Parse(NativeBridge.Call<string>("Managed.Snapshot"))!.AsArray();
+        var snapshot=overrides??JsonNode.Parse(NativeBridge.Call<string>("Managed.ScriptSnapshot"))!.AsArray();
         var seen=new HashSet<(ulong,ulong)>();var added=new List<(State,Description,JsonObject)>();
         foreach(var node in snapshot) {
             ulong entity=ulong.Parse(node!["handle"]!.GetValue<string>());
@@ -175,7 +175,7 @@ internal static class ComponentStore
     internal static T[] Query<T>() where T:Component=>typeof(NativeComponent).IsAssignableFrom(typeof(T))?Entity.All().Select(e=>e.GetComponent<T>()).OfType<T>().ToArray():instances.Values.Select(s=>s.Component).OfType<T>().Where(c=>c.IsValid).ToArray();
     internal static JsonArray Capture()
     {
-        var snapshot=JsonNode.Parse(NativeBridge.Call<string>("Managed.Snapshot"))!.AsArray();
+        var snapshot=JsonNode.Parse(NativeBridge.Call<string>("Managed.ScriptSnapshot"))!.AsArray();
         foreach(var e in snapshot)foreach(var a in e!["scripts"]!.AsArray()) {
             var key=(ulong.Parse(e["handle"]!.GetValue<string>()),ulong.Parse(a!["token"]!.GetValue<string>()));
             if(instances.TryGetValue(key,out var state) && types.TryGetValue(a["type"]!.GetValue<string>(),out var d)) {
@@ -195,7 +195,7 @@ internal static class ComponentStore
     internal static void StartRestored(JsonArray snapshot){
         Running=true;Synchronize(snapshot);
         foreach(var state in instances.Values)state.Component.RestoredFromReload=true;
-        var authored=JsonNode.Parse(NativeBridge.Call<string>("Managed.Snapshot"))!.AsArray();
+        var authored=JsonNode.Parse(NativeBridge.Call<string>("Managed.ScriptSnapshot"))!.AsArray();
         foreach(var e in authored)foreach(var a in e!["scripts"]!.AsArray())if(instances.TryGetValue((ulong.Parse(e["handle"]!.GetValue<string>()),ulong.Parse(a!["token"]!.GetValue<string>())),out var state))state.Authored=(JsonObject)a["fields"]!.DeepClone();
     }
 }

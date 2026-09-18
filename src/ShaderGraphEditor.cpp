@@ -107,7 +107,7 @@ namespace Canis
         };
 
         const char *kTextureUvInputNames[] = { "UV" };
-        const char *kToonInputs[] = { "Normal", "Bands" };
+        const char *kToonInputs[] = { "Normal", "Bands", "Point Softness" };
         const char *kPosterizeInputs[] = { "Value", "Steps" };
         const char *kFresnelInputs[] = { "Normal", "Power" };
         const char *kTextureOutputNames[] = { "Color" };
@@ -1225,7 +1225,7 @@ shader_graph_preview_footer:
                 case ShaderGraphTemplate_ToonLighting:
                 case ShaderGraphTemplate_Posterize:
                 case ShaderGraphTemplate_Fresnel:
-                    return MakeTemplate(IM_COL32(142, 78, 62, 255), IM_COL32(84, 44, 34, 255), IM_COL32(100, 52, 40, 255), 2,
+                    return MakeTemplate(IM_COL32(142, 78, 62, 255), IM_COL32(84, 44, 34, 255), IM_COL32(100, 52, 40, 255), _index==ShaderGraphTemplate_ToonLighting?3:2,
                         _index==ShaderGraphTemplate_ToonLighting?kToonInputs:_index==ShaderGraphTemplate_Posterize?kPosterizeInputs:_index==ShaderGraphTemplate_Fresnel?kFresnelInputs:kMathInputNames,
                         kMathInputColors, 1, kMathOutputNames, kMathOutputColors);
                 case ShaderGraphTemplate_Multiply:

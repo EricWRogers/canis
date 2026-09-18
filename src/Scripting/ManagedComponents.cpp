@@ -111,6 +111,15 @@ void RegisterManagedBindings(App& app, std::function<uint64_t(Entity*)> handle, 
         for(auto* e:app.scene.GetEntities())if(e && e->IsValid())result.push_back({{"handle",std::to_string(handle(e))},{"uuid",std::to_string(static_cast<uint64_t>(e->GetUUID()))},{"active",e->IsActive()},{"scripts",EncodeAttachments(*e)}});
         return result.dump();
     });
+    r.Method(owner,"Managed","ScriptSnapshot",[&app,handle]()->std::string {
+        auto result=ManagedJson::array();
+        for(auto* e:app.scene.GetEntities())if(e && e->IsValid()) {
+            const auto* scripts=e->TryGetComponent<ManagedComponents>();
+            if(!scripts || scripts->items.empty())continue;
+            result.push_back({{"handle",std::to_string(handle(e))},{"uuid",std::to_string(static_cast<uint64_t>(e->GetUUID()))},{"active",e->IsActive()},{"scripts",EncodeAttachments(*e)}});
+        }
+        return result.dump();
+    });
     r.Method(owner,"Managed","Add",[resolve](uint64_t id,std::string type)->uint64_t {auto e=resolve(id);return Add(e,type).token;});
     r.Method(owner,"Managed","Remove",[resolve](uint64_t id,uint64_t token){auto e=resolve(id);if(auto* d=e.TryGetComponent<ManagedComponents>())std::erase_if(d->items,[&](auto& a){return a->token==token;});});
     r.Method(owner,"Managed","Enabled",[resolve](uint64_t id,uint64_t token,bool enabled){auto e=resolve(id);if(auto* d=e.TryGetComponent<ManagedComponents>())for(auto& a:d->items)if(a->token==token){a->enabled=enabled;return;}throw std::runtime_error("Component detached");});

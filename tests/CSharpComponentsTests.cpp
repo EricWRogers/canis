@@ -34,6 +34,9 @@ int main(){
 - {Entity: 102, Name: Target}
 )");
         auto entities=app.scene.LoadEntityNodes(nodes);
+        auto snapshot=[](const char* binding) { return ManagedJson::parse(Decode<std::string>(NativeBindingRegistry::Get().Invoke(binding,{}))); };
+        Check(snapshot("Managed.Snapshot").size()==2,"Entity enumeration lost native-only entities");
+        Check(snapshot("Managed.ScriptSnapshot").size()==1,"Script synchronization included native-only entities");
         entities[0]->AddComponent<Transform>();
         entities[1]->AddComponent<Transform>();
         auto prefab=root/"assets/Example.scene";
@@ -69,6 +72,7 @@ void Emit(string s)=>File.AppendAllText(@")"+trace.string()+R"(",s+"\n");
 public override void Awake(){Emit("awake:"+)"+field+R"(+":"+Target?.Name);}
 public override void OnEnable()=>Emit("enable");
 public override void Start(){
+ if(!Canis.Entity.All().Any(e=>e.Name=="Target"))throw new Exception("Entity.All lost native-only entities");
  Emit("start");if(GetComponent<Counter>() is null)AddComponent<Counter>();
  if(TargetTransform?.Entity!=Target || Prefab is null || !Prefab.IsValid)throw new Exception("Typed reference restore failed");
  if(Audio?.IsValid!=true || Scene?.IsValid!=true || Mesh?.IsValid!=true || Material?.IsValid!=true || Texture?.IsValid!=true)throw new Exception("Typed assets did not survive serialization");

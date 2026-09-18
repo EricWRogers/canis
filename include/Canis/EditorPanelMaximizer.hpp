@@ -15,6 +15,7 @@ namespace Canis
         void Restore();
         bool Maximized() const { return !m_window.empty(); }
         const std::string& Window() const { return m_window; }
+        bool ShouldRender(const char* name, bool open) const;
     private:
         std::unordered_set<unsigned int> m_panels;
         std::string m_window, m_layout;

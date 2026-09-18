@@ -4,6 +4,14 @@
 #include <algorithm>
 namespace Canis
 {
+    bool EditorPanelMaximizer::ShouldRender(const char* name, bool open) const
+    {
+        if (!open || (!m_window.empty() && m_window != name)) return false;
+        const auto* window = ImGui::FindWindowByName(name);
+        if (!window) return true;
+        return !window->Collapsed && !window->Hidden && (!window->DockNode || window->DockTabIsVisible);
+    }
+
     void EditorPanelMaximizer::Restore()
     {
         if (m_window.empty() || !ImGui::GetCurrentContext()) return;

@@ -69,6 +69,8 @@ int main()
         frame(); frame(); frame();
         clickTitle("Game");
         Check(panels.Maximized() && panels.Window() == "Game", "dock tab did not maximize");
+        Check(panels.ShouldRender("Game",true) && !panels.ShouldRender("Scene",true),"Maximized view did not suppress hidden camera");
+        Check(!panels.ShouldRender("Game",false),"Closed view still renders");
         auto* game = ImGui::FindWindowByName("Game");
         Check(game->DockId == 0 && game->Pos.y == 40 && game->Size.x == 1000 && game->Size.y == 660, "wrong maximized bounds");
         const auto savedLayout = readIni();
@@ -79,6 +81,7 @@ int main()
         Check(game->Size.x == 1100 && game->Size.y == 760, "maximized panel must follow resizing");
         clickTitle("Game");
         Check(!panels.Maximized(), "second double-click did not restore");
+        Check(panels.ShouldRender("Game",true) && !panels.ShouldRender("Scene",true),"Inactive dock tab still renders");
         Check(io.IniFilename == ini.c_str(), "layout saving must resume after restoring");
         Check(ImGui::FindWindowByName("Game")->DockId == right && ImGui::FindWindowByName("Scene")->DockId == right &&
               ImGui::FindWindowByName("Inspector")->DockId == left, "dock layout not restored");

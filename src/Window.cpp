@@ -42,7 +42,6 @@ namespace Canis
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
-        SDL_SetHint(SDL_HINT_RENDER_GPU_LOW_POWER, "0"); // prefer high-perf GPU
 #endif
 
         m_screenWidth = width;
@@ -78,6 +77,7 @@ namespace Canis
         
 
         InitGL();
+        Debug::Log("Active GPU: %s",reinterpret_cast<const char*>(glGetString(GL_RENDERER)));
 
 #ifdef __EMSCRIPTEN__
         SDL_GL_SetSwapInterval(static_cast<int>(VSYNC));

@@ -144,7 +144,27 @@ namespace Canis
         if (found == m_surfaces.end() || !found->second)
             return {};
         RuntimeSurface& runtime = *found->second;
-        const unsigned int start = runtime.graph.GetClosestPoint(_start);
+        unsigned int start = runtime.graph.GetClosestPoint(_start);
+        // The nearest grid node may be across a wall from an off-grid actor.
+        if (start != 0u && !HasClearance(surface, _start, runtime.graph.GetPointPosition(start)))
+        {
+            std::vector<std::pair<float, unsigned int>> candidates;
+            const auto& nodes = runtime.graph.GetNodes();
+            for (unsigned int id = 1u; id < nodes.size(); ++id)
+            {
+                const Vector3 delta = nodes[id].position - _start;
+                candidates.emplace_back(glm::dot(delta, delta), id);
+            }
+            std::sort(candidates.begin(), candidates.end());
+            start = 0u;
+            for (const auto& candidate : candidates)
+                if (HasClearance(surface, _start, runtime.graph.GetPointPosition(candidate.second)))
+                {
+                    start = candidate.second;
+                    break;
+                }
+        }
+        if (start == 0u) return {};
         const unsigned int destination = runtime.graph.GetClosestPoint(_destination);
         std::vector<Vector3> path = runtime.graph.GetPath(start, destination);
         if (!path.empty() && HasClearance(surface, path.back(), _destination))

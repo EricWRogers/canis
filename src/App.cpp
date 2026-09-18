@@ -2041,6 +2041,7 @@ namespace Canis
         // before any editor textures or platform viewports exist.
         windowOptions.vrContext = windowOptions.vrContext || runtime.editorRuntimeEnabled;
 #endif
+        ApplyGpuPreference(GetProjectConfig().gpuPreference);
         SteamInputPlatform::Initialize();
         runtime.window = std::make_unique<Window>(
             windowTitle.c_str(), startupWidth, startupHeight, runtime.launch.offscreen, windowOptions);
@@ -2182,6 +2183,10 @@ namespace Canis
         }
 #endif
         runtime.launch.launchScene = startupScenePath;
+        if (const char* capture = std::getenv("CANIS_PROFILE_OUTPUT"); capture && *capture) {
+            Profiler::Get().Clear();
+            Profiler::Get().SetRecording(true);
+        }
         if (runtime.launch.interactive)
         {
             runtime.interactiveFramesRemaining = 1u;
@@ -2690,6 +2695,8 @@ namespace Canis
 
         RuntimeContext *runtime = m_runtime;
         m_runtime = nullptr;
+        if (const char* capture = std::getenv("CANIS_PROFILE_OUTPUT"); capture && *capture)
+            if (!Profiler::Get().Export(capture)) Debug::Warning("Could not export performance capture: %s",capture);
 
         if (runtime->launch.active && !runtime->harnessCompleted)
         {

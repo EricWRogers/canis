@@ -2,6 +2,7 @@
 #include <Canis/UUID.hpp>
 #include <Canis/AssetHandle.hpp>
 #include <Canis/Math.hpp>
+#include <Canis/GpuPreference.hpp>
 #include <string>
 #include <vector>
 
@@ -67,6 +68,7 @@ namespace Canis
         //bool logToFile = false;
         bool editor = true;
         int syncMode = PROJECT_SYNC_OFF;
+        int gpuPreference = PROJECT_GPU_AUTOMATIC;
         UUID iconUUID = UUID(0);
         SceneAssetHandle launchScene = {};
         std::string launchExecutablePath = "";
