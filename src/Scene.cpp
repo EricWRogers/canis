@@ -3,6 +3,7 @@
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Profiler.hpp>
+#include <Canis/RenderMetrics.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Editor.hpp>
@@ -412,11 +413,11 @@ namespace Canis
 
     void Scene::Render(float _deltaTime)
     {
-        Profiler::Scope frameScope("Scene.Render", Profiler::Category::Rendering);
+        Profiler::Scope frameScope("Scene.Render", RenderMetrics::ProfileCategory());
         //Canis::Debug::Log("Render Update %i", m_renderSystems.size());
         for (System* renderer : m_renderSystems)
         {
-            Profiler::Scope scope(renderer->GetName(), Profiler::Category::Rendering);
+            Profiler::Scope scope(renderer->GetName(), RenderMetrics::ProfileCategory());
             const Uint64 start = SDL_GetTicksNS();
             renderer->Update(m_registry, _deltaTime);
             const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
@@ -436,7 +437,7 @@ namespace Canis
         {
             if (system != nullptr && system->UpdateInEditor())
             {
-                Profiler::Scope scope(system->GetName(), Profiler::SystemCategory(system->GetName()));
+                Profiler::Scope scope(system->GetName(), Profiler::Category::Editor);
                 system->Update(m_registry, 0.0f);
             }
         }

@@ -2,6 +2,7 @@
 #include <memory>
 #include <string>
 #include <vector>
+#include <map>
 
 #include <Canis/Shader.hpp>
 #include <Canis/Data/GLTexture.hpp>
@@ -79,6 +80,7 @@ namespace Canis
     {
     private:
         Canis::Shader *m_shader;
+        bool m_graphInstancing=false, m_vertexDeformation=true;
 
     public:
         ShaderAsset() { m_shader = new Canis::Shader(); }
@@ -87,6 +89,8 @@ namespace Canis
         bool Free() override;
 
         Canis::Shader *GetShader() { return m_shader; }
+        bool SupportsGraphInstancing() const { return m_graphInstancing; }
+        bool HasVertexDeformation() const { return m_vertexDeformation; }
     };
 
     class PostProcessAsset : public Asset
@@ -535,6 +539,15 @@ namespace Canis
 
         struct Primitive3D
         {
+            struct InstanceBuffer {
+                unsigned int buffer=0;
+                uint64_t used=0;
+                bool applyNodeTransform=false;
+                std::vector<Matrix4> matrices;
+                std::vector<Color> colors;
+            };
+            std::vector<InstanceBuffer> instanceCache;
+            uint64_t instanceSequence=0;
             unsigned int vao = 0;
             unsigned int vbo = 0;
             unsigned int ebo = 0;
@@ -659,7 +672,8 @@ namespace Canis
             i32 _overrideTextureId = -1,
             const Color &_baseColor = Color(1.0f),
             i32 _nodeIndex = -1,
-            bool _applyNodeTransform = true);
+            bool _applyNodeTransform = true,
+            const std::vector<Color>* _instanceColors = nullptr);
 
         i32 GetAnimationCount() const { return (i32)m_animations.size(); }
         std::string GetAnimationName(i32 _index) const;
@@ -675,6 +689,7 @@ namespace Canis
         std::string GetPath() const { return m_path; }
         u64 GetGeometryRevision() const { return m_geometryRevision; }
         bool GetLocalBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
+        bool HasDeformingGeometry() const;
         bool BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
 
     private:
@@ -691,6 +706,7 @@ namespace Canis
         std::vector<Matrix4> m_bindLocalMatrices = {};
         Pose3D m_sharedPose = {};
         u64 m_geometryRevision = 0u;
+        mutable std::map<std::pair<i32,bool>,std::pair<Vector3,Vector3>> m_boundsCache;
 
         void EnsurePose(Pose3D &_pose) const;
         void VisitNodeRecursive(i32 _nodeIndex, const Matrix4 &_parentMatrix, Pose3D &_pose, std::vector<bool> &_visited) const;

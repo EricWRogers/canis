@@ -1,4 +1,5 @@
 #include <Canis/Window.hpp>
+#include <Canis/RenderMetrics.hpp>
 #include <Canis/OpenGL.hpp>
 #include <Canis/Debug.hpp>
 #include <SDL3/SDL.h>
@@ -88,6 +89,7 @@ namespace Canis
 
     Window::~Window()
     {
+        if (m_context) { MakeContextCurrent(); RenderMetrics::Shutdown(); }
         if (m_context)
             SDL_GL_DestroyContext((SDL_GLContext)m_context);
         if (m_window)

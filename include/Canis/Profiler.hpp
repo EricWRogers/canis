@@ -30,7 +30,7 @@ namespace Canis::Profiler
     };
     class Recorder
     {
-        bool recording = false, active = false;
+        bool recording = false, active = false, profileEditor = true;
         uint64_t nextId = 1;
         Frame current;
         std::vector<int> stack;
@@ -38,6 +38,8 @@ namespace Canis::Profiler
     public:
         static constexpr size_t MaxFrames = 300, MaxSamples = 4096;
         bool IsRecording() const { return recording; }
+        bool ProfilesEditor() const { return profileEditor; }
+        void SetProfileEditor(bool value) { profileEditor = value; }
         void SetRecording(bool value) { recording = value; }
         void Clear() { frames.clear(); }
         const std::deque<Frame>& Frames() const { return frames; }

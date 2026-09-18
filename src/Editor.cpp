@@ -2,6 +2,8 @@
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
 #include <Canis/Profiler.hpp>
+#include "EditorHistoryEvent.hpp"
+#include <Canis/RenderMetrics.hpp>
 #include <Canis/EditorSpawnPlacement.hpp>
 #include <Canis/ReloadLibraryBackup.hpp>
 
@@ -2723,8 +2725,10 @@ namespace Canis
             int _width,
             int _height,
             const Matrix4 &_projection,
-            RenderTarget *_outputTarget)
+            RenderTarget *_outputTarget,
+            bool _editorOnly=false)
         {
+            RenderMetrics::Scope timing(_editorOnly ? "Scene post processing" : "Game post processing",_editorOnly);
             const PostProcessAsset *postProcess = nullptr;
             if (_scene != nullptr)
             {
@@ -6172,6 +6176,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_scene->ClearEditorCameraOverrides();
         if (m_app->GetVR() == nullptr && m_panelMaximizer.ShouldRender("Game", m_showGamePanel))
         {
+            RenderMetrics::Scope timing("Game viewport");
             BeginPlayRender(m_window);
             m_scene->Render(_deltaTime);
             m_playRenderProjection = m_scene->GetLastRenderProjection();
@@ -6180,6 +6185,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         // Pass 2: editor scene camera (used by Scene panel + gizmos).
         if (m_panelMaximizer.ShouldRender("Scene", m_showScenePanel)) {
+            RenderMetrics::Scope timing("Scene viewport", true);
             ApplyInternalSceneCamera(_deltaTime);
             BeginGameRender(m_window);
             m_scene->Render(_deltaTime);
@@ -6380,7 +6386,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         // rendering
         m_panelMaximizer.Finish();
         ImGui::Render();
+        {
+        RenderMetrics::Scope timing("Editor UI", true);
         ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData());
+        }
 
         ImGuiIO &io = ImGui::GetIO();
         (void)io;
@@ -6842,6 +6851,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::PollAssetHotReload(float _deltaTime)
     {
+        Profiler::Scope timing("Editor asset hot reload", Profiler::Category::Editor);
         if (!m_hotReloadAssets)
             return;
 
@@ -7305,6 +7315,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::BeginSceneHistoryFrame()
     {
+        Profiler::Scope timing("Editor history begin", Profiler::Category::Editor);
         if (!CanTrackSceneHistory())
             return;
 
@@ -7317,6 +7328,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::EndSceneHistoryFrame()
     {
+        Profiler::Scope timing("Editor history end", Profiler::Category::Editor);
         if (!CanTrackSceneHistory())
             return;
 
@@ -7329,17 +7341,22 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const bool editActive = IsSceneHistoryEditInProgress();
         if (editActive)
         {
-            m_sceneHistoryEditWasActive = true;
+            const auto* context = ImGui::GetCurrentContext();
+            // Entity inspector/environment buttons can mutate scene data without
+            // ImGui's edited flag. Keep their legacy capture behavior.
+            const bool sceneCommand = context && context->ActiveId != 0 && context->ActiveIdWindow &&
+                ((m_selectedAssetPath.empty() && std::strcmp(context->ActiveIdWindow->Name, "Inspector") == 0) ||
+                 std::strcmp(context->ActiveIdWindow->Name, "Environment") == 0);
+            m_sceneHistoryEditWasActive |= HasActiveHistoryEdit(context, ImGuizmo::IsUsing()) ||
+                sceneCommand || (context && context->DragDropPayload.Delivery);
             return;
         }
 
         ImGuiContext *imguiContext = ImGui::GetCurrentContext();
-        const bool editedItemDeactivated =
-            imguiContext != nullptr &&
-            imguiContext->ActiveId == 0 &&
-            imguiContext->DeactivatedItemData.HasBeenEditedBefore;
+        const bool editedItemDeactivated = HasCurrentDeactivatedEdit(imguiContext);
 
-        if (m_sceneHistoryEditWasActive || editedItemDeactivated)
+        if (m_sceneHistoryEditWasActive || editedItemDeactivated ||
+            (imguiContext && imguiContext->DragDropPayload.Delivery))
         {
             m_sceneHistoryEditWasActive = false;
             FlushSceneHistoryPendingChange();
@@ -8156,7 +8173,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     m_gameTextureWidth,
                     m_gameTextureHeight,
                     m_gameRenderProjection,
-                    &m_gameViewPostProcessTarget);
+                    &m_gameViewPostProcessTarget,true);
 
                 float targetW = static_cast<float>((m_gameTextureWidth > 0) ? m_gameTextureWidth : 1);
                 float targetH = static_cast<float>((m_gameTextureHeight > 0) ? m_gameTextureHeight : 1);
@@ -11561,7 +11578,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     bool Editor::DrawHierarchyPanel()
     {
-        m_panelMaximizer.Begin("Hierarchy###Hierarchy", &m_showHierarchyPanel);
+        Profiler::Scope timing("Editor hierarchy", Profiler::Category::Editor);
+        if (!m_panelMaximizer.Begin("Hierarchy###Hierarchy", &m_showHierarchyPanel))
+        {
+            ImGui::End();
+            return false;
+        }
         bool refresh = false;
 
         std::vector<Canis::Entity *> &entities = m_scene->GetEntities();
@@ -11573,15 +11595,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::Separator();
         }
 
+        // Rebuild per frame so creation, deletion and reparenting need no cache invalidation.
+        std::unordered_map<Canis::UUID, Canis::Entity*> entitiesByUUID;
+        entitiesByUUID.reserve(entities.size());
+        for (Canis::Entity* entity : entities)
+            if (entity != nullptr)
+                entitiesByUUID.emplace(entity->GetUUID(), entity);
+
         auto findEntityByUUID = [&](Canis::UUID _uuid) -> Canis::Entity*
         {
-            for (Canis::Entity* entity : entities)
-            {
-                if (entity != nullptr && entity->GetUUID() == _uuid)
-                    return entity;
-            }
-
-            return nullptr;
+            const auto found = entitiesByUUID.find(_uuid);
+            return found != entitiesByUUID.end() ? found->second : nullptr;
         };
 
         // Build root list in stable editor-controlled order.
@@ -11602,6 +11626,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         std::vector<Canis::UUID> rootOrderThisFrame = {};
         rootOrderThisFrame.reserve(rootsBySceneOrder.size());
+        std::unordered_set<Canis::UUID> orderedRoots;
+        orderedRoots.reserve(rootsBySceneOrder.size());
 
         // Keep roots from previously saved order if they still exist and are roots.
         for (Canis::UUID orderedUUID : m_hierarchyRootOrder)
@@ -11610,14 +11636,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (entity == nullptr || GetHierarchyParent(entity) != nullptr)
                 continue;
 
-            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->GetUUID()) == rootOrderThisFrame.end())
+            if (orderedRoots.insert(entity->GetUUID()).second)
                 rootOrderThisFrame.push_back(entity->GetUUID());
         }
 
         // Append new roots not yet tracked.
         for (Canis::Entity* entity : rootsBySceneOrder)
         {
-            if (std::find(rootOrderThisFrame.begin(), rootOrderThisFrame.end(), entity->GetUUID()) == rootOrderThisFrame.end())
+            if (orderedRoots.insert(entity->GetUUID()).second)
                 rootOrderThisFrame.push_back(entity->GetUUID());
         }
 
@@ -11796,7 +11822,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawInspectorPanel(bool _refresh)
     {
-        m_panelMaximizer.Begin("Inspector", &m_showInspectorPanel);
+        Profiler::Scope timing("Editor inspector", Profiler::Category::Editor);
+        if (!m_panelMaximizer.Begin("Inspector", &m_showInspectorPanel))
+        {
+            ImGui::End();
+            return;
+        }
 
         if (!m_selectedAssetPath.empty())
         {
@@ -15289,7 +15320,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawEnvironment()
     {
-        m_panelMaximizer.Begin("Environment", &m_showEnvironmentPanel);
+        if (!m_panelMaximizer.Begin("Environment", &m_showEnvironmentPanel))
+        {
+            ImGui::End();
+            return;
+        }
         Color background = m_window->GetClearColor();
         ImGui::ColorEdit4("Background##", &background.r);
 
@@ -17149,7 +17184,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         namespace fs = std::filesystem;
 
-        m_panelMaximizer.Begin("Scripts", &m_showScriptsPanel);
+        if (!m_panelMaximizer.Begin("Scripts", &m_showScriptsPanel))
+        {
+            ImGui::End();
+            return;
+        }
 
         const fs::path gameCodeRoot = FindGameCodeRoot();
         if (gameCodeRoot.empty())
@@ -17349,7 +17388,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawAssetsPanel()
     {
-        m_panelMaximizer.Begin("Assets", &m_showAssetsPanel);
+        Profiler::Scope timing("Editor assets", Profiler::Category::Editor);
+        if (!m_panelMaximizer.Begin("Assets", &m_showAssetsPanel))
+        {
+            ImGui::End();
+            return;
+        }
 
         ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 72.0f));
         ImGui::InputTextWithHint("##AssetSearch", "Search assets...", &m_assetSearch);
@@ -17820,7 +17864,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawProjectSettings()
     {
-        m_panelMaximizer.Begin("ProjectSettings", &m_showProjectSettingsPanel);
+        if (!m_panelMaximizer.Begin("ProjectSettings", &m_showProjectSettingsPanel))
+        {
+            ImGui::End();
+            return;
+        }
 
         if (ImGui::Button("Save Project", ImVec2(-1.0f, 0.0f)))
         {
@@ -18462,7 +18510,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::EndDisabled();
             if (ImGui::IsItemHovered())
                 ImGui::SetTooltip("Play the current scene with the live hierarchy and inspector. Stop restores pre-play edits.");
-            if (!m_playPending && (playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)))
+            static bool autoPlayRequested=false;
+            const char* autoPlay=std::getenv("CANIS_EDITOR_AUTOPLAY");
+            const bool startAutomatically=!autoPlayRequested && autoPlay && std::string(autoPlay)=="1";
+            if(startAutomatically)autoPlayRequested=true;
+            if (!m_playPending && (startAutomatically || playPressed || (ImGui::IsKeyDown(ImGuiKey_P) && ImGui::IsKeyDown(ImGuiKey_LeftCtrl) && hotKeyCoolDown < 0.0f)))
             {
                 hotKeyCoolDown = HOTKEYRESET;
                 StartPlayModeAt(nullptr);

@@ -166,17 +166,15 @@ namespace Canis::Time
 
             double frameTicks = SDL_GetTicksNS() - timeData->startFrameTicks;
 
-            if ((1000000000.0f / timeData->targetFPS) > frameTicks)
+            if (std::isfinite(timeData->targetFPS) && timeData->targetFPS > 0.0f)
             {
-                SDL_DelayNS((1000000000.0 / timeData->targetFPS) - frameTicks +
-                            timeData->carryOverFrameDelay);
+                const double remaining = (1000000000.0 / timeData->targetFPS) - frameTicks;
+                // Long frames must not carry a negative delay into an unsigned sleep.
+                const double delay = remaining > 0.0 ? remaining + timeData->carryOverFrameDelay : 0.0;
+                timeData->carryOverFrameDelay = std::fmod(delay, 1.0);
+                if (delay >= 1.0)
+                    SDL_DelayNS(static_cast<Uint64>(delay));
             }
-
-            timeData->carryOverFrameDelay =
-                ((1000000000.0 / timeData->targetFPS) - frameTicks +
-                 timeData->carryOverFrameDelay) -
-                ((int)((1000000000.0 / timeData->targetFPS) - frameTicks +
-                       timeData->carryOverFrameDelay));
 
             return timeData->fps;
         }

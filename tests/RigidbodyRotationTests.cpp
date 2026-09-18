@@ -81,11 +81,40 @@ static void RuntimeLocks()
     }
 }
 
+static void StaticEdits()
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;
+    physics.scene=&scene;physics.Create();
+    auto parent=scene.CreateEntity("Parent");
+    parent.AddComponent<Transform>();
+    auto child=scene.CreateEntity("Static child");
+    auto& transform=*child.AddComponent<Transform>();
+    transform.SetParent(&parent);
+    child.AddComponent<Rigidbody>()->motionType=RigidbodyMotionType::STATIC;
+    auto& collider=*child.AddComponent<BoxCollider>();
+    collider.size=Vector3(1);
+    auto step=[&] { physics.Update(scene.GetRegistry(),1.f/60.f); };
+    auto hit=[&](float x) { return physics.Raycast(Vector3(x,3,0),Vector3(0,-1,0),6.f); };
+    step();Check(hit(0),"Static collider missing");
+    for(int i=0;i<10;++i)step();
+    Check(hit(0),"Unchanged static collider lost");
+    parent.GetComponent<Transform>().position.x=4;
+    step();Check(!hit(0) && hit(4),"Parent move did not move static collider");
+    collider.size.x=4;
+    step();Check(hit(5.5f),"Static collider resize not applied");
+    child.SetActive(false);
+    step();Check(!hit(4),"Inactive static collider remained in physics");
+    child.SetActive(true);
+    step();Check(hit(4),"Reactivated static collider missing");
+}
+
 int main()
 {
     try {
         for (float dt : {1.f/30.f,1.f/60.f,1.f/144.f}) StepContact(dt);
         RuntimeLocks();
+        StaticEdits();
         std::cout << "Capsule step contact and runtime rotation locks passed\n";
         return 0;
     } catch (const std::exception& error) {

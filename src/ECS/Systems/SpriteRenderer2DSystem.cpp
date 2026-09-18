@@ -1,4 +1,5 @@
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
+#include <Canis/RenderMetrics.hpp>
 
 #include <vector>
 #include <algorithm>
@@ -537,6 +538,7 @@ namespace Canis
 
     void SpriteRenderer2DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
+        RenderMetrics::Scope timing("Sprites and UI");
         m_time += _deltaTime;
         
         glEnable(GL_DEPTH_TEST);

@@ -1,4 +1,5 @@
 #include <Canis/Asset.hpp>
+#include <Canis/RenderMetrics.hpp>
 #include <Canis/Audio.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Debug.hpp>
@@ -821,11 +822,14 @@ namespace Canis
 
     bool ShaderAsset::Load(std::string _path)
     {
+        m_graphInstancing=false;m_vertexDeformation=true;
         if(std::filesystem::path(_path).extension()==".shadergraph") try {
             ShaderGraphDocument document;
             if(!LoadShaderGraphDocument(_path,document))return false;
             std::string vertex,fragment;
             BuildShaderGraphSources(document,vertex,fragment);
+            m_graphInstancing=document.outputAlpha.nodeId<=0;
+            m_vertexDeformation=document.vertexPosition.nodeId>0;
             m_shader->CompileSource(vertex,fragment,_path);
             (void)CacheShaderGraphSources(_path,vertex,fragment);
             return true;
@@ -2215,8 +2219,13 @@ namespace Canis
 
     void ModelAsset::FreePrimitives()
     {
+        ++m_geometryRevision;
+        m_boundsCache.clear();
         for (Primitive3D &primitive : m_primitives)
         {
+            for(auto& entry:primitive.instanceCache)
+                if(entry.buffer)glDeleteBuffers(1,&entry.buffer);
+            primitive.instanceCache.clear();
             if (primitive.instanceVbo != 0)
                 glDeleteBuffers(1, &primitive.instanceVbo);
             if (primitive.ebo != 0)
@@ -2304,7 +2313,6 @@ namespace Canis
         m_sharedPose.scalesScratch.clear();
         m_sharedPose.trsChangedScratch.clear();
         m_sharedPose.visitedScratch.clear();
-        m_geometryRevision = 0u;
 
         return true;
     }
@@ -2776,6 +2784,7 @@ namespace Canis
             }
 
             _shader.SetBool("useInstanceMatrix", false);
+            _shader.SetBool("useInstanceColor", false);
             _shader.SetMat4("M", model);
             _shader.SetBool("useAlbedoMap", textureId >= 0);
             _shader.SetInt("albedoMap", 0);
@@ -2814,6 +2823,7 @@ namespace Canis
 
             glBindVertexArray(primitive.vao);
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
+            RenderMetrics::Draw(primitive.indices.size()/3);
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);
@@ -2826,32 +2836,54 @@ namespace Canis
         i32 _overrideTextureId,
         const Color &_baseColor,
         i32 _nodeIndex,
-        bool _applyNodeTransform)
+        bool _applyNodeTransform,
+        const std::vector<Color>* _instanceColors)
     {
         if (_modelMatrices.empty())
             return;
 
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
-        std::vector<Matrix4> primitiveMatrices = {};
-        primitiveMatrices.reserve(_modelMatrices.size());
+        struct Instance { Matrix4 matrix; Color color; };
+        std::vector<Instance> primitiveMatrices = {};
 
         for (Primitive3D &primitive : m_primitives)
         {
             if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex) || primitive.hasSkinning)
                 continue;
 
+            Primitive3D::InstanceBuffer* cached=nullptr;
+            static const std::vector<Color> noColors;
+            const auto& colors=_instanceColors ? *_instanceColors : noColors;
+            if(RenderMetrics::BatchCacheEnabled()) {
+                for(auto& entry:primitive.instanceCache)
+                    if(entry.applyNodeTransform==applyPrimitiveNodeTransform && entry.matrices==_modelMatrices && entry.colors==colors) {
+                        cached=&entry;RenderMetrics::InstanceCacheHit();break;
+                    }
+            }
+            const bool upload=cached==nullptr;
+            if(upload && RenderMetrics::BatchCacheEnabled()) {
+                if(primitive.instanceCache.size()<64)primitive.instanceCache.emplace_back();
+                cached=&*std::min_element(primitive.instanceCache.begin(),primitive.instanceCache.end(),[](const auto& a,const auto& b){return a.used<b.used;});
+                cached->matrices=_modelMatrices;cached->colors=colors;cached->applyNodeTransform=applyPrimitiveNodeTransform;
+                if(!cached->buffer)glGenBuffers(1,&cached->buffer);
+            }
+            if(cached)cached->used=++primitive.instanceSequence;
             primitiveMatrices.clear();
+            if(upload)primitiveMatrices.reserve(_modelMatrices.size());
+            if(upload)
             for (const Matrix4 &modelMatrix : _modelMatrices)
             {
                 Matrix4 model = modelMatrix;
                 if (applyPrimitiveNodeTransform && primitive.nodeIndex >= 0 && primitive.nodeIndex < (i32)m_nodes.size())
                     model = modelMatrix * m_nodes[primitive.nodeIndex].globalMatrix;
 
-                primitiveMatrices.push_back(model);
+                const size_t index=primitiveMatrices.size();
+                primitiveMatrices.push_back({model,(_instanceColors && index<_instanceColors->size()) ? (*_instanceColors)[index] : Color(1.f)});
             }
 
             i32 textureId = (_overrideTextureId >= 0) ? _overrideTextureId : primitive.textureId;
             _shader.SetBool("useInstanceMatrix", true);
+            _shader.SetBool("useInstanceColor", _instanceColors!=nullptr);
             _shader.SetBool("useAlbedoMap", textureId >= 0);
             _shader.SetInt("albedoMap", 0);
             _shader.SetVec4("albedoValue", _baseColor * primitive.baseColor);
@@ -2873,14 +2905,17 @@ namespace Canis
                 glGenBuffers(1, &primitive.instanceVbo);
 
             glBindVertexArray(primitive.vao);
-            glBindBuffer(GL_ARRAY_BUFFER, primitive.instanceVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, cached ? cached->buffer : primitive.instanceVbo);
+            if(upload) {
             glBufferData(
                 GL_ARRAY_BUFFER,
-                primitiveMatrices.size() * sizeof(Matrix4),
+                primitiveMatrices.size() * sizeof(Instance),
                 primitiveMatrices.data(),
                 GL_DYNAMIC_DRAW);
+            RenderMetrics::InstanceUpload(primitiveMatrices.size()*sizeof(Instance));
+            }
 
-            const GLsizei matrixStride = static_cast<GLsizei>(sizeof(Matrix4));
+            const GLsizei matrixStride = static_cast<GLsizei>(sizeof(Instance));
             for (unsigned int column = 0; column < 4; ++column)
             {
                 const unsigned int attribute = 3u + column;
@@ -2894,16 +2929,21 @@ namespace Canis
                     reinterpret_cast<void*>(sizeof(float) * 4u * column));
                 glVertexAttribDivisor(attribute, 1);
             }
+            glEnableVertexAttribArray(7);
+            glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,matrixStride,reinterpret_cast<void*>(offsetof(Instance,color)));
+            glVertexAttribDivisor(7,1);
 
             glDrawElementsInstanced(
                 GL_TRIANGLES,
                 static_cast<GLsizei>(primitive.indices.size()),
                 GL_UNSIGNED_INT,
                 nullptr,
-                static_cast<GLsizei>(primitiveMatrices.size()));
+                static_cast<GLsizei>(_modelMatrices.size()));
+            RenderMetrics::Draw(primitive.indices.size()/3,_modelMatrices.size());
         }
 
         _shader.SetBool("useInstanceMatrix", false);
+        _shader.SetBool("useInstanceColor", false);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
     }
@@ -3186,6 +3226,8 @@ namespace Canis
 
     bool ModelAsset::GetLocalBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex, bool _applyNodeTransform) const
     {
+        const auto key=std::make_pair(_nodeIndex,_applyNodeTransform);
+        if(auto found=m_boundsCache.find(key);found!=m_boundsCache.end()) { _min=found->second.first;_max=found->second.second;return true; }
         bool hasBounds = false;
         Vector3 minBounds(0.0f);
         Vector3 maxBounds(0.0f);
@@ -3226,7 +3268,13 @@ namespace Canis
 
         _min = minBounds;
         _max = maxBounds;
+        m_boundsCache[key]={_min,_max};
         return true;
+    }
+
+    bool ModelAsset::HasDeformingGeometry() const
+    {
+        return !m_animations.empty() || std::any_of(m_primitives.begin(),m_primitives.end(),[](const auto& p){return p.hasSkinning || p.dynamicVertices;});
     }
 
     bool SpriteAnimationAsset::Load(std::string _path)

@@ -37,6 +37,16 @@ int main()
         for (size_t i=0;i<Recorder::MaxFrames+5;++i) { recorder.BeginFrame(i*10000000); recorder.EndFrame(i*10000000+1000); }
         Check(recorder.Frames().size()==Recorder::MaxFrames && first.samples[1].name=="Child \"quoted\"","History not bounded or snapshots invalidated");
         recorder.Clear(); Check(recorder.Frames().empty(),"Clear failed");
+        recorder.SetProfileEditor(false);
+        recorder.BeginFrame(0);
+        const int excluded=recorder.Begin("Editor",Category::Editor,0);
+        const int retained=recorder.Begin("Game",Category::Rendering,1000);
+        recorder.End(retained,2000);recorder.End(excluded,3000);recorder.EndFrame(4000);
+        Check(excluded==-1 && recorder.Frames().back().samples.size()==1 &&
+              recorder.Frames().back().samples[0].name=="Game" &&
+              recorder.Frames().back().totalMs==.004,"Editor filter removed game samples or wall time");
+        recorder.SetProfileEditor(true);
+        recorder.Clear();
         recorder.BeginFrame(0);
         for (size_t i=0;i<Recorder::MaxSamples+12;++i) { int sample=recorder.Begin("Repeated",Category::Scripts,i); recorder.End(sample,i+1); }
         recorder.EndFrame(100000);

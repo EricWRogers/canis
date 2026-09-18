@@ -1,10 +1,12 @@
 #pragma once
 #include <Canis/System.hpp>
 #include <Canis/Math.hpp>
+#include <memory>
 
 namespace Canis
 {
     class Shader;
+    struct MeshRendererCache;
 
     class MeshRenderer3DSystem : public System
     {
@@ -17,6 +19,8 @@ namespace Canis
         void OnDestroy() override;
 
     private:
+        std::shared_ptr<MeshRendererCache> m_batchCache;
+        const Matrix4& RenderMatrix(entt::entity handle, const Transform& transform);
         static constexpr int kMaxPointLights = 8;
         static constexpr int kDirectionalShadowMapSize = 2048;
 

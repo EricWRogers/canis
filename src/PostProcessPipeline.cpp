@@ -1,5 +1,6 @@
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Profiler.hpp>
+#include <Canis/RenderMetrics.hpp>
 
 #include <Canis/Asset.hpp>
 #include <Canis/AssetManager.hpp>
@@ -211,7 +212,7 @@ namespace Canis
             .colorTexture = _sourceColorTexture,
         };
 
-        Profiler::Scope scope("Post Processing", Profiler::Category::Rendering);
+        RenderMetrics::Scope scope("Post Processing");
 
         if (_sourceColorTexture == 0 || _width <= 0 || _height <= 0)
             return result;
@@ -269,6 +270,8 @@ namespace Canis
                     if (shader == nullptr || !EnsureLinkedPostProcessShader(shader))
                         continue;
 
+                    const std::string passLabel=pass.name.empty() ? "Post-process " + std::to_string(renderedPassIndex+1) : pass.name;
+                    RenderMetrics::Scope passTiming(passLabel.c_str());
                     InternalTarget &target = (renderedPassIndex % 2 == 0) ? g_pingTarget : g_pongTarget;
                     glBindFramebuffer(GL_FRAMEBUFFER, target.framebuffer);
                     glViewport(0, 0, _width, _height);
@@ -311,6 +314,7 @@ namespace Canis
                         glBindVertexArray(g_fullscreenVao);
                         for (int stage = 0; stage < 3; ++stage)
                         {
+                            RenderMetrics::Scope bloomTiming(stage==0 ? "Bloom extract" : stage==1 ? "Bloom blur horizontal" : "Bloom blur vertical");
                             auto& bloomTarget = g_bloomTargets[stage % 2];
                             glBindFramebuffer(GL_FRAMEBUFFER, bloomTarget.framebuffer);
                             glViewport(0, 0, bloomWidth, bloomHeight);

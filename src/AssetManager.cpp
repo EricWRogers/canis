@@ -15,6 +15,7 @@ namespace Canis
     {
         namespace
         {
+            u64 renderReloadRevision=0;
             std::string NormalizeAssetLibraryPath(const std::string& value)
             {
                 if (value.empty())
@@ -659,6 +660,7 @@ namespace Canis
 
         bool ReloadTexture(const std::string &_path)
         {
+            ++renderReloadRevision;
             auto &assetLibrary = GetAssetLibrary();
             const int id = FindAssetIdForPath(_path);
             if (id < 0)
@@ -673,6 +675,8 @@ namespace Canis
 
             return texture->Reload(_path);
         }
+
+        u64 GetRenderReloadRevision() { return renderReloadRevision; }
 
         TextureAsset *GetTexture(const int _textureID)
         {
@@ -839,6 +843,7 @@ namespace Canis
 
         void ReloadLoadedShaders()
         {
+            ++renderReloadRevision;
             auto &assetLibrary = GetAssetLibrary();
             std::vector<std::pair<int, std::string>> shaderAssets = {};
 
@@ -1081,6 +1086,7 @@ namespace Canis
 
         bool ReloadModel(const std::string &_path)
         {
+            ++renderReloadRevision;
             auto &assetLibrary = GetAssetLibrary();
             const int id = FindAssetIdForPath(_path);
             if (id < 0)
@@ -1190,6 +1196,7 @@ namespace Canis
 
         bool ReloadMaterial(const std::string &_path)
         {
+            ++renderReloadRevision;
             auto &assetLibrary = GetAssetLibrary();
             auto it = assetLibrary.assetPath.find(_path);
             if (it == assetLibrary.assetPath.end())

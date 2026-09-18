@@ -1,4 +1,5 @@
 #include <Canis/Profiler.hpp>
+#include <Canis/RenderMetrics.hpp>
 #include <imgui.h>
 #include <imgui_stdlib.h>
 #include <algorithm>
@@ -17,9 +18,83 @@ namespace Canis::Profiler
             IM_COL32(65,201,192,255), IM_COL32(217,117,147,255), IM_COL32(170,171,110,255) };
         struct Row { std::string name; Category category; int parent; double total=0,self=0; int calls=0; };
         void Tip(const char* text) { if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s",text); }
+        void DrawGPU()
+        {
+            static uint64_t selected=0;
+            static std::string path="artifacts/profiler/gpu-passes.csv", status;
+            bool recording=Get().IsRecording();
+            if(ImGui::Checkbox("Record",&recording))Get().SetRecording(recording);
+            ImGui::SameLine();
+            bool live=selected==0;
+            if(ImGui::Checkbox("Live",&live)) {
+                const auto& frames=RenderMetrics::History();
+                selected=live || frames.empty() ? 0 : frames.back().id;
+            }
+            ImGui::SameLine();
+            if(ImGui::Button("Clear")) { RenderMetrics::ClearHistory();selected=0; }
+            ImGui::SameLine();
+            if(ImGui::Button("Export"))ImGui::OpenPopup("Export GPU capture");
+            if(ImGui::BeginPopup("Export GPU capture")) {
+                ImGui::InputText("Path",&path);
+                if(ImGui::Button("Export CSV"))status=RenderMetrics::ExportPasses(path) ? "Capture exported." : "Export failed.";
+                ImGui::TextUnformatted(status.c_str());ImGui::EndPopup();
+            }
+            const auto& frames=RenderMetrics::History();
+            const auto* frame=&RenderMetrics::LatestPasses();
+            if(!frames.empty()) {
+                auto found=std::find_if(frames.begin(),frames.end(),[&](const auto& f){return f.id==selected;});
+                int index=selected ? (found==frames.end() ? 0 : int(found-frames.begin())) : int(frames.size()-1);
+                if(ImGui::ArrowButton("Previous GPU frame",ImGuiDir_Left))selected=frames[index=std::max(0,index-1)].id;
+                ImGui::SameLine();
+                if(ImGui::ArrowButton("Next GPU frame",ImGuiDir_Right))selected=frames[index=std::min(int(frames.size()-1),index+1)].id;
+                ImGui::SameLine();ImGui::SetNextItemWidth(-1);
+                if(ImGui::SliderInt("##GPU frame",&index,0,int(frames.size()-1)))selected=frames[index].id;
+                std::vector<float> values;for(const auto& f:frames)values.push_back(float(f.gpuMs));
+                ImGui::PlotLines("##GPU history",values.data(),int(values.size()),0,"GPU elapsed (ms)",0,FLT_MAX,ImVec2(-1,120));
+                if(selected) { selected=frames[index].id;frame=&frames[index]; }
+            }
+            if(!frame->id) { ImGui::TextDisabled("GPU timestamps pending or unsupported");return; }
+            ImGui::Text("GPU frame %llu | %.3f ms",(unsigned long long)frame->id,frame->gpuMs);
+            Tip("Asynchronous GPU timestamps. Parent timings include children; CPU and GPU times overlap. Detached platform windows are not separately instrumented.");
+            if(frame->dropped)ImGui::TextDisabled("Pass limit reached: %zu omitted",frame->dropped);
+            if(ImGui::BeginTable("GPU passes",4,ImGuiTableFlags_RowBg|ImGuiTableFlags_Resizable|ImGuiTableFlags_ScrollY|ImGuiTableFlags_ScrollX,
+                ImVec2(0,std::max(80.f,ImGui::GetContentRegionAvail().y)),std::max(540.f,ImGui::GetContentRegionAvail().x))) {
+                ImGui::TableSetupColumn("Render pass",ImGuiTableColumnFlags_WidthStretch,3);
+                for(const char* label:{"GPU ms","CPU ms","GPU start ms"})ImGui::TableSetupColumn(label);
+                ImGui::TableSetupScrollFreeze(1,1);ImGui::TableHeadersRow();
+                for(const auto& pass:frame->passes) {
+                    ImGui::TableNextRow();ImGui::TableSetColumnIndex(0);
+                    if(pass.depth>0)ImGui::Indent(pass.depth*12.f);
+                    ImGui::TextUnformatted(pass.name.c_str());
+                    if(pass.depth>0)ImGui::Unindent(pass.depth*12.f);
+                    ImGui::TableSetColumnIndex(1);ImGui::Text("%.3f",pass.gpuMs);
+                    ImGui::TableSetColumnIndex(2);ImGui::Text("%.3f",pass.cpuMs);
+                    ImGui::TableSetColumnIndex(3);ImGui::Text("%.3f",pass.startMs);
+                }
+                ImGui::EndTable();
+            }
+        }
     }
     void DrawPanel()
     {
+        static int mode=0;
+        ImGui::RadioButton("CPU",&mode,0);ImGui::SameLine();ImGui::RadioButton("GPU",&mode,1);
+        ImGui::SameLine();
+        bool profileEditor=Get().ProfilesEditor();
+        if(ImGui::Checkbox("Profile editor",&profileEditor))Get().SetProfileEditor(profileEditor);
+        Tip("Include editor-only CPU samples and Scene viewport/UI GPU passes. Game rendering remains captured. Frame totals still include all work.");
+        if(mode==1) { DrawGPU();return; }
+        const auto& render=RenderMetrics::Latest();
+        ImGui::Text("Render CPU %.2f ms | Present %.2f ms",render.cpuSubmitMs,render.presentMs);
+        if(render.gpuMs>=0) ImGui::Text("GPU elapsed %.2f ms (frame %llu)",render.gpuMs,(unsigned long long)render.gpuFrame);
+        else ImGui::TextDisabled("GPU timing pending / unavailable");
+        ImGui::TextWrapped("Model draws %llu (%llu shadow) | Submitted mesh instances %llu | Triangles %llu",
+            (unsigned long long)render.draws,(unsigned long long)render.shadowDraws,(unsigned long long)render.instances,(unsigned long long)render.triangles);
+        ImGui::Text("Culled: %llu view / %llu shadow",(unsigned long long)render.culled,(unsigned long long)render.shadowCulled);
+        ImGui::TextWrapped("Instance uploads %.1f KiB | Buffer hits %llu | Batch builds %llu | Room-culled instances %llu",
+            render.instanceUploadBytes/1024.0,(unsigned long long)render.instanceCacheHits,
+            (unsigned long long)render.batchBuilds,(unsigned long long)render.roomCulledInstances);
+        ImGui::Separator();
         static uint64_t selected = 0;
         static float zoom = 1;
         static std::string search, exportPath = "artifacts/profiler/capture.json", exportStatus;

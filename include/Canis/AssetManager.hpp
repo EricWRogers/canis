@@ -275,6 +275,7 @@ namespace Canis
 
         int LoadTexture(const std::string &_path);
         bool ReloadTexture(const std::string &_path);
+        u64 GetRenderReloadRevision();
         TextureAsset *GetTexture(const std::string &_path);
         TextureAsset *GetTexture(const int _textureID);
 

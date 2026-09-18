@@ -4,6 +4,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/Math.hpp>
+#include <Canis/Profiler.hpp>
 
 #include <Jolt/Jolt.h>
 #include <Jolt/RegisterTypes.h>
@@ -1301,6 +1302,7 @@ namespace Canis
 
         std::vector<entt::entity> SyncBodiesBeforeStep(entt::registry &_registry, float _physicsDeltaTime)
         {
+            Profiler::Scope timing("Physics body synchronization", Profiler::Category::Physics);
             std::vector<entt::entity> activeBodies = {};
             std::unordered_set<entt::entity> expected = {};
 
@@ -1345,7 +1347,11 @@ namespace Canis
                 // interpolated Transform every pre-step resets that motion before
                 // the next command can accumulate. Only push a kinematic pose
                 // when game/editor code explicitly changed its Transform.
-                if (motionType == JPH::EMotionType::Static || transformEdited)
+                const bool staticMoved = motionType == JPH::EMotionType::Static &&
+                    (!runtimeData.hasPhysicsPose ||
+                     !NearlyEqual(transform->GetGlobalPosition(), runtimeData.currentWorldPosition) ||
+                     !NearlyEqual(transform->GetGlobalRotation(), runtimeData.currentWorldRotation));
+                if (staticMoved || transformEdited)
                 {
                     const JPH::EActivation activation = (motionType == JPH::EMotionType::Static)
                         ? JPH::EActivation::DontActivate
@@ -1478,6 +1484,7 @@ namespace Canis
             const std::vector<entt::entity> &_activeBodies,
             float _interpolationAlpha)
         {
+            Profiler::Scope timing("Physics pose interpolation", Profiler::Category::Physics);
             for (const entt::entity entityHandle : _activeBodies)
             {
                 auto bodyIt = bodies.find(entityHandle);
@@ -1562,6 +1569,7 @@ namespace Canis
 
             for (int step = 0; step < stepCount; ++step)
             {
+                Profiler::Scope timing("Physics simulation step", Profiler::Category::Physics);
                 physicsSystem->Update(kFixedTimeStep, kCollisionSteps, tempAllocator.get(), jobSystem.get());
                 accumulator -= kFixedTimeStep;
                 CaptureBodyPoses(_registry, activeBodies);
@@ -1571,7 +1579,8 @@ namespace Canis
                 _registry,
                 activeBodies,
                 accumulator / kFixedTimeStep);
-            ApplyContactFrameData(_registry);
+            { Profiler::Scope timing("Physics contact events", Profiler::Category::Physics);
+              ApplyContactFrameData(_registry); }
         }
 
         std::vector<RaycastHit> RaycastAll(entt::registry &_registry, const Vector3 &_origin, const Vector3 &_direction, float _maxDistance, u32 _mask) const

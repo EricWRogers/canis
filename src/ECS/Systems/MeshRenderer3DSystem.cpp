@@ -1,5 +1,10 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/VFX/Trails.hpp>
+#include <Canis/Frustum.hpp>
+#include <Canis/Profiler.hpp>
+#include <Canis/RenderMetrics.hpp>
+#include <Canis/RenderVisibility.hpp>
+#include <deque>
 
 #include <Canis/AssetManager.hpp>
 #include <Canis/Components.hpp>
@@ -15,6 +20,7 @@
 #include <cmath>
 #include <map>
 #include <tuple>
+#include <unordered_map>
 #include <vector>
 
 namespace Canis
@@ -337,6 +343,7 @@ namespace Canis
 
         struct StaticModelBatchKey
         {
+            uint64_t group=0;
             i32 modelId = -1;
             i32 materialId = -1;
             i32 nodeIndex = -1;
@@ -353,6 +360,7 @@ namespace Canis
             bool operator<(const StaticModelBatchKey &_other) const
             {
                 return std::tie(
+                    group,
                     modelId,
                     materialId,
                     nodeIndex,
@@ -366,6 +374,7 @@ namespace Canis
                     materialColorB,
                     materialColorA) <
                     std::tie(
+                        _other.group,
                         _other.modelId,
                         _other.materialId,
                         _other.nodeIndex,
@@ -385,9 +394,32 @@ namespace Canis
         {
             StaticModelBatchKey key = {};
             std::vector<Matrix4> modelMatrices = {};
+            std::vector<Color> colors = {};
+            bool graph=false;
             std::vector<TransparentModelEntry> sourceEntries = {};
             float distanceSquared = 0.0f;
         };
+
+        bool OutsideView(entt::registry& registry,entt::entity handle,ModelAsset& asset,
+                         Model& model,const Matrix4& matrix,const Matrix4& clip,Shader* defaultShader)
+        {
+            if (!RenderMetrics::CullingEnabled() || !model.staticModel || asset.HasDeformingGeometry() ||
+                registry.try_get<ModelAnimation>(handle) || registry.try_get<Terrain>(handle)) return false;
+            if (auto* material=registry.try_get<Material>(handle)) {
+                if(!material->materialIds.empty())return false;
+                if(material->materialId>=0)if(auto* source=AssetManager::GetMaterial(material->materialId)) {
+                    if(source->shaderId>=0) {
+                        auto* shader=AssetManager::Get<ShaderAsset>(source->shaderId);
+                        if(!shader)return false;
+                        if(shader->GetShader()!=defaultShader &&
+                           (!shader->SupportsGraphInstancing() || shader->HasVertexDeformation()))return false;
+                    }
+                }
+            }
+            Vector3 minimum,maximum;
+            return asset.GetLocalBounds(minimum,maximum,model.nodeIndex,model.applyNodeTransform) &&
+                BoundsOutsideFrustum(clip*matrix,minimum,maximum);
+        }
 
         bool UsesTransparentColor(const Color &_color)
         {
@@ -497,6 +529,100 @@ namespace Canis
         }
     } // namespace
 
+    struct MeshRendererCache
+    {
+        std::unordered_map<entt::entity,Matrix4> frameMatrices;
+        struct Input {
+            StaticModelBatchKey key;
+            Matrix4 matrix;
+            Color color;
+            entt::entity entity;
+            bool graph;
+            uint64_t geometry;
+            int program;
+            uint64_t materialInfo;
+            int albedo;
+            float materialAlpha;
+            bool operator==(const Input& other) const {
+                return !(key<other.key) && !(other.key<key) && matrix==other.matrix &&
+                    color==other.color && entity==other.entity && graph==other.graph && geometry==other.geometry &&
+                    program==other.program && materialInfo==other.materialInfo && albedo==other.albedo && materialAlpha==other.materialAlpha;
+            }
+        };
+        struct View {
+            std::vector<Input> inputs;
+            std::vector<uint64_t> hiddenRooms;
+            std::vector<StaticModelBatch> batches;
+            std::vector<TransparentModelEntry> singles;
+        };
+        std::deque<View> views;
+        struct Room {
+            Vector3 minimum,maximum;
+            unsigned query=0;
+            bool pending=false,visible=true;
+            uint64_t generation=0;
+        };
+        std::map<uint64_t,Room> rooms;
+        std::vector<Input> occluders;
+        Matrix4 queryView=Matrix4(0);
+        uint64_t generation=0;
+        uint64_t reloadRevision=0;
+        ~MeshRendererCache() {
+#ifndef __EMSCRIPTEN__
+            for(auto& [id,room]:rooms)if(room.query)glDeleteQueries(1,&room.query);
+#endif
+        }
+        void UpdateRooms(const std::vector<Input>& inputs, const Matrix4& clip) {
+#ifndef __EMSCRIPTEN__
+            const auto revision=AssetManager::GetRenderReloadRevision();
+            const bool changed=queryView!=clip || occluders!=inputs || reloadRevision!=revision;
+            if(changed) {
+                reloadRevision=revision;
+                ++generation;queryView=clip;occluders=inputs;
+                for(auto& [id,room]:rooms) {
+                    room.visible=true;room.minimum=Vector3(FLT_MAX);room.maximum=Vector3(-FLT_MAX);
+                }
+                for(const auto& input:inputs) {
+                    if(!input.key.group)continue;
+                    auto* asset=AssetManager::GetModel(input.key.modelId);Vector3 lo,hi;
+                    if(!asset || !asset->GetLocalBounds(lo,hi,input.key.nodeIndex,input.key.applyNodeTransform))continue;
+                    auto [it,inserted]=rooms.try_emplace(input.key.group);
+                    auto& room=it->second;
+                    if(inserted) { room.minimum=Vector3(FLT_MAX);room.maximum=Vector3(-FLT_MAX); }
+                    for(int corner=0;corner<8;++corner) {
+                        const Vector3 p(input.matrix*Vector4(corner&1?hi.x:lo.x,corner&2?hi.y:lo.y,corner&4?hi.z:lo.z,1));
+                        room.minimum=glm::min(room.minimum,p-Vector3(.1f));room.maximum=glm::max(room.maximum,p+Vector3(.1f));
+                    }
+                }
+                for(auto it=rooms.begin();it!=rooms.end();) {
+                    if(it->second.minimum.x>it->second.maximum.x) {
+                        if(it->second.query)glDeleteQueries(1,&it->second.query);
+                        it=rooms.erase(it);
+                    } else ++it;
+                }
+            }
+            for(auto& [id,room]:rooms)if(room.pending) {
+                GLint available=0;glGetQueryObjectiv(room.query,GL_QUERY_RESULT_AVAILABLE,&available);
+                if(available) {
+                    GLuint samples=1;glGetQueryObjectuiv(room.query,GL_QUERY_RESULT,&samples);
+                    room.visible=room.generation==generation ? samples!=0 : true;room.pending=false;
+                }
+            }
+#endif
+        }
+    };
+
+    const Matrix4& MeshRenderer3DSystem::RenderMatrix(entt::entity handle,const Transform& transform)
+    {
+        auto& matrices=m_batchCache->frameMatrices;
+        if(auto found=matrices.find(handle);found!=matrices.end())return found->second;
+        Matrix4 matrix=transform.GetLocalMatrix();
+        if(transform.parent)
+            if(auto* parent=transform.parent->TryGetComponent<Transform>())
+                matrix=RenderMatrix(transform.parent.GetHandle(),*parent)*matrix;
+        return matrices.emplace(handle,matrix).first->second;
+    }
+
     void MeshRenderer3DSystem::Create()
     {
         int id = AssetManager::LoadShader("assets/shaders/model3d");
@@ -552,6 +678,7 @@ namespace Canis
 
     void MeshRenderer3DSystem::OnDestroy()
     {
+        m_batchCache.reset();
         if (m_trailVbo) glDeleteBuffers(1, &m_trailVbo);
         if (m_trailVao) glDeleteVertexArrays(1, &m_trailVao);
         m_trailVao = m_trailVbo = 0;
@@ -896,6 +1023,7 @@ namespace Canis
         const Vector3 &_directionalLightDirection,
         bool _useDirectionalLight)
     {
+        RenderMetrics::Scope timing("Directional shadows");
         (void)_projection;
         (void)_view;
 
@@ -960,6 +1088,11 @@ namespace Canis
 
         m_shadowShader->Use();
         m_shadowShader->SetMat4("lightSpaceMatrix", m_shadowLightSpaceMatrix);
+        RenderMetrics::ShadowPass(true);
+        using ShadowKey=std::tuple<i32,i32,bool>;
+        std::map<ShadowKey,std::vector<Matrix4>> shadowBatches;
+        const bool shadowInstancing=RenderMetrics::InstancingEnabled() &&
+            glGetUniformLocation(m_shadowShader->GetProgramID(),"useInstanceMatrix")>=0;
 
         auto modelView = _registry.view<Transform, Model>();
         for (const entt::entity entityHandle : modelView)
@@ -986,6 +1119,15 @@ namespace Canis
             if (model == nullptr)
                 continue;
 
+            if (OutsideView(_registry,entityHandle,*model,modelRenderer,RenderMatrix(entityHandle,transform),m_shadowLightSpaceMatrix,m_shader)) {
+                RenderMetrics::Cull(true);continue;
+            }
+            if (shadowInstancing && modelRenderer.staticModel && !model->HasDeformingGeometry() &&
+                !_registry.try_get<ModelAnimation>(entityHandle)) {
+                shadowBatches[{modelRenderer.modelId,modelRenderer.nodeIndex,modelRenderer.applyNodeTransform}].push_back(RenderMatrix(entityHandle,transform));
+                continue;
+            }
+
             const ModelAsset::Pose3D *pose = nullptr;
             if (ModelAnimation *animation = _registry.try_get<ModelAnimation>(entityHandle))
             {
@@ -1005,7 +1147,7 @@ namespace Canis
 
             model->Draw(
                 *m_shadowShader,
-                transform.GetModelMatrix(),
+                RenderMatrix(entityHandle,transform),
                 pose,
                 -1,
                 Color(1.0f),
@@ -1014,6 +1156,10 @@ namespace Canis
                 modelRenderer.applyNodeTransform);
         }
 
+        for (const auto& [key,matrices]:shadowBatches)
+            if(auto* model=AssetManager::GetModel(std::get<0>(key)))
+                model->DrawInstanced(*m_shadowShader,matrices,-1,Color(1.f),std::get<1>(key),std::get<2>(key));
+        RenderMetrics::ShadowPass(false);
         m_shadowShader->UnUse();
 
         if (polygonOffsetEnabled)
@@ -1047,6 +1193,7 @@ namespace Canis
 
     void MeshRenderer3DSystem::DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view)
     {
+        RenderMetrics::Scope timing("Skybox");
         if (m_skyboxShader == nullptr || m_skyboxVao == 0)
             return;
 
@@ -1094,6 +1241,8 @@ namespace Canis
     {
         if (m_shader == nullptr)
             return;
+        if(!m_batchCache)m_batchCache=std::make_shared<MeshRendererCache>();
+        m_batchCache->frameMatrices.clear();
 
         if (!m_shader->IsLinked())
         {
@@ -1231,7 +1380,11 @@ namespace Canis
             if (model == nullptr)
                 continue;
 
-            const Vector3 offset = transform.GetGlobalPosition() - cameraPosition;
+            if (OutsideView(_registry,entityHandle,*model,modelRenderer,RenderMatrix(entityHandle,transform),projection*view,m_shader)) {
+                RenderMetrics::Cull(false);continue;
+            }
+
+            const Vector3 offset = Vector3(RenderMatrix(entityHandle,transform)[3]) - cameraPosition;
             const float distanceSquared = glm::dot(offset, offset);
 
             if (EntityUsesTransparency(_registry, entityHandle))
@@ -1250,13 +1403,8 @@ namespace Canis
             }
         }
 
-        std::sort(
-            opaqueEntities.begin(),
-            opaqueEntities.end(),
-            [](const TransparentModelEntry &_a, const TransparentModelEntry &_b)
-            {
-                return _a.distanceSquared < _b.distanceSquared;
-            });
+        // Preserve registry order for static batches; camera motion must not
+        // reorder and re-upload otherwise unchanged instance buffers.
 
         std::sort(
             transparentEntities.begin(),
@@ -1319,9 +1467,29 @@ namespace Canis
             return currentShader;
         };
 
-        std::map<StaticModelBatchKey, StaticModelBatch> staticBatchMap = {};
+        const int batchTiming=Profiler::Get().Begin("Render batch validation", RenderMetrics::ProfileCategory(),Profiler::Now());
+        const char* disableRooms=std::getenv("CANIS_DISABLE_ROOM_CULLING");
+        bool roomQueries=false;
+#ifndef __EMSCRIPTEN__
+        roomQueries=!scene->HasEditorCamera3DOverride() && m_shadowShader && m_skyboxVao &&
+            (!disableRooms || std::string(disableRooms)!="1") && (GLEW_VERSION_3_3 || GLEW_ARB_occlusion_query2);
+#endif
+        std::vector<MeshRendererCache::Input> batchInputs;
+        batchInputs.reserve(opaqueEntities.size());
         std::vector<TransparentModelEntry> remainingOpaqueEntities = {};
         remainingOpaqueEntities.reserve(opaqueEntities.size());
+        std::unordered_map<entt::entity,uint64_t> groupMembership;
+        if(roomQueries)groupMembership.reserve(opaqueEntities.size());
+        auto findGroup=[&](auto&& self,entt::entity handle)->uint64_t {
+            if(auto found=groupMembership.find(handle);found!=groupMembership.end())return found->second;
+            uint64_t groupId=0;
+            if(auto* group=_registry.try_get<RenderVisibilityGroup>(handle);group && group->enabled)
+                groupId=uint64_t(Entity(*scene,handle).GetUUID());
+            else if(auto* t=_registry.try_get<Transform>(handle);t && t->parent)
+                groupId=self(self,t->parent.GetHandle());
+            groupMembership.emplace(handle,groupId);
+            return groupId;
+        };
 
         for (const TransparentModelEntry &entry : opaqueEntities)
         {
@@ -1334,18 +1502,26 @@ namespace Canis
                 materialAsset = AssetManager::GetMaterial(materialId);
 
             bool usesInstancedModelShader = true;
+            bool graph=false;
+            int program=m_shader->GetProgramID();
             if (materialAsset != nullptr && materialAsset->shaderId >= 0)
             {
                 usesInstancedModelShader = false;
-                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId))
-                    usesInstancedModelShader = shaderAsset->GetShader() == m_shader;
+                if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId)) {
+                    program=shaderAsset->GetShader()->GetProgramID();
+                    graph=shaderAsset->SupportsGraphInstancing();
+                    usesInstancedModelShader = graph || shaderAsset->GetShader() == m_shader;
+                }
             }
 
             const bool canBatch = modelRenderer.staticModel &&
+                RenderMetrics::InstancingEnabled() &&
+                !_registry.try_get<Terrain>(entry.entityHandle) &&
+                !AssetManager::GetModel(modelRenderer.modelId)->HasDeformingGeometry() &&
                 usesInstancedModelShader &&
                 _registry.try_get<ModelAnimation>(entry.entityHandle) == nullptr &&
                 (material == nullptr || (material->materialIds.empty() && !HasMaterialFields(material->materialFields))) &&
-                (materialAsset == nullptr || !HasMaterialFields(materialAsset->materialFields));
+                (materialAsset == nullptr || graph || !HasMaterialFields(materialAsset->materialFields));
 
             if (!canBatch)
             {
@@ -1353,8 +1529,8 @@ namespace Canis
                 continue;
             }
 
-            const Color modelColor = modelRenderer.color;
-            const Color materialColor = (material != nullptr) ? material->color : Color(1.0f);
+            const Color modelColor = graph ? Color(1.f) : modelRenderer.color;
+            const Color materialColor = (!graph && material != nullptr) ? material->color : Color(1.0f);
             StaticModelBatchKey key = {};
             key.modelId = modelRenderer.modelId;
             key.materialId = materialId;
@@ -1368,15 +1544,59 @@ namespace Canis
             key.materialColorG = materialColor.g;
             key.materialColorB = materialColor.b;
             key.materialColorA = materialColor.a;
+            if(roomQueries)key.group=findGroup(findGroup,entry.entityHandle);
 
-            StaticModelBatch &batch = staticBatchMap[key];
-            batch.key = key;
-            batch.modelMatrices.push_back(transform.GetModelMatrix());
-            batch.sourceEntries.push_back(entry);
-            batch.distanceSquared = std::max(batch.distanceSquared, entry.distanceSquared);
+            batchInputs.push_back({key,RenderMatrix(entry.entityHandle,transform),
+                modelRenderer.color * (material ? material->color : Color(1.f)),entry.entityHandle,graph,
+                AssetManager::GetModel(modelRenderer.modelId)->GetGeometryRevision(),program,
+                materialAsset ? uint64_t(materialAsset->info) : 0,
+                materialAsset ? materialAsset->albedoId : -1,
+                materialAsset ? materialAsset->color.a : 1.f});
         }
 
-        std::vector<StaticModelBatch> staticBatches = {};
+        if(!m_batchCache)m_batchCache=std::make_shared<MeshRendererCache>();
+        for(const auto& input:batchInputs) {
+            auto* material=input.key.materialId>=0 ? AssetManager::GetMaterial(input.key.materialId) : nullptr;
+            auto* shader=material && material->shaderId>=0 ? AssetManager::Get<ShaderAsset>(material->shaderId) : nullptr;
+            if(shader && shader->GetShader()!=m_shader && shader->HasVertexDeformation())roomQueries=false;
+        }
+        std::vector<uint64_t> hiddenRooms;
+        if(roomQueries) {
+            m_batchCache->UpdateRooms(batchInputs,projection*view);
+            for(const auto& [id,room]:m_batchCache->rooms)if(!room.visible)hiddenRooms.push_back(id);
+        }
+        for(const auto& input:batchInputs)
+            if(std::binary_search(hiddenRooms.begin(),hiddenRooms.end(),input.key.group))RenderMetrics::RoomCull(1);
+        auto& views=m_batchCache->views;
+        auto cached=views.end();
+        if(RenderMetrics::BatchCacheEnabled())
+            cached=std::find_if(views.begin(),views.end(),[&](const auto& item){return item.inputs==batchInputs && item.hiddenRooms==hiddenRooms;});
+        if(cached==views.end()) {
+        RenderMetrics::BatchBuild();
+        if(views.size()==4)views.pop_front();
+        views.emplace_back();cached=std::prev(views.end());cached->inputs=std::move(batchInputs);
+        cached->hiddenRooms=hiddenRooms;
+        std::map<StaticModelBatchKey, StaticModelBatch> staticBatchMap;
+        std::vector<std::pair<float,const MeshRendererCache::Input*>> orderedInputs;
+        orderedInputs.reserve(cached->inputs.size());
+        for(const auto& input:cached->inputs) {
+            if(std::binary_search(hiddenRooms.begin(),hiddenRooms.end(),input.key.group))continue;
+            const Vector3 offset=Vector3(input.matrix[3])-cameraPosition;
+            orderedInputs.emplace_back(glm::dot(offset,offset),&input);
+        }
+        // Sort only on rebuild: front-to-back depth rejection without per-frame buffer churn.
+        std::stable_sort(orderedInputs.begin(),orderedInputs.end(),[](const auto& a,const auto& b){return a.first<b.first;});
+        for(const auto& [distance,inputPointer]:orderedInputs) {
+            const auto& input=*inputPointer;
+            auto key=input.key;
+            // Visible rooms share material batches; room membership alone must not add draw calls.
+            key.group=0;
+            auto& batch=staticBatchMap[key];batch.key=key;batch.graph=input.graph;
+            batch.colors.push_back(input.color);batch.modelMatrices.push_back(input.matrix);
+            batch.sourceEntries.push_back({input.entity,0});
+            batch.distanceSquared=std::max(batch.distanceSquared,distance);
+        }
+        auto& staticBatches=cached->batches;
         staticBatches.reserve(staticBatchMap.size());
         for (auto &batchPair : staticBatchMap)
         {
@@ -1387,11 +1607,18 @@ namespace Canis
             }
             else
             {
-                remainingOpaqueEntities.insert(
-                    remainingOpaqueEntities.end(),
+                cached->singles.insert(
+                    cached->singles.end(),
                     batch.sourceEntries.begin(),
                     batch.sourceEntries.end());
             }
+        }
+        std::sort(staticBatches.begin(),staticBatches.end(),[](const auto& a,const auto& b){return a.distanceSquared<b.distanceSquared;});
+        }
+        auto& staticBatches=cached->batches;
+        for(auto entry:cached->singles) {
+            const auto offset=Vector3(RenderMatrix(entry.entityHandle,_registry.get<Transform>(entry.entityHandle))[3])-cameraPosition;
+            entry.distanceSquared=glm::dot(offset,offset);remainingOpaqueEntities.push_back(entry);
         }
 
         std::sort(
@@ -1402,13 +1629,7 @@ namespace Canis
                 return _a.distanceSquared < _b.distanceSquared;
             });
 
-        std::sort(
-            staticBatches.begin(),
-            staticBatches.end(),
-            [](const StaticModelBatch &_a, const StaticModelBatch &_b)
-            {
-                return _a.distanceSquared < _b.distanceSquared;
-            });
+        Profiler::Get().End(batchTiming,Profiler::Now());
 
         auto drawEntity = [&](const entt::entity entityHandle) -> void
         {
@@ -1618,7 +1839,7 @@ namespace Canis
 
             model->Draw(
                 *currentShader,
-                transform.GetModelMatrix(),
+                RenderMatrix(entityHandle,transform),
                 pose,
                 overrideTextureId,
                 baseColor,
@@ -1639,6 +1860,7 @@ namespace Canis
                 materialAsset = AssetManager::GetMaterial(_batch.key.materialId);
 
             useShaderForMaterial(materialAsset);
+            if (_batch.graph && materialAsset) materialAsset->materialFields.Use(*currentShader,6);
 
             Color baseColor = Color(
                 _batch.key.modelColorR,
@@ -1776,19 +1998,53 @@ namespace Canis
                 overrideTextureId,
                 baseColor,
                 _batch.key.nodeIndex,
-                _batch.key.applyNodeTransform);
+                _batch.key.applyNodeTransform,
+                _batch.graph ? &_batch.colors : nullptr);
         };
 
         glDepthMask(GL_TRUE);
+        {
+        RenderMetrics::Scope timing("Opaque geometry");
         for (const StaticModelBatch &batch : staticBatches)
+        {
             drawStaticBatch(batch);
+        }
+#ifndef __EMSCRIPTEN__
+        if(roomQueries) {
+            RenderMetrics::Scope timing("Room visibility queries");
+            const GLboolean cullEnabled=glIsEnabled(GL_CULL_FACE);
+            glColorMask(GL_FALSE,GL_FALSE,GL_FALSE,GL_FALSE);glDepthMask(GL_FALSE);glDepthFunc(GL_LEQUAL);glDisable(GL_CULL_FACE);
+            m_shadowShader->Use();m_shadowShader->SetBool("useInstanceMatrix",false);
+            m_shadowShader->SetMat4("lightSpaceMatrix",projection*view);glBindVertexArray(m_skyboxVao);
+            for(auto& [id,room]:m_batchCache->rooms) {
+                if(room.pending || room.minimum.x>room.maximum.x)continue;
+                bool near=false;
+                for(int corner=0;corner<8;++corner) {
+                    const auto p=projection*view*Vector4(corner&1?room.maximum.x:room.minimum.x,corner&2?room.maximum.y:room.minimum.y,corner&4?room.maximum.z:room.minimum.z,1);
+                    near|=!std::isfinite(p.x) || !std::isfinite(p.y) || !std::isfinite(p.z) || !std::isfinite(p.w) || p.z+p.w<=.001f;
+                }
+                if(near) { room.visible=true;continue; }
+                if(!room.query)glGenQueries(1,&room.query);
+                m_shadowShader->SetMat4("M",glm::scale(glm::translate(Matrix4(1),(room.minimum+room.maximum)*.5f),(room.maximum-room.minimum)*.5f));
+                glBeginQuery(GL_ANY_SAMPLES_PASSED,room.query);glDrawArrays(GL_TRIANGLES,0,36);glEndQuery(GL_ANY_SAMPLES_PASSED);
+                room.pending=true;room.generation=m_batchCache->generation;
+            }
+            glBindVertexArray(0);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);glDepthMask(GL_TRUE);glDepthFunc(GL_LESS);
+            if(cullEnabled)glEnable(GL_CULL_FACE);
+            if(currentShader)currentShader->Use();else m_shadowShader->UnUse();
+        }
+#endif
         for (const TransparentModelEntry &entry : remainingOpaqueEntities)
             drawEntity(entry.entityHandle);
+        }
 
+        {
+        RenderMetrics::Scope timing("Transparent geometry");
         glDepthMask(GL_FALSE);
         for (const TransparentModelEntry &entry : transparentEntities)
             drawEntity(entry.entityHandle);
         glDepthMask(GL_TRUE);
+        }
 
         if (currentShader != nullptr)
         {
@@ -1801,8 +2057,11 @@ namespace Canis
         }
 
         DrawTrails(_registry, projection, view, cameraPosition);
+        {
+        RenderMetrics::Scope timing("Debug geometry");
         DrawColliderDebugLines(_registry, projection, view);
         DrawDebugGizmoLines(projection, view);
+        }
 
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
@@ -1811,6 +2070,7 @@ namespace Canis
     void MeshRenderer3DSystem::DrawTrails(entt::registry& registry, const Matrix4& projection,
                                         const Matrix4& view, Vector3 cameraPosition)
     {
+        RenderMetrics::Scope timing("Trails");
         std::vector<TrailVertex> vertices;
         for (auto [handle, trail, transform] : registry.view<TrailRenderer, Transform>().each())
         {

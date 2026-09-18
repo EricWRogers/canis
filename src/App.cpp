@@ -5,6 +5,7 @@
 #endif
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
+#include <Canis/RenderMetrics.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
@@ -2034,6 +2035,8 @@ namespace Canis
             }
             windowOptions.resizable = GetProjectConfig().windowResizable;
             windowOptions.startMaximized = GetProjectConfig().windowStartMaximized;
+            if (const char* fullscreen = std::getenv("CANIS_WINDOW_FULLSCREEN"); fullscreen && std::string(fullscreen) == "1")
+                windowOptions.mode = NativeWindowMode::FULLSCREEN;
         }
         windowOptions.vrContext = runtime.launch.vr && !runtime.launch.vrSimulated;
 #if CANIS_OPENXR
@@ -2183,6 +2186,8 @@ namespace Canis
         }
 #endif
         runtime.launch.launchScene = startupScenePath;
+        if(const char* includeEditor=std::getenv("CANIS_PROFILE_EDITOR"))
+            Profiler::Get().SetProfileEditor(std::string(includeEditor)!="0");
         if (const char* capture = std::getenv("CANIS_PROFILE_OUTPUT"); capture && *capture) {
             Profiler::Get().Clear();
             Profiler::Get().SetRecording(true);
@@ -2281,7 +2286,8 @@ namespace Canis
                 GetProjectConfig().editorWindowWidth = window.GetWindowWidth();
                 GetProjectConfig().editorWindowHeight = window.GetWindowHeight();
             }
-            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN)
+            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN &&
+                !(SDL_GetWindowFlags(static_cast<SDL_Window*>(window.GetSDLWindow())) & SDL_WINDOW_FULLSCREEN))
             {
                 GetProjectConfig().targetGameWidth = window.GetWindowWidth();
                 GetProjectConfig().targetGameHeight = window.GetWindowHeight();
@@ -2462,6 +2468,7 @@ namespace Canis
         }
 
         Uint64 renderStart = SDL_GetTicksNS();
+        RenderMetrics::BeginFrame();
         unsigned int captureFramebuffer = 0u;
         int captureWidth = 0;
         int captureHeight = 0;
@@ -2475,6 +2482,7 @@ namespace Canis
             const bool rendered = runtime.vr->RenderAndEndFrame(
                 [&](const VR::Eye& eye, const Matrix4& view, unsigned int framebuffer)
                 {
+                    RenderMetrics::Scope timing("VR eye");
                     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
                     window.SetRenderSize(eye.width, eye.height);
                     scene.SetVRCamera(view, eye.projection, 0.05f, 200.0f);
@@ -2523,6 +2531,7 @@ namespace Canis
 #endif
         if (!runtime.vr)
         {
+            RenderMetrics::Scope timing("Game viewport");
             EnsureRenderTarget(runtime.runtimeRenderTarget, window.GetScreenWidth(), window.GetScreenHeight());
 
             glBindFramebuffer(GL_FRAMEBUFFER, runtime.runtimeRenderTarget.framebuffer);
@@ -2607,8 +2616,10 @@ namespace Canis
         runtime.pendingCaptures.clear();
 
         {
+            RenderMetrics::EndSubmit();
             Profiler::Scope scope("Present", Profiler::Category::Wait);
             window.SwapBuffer();
+            RenderMetrics::EndPresent();
         }
         m_renderTimeMs = static_cast<float>(SDL_GetTicksNS() - renderStart) / 1000000.0f;
 
@@ -2721,7 +2732,8 @@ namespace Canis
                 GetProjectConfig().editorWindowWidth = runtime->window->GetWindowWidth();
                 GetProjectConfig().editorWindowHeight = runtime->window->GetWindowHeight();
             }
-            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN)
+            else if (GetProjectConfig().windowMode != PROJECT_WINDOW_FULLSCREEN &&
+                !(SDL_GetWindowFlags(static_cast<SDL_Window*>(runtime->window->GetSDLWindow())) & SDL_WINDOW_FULLSCREEN))
             {
                 GetProjectConfig().targetGameWidth = runtime->window->GetWindowWidth();
                 GetProjectConfig().targetGameHeight = runtime->window->GetWindowHeight();

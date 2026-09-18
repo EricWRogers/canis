@@ -33,6 +33,7 @@ namespace Canis::Profiler
     int Recorder::Begin(std::string_view name, Category category, uint64_t now)
     {
         if (!active) return -1;
+        if (category == Category::Editor && !profileEditor) return -1;
         if (current.samples.size() >= MaxSamples || stack.size() >= 64) { ++current.dropped; return -1; }
         const int index = static_cast<int>(current.samples.size());
         current.samples.push_back({std::string(name),category,stack.empty() ? -1 : stack.back(),
