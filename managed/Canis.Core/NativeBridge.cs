@@ -12,6 +12,7 @@ public static unsafe class NativeBridge
     internal static delegate* unmanaged[Cdecl]<byte*, int, Value*, int, Value*, byte*, int, int> Dispatch;
     internal static int MainThread;
     internal static bool MetadataMode;
+    internal static Func<string, object[], object?>? BrowserDispatch;
     private static readonly Dictionary<string, byte[]> names = [];
 
     public static void Call(string name, params object[] arguments) => Invoke(name, arguments);
@@ -20,9 +21,10 @@ public static unsafe class NativeBridge
     {
         if (MetadataMode) throw new InvalidOperationException("Constructors and field initializers cannot call engine APIs; use Awake/OnCreate.");
         if (Environment.CurrentManagedThreadId != MainThread) throw new InvalidOperationException("Canis engine access is main-thread only.");
+        if (arguments.Length > 32) throw new ArgumentException("Too many native arguments.");
+        if (BrowserDispatch is not null) return BrowserDispatch(name, arguments);
         if (Dispatch == null) throw new InvalidOperationException("Native bindings are unavailable.");
         if (!names.TryGetValue(name, out var bytes)) names[name] = bytes = Encoding.UTF8.GetBytes(name);
-        if (arguments.Length > 32) throw new ArgumentException("Too many native arguments.");
         Span<Value> values = stackalloc Value[arguments.Length]; values.Clear();
         Span<byte> error = stackalloc byte[2048]; error.Clear();
         try

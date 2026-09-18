@@ -1,0 +1,18 @@
+<Project Sdk="Microsoft.NET.Sdk.WebAssembly">
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <OutputType>Exe</OutputType>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <PublishTrimmed>false</PublishTrimmed>
+  </PropertyGroup>
+  <ItemGroup>
+    <ProjectReference Include="../Canis.Core/Canis.Core.csproj" />
+    <Reference Include="Game.Runtime" HintPath="$(CanisGameAssembly)" />
+    <SupportedPlatform Include="browser" />
+  </ItemGroup>
+  <Target Name="ValidateGameAssembly" BeforeTargets="ResolveReferences">
+    <Error Condition="!Exists('$(CanisGameAssembly)')" Text="Set CanisGameAssembly to an exported Game.Runtime.dll." />
+  </Target>
+</Project>

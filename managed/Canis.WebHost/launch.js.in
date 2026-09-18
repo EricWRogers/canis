@@ -1,0 +1,3 @@
+if ('@CANIS_WEB_START_SCENE@') {
+    Module.arguments = ['--launch-scene', '@CANIS_WEB_START_SCENE@'];
+}

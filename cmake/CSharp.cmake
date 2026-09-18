@@ -1,5 +1,8 @@
-# Optional first desktop/editor slice. Player packaging and other runtimes are separate migration gates.
-if(CANIS_PLATFORM_WEB OR ANDROID)
+if(CANIS_PLATFORM_WEB)
+    include("${CMAKE_CURRENT_LIST_DIR}/CSharpWeb.cmake")
+    return()
+endif()
+if(ANDROID)
     message(FATAL_ERROR "CANIS_ENABLE_CSHARP currently requires a desktop build")
 endif()
 if(NOT CMAKE_SIZEOF_VOID_P EQUAL 8)

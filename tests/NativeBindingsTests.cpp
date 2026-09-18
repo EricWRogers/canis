@@ -1,4 +1,6 @@
 #include <Canis/Scripting/NativeBindings.hpp>
+#include <Canis/Scripting/WebBindings.hpp>
+#include <Canis/External/tinygltf/json.hpp>
 #include <Canis/Scripting/SceneBindings.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Editor.hpp>
@@ -41,6 +43,27 @@ int main()
     NativeValue result; unsigned char error[64] = {};
     Check(DispatchNative(reinterpret_cast<const unsigned char*>("Tuning.Fail"),11,nullptr,0,&result,error,64) == -1, "Exception crossed ABI");
     Check(std::string(reinterpret_cast<char*>(error)) == "expected error", "Exception text lost");
+    const auto web = [](const std::string& request) { return nlohmann::json::parse(DispatchWebBinding(request)); };
+    registry.Method("test", "Tuning", "Handle", [](uint64_t value) { return value; });
+    Check(web(R"({"name":"Tuning.Handle","arguments":[{"kind":5,"handle":"18446744073709551614"}]})")["result"]["handle"] == "18446744073709551614", "Web handle precision lost");
+    Check(web(R"({"name":"Tuning.Multiply","arguments":[{"kind":3,"numbers":[3]},{"kind":3,"numbers":[4]}]})")["result"]["numbers"][0] == 12, "Web numeric round trip failed");
+    Check(web(R"({"name":"Tuning.Echo","arguments":[{"kind":9,"text":"Hello \u2603"}]})")["result"]["text"] == "Hello \xE2\x98\x83", "Web UTF-8 round trip failed");
+    Check(web(R"({"name":"Tuning.Fail","arguments":[]})")["error"] == "expected error", "Web exception crossed boundary");
+    for (const auto* invalid : {
+        "not json",
+        R"({"name":"Tuning.Multiply","arguments":[]})",
+        R"({"name":"Tuning.Multiply","arguments":[{"kind":2,"numbers":[3]},{"kind":3,"numbers":[4]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":5,"handle":"18446744073709551616"}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":5,"handle":123}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":5,"handle":"-1"}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":5,"handle":"1junk"}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":2,"numbers":[2147483648]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":2,"numbers":[1.5]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":1,"numbers":[2]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":6,"numbers":[1,2]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":4294967297,"numbers":[1]}]})",
+        R"({"name":"Tuning.Handle","arguments":[{"kind":10}]})"})
+        Check(web(invalid).contains("error"), "Malformed web request accepted");
     registry.RemoveOwner("test");
     Throws([&] { registry.Invoke("Tuning.Speed.get",{}); });
     Check(registry.GenerateCSharp().find("@Tuning") == std::string::npos,"Unloaded owner retained callbacks");

@@ -52,3 +52,14 @@ Then upload everything inside `build-web-release/web/`.
 - The editor runtime is disabled for web builds.
 - Gameplay code is statically linked for the browser build instead of being hot-loaded as a shared library.
 - The web target uses WebGL 2 / OpenGL ES 3 shader compilation.
+
+## C# gameplay
+
+C# web players use a separately published .NET 10 browser runtime. Enable
+`CANIS_ENABLE_CSHARP` and provide `CANIS_WEB_MANAGED_INPUT` pointing to the managed
+directory exported by a matching desktop player. Install the .NET SDK's
+`wasm-tools` workload and set `CANIS_DOTNET_EXECUTABLE` if it is not on PATH.
+The enclosing game project provides `scripts/build-csharp-web.sh` to automate
+this workflow; see its `docs/csharp-web.md` for build commands and limitations.
+Include the generated `managed` directory when deploying the web bundle.
+Scripts are precompiled; the browser player does not support editor hot reload.
