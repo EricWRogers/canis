@@ -1315,7 +1315,11 @@ namespace Canis
             int width = 0;
             int height = 0;
             int channels = 0;
+            // glTF UVs use the image's top-left origin. Other texture loads
+            // leave stb's vertical-flip flag enabled; do not inherit it here.
+            stbi_set_flip_vertically_on_load(false);
             stbi_uc* decoded = stbi_load_from_memory(_bytes, _size, &width, &height, &channels, 4);
+            stbi_set_flip_vertically_on_load(true);
             if (decoded == nullptr)
             {
                 if (_error != nullptr)

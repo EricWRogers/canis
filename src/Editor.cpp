@@ -11976,7 +11976,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (open)
                     {
                         SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
-                        conf.DrawInspector(*this, entity, conf);
+                        if (conf.DrawInspector)
+                            conf.DrawInspector(*this, entity, conf);
+                        else
+                            ImGui::TextDisabled("No inspector available.");
                     }
                 }
             }

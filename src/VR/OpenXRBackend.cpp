@@ -125,7 +125,7 @@ namespace Canis::VR
                             add(triggerAction, "/input/trigger/value"); add(squeezeAction, "/input/squeeze/value");
                             add(stickAction, "/input/thumbstick");
                             add(selectAction, i == 0 ? "/input/x/click" : "/input/a/click");
-                            if (i == 1) add(jumpAction, "/input/b/click");
+                            add(jumpAction, i == 0 ? "/input/y/click" : "/input/b/click");
                         }
                     }
                     XrInteractionProfileSuggestedBinding info{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
