@@ -4549,6 +4549,7 @@ namespace Canis
                 comp["agentRadius"] = surface.agentRadius;
                 comp["agentHeight"] = surface.agentHeight;
                 comp["maxFloorDelta"] = surface.maxFloorDelta;
+                comp["maxSlopeAngle"] = surface.maxSlopeAngle;
                 comp["collisionMask"] = surface.collisionMask;
                 _node["Canis::NavMeshSurface"] = comp;
             },
@@ -4565,8 +4566,11 @@ namespace Canis
                 surface.cellSize = std::max(0.1f, comp["cellSize"].as<float>(surface.cellSize));
                 surface.agentRadius = std::max(0.0f, comp["agentRadius"].as<float>(surface.agentRadius));
                 surface.agentHeight = std::max(0.1f, comp["agentHeight"].as<float>(surface.agentHeight));
-                surface.maxFloorDelta = std::max(0.05f, comp["maxFloorDelta"].as<float>(surface.maxFloorDelta));
+                surface.maxFloorDelta = std::max(0.0f, comp["maxFloorDelta"].as<float>(surface.maxFloorDelta));
+                surface.maxSlopeAngle = std::clamp(comp["maxSlopeAngle"].as<float>(surface.maxSlopeAngle), 0.0f, 75.0f);
                 surface.collisionMask = comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask);
+                surface.MarkDirty();
+                _entity.scene.InvalidateNavMesh(_entity);
                 if (_callCreate)
                     surface.Create();
             },
@@ -4583,6 +4587,7 @@ namespace Canis
                 const float previousRadius = surface.agentRadius;
                 const float previousHeight = surface.agentHeight;
                 const float previousFloorDelta = surface.maxFloorDelta;
+                const float previousSlope = surface.maxSlopeAngle;
                 const Mask previousMask = surface.collisionMask;
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), surface.active);
@@ -4594,13 +4599,15 @@ namespace Canis
                 DrawInspectorField(_editor, "agentRadius", _conf.name.c_str(), surface.agentRadius);
                 DrawInspectorField(_editor, "agentHeight", _conf.name.c_str(), surface.agentHeight);
                 DrawInspectorField(_editor, "maxFloorDelta", _conf.name.c_str(), surface.maxFloorDelta);
+                DrawInspectorField(_editor, "maxSlopeAngle", _conf.name.c_str(), surface.maxSlopeAngle);
                 DrawInspectorField("collisionMask", _conf.name.c_str(), surface.collisionMask);
 
                 surface.size = glm::max(glm::abs(surface.size), Vector3(0.1f));
                 surface.cellSize = std::max(0.1f, surface.cellSize);
                 surface.agentRadius = std::max(0.0f, surface.agentRadius);
                 surface.agentHeight = std::max(0.1f, surface.agentHeight);
-                surface.maxFloorDelta = std::max(0.05f, surface.maxFloorDelta);
+                surface.maxFloorDelta = std::max(0.0f, surface.maxFloorDelta);
+                surface.maxSlopeAngle = std::clamp(surface.maxSlopeAngle, 0.0f, 75.0f);
 
                 if (previousActive != surface.active ||
                     previousBuildOnReady != surface.buildOnReady ||
@@ -4610,6 +4617,7 @@ namespace Canis
                     previousRadius != surface.agentRadius ||
                     previousHeight != surface.agentHeight ||
                     previousFloorDelta != surface.maxFloorDelta ||
+                    previousSlope != surface.maxSlopeAngle ||
                     previousMask != surface.collisionMask)
                 {
                     surface.MarkDirty();

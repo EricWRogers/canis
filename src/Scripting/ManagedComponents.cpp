@@ -106,7 +106,8 @@ ManagedJson EncodeAttachments(Entity& entity) {
     auto list=ManagedJson::array();
     if(auto* data=entity.TryGetComponent<ManagedComponents>()) for(auto& a:data->items) {
         auto fields=a->fields;
-        for(auto& [name,reference]:a->references) fields[name]={{"entity",std::to_string(static_cast<uint64_t>(reference.GetUUID()))}};
+        for(auto& [path,reference]:a->references)
+            fields[ManagedJson::json_pointer(path)]["entity"]=std::to_string(static_cast<uint64_t>(reference.GetUUID()));
         list.push_back({{"type",a->type},{"token",std::to_string(a->token)},{"enabled",a->enabled},{"fields",fields}});
     }
     return list;
@@ -128,10 +129,15 @@ void DecodeManagedComponents(const YAML::Node& node, Entity& entity) {
         auto item = FromYaml(script);
         auto& a = Add(entity, type.Scalar());
         a.enabled=item.value("enabled",true);a.fields=item.value("fields",ManagedJson::object());
-        for(auto& [name,value]:a.fields.items())if(value.is_object() && value.contains("entity")) {
-            auto id=value["entity"].is_string()?std::stoull(value["entity"].get<std::string>()):value["entity"].get<uint64_t>();
-            entity.scene.GetEntityAfterLoad(UUID(id),a.references[name]);
-        }
+        // Register every reference with the scene remapper, including prefab-local array entries.
+        std::function<void(const ManagedJson&,const std::string&)> references;
+        references = [&](const ManagedJson& value,const std::string& path) {
+            if(value.is_object() && value.contains("entity"))
+                entity.scene.GetEntityAfterLoad(UUID(ReferenceId(value["entity"])),a.references[path]);
+            else if(value.is_array())
+                for(size_t index=0;index<value.size();++index)references(value[index],path+"/"+std::to_string(index));
+        };
+        for(auto& [name,value]:a.fields.items())references(value,"/"+name);
     }
 }
 void RegisterManagedBindings(App& app, std::function<uint64_t(Entity*)> handle, std::function<Entity(uint64_t)> resolve) {
@@ -207,6 +213,7 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
                         ImGui::TextWrapped("%s",FieldLabel(name).c_str());
                         if(ImGui::IsItemHovered() && !field.value("tooltip","").empty())ImGui::SetTooltip("%s",field["tooltip"].get<std::string>().c_str());
                         ImGui::TableSetColumnIndex(1);ImGui::PushID(name.c_str());ImGui::SetNextItemWidth(-1);
+                        auto editValue = [&](const std::string& kind, ManagedJson& value, const std::string& referencePath) {
                         bool changed=false;
                         if(kind=="bool"){bool v=value.is_boolean()?value.get<bool>():false;changed=ImGui::Checkbox("##value",&v);value=v;}
                         else if(kind=="int"){int v=value.is_number()?value.get<int>():0;changed=ImGui::InputInt("##value",&v);value=v;}
@@ -261,7 +268,7 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
                         else if(kind=="vector3" || kind=="vector4" || kind=="quaternion"){float v[4]={0,0,0,kind=="quaternion"?1.f:0.f};int n=kind=="vector3"?3:4;for(int j=0;j<n && value.is_array() && j<value.size();++j)v[j]=value[j].get<float>();changed=n==3?ImGui::InputFloat3("##value",v):ImGui::InputFloat4("##value",v);value=ManagedJson::array();for(int j=0;j<n;++j)value.push_back(v[j]);}
                         else if(kind=="entity" || kind=="component") {
                             auto type=field.value("componentType","");
-                            auto& ref=a.references[name];
+                            auto& ref=a.references[referencePath];
                             if(!ref && value.is_object() && value.contains("entity")) {
                                 const auto id=ReferenceId(value["entity"]);
                                 ref=entity.scene.FindEntity(UUID(id));
@@ -315,6 +322,44 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
                             value=std::to_string(id);
                         }
                         else {std::string v=value.is_string()?value.get<std::string>():"";changed=ImGui::InputText("##value",&v);value=v;}
+                        return changed;
+                        };
+                        bool changed=false;
+                        if(kind.ends_with("-array") && kind!="color-array") {
+                            if(!value.is_array())value=ManagedJson::array();
+                            const auto elementKind=kind.substr(0,kind.size()-6);
+                            const auto prefix="/"+name+"/";
+                            // Preserve remapped prefab references before reindexing a list.
+                            for(size_t index=0;index<value.size();++index) {
+                                auto found=a.references.find(prefix+std::to_string(index));
+                                if(found!=a.references.end())value[index]["entity"]=std::to_string(static_cast<uint64_t>(found->second.GetUUID()));
+                            }
+                            ImGui::Text("%zu entries",value.size());
+                            for(size_t index=0;index<value.size();) {
+                                ImGui::PushID(static_cast<int>(index));ImGui::SetNextItemWidth(-1);
+                                changed |= editValue(elementKind,value[index],prefix+std::to_string(index));
+                                bool remove=ImGui::SmallButton("Remove");
+                                ImGui::SameLine();ImGui::TextDisabled("Element %zu",index);ImGui::PopID();
+                                if(remove) {
+                                    value.erase(value.begin()+index);
+                                    std::erase_if(a.references,[&](const auto& pair){return pair.first.starts_with(prefix);});
+                                    changed=true;
+                                } else ++index;
+                            }
+                            if(ImGui::Button("Add element")) {
+                                ManagedJson item=nullptr;
+                                if(elementKind=="entity" || elementKind=="component")item={{"entity","0"}};
+                                else if(elementKind=="asset")item="0";
+                                else if(elementKind=="bool")item=false;
+                                else if(elementKind=="int" || elementKind=="float" || elementKind=="double")item=0;
+                                else if(elementKind=="vector3")item=ManagedJson::array({0,0,0});
+                                else if(elementKind=="vector4")item=ManagedJson::array({0,0,0,0});
+                                else if(elementKind=="quaternion")item=ManagedJson::array({0,0,0,1});
+                                else if(elementKind=="enum" && !field["options"].empty())item=field["options"][0];
+                                else item="";
+                                value.push_back(item);changed=true;
+                            }
+                        } else changed=editValue(kind,value,"/"+name);
                         if(changed){a.fields[name]=value;editor.NotifySceneChanged();}
                         ImGui::PopID();
                     }

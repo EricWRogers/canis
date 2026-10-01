@@ -20,7 +20,7 @@ inline const std::map<std::string,std::set<std::string>> NativeSerializedFields 
     {"Canis::MeshCollider", {"active", "modelPath", "modelUUID", "useAttachedModel"}},
     {"Canis::Model", {"ModelAsset", "animationIndex", "animationSpeed", "animationTime", "applyNodeTransform", "castShadow", "color", "loop", "nodeIndex", "playAnimation", "static"}},
     {"Canis::ModelAnimation", {"animationIndex", "animationSpeed", "animationTime", "loop", "playAnimation", "rootMotionMask"}},
-    {"Canis::NavMeshSurface", {"active", "agentHeight", "agentRadius", "buildOnReady", "cellSize", "collisionMask", "maxFloorDelta", "meshCollidersOnly", "showDebug", "size"}},
+    {"Canis::NavMeshSurface", {"active", "agentHeight", "agentRadius", "buildOnReady", "cellSize", "collisionMask", "maxFloorDelta", "maxSlopeAngle", "meshCollidersOnly", "showDebug", "size"}},
     {"Canis::NetworkIdentity", {"localOwned", "netId", "ownerClientId", "prefab", "replicateTransform", "serverOwned"}},
     {"Canis::PointLight", {"color", "enabled", "intensity", "range"}},
     {"Canis::PrefabInstance", {"firstEntity", "prefab"}},

@@ -2169,6 +2169,12 @@ namespace Canis
         }
 
         ResetPose();
+        // Static geometry queries need the complete bind-pose hierarchy,
+        // including imported parent scale/rotation, rather than local matrices.
+        // Keep this snapshot separate from animation poses so static colliders
+        // and model bounds do not change when an animation is sampled.
+        for (size_t nodeIndex = 0; nodeIndex < m_nodes.size(); ++nodeIndex)
+            m_nodes[nodeIndex].globalMatrix = m_sharedPose.globalNodeMatrices[nodeIndex];
         ++m_geometryRevision;
         return true;
     }

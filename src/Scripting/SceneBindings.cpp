@@ -18,6 +18,7 @@
 #include <Canis/ConfigData.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/ECS/Systems/UIInteractionSystem.hpp>
+#include <Canis/ECS/Systems/NavMeshSystem.hpp>
 #include <unordered_set>
 #include <SDL3/SDL.h>
 #include <cmath>
@@ -239,6 +240,17 @@ void RegisterSceneBindings(App& app)
         if (!std::isfinite(value))
             throw std::invalid_argument("Animator parameter must be finite");
         context->Component<Animator>(id).SetFloat(name, value);
+    });
+    bindings.Method(owner, "Navigation", "FindPath", [context,&app](uint64_t id, Vector3 start, Vector3 destination) -> std::string {
+        Finite(start); Finite(destination);
+        auto surface = context->Resolve(id);
+        auto* navigation = app.scene.GetSystem<NavMeshSystem>();
+        if (!navigation || !surface.HasComponent<NavMeshSurface>())
+            throw std::invalid_argument("Navigation requires a NavMeshSurface and active NavMeshSystem");
+        auto points = ManagedJson::array();
+        for (const auto& point : navigation->FindPath(app.scene.GetRegistry(), surface, start, destination))
+            points.push_back({point.x, point.y, point.z});
+        return points.dump();
     });
     bindings.Method(owner, "Animator", "GetFloat", [context](uint64_t id, std::string name) -> float {
         return context->Component<Animator>(id).GetFloat(name);

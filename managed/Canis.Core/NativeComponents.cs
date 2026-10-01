@@ -137,6 +137,7 @@ public sealed class NavMeshSurface : NativeComponent
     public float CellSize { get => GetField<float>("cellSize"); set => SetField("cellSize", value); }
     public float AgentRadius { get => GetField<float>("agentRadius"); set => SetField("agentRadius", value); }
     public float AgentHeight { get => GetField<float>("agentHeight"); set => SetField("agentHeight", value); }
+    public float MaxSlopeAngle { get => GetField<float>("maxSlopeAngle"); set => SetField("maxSlopeAngle", value); }
     public float MaxFloorDelta { get => GetField<float>("maxFloorDelta"); set => SetField("maxFloorDelta", value); }
 }
 

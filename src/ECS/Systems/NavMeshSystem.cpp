@@ -56,7 +56,7 @@ namespace Canis
         runtime->height = std::max(1, static_cast<int>(std::floor(size.z / cellSize)) + 1);
         runtime->gridIds.assign(
             static_cast<std::size_t>(runtime->width * runtime->height),
-            0u);
+            {});
 
         const auto index = [&runtime](int _x, int _z)
         {
@@ -68,8 +68,8 @@ namespace Canis
             for (int x = 0; x < runtime->width; ++x)
             {
                 const Vector3 point(minX + x * cellSize, center.y, minZ + z * cellSize);
-                if (IsWalkable(surface, point))
-                    runtime->gridIds[index(x, z)] = runtime->graph.AddPoint(point);
+                for (const Vector3& floor : SampleFloors(surface, point))
+                    runtime->gridIds[index(x, z)].push_back(runtime->graph.AddPoint(floor));
             }
         }
 
@@ -80,25 +80,15 @@ namespace Canis
         {
             for (int x = 0; x < runtime->width; ++x)
             {
-                const unsigned int from = runtime->gridIds[index(x, z)];
-                if (from == 0u)
-                    continue;
-
+                const auto& sources = runtime->gridIds[index(x, z)];
                 for (const auto& offset : neighborOffsets)
                 {
-                    const int nx = x + offset[0];
-                    const int nz = z + offset[1];
-                    if (nx < 0 || nz < 0 || nx >= runtime->width || nz >= runtime->height)
-                        continue;
-
-                    const unsigned int to = runtime->gridIds[index(nx, nz)];
-                    if (to != 0u && HasClearance(
-                        surface,
-                        runtime->graph.GetPointPosition(from),
-                        runtime->graph.GetPointPosition(to)))
-                    {
-                        runtime->graph.ConnectPoints(from, to);
-                    }
+                    const int nx = x + offset[0], nz = z + offset[1];
+                    if (nx < 0 || nz < 0 || nx >= runtime->width || nz >= runtime->height) continue;
+                    for (const unsigned int from : sources)
+                        for (const unsigned int to : runtime->gridIds[index(nx, nz)])
+                            if (HasClearance(surface, runtime->graph.GetPointPosition(from), runtime->graph.GetPointPosition(to)))
+                                runtime->graph.ConnectPoints(from, to);
                 }
             }
         }
@@ -137,11 +127,35 @@ namespace Canis
         }
 
         RuntimeSurface& runtime = *found->second;
-        const unsigned int start = runtime.graph.GetClosestPoint(_start);
-        const unsigned int destination = runtime.graph.GetClosestPoint(_destination);
+        auto project = [&](const Vector3& requested, Vector3& projected) {
+            float best = std::max(.05f, surface.maxFloorDelta) + .03f;
+            bool foundFloor = false;
+            for (const Vector3& floor : SampleFloors(surface, Vector3(requested.x, runtime.center.y, requested.z)))
+                if (const float delta = std::abs(requested.y - floor.y); delta <= best)
+                { best = delta; projected = floor; foundFloor = true; }
+            return foundFloor;
+        };
+        Vector3 projectedStart, projectedDestination;
+        if (!project(_start, projectedStart) || !project(_destination, projectedDestination)) return {};
+        auto closestReachable = [&](const Vector3& point) {
+            std::vector<std::pair<float, unsigned int>> candidates;
+            const auto& nodes = runtime.graph.GetNodes();
+            const float range = std::max(.2f, surface.cellSize * 2);
+            for (unsigned int id = 1; id < nodes.size(); ++id)
+            {
+                const float distance = glm::length(nodes[id].position - point);
+                if (distance <= range) candidates.emplace_back(distance, id);
+            }
+            std::sort(candidates.begin(), candidates.end());
+            for (const auto& [distance, id] : candidates)
+                if (HasClearance(surface, point, nodes[id].position)) return id;
+            return 0u;
+        };
+        const unsigned int start = closestReachable(projectedStart);
+        const unsigned int destination = closestReachable(projectedDestination);
+        if (start == 0u || destination == 0u) return {};
         std::vector<Vector3> path = runtime.graph.GetPath(start, destination);
-        if (!path.empty() && HasClearance(surface, path.back(), _destination))
-            path.push_back(_destination);
+        if (!path.empty()) path.push_back(projectedDestination);
         return path;
     }
 
@@ -251,65 +265,77 @@ namespace Canis
         }
     }
 
-    bool NavMeshSystem::IsWalkable(const NavMeshSurface& _surface, const Vector3& _point) const
+    std::vector<Vector3> NavMeshSystem::SampleFloors(const NavMeshSurface& _surface, const Vector3& _point) const
     {
-        if (scene == nullptr || _surface.entity == nullptr ||
-            !_surface.entity->HasComponent<Transform>())
-            return false;
-
-        const Transform& transform = _surface.entity->GetComponent<Transform>();
-        const float castHeight = std::max(0.2f, std::abs(_surface.size.y));
-        const Vector3 center = transform.GetGlobalPosition();
-        const std::vector<RaycastHit> hits = scene->RaycastAll(
-            _point + Vector3(0.0f, castHeight * 0.5f, 0.0f),
-            Vector3(0.0f, -1.0f, 0.0f),
-            castHeight,
-            _surface.collisionMask);
-        for (const RaycastHit& hit : hits)
+        std::vector<Vector3> floors;
+        if (scene == nullptr) return floors;
+        const float height = std::max(0.2f, std::abs(_surface.size.y));
+        const float normalY = std::cos(glm::radians(std::clamp(_surface.maxSlopeAngle, 0.0f, 75.0f)));
+        // Avoid ambiguous normals exactly on shared box/triangle edges.
+        for (const RaycastHit& hit : scene->RaycastAll(_point + Vector3(.001f, height * .5f, .001f),
+                Vector3(0, -1, 0), height, _surface.collisionMask))
         {
-            if (!IsStaticSurfaceHit(_surface, hit.entity) || hit.normal.y < 0.7f)
-                continue;
-            return std::abs(hit.point.y - center.y) <= std::max(0.05f, _surface.maxFloorDelta);
+            if (!IsStaticSurfaceHit(_surface, hit.entity) || hit.normal.y < normalY) continue;
+            // Keep each supported layer, including floors beneath a balcony.
+            if (!floors.empty() && std::abs(floors.back().y - hit.point.y) < .02f) continue;
+            if (HasHeadroom(_surface, hit.point)) floors.push_back(hit.point);
         }
-        return false;
+        return floors;
     }
 
-    bool NavMeshSystem::HasClearance(
-        const NavMeshSurface& _surface,
-        const Vector3& _from,
-        const Vector3& _to) const
+    bool NavMeshSystem::HasHeadroom(const NavMeshSurface& _surface, const Vector3& _point) const
     {
-        if (scene == nullptr)
-            return false;
+        for (const RaycastHit& hit : scene->RaycastAll(_point + Vector3(0, .03f, 0), Vector3(0, 1, 0),
+                std::max(.1f, _surface.agentHeight) - .03f, _surface.collisionMask))
+            if (hit.entity && hit.entity->Active() && hit.entity->HasComponent<Rigidbody>() &&
+                hit.entity->GetComponent<Rigidbody>().motionType == RigidbodyMotionType::STATIC) return false;
+        return true;
+    }
 
-        Vector3 direction = _to - _from;
-        direction.y = 0.0f;
-        const float distance = glm::length(direction);
-        if (distance < 0.001f)
-            return true;
-        direction /= distance;
-
-        const Vector3 side(-direction.z, 0.0f, direction.x);
+    bool NavMeshSystem::HasClearance(const NavMeshSurface& _surface, const Vector3& _from, const Vector3& _to) const
+    {
+        if (scene == nullptr) return false;
+        Vector3 flat = _to - _from;
+        flat.y = 0;
+        const float distance = glm::length(flat);
+        const float maxStep = std::max(0.0f, _surface.maxFloorDelta);
+        const float slope = std::tan(glm::radians(std::clamp(_surface.maxSlopeAngle, 0.0f, 75.0f)));
+        if (std::abs(_to.y - _from.y) > maxStep + distance * slope + .02f) return false;
+        if (distance < .001f) return std::abs(_to.y - _from.y) < .02f;
+        const Vector3 side(-flat.z / distance, 0, flat.x / distance);
         const float radius = std::max(0.0f, _surface.agentRadius);
-        const float rayHeight = std::max(0.1f, _surface.agentHeight * 0.5f);
-        for (const float offset : {-radius, 0.0f, radius})
+        const int steps = std::max(1, static_cast<int>(std::ceil(distance / .15f)));
+        const float normalY = std::cos(glm::radians(std::clamp(_surface.maxSlopeAngle, 0.0f, 75.0f)));
+        Vector3 previous = _from;
+        for (int i = 1; i <= steps; ++i)
         {
-            const Vector3 origin = _from + side * offset + Vector3(0.0f, rayHeight, 0.0f);
-            const std::vector<RaycastHit> hits = scene->RaycastAll(
-                origin,
-                direction,
-                distance,
-                _surface.collisionMask);
-            for (const RaycastHit& hit : hits)
+            Vector3 next = glm::mix(_from, _to, static_cast<float>(i) / steps);
+            const float probe = std::max(maxStep, distance / steps * slope) + .03f;
+            bool supported = false;
+            for (const RaycastHit& hit : scene->RaycastAll(Vector3(next.x, previous.y + probe, next.z),
+                    Vector3(0, -1, 0), probe * 2, _surface.collisionMask))
             {
-                if (hit.entity == _surface.entity)
-                    continue;
-                if (hit.entity != nullptr && hit.entity->Active() &&
-                    hit.entity->HasComponent<Rigidbody>() &&
-                    hit.entity->GetComponent<Rigidbody>().motionType == RigidbodyMotionType::STATIC &&
-                    hit.distance < distance - 0.05f)
-                    return false;
+                if (!IsStaticSurfaceHit(_surface, hit.entity) || hit.normal.y < normalY) continue;
+                next.y = hit.point.y;
+                supported = true;
+                break;
             }
+            if (!supported || !HasHeadroom(_surface, next)) return false;
+            if (i == steps && std::abs(next.y - _to.y) > .05f) return false;
+            // Trace the full body's width and height, with forward radius clearance.
+            for (const float offset : {-radius, 0.0f, radius})
+                for (const float level : {std::max(.1f, maxStep + .05f), _surface.agentHeight * .6f, _surface.agentHeight - .03f})
+                {
+                    Vector3 start = previous + side * offset + Vector3(0, level, 0);
+                    Vector3 travel = next - previous;
+                    const float length = glm::length(travel);
+                    if (length < .001f) continue;
+                    for (const RaycastHit& hit : scene->RaycastAll(start, travel / length, length + radius, _surface.collisionMask))
+                        if (hit.entity && hit.entity->Active() && hit.entity->HasComponent<Rigidbody>() &&
+                            hit.entity->GetComponent<Rigidbody>().motionType == RigidbodyMotionType::STATIC)
+                            return false;
+                }
+            previous = next;
         }
         return true;
     }

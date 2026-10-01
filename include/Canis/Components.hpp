@@ -1022,7 +1022,8 @@ namespace Canis
         float cellSize = 1.5f;
         float agentRadius = 0.5f;
         float agentHeight = 1.8f;
-        float maxFloorDelta = 0.65f;
+        float maxFloorDelta = 0.65f; // Maximum discontinuous step height between samples.
+        float maxSlopeAngle = 50.0f; // Degrees from horizontal.
         Mask collisionMask = Rigidbody::DefaultMask;
         u64 revision = 1u;
     };

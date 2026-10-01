@@ -55,7 +55,7 @@ int main(){
   Canis::ManagedScripts:
   - type: test.probe
     enabled: true
-    fields: {count: 13, Target: {entity: "102"}}
+    fields: {count: 13, Target: {entity: "102"}, Targets: [{entity: "102"}, {entity: "0"}], Transforms: [{entity: "102"}], Numbers: [3, 8], Modes: [First, Second]}
 - {Entity: 102, Name: Target}
 )");
         auto entities=app.scene.LoadEntityNodes(nodes);
@@ -70,6 +70,7 @@ int main(){
         auto& initial=entities[0]->GetComponent<ManagedComponents>().items[0]->fields;
         initial["Prefab"]=std::to_string(prefabId);
         initial["Scene"]=std::to_string(prefabId);
+        initial["Templates"]=ManagedJson::array({std::to_string(prefabId),"0"});
         for(auto [field,extension]:std::vector<std::pair<std::string,std::string>>{{"Audio","wav"},{"Mesh","glb"},{"Material","material"},{"Texture","png"}}) {
             auto path=root/"assets"/("fixture."+extension);Write(path,"metadata-only fixture");
             initial[field]=std::to_string(static_cast<uint64_t>(AssetManager::GetMetaFile(path.string())->uuid));
@@ -93,6 +94,12 @@ int main(){
 public class )")+name+R"(:ScriptableEntity {
 [SerializeField,FormerlySerializedAs("count")] private int )"+field+R"(=7;
 public Entity? Target;
+public Entity?[] Targets = [];
+public Transform[] Transforms = [];
+public int[] Numbers = [];
+public enum Mode { First, Second }
+public Mode[] Modes = [];
+public PrefabAsset?[] Templates = [];
 public Color Tint = new(.2f, .3f, .4f, .5f);
 public Color[] Palette = { new(1, 0, 0) };
 public Color[] EmptyPalette = { new(1, 1, 1) };
@@ -138,6 +145,11 @@ public override void Start(){
  Color roundTrip = rgba;
  if (roundTrip.G != Palette[1].G || rgba.W != Palette[1].A)
      throw new Exception("Color conversion failed");
+ if(Targets.Length != 2 || Targets[0] != Target || Targets[1] is not null ||
+    Transforms.Length != 1 || Transforms[0].Entity != Target || !Numbers.SequenceEqual(new[] {3,8}) ||
+    !Modes.SequenceEqual(new[] {Mode.First,Mode.Second}) || Templates.Length != 2 || Templates[0]?.Path != Prefab?.Path || Templates[1] is not null)
+     throw new Exception("Typed arrays were not restored before Start or after reload");
+ Emit("arrays:" + RestoredFromReload);
  Emit("palette:" + RestoredFromReload);
  Tween.To(()=>tweened,v=>tweened=v,1f,100).SetLink(Entity).OnUpdate(()=>Emit("tween:"+GetType().Name));
  if(!Canis.Entity.All().Any(e=>e.Name=="Target"))throw new Exception("Entity.All lost native-only entities");
@@ -209,6 +221,7 @@ public override void Start(){
  Emit("native-coverage");
 }
 public override void Update(float dt){
+ Emit("numbers:"+string.Join(",", Numbers));
  if(Transient++==0){var old=Transform;Entity.RemoveComponent<Transform>();Entity.AddComponent<Transform>();if(old.IsValid)throw new Exception("Old wrapper revived");Emit("wrapper-invalid");}
  ++)"+field+R"(;Emit("update:"+)"+field+R"();
  int value=World.Query<Counter>().Single().Value;if(value!=5 && value!=9)throw new Exception("Class query failed");Emit("data:"+value);
@@ -247,6 +260,10 @@ public override void OnDestroy()=>Emit("destroy");
             app.scene.tweens.Update(.1,.1);
             Check(Read(trace).find("tween:Probe")!=std::string::npos,"Native scheduler did not deliver managed tween samples/events");
             auto& attachments=entities[0]->GetComponent<ManagedComponents>();
+            attachments.items[0]->fields["Numbers"]=ManagedJson::array({5,13});
+            runtime.Tick(true,false,.01f);
+            Check(Read(trace).find("numbers:5,13")!=std::string::npos,"Inspector array edits were not applied during Play");
+            attachments.items[0]->fields["Numbers"]=ManagedJson::array({3,8});
             attachments.items[1]->fields["Value"]=9;runtime.Tick(true,false,.01f);
             Check(Read(trace).find("data:9")!=std::string::npos,"Runtime-added data component ignored Inspector edit");
             attachments.items[0]->enabled=false;
@@ -259,6 +276,7 @@ public override void OnDestroy()=>Emit("destroy");
             Check(app.scene.tweens.ActiveCount()==1,"Reload retained old-generation tween delegates");
             app.scene.tweens.Update(.1,.1);
             Check(Read(trace).find("tween:RenamedProbe")!=std::string::npos,"Reloaded tween did not execute");
+            Check(Read(trace).find("arrays:True") != std::string::npos, "Typed arrays did not survive live reload");
             Check(Read(trace).find("palette:True") != std::string::npos, "Color array did not survive live reload");
             Check(click() && Read(trace).find("button:RenamedProbe")!=std::string::npos, "C# button did not resolve reloaded script instance");
             Check(runtime.CollectRetiredContexts()==0,"Tween registry kept retired gameplay assembly alive");
@@ -305,6 +323,9 @@ public override void OnDestroy()=>Emit("destroy");
         auto copied=app.scene.LoadEntityNodes(duplicateNodes,false);
         auto copyData=EncodeAttachments(*copied[0]);
         auto referenced=copyData[0]["fields"]["Target"]["entity"].get<std::string>();
+        Check(copyData[0]["fields"]["Targets"][0]["entity"].get<std::string>()==referenced,"Duplicate retained source array entity reference");
+        Check(copyData[0]["fields"]["Transforms"][0]["entity"].get<std::string>()==referenced,"Duplicate retained source array component reference");
+        Check(copyData[0]["fields"]["Targets"][1]["entity"]=="0","Duplicate changed null array reference");
         Check(referenced==std::to_string(static_cast<uint64_t>(copied[1]->GetUUID())),"Duplicate retained source entity reference");
         UnregisterSceneBindings();app.scene.Unload();fs::remove_all(root);SDL_Quit();std::cout<<"C# component lifecycle, persistence, class queries and reload passed\n";return 0;
     }catch(const std::exception& e){std::cerr<<e.what()<<"\nFixtures: "<<root<<'\n';return 1;}

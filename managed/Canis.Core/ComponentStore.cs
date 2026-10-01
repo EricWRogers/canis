@@ -78,19 +78,19 @@ internal static class ComponentStore
         }
         return result;
     }
-    internal static string Kind(Type t) => t==typeof(Color)?"color":t==typeof(Color[])?"color-array": t==typeof(bool)?"bool":t==typeof(int)?"int":t==typeof(float)?"float":t==typeof(double)?"double":t==typeof(string)?"string":t.IsEnum?"enum":t==typeof(Vector3)?"vector3":t==typeof(Vector4)?"vector4":t==typeof(Quaternion)?"quaternion":t==typeof(Entity)?"entity":typeof(Component).IsAssignableFrom(t)?"component":t==typeof(AssetReference) || typeof(Asset).IsAssignableFrom(t)?"asset":throw new InvalidOperationException($"Unsupported serialized field type {t}. Mark runtime-only fields [NonSerialized].");
+    internal static string Kind(Type t) => t.IsArray && t.GetArrayRank()==1 && !t.GetElementType()!.IsArray ? Kind(t.GetElementType()!) + "-array" : t==typeof(Color)?"color": t==typeof(bool)?"bool":t==typeof(int)?"int":t==typeof(float)?"float":t==typeof(double)?"double":t==typeof(string)?"string":t.IsEnum?"enum":t==typeof(Vector3)?"vector3":t==typeof(Vector4)?"vector4":t==typeof(Quaternion)?"quaternion":t==typeof(Entity)?"entity":typeof(Component).IsAssignableFrom(t)?"component":t==typeof(AssetReference) || typeof(Asset).IsAssignableFrom(t)?"asset":throw new InvalidOperationException($"Unsupported serialized field type {t}. Mark runtime-only fields [NonSerialized].");
     internal static JsonNode? Encode(object? value,Type t)
     {
+        if(t.IsArray) {
+            if(value is not Array array)return null;
+            var elements=new JsonArray();
+            foreach(var item in array)elements.Add(Encode(item,t.GetElementType()!));
+            return elements;
+        }
         if(t==typeof(Entity))return new JsonObject{{"entity",(value is Entity e && e.IsValid?e.UUID:0).ToString()}};
         if(typeof(Component).IsAssignableFrom(t))return new JsonObject{{"entity",(value is Component c && c.IsValid?c.Entity.UUID:0).ToString()}};
         if(typeof(Asset).IsAssignableFrom(t))return JsonValue.Create((value is Asset asset?asset.UUID:0).ToString());
         if(t==typeof(AssetReference))return JsonValue.Create(((AssetReference?)value)?.UUID.ToString()??"0");
-        if (t == typeof(Color[]))
-        {
-            if (value is not Color[] colors)
-                return null;
-            return new JsonArray(colors.Select(color => Encode(color, typeof(Color))).ToArray());
-        }
         if (value is Color color)
             return new JsonArray(color.R, color.G, color.B, color.A);
         if(value is Vector3 v)return new JsonArray(v.X,v.Y,v.Z);
@@ -101,6 +101,13 @@ internal static class ComponentStore
     }
     private static object? Decode(JsonNode? value,Type t, bool resolveReferences = true)
     {
+        if(t.IsArray) {
+            if(value is null)return null;
+            var elements=value.AsArray();var elementType=t.GetElementType()!;
+            var array=Array.CreateInstance(elementType,elements.Count);
+            for(int index=0;index<elements.Count;++index)array.SetValue(Decode(elements[index],elementType,resolveReferences),index);
+            return array;
+        }
         if(typeof(Component).IsAssignableFrom(t)) {
             var id=ulong.Parse(value?["entity"]?.ToString()??"0");
             return resolveReferences ? Entity.FromUUID(id)?.GetComponent(t) : null;
@@ -114,12 +121,6 @@ internal static class ComponentStore
         }
         if(t==typeof(Entity))return Entity.FromUUID(ulong.Parse(value?["entity"]?.GetValue<string>()??"0"));
         if(t==typeof(AssetReference))return new AssetReference(ulong.Parse(value?.GetValue<string>()??"0"));
-        if (t == typeof(Color[]))
-        {
-            if (value is null)
-                return null;
-            return value.AsArray().Select(item => (Color)Decode(item, typeof(Color))!).ToArray();
-        }
         if (t == typeof(Color))
             return new Color(value![0]!.GetValue<float>(), value[1]!.GetValue<float>(), value[2]!.GetValue<float>(), value[3]!.GetValue<float>());
         if(t==typeof(Vector3))return new Vector3(value![0]!.GetValue<float>(),value[1]!.GetValue<float>(),value[2]!.GetValue<float>());
@@ -145,7 +146,10 @@ internal static class ComponentStore
             object defaults;
             NativeBridge.MetadataMode=true;try {defaults=Activator.CreateInstance(d.Type)!;}finally{NativeBridge.MetadataMode=false;}
             var fields=new JsonArray();
-            foreach(var f in d.Fields)fields.Add(new JsonObject{{"name",f.Name},{"aliases",new JsonArray(f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>(JsonNode?)JsonValue.Create(a.Name)).ToArray())},{"kind",Kind(f.FieldType)},{"assetType",typeof(Asset).IsAssignableFrom(f.FieldType)?Asset.Kind(f.FieldType):""},{"componentType",typeof(Component).IsAssignableFrom(f.FieldType)?(typeof(NativeComponent).IsAssignableFrom(f.FieldType)?"Canis::"+f.FieldType.Name:Id(f.FieldType)):""},{"header",f.GetCustomAttribute<HeaderAttribute>()?.Text??""},{"tooltip",f.GetCustomAttribute<TooltipAttribute>()?.Text??""},{"default",Encode(f.GetValue(defaults),f.FieldType)},{"options",new JsonArray((f.FieldType.IsEnum?Enum.GetNames(f.FieldType):[]).Select(n=>(JsonNode?)JsonValue.Create(n)).ToArray())}});
+            foreach(var f in d.Fields) {
+                var valueType=f.FieldType.IsArray?f.FieldType.GetElementType()!:f.FieldType;
+                fields.Add(new JsonObject{{"name",f.Name},{"aliases",new JsonArray(f.GetCustomAttributes<FormerlySerializedAsAttribute>().Select(a=>(JsonNode?)JsonValue.Create(a.Name)).ToArray())},{"kind",Kind(f.FieldType)},{"assetType",typeof(Asset).IsAssignableFrom(valueType)?Asset.Kind(valueType):""},{"componentType",typeof(Component).IsAssignableFrom(valueType)?(typeof(NativeComponent).IsAssignableFrom(valueType)?"Canis::"+valueType.Name:Id(valueType)):""},{"header",f.GetCustomAttribute<HeaderAttribute>()?.Text??""},{"tooltip",f.GetCustomAttribute<TooltipAttribute>()?.Text??""},{"default",Encode(f.GetValue(defaults),f.FieldType)},{"options",new JsonArray((valueType.IsEnum?Enum.GetNames(valueType):[]).Select(n=>(JsonNode?)JsonValue.Create(n)).ToArray())}});
+            }
             list.Add(new JsonObject{{"id",d.Id},{"name",d.Type.FullName},{"source",Source(d.Type)},{"assignableTo",new JsonArray(ReferenceTypes(d.Type).Select(a=>(JsonNode?)JsonValue.Create(a)).ToArray())},{"aliases",new JsonArray(d.Aliases.Select(a=>(JsonNode?)JsonValue.Create(a)).ToArray())},{"uiActions",new JsonArray(d.UIActions.Select(m => (JsonNode?)JsonValue.Create(m.Name)).ToArray())},{"fields",fields}});
         }
         return list.ToJsonString();

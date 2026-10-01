@@ -35,7 +35,7 @@ namespace Canis
         struct RuntimeSurface
         {
             AStar graph = {};
-            std::vector<unsigned int> gridIds = {};
+            std::vector<std::vector<unsigned int>> gridIds = {};
             int width = 0;
             int height = 0;
             u64 revision = 0u;
@@ -45,7 +45,8 @@ namespace Canis
 
         std::unordered_map<entt::entity, std::unique_ptr<RuntimeSurface>> m_surfaces = {};
 
-        bool IsWalkable(const NavMeshSurface& _surface, const Vector3& _point) const;
+        std::vector<Vector3> SampleFloors(const NavMeshSurface& _surface, const Vector3& _point) const;
+        bool HasHeadroom(const NavMeshSurface& _surface, const Vector3& _point) const;
         bool HasClearance(
             const NavMeshSurface& _surface,
             const Vector3& _from,

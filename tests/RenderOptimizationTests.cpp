@@ -13,12 +13,58 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <SDL3/SDL.h>
 #include <filesystem>
+#include <fstream>
 #include <iostream>
 #include <limits>
 #include <stdexcept>
 
 using namespace Canis;
 static void Check(bool ok,const char* message) { if(!ok)throw std::runtime_error(message); }
+
+// Imported model queries must use parent transforms just as rendering does.
+static void ImportedHierarchyGeometry() {
+    const auto root=std::filesystem::temp_directory_path()/("canis-model-hierarchy-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    const float positions[]={0,0,0, 1,0,0, 0,1,0};
+    const uint16_t indices[]={0,1,2};
+    {
+        std::ofstream binary(root/"mesh.bin",std::ios::binary);
+        binary.write(reinterpret_cast<const char*>(positions),sizeof(positions));
+        binary.write(reinterpret_cast<const char*>(indices),sizeof(indices));
+        std::ofstream(root/"hierarchy.gltf") << R"({
+          "asset":{"version":"2.0"}, "scene":0, "scenes":[{"nodes":[0]}],
+          "nodes":[
+            {"translation":[10,2,-3],"rotation":[0,0.7071067811865476,0,0.7071067811865476],"scale":[2,3,4],"children":[1]},
+            {"translation":[1,0,0],"mesh":0}],
+          "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}],
+          "buffers":[{"uri":"mesh.bin","byteLength":42}],
+          "bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":6}],
+          "accessors":[
+            {"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},
+            {"bufferView":1,"componentType":5123,"count":3,"type":"SCALAR"}]
+        })";
+    }
+    ModelAsset model;
+    Check(model.Load((root/"hierarchy.gltf").string()),"Hierarchy fixture failed to load");
+    std::vector<Vector3> vertices;
+    std::vector<u32> triangles;
+    Check(model.BuildTriangleMesh(vertices,triangles),"Imported collision mesh missing");
+    Check(vertices.size()==3 && triangles==std::vector<u32>({0,1,2}),"Imported triangle topology changed");
+    Check(glm::distance(vertices[0],Vector3(10,2,-5))<.0001f &&
+          glm::distance(vertices[1],Vector3(10,2,-7))<.0001f &&
+          glm::distance(vertices[2],Vector3(10,5,-5))<.0001f,
+          "Collision geometry lost imported parent translation, rotation or scale");
+    Vector3 low,high;
+    Check(model.GetLocalBounds(low,high) && glm::distance(low,Vector3(10,2,-7))<.0001f &&
+          glm::distance(high,Vector3(10,5,-5))<.0001f,"Imported model bounds lost hierarchy transforms");
+    Check(model.BuildTriangleMesh(vertices,triangles,1,false) && glm::distance(vertices[1],Vector3(1,0,0))<.0001f,
+          "Untransformed node extraction unexpectedly baked its parents");
+    Check(model.BuildTriangleMesh(vertices,triangles,1,true) && glm::distance(vertices[1],Vector3(10,2,-7))<.0001f,
+          "Filtered node extraction lost its parents");
+    model.Free();
+    std::filesystem::remove_all(root);
+    std::cout << "Imported hierarchy collision geometry and bounds passed\n";
+}
 
 static void RoomOcclusion(Window& window) {
     Scene scene;
@@ -153,6 +199,7 @@ int main(int argc,char** argv) {
         spatial.Query(projection,3,emptyVisibility);
         Check(emptyVisibility==std::vector<unsigned char>(3,0),"Cleared spatial tree retained stale rejection");
         Window window("Renderer tests",320,240,true);
+        ImportedHierarchyGeometry();
         Time::Init(120);
         Time::StartFrame();SDL_Delay(2200);Time::EndFrame();
         const auto resumed=SDL_GetTicks();
