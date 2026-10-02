@@ -155,5 +155,6 @@ public sealed class Model : NativeComponent
 }
 public sealed class Text : NativeComponent
 {
+    public Vector4 Color { get => GetField<Vector4>("color"); set => SetField("color",value); }
     public string Value {get {Validate();return NativeBridge.Call<string>("Presentation.Text",Owner!.Handle);}set {Validate();NativeBridge.Call("Presentation.SetText",Owner!.Handle,value);}}
 }

@@ -24,6 +24,7 @@ namespace Fake
     std::map<XrAction,std::string> actions;
     std::map<XrSpace,XrAction> spaces;
     std::map<XrHandTrackerEXT,XrHandEXT> trackers;
+    bool frameExtension=true, frameBindings=false, frameX=true;
     bool handExtension=true, handSupport=true, handsActive=true, failRightTracker=false;
     bool badJoint=false, failLocate=false, controllerActive=true;
     std::map<std::string,XrPath> paths;
@@ -52,6 +53,8 @@ XRAPI_ATTR XrResult XRAPI_CALL xrEnumerateInstanceExtensionProperties(const char
     std::vector<XrExtensionProperties> extensions{gl,gaze};
     if(Fake::handExtension) { XrExtensionProperties hand{XR_TYPE_EXTENSION_PROPERTIES};
         std::strcpy(hand.extensionName,XR_EXT_HAND_TRACKING_EXTENSION_NAME);hand.extensionVersion=4;extensions.push_back(hand); }
+    if(Fake::frameExtension) { XrExtensionProperties frame{XR_TYPE_EXTENSION_PROPERTIES};
+        std::strcpy(frame.extensionName,"XR_VALVE_frame_controller_interaction");frame.extensionVersion=1;extensions.push_back(frame); }
     return Fake::Enumerate(extensions,n,count,p);
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo* info,XrInstance* p)
@@ -59,6 +62,10 @@ XRAPI_ATTR XrResult XRAPI_CALL xrCreateInstance(const XrInstanceCreateInfo* info
     bool enabled=false;
     for(unsigned i=0;i<info->enabledExtensionCount;++i) enabled |= std::strcmp(info->enabledExtensionNames[i],XR_EXT_HAND_TRACKING_EXTENSION_NAME)==0;
     Fake::Require(enabled==Fake::handExtension,"Hand extension enabled only when advertised");
+    bool frameEnabled=false;
+    for(unsigned i=0;i<info->enabledExtensionCount;++i) frameEnabled |= std::strcmp(info->enabledExtensionNames[i],"XR_VALVE_frame_controller_interaction")==0;
+    Fake::Require(frameEnabled==Fake::frameExtension,"Frame extension enabled only when advertised");
+    Fake::frameBindings=false;
     Fake::instance=true;*p=Fake::Handle<XrInstance>();return XR_SUCCESS;
 }
 XRAPI_ATTR XrResult XRAPI_CALL xrDestroyInstance(XrInstance)
@@ -132,7 +139,23 @@ XRAPI_ATTR XrResult XRAPI_CALL xrDestroyActionSet(XrActionSet)
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateAction(XrActionSet,const XrActionCreateInfo* info,XrAction* p)
 { *p=Fake::Handle<XrAction>();Fake::actions[*p]=info->actionName;return XR_SUCCESS; }
 XRAPI_ATTR XrResult XRAPI_CALL xrSuggestInteractionProfileBindings(XrInstance,const XrInteractionProfileSuggestedBinding* p)
-{ return Fake::Guard(p->countSuggestedBindings>0&&p->suggestedBindings); }
+{
+    if (p->interactionProfile==Fake::paths["/interaction_profiles/valve/frame_controller_valve"])
+    {
+        Fake::Require(Fake::frameExtension,"Do not suggest Frame profile without its extension");
+        auto bound = [&](const char* action,const char* path) {
+            for(unsigned i=0;i<p->countSuggestedBindings;++i)
+                if(Fake::actions[p->suggestedBindings[i].action]==action && p->suggestedBindings[i].binding==Fake::paths[path]) return true;
+            return false;
+        };
+        Fake::Require(bound("interact","/user/hand/right/input/x/click"),"Physical Frame right X interacts");
+        Fake::Require(bound("select","/user/hand/right/input/a/click"),"Frame A remains weapon select");
+        Fake::Require(bound("jump","/user/hand/right/input/b/click"),"Frame B remains back");
+        Fake::Require(bound("jump","/user/hand/left/input/view/click"),"Frame View opens menu");
+        Fake::frameBindings=true;
+    }
+    return Fake::Guard(p->countSuggestedBindings>0&&p->suggestedBindings);
+}
 XRAPI_ATTR XrResult XRAPI_CALL xrCreateActionSpace(XrSession,const XrActionSpaceCreateInfo* info,XrSpace* p)
 { *p=Fake::Handle<XrSpace>();Fake::spaces[*p]=info->action;return XR_SUCCESS; }
 XRAPI_ATTR XrResult XRAPI_CALL xrAttachSessionActionSets(XrSession,const XrSessionActionSetsAttachInfo*) { return XR_SUCCESS; }
@@ -186,7 +209,11 @@ XRAPI_ATTR XrResult XRAPI_CALL xrSyncActions(XrSession,const XrActionsSyncInfo*)
 XRAPI_ATTR XrResult XRAPI_CALL xrGetActionStatePose(XrSession,const XrActionStateGetInfo*,XrActionStatePose* p) { p->isActive=Fake::focused&&Fake::controllerActive;return XR_SUCCESS; }
 XRAPI_ATTR XrResult XRAPI_CALL xrGetActionStateFloat(XrSession,const XrActionStateGetInfo*,XrActionStateFloat* p) { p->isActive=Fake::focused;p->currentState=0.8f;return XR_SUCCESS; }
 XRAPI_ATTR XrResult XRAPI_CALL xrGetActionStateVector2f(XrSession,const XrActionStateGetInfo*,XrActionStateVector2f* p) { p->isActive=Fake::focused;p->currentState={0.1f,0.2f};return XR_SUCCESS; }
-XRAPI_ATTR XrResult XRAPI_CALL xrGetActionStateBoolean(XrSession,const XrActionStateGetInfo*,XrActionStateBoolean* p) { p->isActive=Fake::focused;p->currentState=true;return XR_SUCCESS; }
+XRAPI_ATTR XrResult XRAPI_CALL xrGetActionStateBoolean(XrSession,const XrActionStateGetInfo* info,XrActionStateBoolean* p) {
+    const bool interact=Fake::actions[info->action]=="interact";
+    p->isActive=Fake::focused && (!interact || (Fake::frameBindings && info->subactionPath==Fake::paths["/user/hand/right"]));
+    p->currentState=p->isActive && (!interact || Fake::frameX);return XR_SUCCESS;
+}
 XRAPI_ATTR XrResult XRAPI_CALL xrAcquireSwapchainImage(XrSwapchain s,const XrSwapchainImageAcquireInfo*,uint32_t* p)
 { auto& c=Fake::chains.at(s);auto r=Fake::Guard(Fake::begun&&!c.acquired);c.acquired=true;*p=0;return r; }
 XRAPI_ATTR XrResult XRAPI_CALL xrWaitSwapchainImage(XrSwapchain s,const XrSwapchainImageWaitInfo*)
@@ -227,6 +254,7 @@ int main()
         Fake::Require(vr.BeginFrame(error),error.c_str());
         Fake::Require(vr.GetState().running&&vr.GetState().focused&&vr.GetState().stageSpace,"READY begins session in stage space");
         Fake::Require(vr.GetState().hands[0].active&&vr.GetState().gaze.valid,"Read action and gaze poses");
+        Fake::Require(Fake::frameBindings && vr.GetState().hands[1].interact && !vr.GetState().hands[0].interact,"Frame X reaches the right-hand interaction state");
         const auto& skeleton=vr.GetState().hands[0].skeleton;
         Fake::Require(skeleton.active&&vr.GetState().hands[1].skeleton.active,"Independent left/right skeletons");
         Fake::Require(skeleton[VR::HandJoint::Wrist].pose.position.x<0&&vr.GetState().hands[1].skeleton[VR::HandJoint::Wrist].pose.position.x>0,"Hand identities preserved");
@@ -250,8 +278,9 @@ int main()
         Fake::Require(vr.BeginFrame(error),error.c_str());
         Fake::Require(vr.RenderAndEndFrame([&](auto&,auto&,auto){++drawn;},error),error.c_str());
         Fake::Require(drawn==2&&Fake::empty==2,"Invalid views submit no layer");
-        Fake::viewsValid=true;
+        Fake::viewsValid=true;Fake::frameX=false;
         Fake::Require(vr.BeginFrame(error),error.c_str());
+        Fake::Require(vr.GetState().hands[1].jump && !vr.GetState().hands[1].interact,"Frame B does not trigger X interaction");
         Fake::Require(!vr.RenderAndEndFrame([](auto&,auto&,auto){throw std::runtime_error("draw failure");},error),"Render failure propagated");
         Fake::Require(!Fake::begun&&Fake::empty==3,"Render failure releases acquired image and ends frame");
         Fake::events={XR_SESSION_STATE_STOPPING};
@@ -267,10 +296,11 @@ int main()
         Fake::failSecondChain=true;Fake::stage=false;
         Fake::Require(!vr.Initialize(window,config,error),"Partial swapchain initialization failure");
         Fake::Require(!Fake::instance&&!Fake::session&&Fake::chains.empty()&&Fake::spaces.empty(),"Cleanup partial initialization");
-        Fake::failSecondChain=false;
+        Fake::failSecondChain=false;Fake::frameExtension=false;
         Fake::Require(vr.Initialize(window,config,error),error.c_str());
         Fake::events={XR_SESSION_STATE_READY,XR_SESSION_STATE_FOCUSED};
         Fake::Require(vr.BeginFrame(error),error.c_str());
+        Fake::Require(!Fake::frameBindings && !vr.GetState().hands[1].interact,"No Frame interaction on runtimes without the extension");
         Fake::Require(!vr.GetState().stageSpace&&std::abs(vr.GetState().head.position.y-3.3f)<0.001f,"LOCAL fallback applies configured floor offset");
         Fake::Require(std::abs(vr.GetState().hands[0].skeleton[VR::HandJoint::Wrist].pose.position.y-3.3f)<0.001f,"Hand joints use the same LOCAL floor offset");
         Fake::Require(vr.RenderAndEndFrame([](auto&,auto&,auto){},error),error.c_str());

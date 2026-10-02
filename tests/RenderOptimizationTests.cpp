@@ -7,6 +7,11 @@
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Scene.hpp>
+#include <Canis/App.hpp>
+#include <Canis/Scripting/SceneBindings.hpp>
+#include <Canis/Scripting/ManagedComponents.hpp>
+#include <Canis/Scripting/NativeBindings.hpp>
+#include <Canis/ECS/Systems/ModelAnimation3DSystem.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/RenderVisibility.hpp>
@@ -61,6 +66,48 @@ static void ImportedHierarchyGeometry() {
           "Untransformed node extraction unexpectedly baked its parents");
     Check(model.BuildTriangleMesh(vertices,triangles,1,true) && glm::distance(vertices[1],Vector3(10,2,-7))<.0001f,
           "Filtered node extraction lost its parents");
+    // Exercise the actual C# pose binding beneath a rotated, nonuniformly scaled parent.
+    // A fallen bone needs shear in its local matrix to keep its world scale fixed.
+    {
+        using namespace Canis::Scripting;
+        App app; app.scene.app = &app;
+        RegisterSceneBindings(app);
+        struct Cleanup { ~Cleanup() { UnregisterSceneBindings(); } } cleanup;
+        auto entity = app.scene.CreateEntity("Pose scale regression");
+        entity.AddComponent<Transform>();
+        entity.AddComponent<Model>()->modelId = AssetManager::LoadModel((root/"hierarchy.gltf").string());
+        auto* animation = entity.AddComponent<ModelAnimation>();
+        auto invoke = [](const std::string& name, std::initializer_list<NativeValue> arguments) {
+            return NativeBindingRegistry::Get().Invoke(name,std::span<const NativeValue>(arguments.begin(),arguments.size()));
+        };
+        auto handle = Decode<uint64_t>(invoke("Scene.Find",{Encode(std::string("Pose scale regression"))}));
+        invoke("Skeleton.Sample",{Encode(handle),Encode(0.f)});
+        auto* loaded = AssetManager::GetModel(entity.GetComponent<Model>().modelId);
+        ModelAsset::Pose3D original; loaded->ResetPose(original);
+        Vector3 scale(glm::length(Vector3(original.globalNodeMatrices[1][0])),
+                      glm::length(Vector3(original.globalNodeMatrices[1][1])),
+                      glm::length(Vector3(original.globalNodeMatrices[1][2])));
+        ModelAnimation3DSystem evaluator;
+        for (int frame = 0; frame < 720; ++frame) {
+            // Launch/tumble, then a long stationary landing. Reapplying either must not grow the bone.
+            auto rotation = glm::angleAxis(frame < 120 ? frame*.025f : 2.3f,glm::normalize(Vector3(1,2,3)));
+            Vector3 position(1,.2f,3);
+            auto payload = ManagedJson::array({{{"Index",1},{"Position",{position.x,position.y,position.z}},
+                {"Rotation",{rotation.x,rotation.y,rotation.z,rotation.w}}}}).dump();
+            invoke("Skeleton.Apply",{Encode(handle),Encode(payload)});
+            evaluator.Update(app.scene.GetRegistry(),1.f/120);
+            auto expected = glm::translate(Matrix4(1),position)*glm::mat4_cast(rotation)*glm::scale(Matrix4(1),scale);
+            for (int column = 0; column < 4; ++column)
+                Check(glm::length(animation->pose.globalNodeMatrices[1][column]-expected[column]) < .001f,
+                    "Repeated procedural pose changed bone scale or world transform");
+        }
+        invoke("Skeleton.Clear",{Encode(handle)});
+        evaluator.Update(app.scene.GetRegistry(),0.f);
+        for (int column = 0; column < 4; ++column)
+            Check(glm::length(animation->pose.globalNodeMatrices[1][column]-original.globalNodeMatrices[1][column])<.001f,
+                "Clearing a procedural pose did not restore the imported scale");
+        std::cout << "Procedural pose scale stays stable through 720 tumble/landing frames\n";
+    }
     model.Free();
     std::filesystem::remove_all(root);
     std::cout << "Imported hierarchy collision geometry and bounds passed\n";

@@ -61,6 +61,8 @@ namespace Canis::VR
             XrSpace headSpace = XR_NULL_HANDLE;
             XrActionSet actions = XR_NULL_HANDLE;
             bool gazeSupported = false;
+            bool frameControllerSupported = false;
+            XrAction interactAction = XR_NULL_HANDLE;
             std::array<XrHandTrackerEXT, 2> handTrackers{};
             PFN_xrCreateHandTrackerEXT createHandTracker = nullptr;
             PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
@@ -110,8 +112,11 @@ namespace Canis::VR
                 selectAction = Action("select", "Select", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 jumpAction = Action("jump", "Jump", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 hapticAction = Action("haptic", "Haptic feedback", XR_ACTION_TYPE_VIBRATION_OUTPUT);
-                for (bool simple : {false, true})
+                interactAction = Action("interact", "Interact / start", XR_ACTION_TYPE_BOOLEAN_INPUT);
+                for (int profile = 0; profile < 3; ++profile)
                 {
+                    const bool simple = profile == 1, frame = profile == 2;
+                    if (frame && !frameControllerSupported) continue;
                     std::vector<XrActionSuggestedBinding> bindings;
                     for (unsigned i = 0; i < 2; ++i)
                     {
@@ -124,12 +129,14 @@ namespace Canis::VR
                         {
                             add(triggerAction, "/input/trigger/value"); add(squeezeAction, "/input/squeeze/value");
                             add(stickAction, "/input/thumbstick");
-                            add(selectAction, i == 0 ? "/input/x/click" : "/input/a/click");
-                            add(jumpAction, i == 0 ? "/input/y/click" : "/input/b/click");
+                            add(selectAction, i == 0 ? (frame ? "/input/dpad_down/click" : "/input/x/click") : "/input/a/click");
+                            add(jumpAction, i == 0 ? (frame ? "/input/view/click" : "/input/y/click") : "/input/b/click");
+                            // Frame has ABXY on the right; Touch has XY on the left.
+                            if (frame && i == 1) add(interactAction, "/input/x/click");
                         }
                     }
                     XrInteractionProfileSuggestedBinding info{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-                    info.interactionProfile = Path(simple ? "/interaction_profiles/khr/simple_controller" : "/interaction_profiles/oculus/touch_controller");
+                    info.interactionProfile = Path(frame ? "/interaction_profiles/valve/frame_controller_valve" : simple ? "/interaction_profiles/khr/simple_controller" : "/interaction_profiles/oculus/touch_controller");
                     info.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
                     info.suggestedBindings = bindings.data();
                     const auto result = xrSuggestInteractionProfileBindings(instance, &info);
@@ -284,6 +291,10 @@ namespace Canis::VR
                     XrActionStateBoolean jump{XR_TYPE_ACTION_STATE_BOOLEAN};
                     Check(xrGetActionStateBoolean(session, &info, &jump), "xrGetActionStateBoolean(jump)");
                     hand.jump = jump.isActive && jump.currentState;
+                    info.action = interactAction;
+                    XrActionStateBoolean interact{XR_TYPE_ACTION_STATE_BOOLEAN};
+                    Check(xrGetActionStateBoolean(session, &info, &interact), "xrGetActionStateBoolean(interact)");
+                    hand.interact = interact.isActive && interact.currentState;
                 }
             }
         public:
@@ -327,6 +338,10 @@ namespace Canis::VR
                 if (gazeExtension) enabled.push_back(XR_EXT_EYE_GAZE_INTERACTION_EXTENSION_NAME);
                 const bool handExtension = std::find(diagnostics.extensions.begin(), diagnostics.extensions.end(), XR_EXT_HAND_TRACKING_EXTENSION_NAME) != diagnostics.extensions.end();
                 if (handExtension) enabled.push_back(XR_EXT_HAND_TRACKING_EXTENSION_NAME);
+                // String constants also support SDK headers predating this binding-only extension.
+                constexpr const char* frameExtension = "XR_VALVE_frame_controller_interaction";
+                frameControllerSupported = std::find(diagnostics.extensions.begin(), diagnostics.extensions.end(), frameExtension) != diagnostics.extensions.end();
+                if (frameControllerSupported) enabled.push_back(frameExtension);
                 XrInstanceCreateInfo instanceInfo{XR_TYPE_INSTANCE_CREATE_INFO};
                 std::strcpy(instanceInfo.applicationInfo.applicationName, "Canis VR Foodtruck");
                 std::strcpy(instanceInfo.applicationInfo.engineName, "Canis");

@@ -1262,6 +1262,10 @@ namespace Canis
         // Runtime-only full local pose supplied by tracking/procedural animation.
         // Empty restores normal clip playback. Each entity owns its own data.
         std::vector<Matrix4> externalLocalNodeMatrices = {};
+        // Immutable sampled base for procedural edits. Never derive scale from last frame's output.
+        std::vector<Matrix4> proceduralBaseLocalNodeMatrices = {};
+        i32 proceduralBaseModelId = -1;
+        u64 proceduralBaseGeometryRevision = 0;
 
         // Runtime caching to skip redundant animation evaluation.
         bool poseInitialized = false;

@@ -2470,6 +2470,22 @@ namespace Canis
             return false;
 
         const float weight = glm::clamp(_targetWeight, 0.0f, 1.0f);
+        // Full pose replacement must preserve affine matrices exactly. Inverse-parent
+        // transforms can contain shear beneath nonuniform import scale; decomposing
+        // these as TRS changes bone scale and compounds on subsequent pose updates.
+        if (weight == 0.0f)
+        {
+            _pose.localNodeMatrices = _sourceLocalMatrices;
+            UpdateGlobalMatrices(_pose);
+            UpdateSkinning(_pose);
+            return true;
+        }
+        if (weight == 1.0f)
+        {
+            UpdateGlobalMatrices(_pose);
+            UpdateSkinning(_pose);
+            return true;
+        }
         auto decomposeTrs = [](
             const Matrix4 &_matrix,
             Vector3 &_scale,

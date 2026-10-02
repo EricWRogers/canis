@@ -5,6 +5,7 @@
 #include <Canis/Scripting/NativeComponentFields.generated.hpp>
 #include <Canis/Scripting/NativeBindings.hpp>
 #include <Canis/App.hpp>
+#include <Canis/AssetManager.hpp>
 #include <Canis/Canis.hpp>
 #include <Canis/VFX/Particles.hpp>
 #include <Canis/VFX/Trails.hpp>
@@ -275,6 +276,97 @@ void RegisterSceneBindings(App& app)
         };
         visit(visit, context->Resolve(id), includeSelf);
         return result.dump();
+    });
+    // Procedural animation uses the same per-entity pose cache as clip playback.
+    bindings.Method(owner, "Skeleton", "Sample", [context](uint64_t id, float advance) -> std::string {
+        if (!std::isfinite(advance) || advance < 0 || advance > .25f)
+            throw std::invalid_argument("Invalid skeleton sample interval");
+        auto& renderer = context->Component<Model>(id);
+        auto& animation = context->Component<ModelAnimation>(id);
+        auto* model = AssetManager::GetModel(renderer.modelId);
+        if (!model) throw std::invalid_argument("Skeleton requires a loaded model");
+        if (advance > 0 && animation.playAnimation)
+            animation.animationTime += advance * animation.animationSpeed;
+        float duration = model->GetAnimationDuration(animation.animationIndex);
+        if (animation.loop && duration > 0) animation.animationTime = std::fmod(animation.animationTime,duration);
+        ModelAsset::Pose3D pose;
+        model->ResetPose(pose);
+        model->UpdateAnimation(pose, animation.animationIndex, animation.animationTime, animation.rootMotionMask);
+        auto world = context->Component<Transform>(id).GetModelMatrix();
+        auto result = ManagedJson::array();
+        for (int i = 0; i < model->GetNodeCount(); ++i) {
+            Matrix4 matrix = world * pose.globalNodeMatrices[i];
+            glm::mat3 basis(matrix);
+            for (int column = 0; column < 3; ++column) {
+                float length = glm::length(basis[column]);
+                if (length < .000001f) throw std::invalid_argument("Skeleton has zero scale");
+                basis[column] /= length;
+            }
+            if (glm::determinant(basis) < 0) basis[0] = -basis[0];
+            auto rotation = glm::normalize(glm::quat_cast(basis));
+            result.push_back({{"Name",model->GetNodeName(i)}, {"Parent",model->GetNode(i)->parent},
+                {"Position",{matrix[3].x,matrix[3].y,matrix[3].z}},
+                {"Rotation",{rotation.x,rotation.y,rotation.z,rotation.w}}});
+        }
+        // Store the sampled locals as the base for a sparse world-pose override.
+        animation.proceduralBaseLocalNodeMatrices = pose.localNodeMatrices;
+        animation.proceduralBaseModelId = renderer.modelId;
+        animation.proceduralBaseGeometryRevision = model->GetGeometryRevision();
+        animation.externalLocalNodeMatrices = std::move(pose.localNodeMatrices);
+        return result.dump();
+    });
+    bindings.Method(owner, "Skeleton", "Apply", [context](uint64_t id, std::string payload) {
+        auto& animation = context->Component<ModelAnimation>(id);
+        auto* model = AssetManager::GetModel(context->Component<Model>(id).modelId);
+        if (!model) throw std::invalid_argument("Skeleton requires a loaded model");
+        auto values = ManagedJson::parse(payload);
+        if (!values.is_array() || values.size() > static_cast<size_t>(model->GetNodeCount()))
+            throw std::invalid_argument("Invalid skeleton pose");
+        ModelAsset::Pose3D pose;
+        model->ResetPose(pose);
+        if (animation.proceduralBaseModelId == context->Component<Model>(id).modelId &&
+            animation.proceduralBaseGeometryRevision == model->GetGeometryRevision() &&
+            animation.proceduralBaseLocalNodeMatrices.size() == pose.localNodeMatrices.size())
+            model->BlendPoseFromLocalMatrices(pose, animation.proceduralBaseLocalNodeMatrices, 0);
+        Matrix4 world = context->Component<Transform>(id).GetModelMatrix();
+        std::map<int, Matrix4> overrides;
+        for (const auto& value : values) {
+            int index = value.at("Index").get<int>();
+            if (index < 0 || index >= model->GetNodeCount() || overrides.count(index))
+                throw std::invalid_argument("Invalid or duplicate bone index");
+            const auto& p = value.at("Position"); const auto& q = value.at("Rotation");
+            Vector3 position(p.at(0).get<float>(),p.at(1).get<float>(),p.at(2).get<float>());
+            Quaternion rotation(q.at(3).get<float>(),q.at(0).get<float>(),q.at(1).get<float>(),q.at(2).get<float>());
+            Finite(position);
+            if (!std::isfinite(rotation.x) || !std::isfinite(rotation.y) || !std::isfinite(rotation.z) ||
+                !std::isfinite(rotation.w) || glm::length(rotation) < .000001f)
+                throw std::invalid_argument("Invalid bone rotation");
+            Matrix4 original = world * pose.globalNodeMatrices[index];
+            Vector3 scale(glm::length(Vector3(original[0])),glm::length(Vector3(original[1])),glm::length(Vector3(original[2])));
+            if (glm::determinant(glm::mat3(original)) < 0) scale.x = -scale.x;
+            overrides[index] = glm::translate(Matrix4(1),position) * glm::mat4_cast(glm::normalize(rotation)) * glm::scale(Matrix4(1),scale);
+        }
+        // Imported bone indices need not be ordered parent-first.
+        auto locals = pose.localNodeMatrices;
+        auto visit = [&](auto&& self, int index, const Matrix4& parent) -> void {
+            Matrix4 global = parent * locals[index];
+            if (auto found = overrides.find(index); found != overrides.end()) {
+                global = found->second;
+                locals[index] = glm::inverse(parent) * global;
+            }
+            for (int child : model->GetNode(index)->children) self(self, child, global);
+        };
+        for (int root : model->GetSceneRoots()) visit(visit, root, world);
+        animation.externalLocalNodeMatrices = std::move(locals);
+    });
+    bindings.Method(owner, "Skeleton", "Clear", [context](uint64_t id) {
+        auto& animation = context->Component<ModelAnimation>(id);
+        animation.externalLocalNodeMatrices.clear();
+        animation.proceduralBaseLocalNodeMatrices.clear();
+        animation.proceduralBaseModelId = -1;
+        animation.proceduralBaseGeometryRevision = 0;
+        animation.poseInitialized = false;
+        animation.lastEvaluatedAnimationIndex = -1;
     });
     bindings.Method(owner, "Physics", "Raycast", [context, &app](Vector3 origin, Vector3 direction, float distance, uint64_t ignoreRoot) -> std::string {
         Finite(origin);

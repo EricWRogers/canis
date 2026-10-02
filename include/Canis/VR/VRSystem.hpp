@@ -33,6 +33,7 @@ namespace Canis::VR
         float squeeze = 0.0f;
         Vector2 stick{0.0f};
         bool select = false;
+        bool interact = false; // Additional interaction button (Steam Frame right X).
         bool jump = false;
         bool active = false;
     };
