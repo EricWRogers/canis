@@ -234,6 +234,10 @@ namespace Canis::VR
     {
         m->origin = glm::translate(Matrix4(1.0f), position) * glm::rotate(Matrix4(1.0f), yaw, Vector3(0, 1, 0));
     }
+    void System::SetOrigin(const Vector3& position, const Quaternion& orientation)
+    {
+        m->origin = glm::translate(Matrix4(1.0f), position) * glm::mat4_cast(glm::normalize(orientation));
+    }
     const Matrix4& System::GetOrigin() const { return m->origin; }
     Pose System::WorldPose(const Pose& pose) const { return TransformPose(m->origin, pose); }
     void System::SetSimulatedInput(const Pose& head, const std::array<Hand, 2>& hands, bool focused)

@@ -436,6 +436,7 @@ namespace Canis
         bool m_forceRefresh = false;
         EditorMode m_mode = EditorMode::EDIT;
         int m_playTarget = 0; // Desktop, Headset, VR Simulation.
+        int m_vrPreviewEye = 0; // Both eyes, left eye, right eye (editor preview only).
         bool m_playPending = false;
         bool m_pendingPlayHasPosition = false;
         Vector3 m_pendingPlayPosition = Vector3(0);

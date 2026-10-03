@@ -70,6 +70,12 @@ int main()
         Require(!vr.RenderAndEndFrame([](auto&,auto&,auto){throw std::runtime_error("test draw failure");}, error), "Report render exceptions");
         Require(vr.BeginFrame(error), "Can begin after handled render failure");
         Require(vr.RenderAndEndFrame([](auto&,auto&,auto){}, error), "End recovered frame");
+        const Quaternion cockpit = glm::angleAxis(.35f,Vector3(1,0,0)) * glm::angleAxis(.2f,Vector3(0,0,1));
+        vr.SetOrigin({10,20,30},cockpit);
+        auto seated = vr.WorldPose(VR::Pose{{0,1.25f,0},Quaternion(1,0,0,0),true});
+        Require(glm::length(seated.position-(Vector3(10,20,30)+cockpit*Vector3(0,1.25f,0)))<.0001f,
+            "Full cockpit origin rotates the seated head offset");
+        Require(std::abs(glm::dot(seated.orientation,cockpit))>.9999f,"Pitch and bank reach the headset orientation");
         head.valid=false;vr.SetSimulatedInput(head,hands,false);
         vr.SetOrigin({2,3,4},1);
         vr.Shutdown(); vr.Shutdown();

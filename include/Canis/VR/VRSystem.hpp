@@ -35,6 +35,8 @@ namespace Canis::VR
         bool select = false;
         bool interact = false; // Additional interaction button (Steam Frame right X).
         bool jump = false;
+        bool grappleToggle = false; // Frame left D-pad down / Touch right stick click.
+        bool weaponSwitch = false; // Physical Y: Touch left / Steam Frame right.
         bool active = false;
     };
     struct Eye
@@ -91,6 +93,7 @@ namespace Canis::VR
         void SetComfortFade(float opacity);
         // Rigid world transform only: scaling the player changes IPD/world scale.
         void SetOrigin(const Vector3& position, float yawRadians);
+        void SetOrigin(const Vector3& position, const Quaternion& orientation);
         const Matrix4& GetOrigin() const;
         Pose WorldPose(const Pose& pose) const;
         // Explicit simulation hook, ignored by actual OpenXR sessions.

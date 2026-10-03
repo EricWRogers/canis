@@ -62,7 +62,7 @@ namespace Canis::VR
             XrActionSet actions = XR_NULL_HANDLE;
             bool gazeSupported = false;
             bool frameControllerSupported = false;
-            XrAction interactAction = XR_NULL_HANDLE;
+            XrAction interactAction = XR_NULL_HANDLE, weaponSwitchAction = XR_NULL_HANDLE, grappleAction = XR_NULL_HANDLE;
             std::array<XrHandTrackerEXT, 2> handTrackers{};
             PFN_xrCreateHandTrackerEXT createHandTracker = nullptr;
             PFN_xrDestroyHandTrackerEXT destroyHandTracker = nullptr;
@@ -113,6 +113,8 @@ namespace Canis::VR
                 jumpAction = Action("jump", "Jump", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 hapticAction = Action("haptic", "Haptic feedback", XR_ACTION_TYPE_VIBRATION_OUTPUT);
                 interactAction = Action("interact", "Interact / start", XR_ACTION_TYPE_BOOLEAN_INPUT);
+                grappleAction = Action("grapple", "Grapple gauntlet", XR_ACTION_TYPE_BOOLEAN_INPUT);
+                weaponSwitchAction = Action("weapon_switch", "Y / switch weapon", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 for (int profile = 0; profile < 3; ++profile)
                 {
                     const bool simple = profile == 1, frame = profile == 2;
@@ -129,8 +131,14 @@ namespace Canis::VR
                         {
                             add(triggerAction, "/input/trigger/value"); add(squeezeAction, "/input/squeeze/value");
                             add(stickAction, "/input/thumbstick");
-                            add(selectAction, i == 0 ? (frame ? "/input/dpad_down/click" : "/input/x/click") : "/input/a/click");
+                            if (!frame || i == 1)
+                                add(selectAction, i == 0 ? "/input/x/click" : "/input/a/click");
+                            if (frame && i == 0) add(grappleAction, "/input/dpad_down/click");
+                            if (!frame && i == 1) add(grappleAction, "/input/thumbstick/click");
                             add(jumpAction, i == 0 ? (frame ? "/input/view/click" : "/input/y/click") : "/input/b/click");
+                            if (i == (frame ? 1u : 0u)) add(weaponSwitchAction, "/input/y/click");
+                            // Left stick click is exposed as the left auxiliary button.
+                            if (i == 0) add(interactAction, "/input/thumbstick/click");
                             // Frame has ABXY on the right; Touch has XY on the left.
                             if (frame && i == 1) add(interactAction, "/input/x/click");
                         }
@@ -295,6 +303,14 @@ namespace Canis::VR
                     XrActionStateBoolean interact{XR_TYPE_ACTION_STATE_BOOLEAN};
                     Check(xrGetActionStateBoolean(session, &info, &interact), "xrGetActionStateBoolean(interact)");
                     hand.interact = interact.isActive && interact.currentState;
+                    info.action = weaponSwitchAction;
+                    XrActionStateBoolean weaponSwitch{XR_TYPE_ACTION_STATE_BOOLEAN};
+                    Check(xrGetActionStateBoolean(session, &info, &weaponSwitch), "xrGetActionStateBoolean(weapon_switch)");
+                    hand.weaponSwitch = weaponSwitch.isActive && weaponSwitch.currentState;
+                    info.action = grappleAction;
+                    XrActionStateBoolean grapple{XR_TYPE_ACTION_STATE_BOOLEAN};
+                    Check(xrGetActionStateBoolean(session, &info, &grapple), "xrGetActionStateBoolean(grapple)");
+                    hand.grappleToggle = grapple.isActive && grapple.currentState;
                 }
             }
         public:

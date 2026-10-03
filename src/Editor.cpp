@@ -8592,10 +8592,23 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::SameLine();
                 ImGui::TextDisabled("Paused — head tracking continues");
             }
+            ImGui::SetNextItemWidth(150.0f);
+            ImGui::Combo("Preview##VREye", &m_vrPreviewEye, "Both eyes\0Left eye\0Right eye\0");
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Choose the eye shown in the editor. The headset still renders both eyes.");
+
+            const bool singleEye = m_vrPreviewEye != 0;
+            const float eyeStart = m_vrPreviewEye == 2 ? 0.5f : 0.0f;
+            const float eyeEnd = m_vrPreviewEye == 1 ? 0.5f : 1.0f;
+            const float previewWidth = vr->MirrorWidth() * (singleEye ? 0.5f : 1.0f);
+            const float aspect = previewWidth / std::max(1, vr->MirrorHeight());
             const ImVec2 available = ImGui::GetContentRegionAvail();
-            const float aspect = static_cast<float>(vr->MirrorWidth()) / std::max(1, vr->MirrorHeight());
             const float width = std::max(1.0f, std::min(available.x, available.y * aspect));
-            ImGui::Image((ImTextureID)(intptr_t)vr->MirrorTexture(), ImVec2(width, width / aspect), ImVec2(0,1), ImVec2(1,0));
+            ImGui::Image(
+                (ImTextureID)(intptr_t)vr->MirrorTexture(),
+                ImVec2(width, width / aspect),
+                ImVec2(eyeStart, 1.0f),
+                ImVec2(eyeEnd, 0.0f));
             m_scene->GetInputManager().ClearGameMouseViewport();
             ImGui::End();
             return;

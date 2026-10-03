@@ -587,6 +587,26 @@ void RegisterSceneBindings(App& app)
     bindings.Method(owner, "Input", "RightMouse", [&app]() -> bool { return app.scene.GetInputManager().GetRightClick(); });
     bindings.Method(owner, "Input", "LeftMouse", [&app]() -> bool { return app.scene.GetInputManager().GetLeftClick(); });
     bindings.Method(owner, "VR", "Available", [&app]() -> bool { return app.GetVR() != nullptr; });
+    bindings.Method(owner, "VR", "Focused", [&app]() -> bool {
+        return app.GetVR() && Runtime(app).GetState().focused && Runtime(app).GetState().shouldRender;
+    });
+    bindings.Method(owner, "VR", "SetOrigin", [&app](Vector3 position, Quaternion rotation) {
+        Finite(position);
+        if (!std::isfinite(glm::length(rotation)) || glm::length(rotation)<.001f)
+            throw std::invalid_argument("Invalid VR origin rotation");
+        Runtime(app).SetOrigin(position,rotation);
+    });
+    bindings.Method(owner, "VR", "HeadTrackingPosition", [&app]() -> Vector3 { return Runtime(app).GetState().head.position; });
+    bindings.Method(owner, "VR", "HeadTrackingRotation", [&app]() -> Quaternion { return Runtime(app).GetState().head.orientation; });
+    bindings.Method(owner, "VR", "Stick", [&app](int index) -> Vector3 {
+        const auto hand=Hand(app,index); const auto& state=Runtime(app).GetState();
+        return state.focused && state.shouldRender && hand.active ? Vector3(hand.stick,0) : Vector3(0);
+    });
+    bindings.Method(owner, "VR", "Button", [&app](int index, int button) -> bool {
+        const auto hand=Hand(app,index); const auto& state=Runtime(app).GetState();
+        if (!state.focused || !state.shouldRender || !hand.active) return false;
+        return button==0 ? hand.select : button==1 ? hand.jump : button==2 ? hand.interact : button==3 ? hand.weaponSwitch : button==4 && hand.grappleToggle;
+    });
     bindings.Method(owner, "VR", "Simulated", [&app]() -> bool { return app.GetVR() && app.GetVR()->IsSimulated(); });
     bindings.Method(owner, "VR", "Tracked", [&app](int index) -> bool
     {
@@ -608,6 +628,10 @@ void RegisterSceneBindings(App& app)
         return Runtime(app).Haptic(index, std::clamp(amplitude,0.f,1.f), std::clamp(seconds,0.f,.3f));
     });
     // Explicit simulation hook for deterministic tests; never changes real headset input.
+    bindings.Method(owner, "VR", "SimulateFocus", [&app](bool focused) {
+        auto& vr=Runtime(app);if(!vr.IsSimulated())throw std::runtime_error("Simulation cannot override real XR input");
+        const auto state=vr.GetState();vr.SetSimulatedInput(state.head,state.hands,focused);
+    });
     bindings.Method(owner, "VR", "SimulateHands", [&app](Vector3 left, Vector3 right, float leftGrip, float rightGrip)
     {
         auto& vr = Runtime(app); if (!vr.IsSimulated()) throw std::runtime_error("Simulation cannot override real XR input");
