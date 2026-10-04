@@ -70,6 +70,14 @@ int main()
         Require(!vr.RenderAndEndFrame([](auto&,auto&,auto){throw std::runtime_error("test draw failure");}, error), "Report render exceptions");
         Require(vr.BeginFrame(error), "Can begin after handled render failure");
         Require(vr.RenderAndEndFrame([](auto&,auto&,auto){}, error), "End recovered frame");
+        auto beforeClip=vr.GetState().eyes[0].projection;
+        vr.SetClipPlanes(.025f,2500);
+        auto afterClip=vr.GetState().eyes[0].projection;
+        Require(afterClip[0]==beforeClip[0] && afterClip[1]==beforeClip[1],"View distance preserves eye field of view");
+        auto distant=afterClip*Vector4(0,0,-1000,1);
+        Require(distant.z<distant.w && distant.z>-distant.w,"Distant spacecraft scenery remains inside VR depth range");
+        bool rejectedClip=false;try{vr.SetClipPlanes(1,.5f);}catch(const std::invalid_argument&){rejectedClip=true;}
+        Require(rejectedClip,"Reject inverted depth range");
         const Quaternion cockpit = glm::angleAxis(.35f,Vector3(1,0,0)) * glm::angleAxis(.2f,Vector3(0,0,1));
         vr.SetOrigin({10,20,30},cockpit);
         auto seated = vr.WorldPose(VR::Pose{{0,1.25f,0},Quaternion(1,0,0,0),true});

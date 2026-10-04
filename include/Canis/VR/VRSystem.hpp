@@ -94,6 +94,8 @@ namespace Canis::VR
         // Rigid world transform only: scaling the player changes IPD/world scale.
         void SetOrigin(const Vector3& position, float yawRadians);
         void SetOrigin(const Vector3& position, const Quaternion& orientation);
+        void SetClipPlanes(float nearClip, float farClip);
+        Vector2 GetClipPlanes() const;
         const Matrix4& GetOrigin() const;
         Pose WorldPose(const Pose& pose) const;
         // Explicit simulation hook, ignored by actual OpenXR sessions.

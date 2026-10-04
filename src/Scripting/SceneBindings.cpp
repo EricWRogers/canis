@@ -590,6 +590,8 @@ void RegisterSceneBindings(App& app)
     bindings.Method(owner, "VR", "Focused", [&app]() -> bool {
         return app.GetVR() && Runtime(app).GetState().focused && Runtime(app).GetState().shouldRender;
     });
+    bindings.Method(owner, "VR", "ClipPlanes", [&app]() -> Vector3 { return Vector3(Runtime(app).GetClipPlanes(),0); });
+    bindings.Method(owner, "VR", "SetClipPlanes", [&app](float nearClip,float farClip) { Runtime(app).SetClipPlanes(nearClip,farClip); });
     bindings.Method(owner, "VR", "SetOrigin", [&app](Vector3 position, Quaternion rotation) {
         Finite(position);
         if (!std::isfinite(glm::length(rotation)) || glm::length(rotation)<.001f)
@@ -631,6 +633,17 @@ void RegisterSceneBindings(App& app)
     bindings.Method(owner, "VR", "SimulateFocus", [&app](bool focused) {
         auto& vr=Runtime(app);if(!vr.IsSimulated())throw std::runtime_error("Simulation cannot override real XR input");
         const auto state=vr.GetState();vr.SetSimulatedInput(state.head,state.hands,focused);
+    });
+    bindings.Method(owner, "VR", "SimulateControls", [&app](Vector3 left,Vector3 right,float leftGrip,float rightGrip,int buttons) {
+        auto& vr=Runtime(app); if(!vr.IsSimulated())throw std::runtime_error("Simulation cannot override real XR input");
+        Finite(left);Finite(right);auto state=vr.GetState();const auto inverse=glm::inverse(vr.GetOrigin());
+        for(int i=0;i<2;++i) {
+            auto& hand=state.hands[i];hand.active=true;
+            hand.grip={Vector3(inverse*Vector4(i?right:left,1)),Quaternion(1,0,0,0),true};hand.aim=hand.grip;
+            hand.squeeze=i?rightGrip:leftGrip;hand.trigger=(buttons&(i?32:16))?1.f:0.f;
+            hand.select=(buttons&(i?4:1))!=0;hand.jump=(buttons&(i?8:2))!=0;hand.interact=i==1 && (buttons&64)!=0;
+        }
+        vr.SetSimulatedInput(state.head,state.hands,true);
     });
     bindings.Method(owner, "VR", "SimulateHands", [&app](Vector3 left, Vector3 right, float leftGrip, float rightGrip)
     {

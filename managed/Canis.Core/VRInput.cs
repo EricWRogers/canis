@@ -9,6 +9,13 @@ public static class VRInput
     public static bool Simulated => NativeBridge.Call<bool>("VR.Simulated");
     public static Vector3 HeadTrackingPosition => NativeBridge.Call<Vector3>("VR.HeadTrackingPosition");
     public static Quaternion HeadTrackingRotation => NativeBridge.Call<Quaternion>("VR.HeadTrackingRotation");
+    /// <summary>Current near/far depth range. An active scene Camera supplies this
+    /// before rendering; set that component's clips for persistent scene changes.</summary>
+    public static Vector2 ClipPlanes
+    {
+        get { var planes=NativeBridge.Call<Vector3>("VR.ClipPlanes");return new(planes.X,planes.Y); }
+        set => NativeBridge.Call("VR.SetClipPlanes",value.X,value.Y);
+    }
     public static bool Tracked(int hand) => NativeBridge.Call<bool>("VR.Tracked",hand);
     public static Vector3 Position(int hand) => NativeBridge.Call<Vector3>("VR.Position",hand);
     public static Quaternion Rotation(int hand) => NativeBridge.Call<Quaternion>("VR.Rotation",hand);

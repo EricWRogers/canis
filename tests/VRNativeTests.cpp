@@ -261,8 +261,17 @@ int main()
         Fake::Require(skeleton[VR::HandJoint::Wrist].tracked&&!skeleton[VR::HandJoint::IndexTip].tracked&&skeleton[VR::HandJoint::IndexTip].pose.valid,"Inferred joints remain valid without being reported as tracked");
         Fake::Require(vr.Haptic(0,0.2f,0.02f)&&Fake::haptics==1,"Submit haptic action");
         unsigned drawn=0;
+        vr.SetClipPlanes(.025f,2500.0f);
+        auto requireLongView = [](const VR::Eye& eye)
+        {
+            const auto distant = eye.projection * Vector4(0,0,-1000,1);
+            const auto beyond = eye.projection * Vector4(0,0,-3000,1);
+            Fake::Require(distant.z < distant.w && distant.z > -distant.w,
+                "Native headset includes scenery beyond the old 200-unit limit");
+            Fake::Require(beyond.z > beyond.w,"Native headset respects the configured far plane");
+        };
         vr.SetComfortFade(1);
-        Fake::Require(vr.RenderAndEndFrame([&](auto&,auto&,auto){++drawn;glClearColor(1,1,1,1);glClear(GL_COLOR_BUFFER_BIT);},error),error.c_str());
+        Fake::Require(vr.RenderAndEndFrame([&](const VR::Eye& eye,auto&,auto){requireLongView(eye);++drawn;glClearColor(1,1,1,1);glClear(GL_COLOR_BUFFER_BIT);},error),error.c_str());
         glBindFramebuffer(GL_FRAMEBUFFER,vr.MirrorFramebuffer());
         unsigned char pixel[4]{};glReadPixels(16,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel);
         Fake::Require(pixel[0]==0&&pixel[1]==0&&pixel[2]==0,"Native eye faded before copying mirror");
@@ -271,6 +280,7 @@ int main()
         Fake::events={XR_SESSION_STATE_VISIBLE};Fake::shouldRender=false;
         Fake::Require(vr.BeginFrame(error),error.c_str());
         Fake::Require(!vr.GetState().focused&&!vr.GetState().hands[0].active&&!vr.Haptic(0,1,0.1f),"Visible but unfocused clears input/haptics");
+        for (const auto& eye : vr.GetState().eyes) requireLongView(eye);
         Fake::Require(!vr.GetState().hands[0].skeleton.active&&!vr.GetState().hands[0].skeleton[VR::HandJoint::Wrist].pose.valid,"Focus loss clears joint data");
         Fake::Require(vr.RenderAndEndFrame([&](auto&,auto&,auto){++drawn;},error),error.c_str());
         Fake::Require(drawn==2&&Fake::empty==1,"shouldRender false submits no layer");

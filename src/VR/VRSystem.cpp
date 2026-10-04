@@ -149,6 +149,8 @@ namespace Canis::VR
                     eye.height = m->config.simulationEyeHeight;
                 }
             }
+            // Preserve each runtime eye's asymmetric field of view while applying scene depth limits.
+            SetClipPlanes(m->config.nearClip,m->config.farClip);
             m->frameBegun = m->state.running;
             return true;
         }
@@ -238,6 +240,18 @@ namespace Canis::VR
     {
         m->origin = glm::translate(Matrix4(1.0f), position) * glm::mat4_cast(glm::normalize(orientation));
     }
+    void System::SetClipPlanes(float nearClip, float farClip)
+    {
+        if(!std::isfinite(nearClip) || !std::isfinite(farClip) || nearClip<=0 || farClip<=nearClip)
+            throw std::invalid_argument("Invalid VR clip planes");
+        m->config.nearClip=nearClip;m->config.farClip=farClip;
+        for(auto& eye:m->state.eyes)
+        {
+            eye.projection[2][2]=-(farClip+nearClip)/(farClip-nearClip);
+            eye.projection[3][2]=-2*farClip*nearClip/(farClip-nearClip);
+        }
+    }
+    Vector2 System::GetClipPlanes() const { return {m->config.nearClip,m->config.farClip}; }
     const Matrix4& System::GetOrigin() const { return m->origin; }
     Pose System::WorldPose(const Pose& pose) const { return TransformPose(m->origin, pose); }
     void System::SetSimulatedInput(const Pose& head, const std::array<Hand, 2>& hands, bool focused)

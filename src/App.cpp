@@ -2462,6 +2462,24 @@ namespace Canis
             const int width = window.GetScreenWidth(), height = window.GetScreenHeight();
             std::string error;
             auto* stereoRenderer = scene.GetSystem<MeshRenderer3DSystem>();
+            // Match the active game camera's depth range in both eyes. The XR
+            // runtime still owns the asymmetric field of view and tracked pose.
+            Camera* gameCamera = nullptr;
+            auto cameras = scene.GetRegistry().view<Camera, Transform>();
+            for (auto entity : cameras)
+            {
+                auto& camera = cameras.get<Camera>(entity);
+                auto& transform = cameras.get<Transform>(entity);
+                if ((!camera.entity && !transform.entity) || !transform.IsActiveInHierarchy())
+                    continue;
+                if (!gameCamera || camera.primary) gameCamera = &camera;
+                if (camera.primary) break;
+            }
+            if (gameCamera && std::isfinite(gameCamera->nearClip) &&
+                std::isfinite(gameCamera->farClip) && gameCamera->nearClip > 0 &&
+                gameCamera->farClip > gameCamera->nearClip)
+                runtime.vr->SetClipPlanes(gameCamera->nearClip, gameCamera->farClip);
+            const Vector2 clipPlanes = runtime.vr->GetClipPlanes();
             const auto& eyes = runtime.vr->GetState().eyes;
             const Vector3 shadowCenter = (runtime.vr->WorldPose(eyes[0].pose).position +
                 runtime.vr->WorldPose(eyes[1].pose).position) * 0.5f;
@@ -2472,7 +2490,7 @@ namespace Canis
                     RenderMetrics::Scope timing("VR eye");
                     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
                     window.SetRenderSize(eye.width, eye.height);
-                    scene.SetVRCamera(view, eye.projection, 0.05f, 200.0f);
+                    scene.SetVRCamera(view, eye.projection, clipPlanes.x, clipPlanes.y);
                     // Render world geometry and world-space canvases with the eye camera.
                     // Screen-space UI still requires a separate XR composition path.
                     if (!runtime.stopEditorVR)
