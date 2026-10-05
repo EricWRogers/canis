@@ -26,9 +26,21 @@ namespace Canis
             m_stereoPrepared = false;
             m_stereoShadowCenter = shadowCenter;
         }
-        void EndStereoFrame() { m_stereoFrame = m_stereoShadowReady = m_stereoPrepared = false; }
+        void EndStereoFrame() { m_stereoFrame = m_stereoShadowReady = m_stereoPrepared = false; m_stereoPass = 0; }
+        // 0: normal, 1: opaque geometry into two indexed viewports, 2: per-eye remainder.
+        void SetStereoPass(int pass) { m_stereoPass = pass; }
+        void SetStereoViews(const Matrix4& left, const Matrix4& right,
+                            const Matrix4& leftProjection, const Matrix4& rightProjection,
+                            const Vector3& leftEye, const Vector3& rightEye) {
+            m_stereoViews[0]=left; m_stereoViews[1]=right;
+            m_stereoProjections[0]=leftProjection; m_stereoProjections[1]=rightProjection;
+            m_stereoEyes[0]=leftEye; m_stereoEyes[1]=rightEye;
+        }
 
     private:
+        int m_stereoPass = 0;
+        Matrix4 m_stereoViews[2]{Matrix4(1),Matrix4(1)}, m_stereoProjections[2]{Matrix4(1),Matrix4(1)};
+        Vector3 m_stereoEyes[2]{};
         bool m_stereoFrame = false;
         bool m_stereoPrepared = false;
         bool m_stereoShadowReady = false;
@@ -51,6 +63,10 @@ namespace Canis
         unsigned int m_colliderDebugVbo = 0;
         unsigned int m_debugGizmoVao = 0;
         unsigned int m_debugGizmoVbo = 0;
+        unsigned int m_materialSampler = 0;
+        unsigned int m_softDepthTexture = 0;
+        int m_softDepthWidth = 0, m_softDepthHeight = 0;
+        float m_effectTime = 0;
         unsigned int m_shadowFramebuffer = 0;
         unsigned int m_shadowDepthTexture = 0;
         Matrix4 m_shadowLightSpaceMatrix = Matrix4(1.0f);

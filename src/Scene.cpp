@@ -589,6 +589,7 @@ namespace Canis
             Debug::FatalError("Scene not found: %s", m_path.c_str());
         }
         
+        AssetManager::PreloadReferencedTextures(root);
         LoadSceneNode(root);
     }
 

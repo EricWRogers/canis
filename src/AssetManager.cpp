@@ -6,6 +6,13 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <future>
+#include <thread>
+#include <memory>
+#include <set>
+#include <deque>
+#include <cstdlib>
+#include <chrono>
 
 #include <Canis/Yaml.hpp>
 
@@ -631,15 +638,7 @@ namespace Canis
         int LoadTexture(const std::string &_path)
         {
             auto &assetLibrary = GetAssetLibrary();
-
-            std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(_path);
-
-            // check if texture already exist
-            if (it != assetLibrary.assetPath.end()) // found
-            {
-                return it->second;
-            }
+            if(const int cached=FindAssetIdForPath(_path);cached>=0)return cached;
 
             // create texture
             Asset *texture = new TextureAsset();
@@ -870,23 +869,9 @@ namespace Canis
             }
         }
 
-        int LoadMetaFile(const std::string &_path)
+        static int RegisterMetaFile(const std::string &normalizedPath, MetaFileAsset *metaFile)
         {
-            const std::string normalizedPath = NormalizeAssetLibraryPath(_path);
             auto &assetLibrary = GetAssetLibrary();
-
-            std::map<std::string, int>::iterator it;
-            it = assetLibrary.assetPath.find(normalizedPath + ".meta");
-
-            // check if meta file already exist
-            if (it != assetLibrary.assetPath.end()) // found
-            {
-                return it->second;
-            }
-
-            // create texture
-            Asset *metaFile = new MetaFileAsset();
-            metaFile->Load(normalizedPath);
             int id = assetLibrary.nextId;
 
             // cache texture
@@ -916,6 +901,135 @@ namespace Canis
             assetLibrary.nextId++;
 
             return id;
+        }
+
+        int LoadMetaFile(const std::string &_path)
+        {
+            const std::string path=NormalizeAssetLibraryPath(_path);
+            auto &library=GetAssetLibrary();
+            if (auto it=library.assetPath.find(path+".meta");it!=library.assetPath.end())return it->second;
+            auto meta=std::make_unique<MetaFileAsset>();
+            meta->Load(path);
+            return RegisterMetaFile(path,meta.release());
+        }
+
+        static unsigned AssetWorkers()
+        {
+#ifdef __EMSCRIPTEN__
+            return 0;
+#else
+            if (const char *value=std::getenv("CANIS_ASSET_WORKERS"))
+                return static_cast<unsigned>(std::clamp(std::atoi(value),0,8));
+            return std::clamp(std::thread::hardware_concurrency(),1u,4u);
+#endif
+        }
+
+        void LoadMetadataParallel(const std::vector<std::string> &paths)
+        {
+            const unsigned workers=AssetWorkers();
+            if (!workers){for(const auto &path:paths)(void)GetMetaFile(path);return;}
+            auto started=std::chrono::steady_clock::now();
+            struct Pending {std::string path;std::unique_ptr<MetaFileAsset> meta;bool existing;};
+            std::vector<Pending> pending;
+            std::set<std::string> seen;
+            for(const auto &raw:paths)
+            {
+                std::string path=NormalizeAssetLibraryPath(raw);
+                if(!seen.insert(path).second || GetAssetLibrary().assetPath.contains(path+".meta"))continue;
+                // Construct on the owner thread: UUID construction uses the shared PRNG.
+                pending.push_back({path,std::make_unique<MetaFileAsset>(),std::filesystem::exists(path+".meta")});
+            }
+            std::vector<std::future<void>> jobs;
+            for(unsigned worker=0;worker<workers;worker++)jobs.push_back(std::async(std::launch::async,[&,worker]{
+                for(size_t i=worker;i<pending.size();i+=workers)
+                    if(pending[i].existing)pending[i].meta->LoadExisting(pending[i].path);
+            }));
+            for(auto &job:jobs)job.get();
+            for(auto &item:pending)
+            {
+                // Metadata creation, UUID collision repair and library mutation stay serialized.
+                if(!item.existing)item.meta->Load(item.path);
+                RegisterMetaFile(item.path,item.meta.release());
+            }
+            Debug::Log("ASSET_PRELOAD metadata=%zu workers=%u elapsedMs=%.1f",pending.size(),workers,
+                std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count());
+        }
+
+        size_t PreloadTexturesParallel(const std::vector<std::string> &paths)
+        {
+            const unsigned workers=AssetWorkers();
+            if(!workers)return 0;
+            auto started=std::chrono::steady_clock::now();
+            std::vector<std::string> pending;std::set<std::string> seen;
+            for(const auto &raw:paths)
+            {
+                const auto path=NormalizeAssetLibraryPath(raw);
+                if(seen.insert(path).second && FindAssetIdForPath(path)<0)pending.push_back(path);
+            }
+            size_t loaded=0;
+            // Budget 128 MiB of final RGBA data per batch (one oversized image may exceed it).
+            // Workers own only CPU buffers. The main thread consumes each bounded batch.
+            for(size_t next=0;next<pending.size();)
+            {
+                std::vector<std::pair<std::string,std::future<DecodedImage>>> jobs;size_t bytes=0;
+                while(next<pending.size() && jobs.size()<workers)
+                {
+                    const auto &path=pending[next];const size_t estimate=ImageRGBAByteSize(path);
+                    if(!jobs.empty() && bytes+estimate>128u*1024u*1024u)break;
+                    ++next;bytes+=estimate;
+                    jobs.emplace_back(path,std::async(std::launch::async,[path]{return DecodeImageRGBA(path);}));
+                }
+                for(auto &[path,job]:jobs)
+                {
+                    DecodedImage image=job.get();
+                    if(image.pixels.empty())
+                    {Debug::Warning("Texture preload skipped '%s': %s",path.c_str(),image.error.c_str());continue;}
+                    auto texture=std::make_unique<TextureAsset>();
+                    if(!texture->LoadDecoded(path,image))continue;
+                    auto &library=GetAssetLibrary();const int id=library.nextId++;
+                    library.assets[id]=texture.release();library.assetPath[path]=id;++loaded;
+                }
+            }
+            if(!pending.empty())Debug::Log("ASSET_PRELOAD textures=%zu workers=%u elapsedMs=%.1f",loaded,workers,
+                std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-started).count());
+            return loaded;
+        }
+
+        void PreloadReferencedTextures(const YAML::Node &root)
+        {
+            if(!AssetWorkers())return;
+            std::set<std::string> visited;std::deque<std::string> pending;std::vector<std::string> textures;
+            std::function<void(const YAML::Node&)> collect=[&](const YAML::Node &node){
+                if(node.IsMap()){for(auto entry:node)collect(entry.second);}
+                else if(node.IsSequence()){for(auto entry:node)collect(entry);}
+                else if(node.IsScalar())
+                {
+                    std::string value=node.as<std::string>();
+                    if(value.starts_with("assets/"))pending.push_back(value);
+                    else if(!value.empty()&&value.size()<=20&&std::all_of(value.begin(),value.end(),[](unsigned char c){return std::isdigit(c);}))
+                    {
+                        try {
+                            auto &map=GetAssetLibrary().uuidAssetPath;
+                            if(auto it=map.find(UUID(std::stoull(value)));it!=map.end())pending.push_back(it->second);
+                        }catch(const std::out_of_range&){}
+                    }
+                }
+            };
+            collect(root);
+            while(!pending.empty())
+            {
+                std::string path=NormalizeAssetLibraryPath(pending.front());pending.pop_front();
+                if(!visited.insert(path).second)continue;
+                std::string ext=std::filesystem::path(path).extension().string();
+                std::transform(ext.begin(),ext.end(),ext.begin(),[](unsigned char c){return std::tolower(c);});
+                if(ext==".png"||ext==".jpg"||ext==".jpeg"||ext==".tga"||ext==".bmp")textures.push_back(path);
+                else if(ext==".material"||ext==".scene"||ext==".terrain")
+                {
+                    try {collect(YAML::LoadFile(path));}
+                    catch(const YAML::Exception &error){Debug::Warning("Asset preload dependency '%s': %s",path.c_str(),error.what());}
+                }
+            }
+            PreloadTexturesParallel(textures);
         }
 
         MetaFileAsset* GetMetaFile(const std::string &_path)

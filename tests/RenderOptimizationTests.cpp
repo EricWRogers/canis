@@ -15,6 +15,7 @@
 #include <Canis/Components.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/RenderVisibility.hpp>
+#include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <SDL3/SDL.h>
 #include <filesystem>
@@ -25,6 +26,80 @@
 
 using namespace Canis;
 static void Check(bool ok,const char* message) { if(!ok)throw std::runtime_error(message); }
+
+// Model-relative and material-file references must share one GPU texture. External
+// images stay lazy, while embedded images retain their decoded pixels/orientation.
+static void ImportedTextureLoading() {
+    using Canis::Scripting::ManagedJson;
+    const auto root=std::filesystem::temp_directory_path()/("canis-texture-loading-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root/"nested");
+    const unsigned char png[]={137,80,78,71,13,10,26,10,0,0,0,13,73,72,68,82,0,0,0,2,0,0,0,2,8,6,0,0,0,114,182,13,36,0,0,0,20,73,68,65,84,120,156,99,248,207,192,240,31,4,89,24,193,52,3,3,0,62,255,6,0,250,92,19,176,0,0,0,0,73,69,78,68,174,66,96,130};
+    std::ofstream image(root/"colors.png",std::ios::binary);image.write(reinterpret_cast<const char*>(png),sizeof(png));image.close();
+    std::ofstream(root/"unused.png") << "Unused image must not be decoded";
+    const float positions[]={0,0,0,1,0,0,0,1,0};
+    std::ofstream binary(root/"mesh.bin",std::ios::binary);binary.write(reinterpret_cast<const char*>(positions),sizeof(positions));binary.close();
+    auto fixture=ManagedJson::parse(R"({
+      "asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+      "meshes":[{"primitives":[{"attributes":{"POSITION":0},"material":0}]}],
+      "buffers":[{"uri":"mesh.bin","byteLength":36}],"bufferViews":[{"buffer":0,"byteLength":36}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]}],
+      "materials":[{"pbrMetallicRoughness":{"baseColorTexture":{"index":0}}}],"textures":[{"source":0}],
+      "images":[{"uri":"nested/../colors.png"},{"uri":"unused.png"}]
+    })");
+    std::ofstream(root/"external.gltf") << fixture.dump();
+    const int shared=AssetManager::LoadTexture((root/"colors.png").string());
+    const auto count=AssetManager::GetAssetLibrary().assets.size();
+    ModelAsset external;
+    Check(external.Load((root/"external.gltf").string()),"External glTF texture fixture failed");
+    Check(AssetManager::GetAssetLibrary().assets.size()==count,"Relative texture path caused a duplicate GPU upload");
+    const std::vector<unsigned char> expected={255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255};
+    auto pixels=[&](int id) {
+        auto texture=AssetManager::GetTexture(id)->GetGLTexture();
+        Check(texture.width==2&&texture.height==2&&texture.id!=0,"Imported texture dimensions missing");
+        std::vector<unsigned char> result(16);glBindTexture(GL_TEXTURE_2D,texture.id);
+        glGetTexImage(GL_TEXTURE_2D,0,GL_RGBA,GL_UNSIGNED_BYTE,result.data());glBindTexture(GL_TEXTURE_2D,0);return result;
+    };
+    Check(pixels(shared)==expected,"External image orientation or colors changed");
+    std::vector<std::string> preload;
+    for(int i=0;i<9;i++)
+    {
+        const auto path=root/("worker-"+std::to_string(i)+".png");
+        std::filesystem::copy_file(root/"colors.png",path);
+        preload.push_back(path.string());
+    }
+    preload.push_back((root/"nested/../worker-0.png").string());
+    preload.push_back((root/"unused.png").string());
+    Check(AssetManager::PreloadTexturesParallel(preload)==9,"Parallel preload lost or duplicated textures");
+    for(size_t i=0;i<9;i++)Check(pixels(AssetManager::LoadTexture(preload[i]))==expected,"Worker decode changed pixels or orientation");
+    Check(AssetManager::PreloadTexturesParallel(preload)==0,"Repeated preload changed the shared cache");
+    Check(AssetManager::LoadTexture(preload[0])==AssetManager::LoadTexture(preload[9]),"Normalized preload alias duplicated texture");
+    Check(AssetManager::GetID((root/"unused.png").string())<0,"Failed background decode poisoned the asset cache");
+    std::filesystem::copy_file(root/"colors.png",root/"unused.png",std::filesystem::copy_options::overwrite_existing);
+    Check(AssetManager::PreloadTexturesParallel({(root/"unused.png").string()})==1,"Failed image could not be retried after repair");
+    // Metadata parsing may run in parallel; UUID repair/registration must remain ordered.
+    std::vector<std::string> metadata;
+    for(int i=0;i<2;i++)
+    {
+        auto path=root/("worker-"+std::to_string(i)+".png");metadata.push_back(path.string());
+        std::ofstream(path.string()+".meta") << "FileType: TEXTURE\nUUID: 792111222333444555\nname: worker\nextension: png\nsize: 0\nmodified: 0\n";
+    }
+    metadata.push_back(preload[2]);metadata.push_back(metadata[0]);
+    AssetManager::LoadMetadataParallel(metadata);
+    auto *first=AssetManager::GetMetaFile(metadata[0]),*second=AssetManager::GetMetaFile(metadata[1]);
+    Check((uint64_t)first->uuid==792111222333444555ull && first->uuid!=second->uuid,"Parallel metadata changed deterministic UUID collision repair");
+    Check(AssetManager::GetPath(second->uuid)==metadata[1],"Repaired metadata path missing from asset manager");
+    Check(std::filesystem::exists(metadata[2]+".meta"),"Missing metadata was not generated");
+    AssetManager::LoadMetadataParallel(metadata);
+    Check(AssetManager::GetMetaFile(metadata[0])==first,"Repeated metadata scan replaced cached objects");
+    fixture["images"]=ManagedJson::array({{{"name","colors"},{"uri","data:image/png;base64,iVBORw0KGgoAAAANSUhEUgAAAAIAAAACCAYAAABytg0kAAAAFElEQVR4nGP4z8DwHwRZGME0AwMAPv8GAPpcE7AAAAAASUVORK5CYII="}}});
+    std::ofstream(root/"embedded.gltf") << fixture.dump();
+    ModelAsset embedded;
+    Check(embedded.Load((root/"embedded.gltf").string()),"Embedded image decoding failed");
+    int extracted=AssetManager::GetID((root/"embedded_textures/colors.tga").string());
+    Check(extracted>=0&&pixels(extracted)==expected,"Embedded image extraction changed orientation or colors");
+    external.Free();embedded.Free();std::filesystem::remove_all(root);
+    std::cout << "Imported textures share GPU cache, ignore unused images, and retain external/embedded pixel orientation\n";
+}
 
 // Imported model queries must use parent transforms just as rendering does.
 static void ImportedHierarchyGeometry() {
@@ -158,6 +233,104 @@ static void RoomOcclusion(Window& window) {
     renderer.OnDestroy();AssetManager::FreeModel(modelId);
 }
 
+
+
+// Read opaque depth after it has been rendered, including a nonzero viewport
+// origin (the right eye of a direct stereo mirror), without texture feedback.
+static void SoftDepthIntersections(Window& window) {
+    auto root=std::filesystem::temp_directory_path()/("canis-soft-depth-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    auto vertex=R"([OPENGL VERSION]
+layout(location=0) in vec3 vertexPosition;
+uniform mat4 P,V,M;out float eyeDepth;
+void main(){vec4 p=M*vec4(vertexPosition,1);eyeDepth=-(V*p).z;gl_Position=P*V*p;}
+)";
+    std::ofstream(root/"soft.vs")<<vertex;
+    std::ofstream(root/"opaque.vs")<<vertex;
+    std::ofstream(root/"opaque.fs")<<"[OPENGL VERSION]\nout vec4 color;void main(){color=vec4(0,0,0,1);}";
+    std::ofstream(root/"soft.fs")<<R"([OPENGL VERSION]
+in float eyeDepth;
+uniform sampler2D softSceneDepth;uniform bool softDepthAvailable;
+uniform vec4 softDepthViewport;uniform mat4 softInverseProjection;out vec4 color;
+void main(){
+ vec2 uv=(gl_FragCoord.xy-softDepthViewport.xy)/softDepthViewport.zw;
+ vec4 p=softInverseProjection*vec4(uv*2.-1.,texture(softSceneDepth,uv).r*2.-1.,1.);
+ float gap=clamp((-p.z/p.w-eyeDepth),0.,1.);
+ color=softDepthAvailable?vec4(gap,gap,gap,1):vec4(1,0,1,1);
+}
+)";
+    std::ofstream(root/"soft.material")<<"shader: {path: '"<<(root/"soft").string()<<"'}\ncolor: [1,1,1,0.5]\nbackFaceCulling: false\n";
+    std::ofstream(root/"opaque.material")<<"shader: {path: '"<<(root/"opaque").string()<<"'}\ncolor: [1,1,1,1]\nbackFaceCulling: false\n";
+    Scene scene;
+    int modelId=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-2,-2,0},{0,0,1},{}},{{2,-2,0},{0,0,1},{}},{{2,2,0},{0,0,1},{}},{{-2,2,0},{0,0,1},{}}};quad.indices={0,1,2,0,2,3};
+    Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({quad}),"Soft depth fixture geometry failed");
+    auto wall=scene.CreateEntity("wall");wall.AddComponent<Transform>()->position=Vector3(0,0,-3);
+    wall.AddComponent<Model>()->modelId=modelId;wall.AddComponent<Material>()->materialId=AssetManager::LoadMaterial((root/"opaque.material").string());
+    auto shaft=scene.CreateEntity("shaft");shaft.AddComponent<Transform>()->position=Vector3(0,0,-2);
+    shaft.AddComponent<Model>()->modelId=modelId;shaft.AddComponent<Material>()->materialId=AssetManager::LoadMaterial((root/"soft.material").string());
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    RenderTarget target;EnsureRenderTarget(target,320,120);
+    auto render=[&](float wallZ,int origin){
+        wall.GetComponent<Transform>().position.z=wallZ;
+        glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);glDisable(GL_SCISSOR_TEST);glViewport(origin,0,160,120);
+        glDepthMask(GL_TRUE);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),160.f/120.f,.1f,100.f),.1f,100.f);
+        renderer.Update(scene.GetRegistry(),1.f/60.f);
+        std::array<unsigned char,4> pixel{};glReadPixels(origin+80,60,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());return pixel;
+    };
+    for(int origin:{0,160}) {
+        const auto near=render(-2.01f,origin),far=render(-3.5f,origin);
+        Check(near[0]<8 && near[1]<8 && near[2]<8,"Soft depth did not fade at the opaque intersection");
+        Check(far[0]>240 && far[1]>240 && far[2]>240,"Soft depth used stale/wrong-eye depth or missing uniforms");
+    }
+    Check(glGetError()==GL_NO_ERROR,"OpenGL error during soft depth copying");
+    renderer.OnDestroy();glBindFramebuffer(GL_FRAMEBUFFER,0);DestroyRenderTarget(target);AssetManager::FreeModel(modelId);
+    std::filesystem::remove_all(root);
+}
+
+static void SinglePassPixels() {
+    if(!GLEW_VERSION_4_1){std::cout<<"Single-pass test skipped: GL 4.1 unavailable\n";return;}
+    Shader mono;
+    mono.CompileSource(R"([OPENGL VERSION]
+layout(location=0) in vec3 vertexPosition;
+layout(location=3) in mat4 instanceM;
+uniform mat4 P,V,M;uniform bool useInstanceMatrix;
+out vec3 worldPosition;flat out float marker;
+void main(){vec4 p=(useInstanceMatrix?instanceM:M)*vec4(vertexPosition,1);worldPosition=p.xyz;marker=1.;gl_Position=P*V*p;}
+)",R"([OPENGL VERSION]
+in vec3 worldPosition;flat in float marker;uniform vec3 cameraPosition;out vec4 color;
+void main(){color=vec4(.4+worldPosition.x*.1+cameraPosition.x,.3+worldPosition.y*.1,.2*marker,1);}
+)","stereo pixel fixture");mono.Link();
+    auto* stereo=mono.StereoVariant();Check(stereo!=nullptr,"Stereo shader compilation failed");
+    Check(stereo==mono.StereoVariant(),"Stereo variant was not cached");
+    ModelAsset model;ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.5f,-.5f,0},{0,0,1},{}},{{.5f,-.5f,0},{0,0,1},{}},{{.5f,.5f,0},{0,0,1},{}},{{-.5f,.5f,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};Check(model.SetRuntimePrimitives({quad}),"Stereo geometry failed");
+    std::vector<Matrix4> models={glm::translate(Matrix4(1),Vector3(-.7f,0,-3)),glm::scale(glm::translate(Matrix4(1),Vector3(.7f,.2f,-2)),Vector3(-.7f,1.1f,1))};
+    RenderTarget target;EnsureRenderTarget(target,320,120);glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);
+    glDisable(GL_SCISSOR_TEST);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);
+    Matrix4 views[2]={glm::translate(Matrix4(1),Vector3(.08f,0,0)),glm::translate(Matrix4(1),Vector3(-.08f,0,0))};
+    Matrix4 projections[2]={glm::frustum(-.12f,.08f,-.075f,.075f,.1f,100.f),glm::frustum(-.08f,.12f,-.075f,.075f,.1f,100.f)};
+    Vector3 eyes[2]={Vector3(-.08f,0,0),Vector3(.08f,0,0)};
+    std::vector<unsigned char> reference(320*120*4),actual(reference.size());
+    glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    for(int eye=0;eye<2;++eye){glViewport(eye*160,0,160,120);mono.Use();mono.SetMat4("P",projections[eye]);mono.SetMat4("V",views[eye]);mono.SetVec3("cameraPosition",eyes[eye]);model.DrawInstanced(mono,models);}
+    glReadPixels(0,0,320,120,GL_RGBA,GL_UNSIGNED_BYTE,reference.data());
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    const GLfloat viewports[]={0,0,160,120,160,0,160,120};glViewportArrayv(0,2,viewports);
+    stereo->Use();stereo->SetMat4("P",projections[0]);stereo->SetMat4("V",views[0]);stereo->SetMat4("stereoInverseClip",glm::inverse(projections[0]*views[0]));
+    for(int eye=0;eye<2;++eye){stereo->SetMat4("stereoClip["+std::to_string(eye)+"]",projections[eye]*views[eye]);stereo->SetMat4("stereoView["+std::to_string(eye)+"]",views[eye]);stereo->SetMat4("stereoProjection["+std::to_string(eye)+"]",projections[eye]);stereo->SetVec3("stereoEyes["+std::to_string(eye)+"]",eyes[eye]);}
+    model.DrawInstanced(*stereo,models);glReadPixels(0,0,320,120,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
+    size_t lit[2]={},differences=0;
+    for(size_t i=0;i<reference.size();i+=4){if(reference[i])++lit[(i/4)%320>=160];for(int c=0;c<3;++c)if(std::abs(int(reference[i+c])-int(actual[i+c]))>1)++differences;}
+    Check(lit[0]>100&&lit[1]>100,"Blank stereo reference eye");Check(differences==0,"Single-pass stereo differs from asymmetric per-eye reference");
+    Check(glGetError()==GL_NO_ERROR,"Single-pass GL error");
+    stereo->UnUse();glBindFramebuffer(GL_FRAMEBUFFER,0);DestroyRenderTarget(target);model.Free();
+    Shader unsupported;unsupported.CompileSource("[OPENGL VERSION]\nuniform vec3 cameraPosition;out vec3 p;void main(){p=cameraPosition;gl_Position=vec4(p,1);}","[OPENGL VERSION]\nin vec3 p;out vec4 color;void main(){color=vec4(p,1);}","unsupported view-dependent vertex");unsupported.Link();
+    Check(unsupported.StereoVariant()==nullptr,"View-dependent vertices must fall back");
+}
+
 static void StereoPreparation(Window& window) {
     Scene scene;
     auto parent=scene.CreateEntity("Parent");parent.AddComponent<Transform>();
@@ -193,6 +366,27 @@ static void StereoPreparation(Window& window) {
         return actual;
     };
     auto initial=verify();verify();
+    if(GLEW_VERSION_4_1) {
+        RenderTarget target;EnsureRenderTarget(target,640,240);
+        glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);glViewport(0,0,320,240);
+        glDepthMask(GL_TRUE);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        const Matrix4 p=glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f);
+        const Matrix4 left=glm::translate(Matrix4(1),Vector3(.032f,0,0)),right=glm::translate(Matrix4(1),Vector3(-.032f,0,0));
+        cached.BeginStereoFrame(Vector3(0));cached.SetStereoViews(left,right,p,p,Vector3(-.032f,0,0),Vector3(.032f,0,0));
+        scene.SetVRCamera(left,p,.1f,100.f);cached.SetStereoPass(1);cached.Update(scene.GetRegistry(),1.f/60.f);cached.EndStereoFrame();
+        std::vector<unsigned char> actual(initial.size());
+        for(int eye=0;eye<2;++eye)glReadPixels(eye*320,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,actual.data()+eye*320*240*4);
+        size_t errors=0;for(size_t i=0;i<actual.size();++i)if(std::abs(int(actual[i])-int(initial[i]))>1)++errors;
+        Check(errors==0,"Renderer single-pass viewport/pixels differ from per-eye reference");
+        auto sun=scene.CreateEntity("Stereo shadow viewport regression");sun.AddComponent<Transform>();
+        auto& light=*sun.AddComponent<DirectionalLight>();
+        cached.BeginStereoFrame(Vector3(0));cached.SetStereoPass(1);
+        cached.Update(scene.GetRegistry(),1.f/60.f);cached.EndStereoFrame();
+        GLfloat rightViewport[4];glGetFloati_v(GL_VIEWPORT,1,rightViewport);
+        Check(rightViewport[0]==320 && rightViewport[2]==320,"Shadow pass collapsed stereo viewports");
+        light.enabled=false;
+        glBindFramebuffer(GL_FRAMEBUFFER,0);DestroyRenderTarget(target);
+    }
     parent.GetComponent<Transform>().position.x=.7f;
     Check(verify()!=initial,"Parent movement retained stale pixels");
     parent.GetComponent<Transform>().scale=Vector3(-.7f,1.2f,1);verify();
@@ -246,6 +440,7 @@ int main(int argc,char** argv) {
         spatial.Query(projection,3,emptyVisibility);
         Check(emptyVisibility==std::vector<unsigned char>(3,0),"Cleared spatial tree retained stale rejection");
         Window window("Renderer tests",320,240,true);
+        ImportedTextureLoading();
         ImportedHierarchyGeometry();
         Time::Init(120);
         Time::StartFrame();SDL_Delay(2200);Time::EndFrame();
@@ -347,6 +542,8 @@ int main(int argc,char** argv) {
         model.Free();
         RoomOcclusion(window);
         StereoPreparation(window);
+        SinglePassPixels();
+        SoftDepthIntersections(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

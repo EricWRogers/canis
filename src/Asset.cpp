@@ -23,6 +23,7 @@
 #include <cctype>
 #include <cstring>
 #include <cstdlib>
+#include <chrono>
 #include <unordered_map>
 
 #include <glm/gtc/quaternion.hpp>
@@ -42,6 +43,19 @@ namespace Canis
 {
     namespace
     {
+        struct AssetLoadTimer
+        {
+            const char* kind;
+            const std::string& path;
+            std::chrono::steady_clock::time_point start=std::chrono::steady_clock::now();
+            ~AssetLoadTimer()
+            {
+                if(const char* enabled=std::getenv("CANIS_PROFILE_ASSET_LOADING");enabled&&std::string(enabled)!="0")
+                    Debug::Log("ASSET_LOAD %s %.3f ms %s",kind,
+                        std::chrono::duration<double,std::milli>(std::chrono::steady_clock::now()-start).count(),path.c_str());
+            }
+        };
+
         bool PrimitiveMatchesNodeFilter(const ModelAsset::Primitive3D &_primitive, i32 _nodeIndex)
         {
             return _nodeIndex < 0 || _primitive.nodeIndex == _nodeIndex;
@@ -649,8 +663,19 @@ namespace Canis
 
     bool TextureAsset::Load(std::string _path)
     {
+        AssetLoadTimer timing{"texture",_path};
         m_path = _path;
         m_texture = LoadImageToGLTexture(_path, GL_RGBA, GL_RGBA);
+        return true;
+    }
+
+    bool TextureAsset::LoadDecoded(const std::string &path, const DecodedImage &image)
+    {
+        AssetLoadTimer timing{"texture-upload",path};
+        GLTexture replacement=UploadDecodedImage(image);
+        if (!replacement.id) return false;
+        if (m_texture.id) glDeleteTextures(1,&m_texture.id);
+        m_texture=replacement;m_path=path;
         return true;
     }
 
@@ -1267,28 +1292,26 @@ namespace Canis
         fout << node;
     }
 
+    bool MetaFileAsset::LoadExisting(const std::string &_path)
+    {
+        YAML::Node root = YAML::LoadFile(_path+".meta");
+        type = StringToFileType(root["FileType"].as<std::string>());
+        uuid = root["UUID"].as<uint64_t>(0);
+        path = _path;
+        name = root["name"].as<std::string>();
+        extension = ToLower(root["extension"].as<std::string>(GetFileExtension(_path)));
+        size = root["size"].as<u64>();
+        modified = root["modified"].as<i64>();
+        if (type == FileType::FILE_UNKNOWN && extension == "cs") type = FileType::CSHARP;
+        if (type == FileType::FILE_UNKNOWN && (extension == "gltf" || extension == "glb" || extension == "obj"))
+            type = FileType::MODEL;
+        return true;
+    }
+
     bool MetaFileAsset::Load(std::string _path)
     {
-        if (FileExists((_path + ".meta").c_str()))
-        {
-            YAML::Node root = YAML::LoadFile(_path+".meta");
-            type = StringToFileType(root["FileType"].as<std::string>());
-            uuid = root["UUID"].as<uint64_t>(0);
-            path = _path;
-            name = root["name"].as<std::string>();
-            extension = ToLower(root["extension"].as<std::string>(GetFileExtension(_path)));
-            size = root["size"].as<u64>();
-            modified = root["modified"].as<i64>();
-
-            if (type == FileType::FILE_UNKNOWN && extension == "cs") type = FileType::CSHARP;
-            if (type == FileType::FILE_UNKNOWN && (extension == "gltf" || extension == "glb" || extension == "obj"))
-                type = FileType::MODEL;
-        }
-        else
-        {
-            CreateMetaFile(_path);
-        }
-
+        if (FileExists((_path + ".meta").c_str()))LoadExisting(_path);
+        else CreateMetaFile(_path);
         return false;
     }
 
@@ -1311,6 +1334,13 @@ namespace Canis
                     *_error += "Invalid glTF image payload.\n";
                 return false;
             }
+
+            // External textures are loaded through AssetManager when a rendered
+            // primitive needs them. Decoding every image here repeats that work
+            // (including unused materials) and retains a second RGBA copy per model.
+            // Embedded/data-URI images still need decoding for texture extraction.
+            if (!_image->uri.empty() && _image->uri.rfind("data:", 0) != 0)
+                return true;
 
             int width = 0;
             int height = 0;
@@ -1646,7 +1676,9 @@ namespace Canis
 
             const std::filesystem::path modelDirectory = _modelPath.parent_path();
             std::filesystem::path texturePath = modelDirectory / image.uri;
-            return texturePath.generic_string();
+            // Match material-file paths so the shared texture cache can reuse
+            // assets referenced through a model-relative ../ path.
+            return texturePath.lexically_normal().generic_string();
         }
 
         Vector4 EvaluateAnimationSampler(const ModelAsset::AnimationSampler3D &_sampler, float _time, bool _rotation)
@@ -1744,6 +1776,7 @@ namespace Canis
 
     bool ModelAsset::Load(std::string _path)
     {
+        AssetLoadTimer timing{"model",_path};
         m_path = _path;
         FreePrimitives();
         m_nodes.clear();

@@ -23,6 +23,7 @@
 #include <tuple>
 #include <unordered_map>
 #include <vector>
+#include <stdexcept>
 
 namespace Canis
 {
@@ -719,6 +720,8 @@ namespace Canis
     void MeshRenderer3DSystem::OnDestroy()
     {
         m_batchCache.reset();
+        if (m_materialSampler) glDeleteSamplers(1, &m_materialSampler);
+        m_materialSampler = 0;
         if (m_trailVbo) glDeleteBuffers(1, &m_trailVbo);
         if (m_trailVao) glDeleteVertexArrays(1, &m_trailVao);
         m_trailVao = m_trailVbo = 0;
@@ -737,6 +740,8 @@ namespace Canis
             glDeleteVertexArrays(1, &m_debugGizmoVao);
 
         DestroyShadowMap();
+        if(m_softDepthTexture) glDeleteTextures(1,&m_softDepthTexture);
+        m_softDepthTexture=0; m_softDepthWidth=m_softDepthHeight=0;
         m_skyboxVbo = 0;
         m_skyboxVao = 0;
         m_colliderDebugVbo = 0;
@@ -1280,11 +1285,47 @@ namespace Canis
     {
         if (m_shader == nullptr)
             return;
+        // Smooth magnification and trilinear minification for 3D materials.
+        // Samplers leave shared texture objects (including pixel-art UI) unchanged.
+        if (!m_materialSampler)
+        {
+            glGenSamplers(1, &m_materialSampler);
+            glSamplerParameteri(m_materialSampler, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_LINEAR);
+            glSamplerParameteri(m_materialSampler, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+            glSamplerParameteri(m_materialSampler, GL_TEXTURE_WRAP_S, GL_REPEAT);
+            glSamplerParameteri(m_materialSampler, GL_TEXTURE_WRAP_T, GL_REPEAT);
+#ifndef __EMSCRIPTEN__
+            if (GLEW_EXT_texture_filter_anisotropic)
+            {
+                GLfloat maximum = 1.0f;
+                glGetFloatv(0x84FF /* GL_MAX_TEXTURE_MAX_ANISOTROPY_EXT */, &maximum);
+                glSamplerParameterf(m_materialSampler, 0x84FE /* GL_TEXTURE_MAX_ANISOTROPY_EXT */, std::min(maximum, 8.0f));
+            }
+#endif
+        }
+        struct MaterialSamplerScope
+        {
+            GLint previous[5]{};
+            explicit MaterialSamplerScope(GLuint sampler)
+            {
+                for (GLuint unit = 0; unit < 5; ++unit)
+                {
+                    glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &previous[unit]);
+                    glBindSampler(unit, sampler);
+                }
+            }
+            ~MaterialSamplerScope()
+            {
+                for (GLuint unit = 0; unit < 5; ++unit)
+                    glBindSampler(unit, static_cast<GLuint>(previous[unit]));
+            }
+        };
         if(!m_batchCache)m_batchCache=std::make_shared<MeshRendererCache>();
         // Scene simulation and bone attachments finish before BeginStereoFrame.
         // Freeze shared eligibility and world transforms for the two eye submissions;
         // visibility, distance sorting, and shader state remain per-view.
         if (!m_stereoFrame || !m_stereoPrepared) {
+            m_effectTime += _deltaTime;
             Profiler::Scope preparation("Render frame preparation", RenderMetrics::ProfileCategory());
             auto& cache = *m_batchCache;
             ++cache.preparationFrame;
@@ -1434,14 +1475,25 @@ namespace Canis
             if (stereo) m_stereoShadowReady = true;
         }
 
+#ifndef __EMSCRIPTEN__
+        if (m_stereoPass == 1) {
+            // glViewport in the shared shadow pass resets ALL indexed viewports.
+            const GLfloat w=float(window->GetScreenWidth()), h=float(window->GetScreenHeight());
+            const GLfloat viewports[]={0,0,w,h,w,0,w,h};
+            glViewportArrayv(0,2,viewports);
+        }
+#endif
         glEnable(GL_DEPTH_TEST);
         glDepthFunc(GL_LESS);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        DrawSkybox(projection, view);
+        if (m_stereoPass != 1) DrawSkybox(projection, view);
+        MaterialSamplerScope materialSamplers(m_materialSampler);
 
         Shader *currentShader = nullptr;
+        bool softDepthReady = false;
+        GLint softDepthViewport[4]{};
 
         auto modelView = _registry.view<Transform, Model>();
         auto& opaqueEntities=m_batchCache->opaqueScratch;
@@ -1461,7 +1513,11 @@ namespace Canis
             Model &modelRenderer = modelView.get<Model>(entityHandle);
             ModelAsset *model = candidate.asset;
 
-            if (hidden || (candidate.cullable && BoundsOutsideFrustum(clip*RenderMatrix(entityHandle,transform),candidate.minimum,candidate.maximum))) {
+            if ((m_stereoPass == 1 && candidate.transparent) ||
+                (m_stereoPass == 2 && !candidate.transparent)) continue;
+            // A center/left-eye visibility query is not a conservative stereo frustum.
+            // Submit a superset in the experimental pass; per-eye remainder keeps normal culling.
+            if (m_stereoPass != 1 && (hidden || (candidate.cullable && BoundsOutsideFrustum(clip*RenderMatrix(entityHandle,transform),candidate.minimum,candidate.maximum)))) {
                 RenderMetrics::Cull(false);continue;
             }
 
@@ -1508,6 +1564,10 @@ namespace Canis
                 }
             }
 
+            if (m_stereoPass == 1) {
+                activeShader = activeShader->StereoVariant();
+                if (!activeShader) throw std::runtime_error("unsupported opaque shader interface");
+            }
             if (currentShader != activeShader)
             {
                 if (currentShader != nullptr)
@@ -1517,7 +1577,21 @@ namespace Canis
                 currentShader->Use();
                 currentShader->SetMat4("P", projection);
                 currentShader->SetMat4("V", view);
+                if (m_stereoPass == 1) {
+                    for(int eye=0;eye<2;++eye) {
+                        currentShader->SetMat4("stereoView["+std::to_string(eye)+"]",m_stereoViews[eye]);
+                        currentShader->SetMat4("stereoProjection["+std::to_string(eye)+"]",m_stereoProjections[eye]);
+                        currentShader->SetVec3("stereoEyes["+std::to_string(eye)+"]",m_stereoEyes[eye]);
+                    }
+                }
                 currentShader->SetVec3("cameraPosition", cameraPosition);
+                if(currentShader->GetUniformLocation("softSceneDepth",0)>=0) {
+                    currentShader->SetBool("softDepthAvailable",softDepthReady);
+                    currentShader->SetInt("softSceneDepth",15);
+                    currentShader->SetVec4("softDepthViewport",Vector4(softDepthViewport[0],softDepthViewport[1],softDepthViewport[2],softDepthViewport[3]));
+                    currentShader->SetMat4("softInverseProjection",glm::inverse(projection));
+                    currentShader->SetFloat("softTime",m_effectTime);
+                }
                 const Color ambientLight = scene->GetEnvironmentAmbientLight();
                 currentShader->SetVec3("ambientLightColor", ambientLight.r, ambientLight.g, ambientLight.b);
                 currentShader->SetFloat("ambientLightIntensity", scene->GetEnvironmentAmbientLightIntensity());
@@ -1552,7 +1626,7 @@ namespace Canis
         const char* disableRooms=std::getenv("CANIS_DISABLE_ROOM_CULLING");
         bool roomQueries=false;
 #ifndef __EMSCRIPTEN__
-        roomQueries=!scene->HasEditorCamera3DOverride() && m_shadowShader && m_skyboxVao &&
+        roomQueries=m_stereoPass == 0 && !scene->HasEditorCamera3DOverride() && m_shadowShader && m_skyboxVao &&
             (!disableRooms || std::string(disableRooms)!="1") && (GLEW_VERSION_3_3 || GLEW_ARB_occlusion_query2);
 #endif
         std::vector<MeshRendererCache::Input> batchInputs;
@@ -2121,10 +2195,57 @@ namespace Canis
 
         {
         RenderMetrics::Scope timing("Transparent geometry");
+        // Copy opaque depth only for shaders that request soft intersections.
+        // A separate texture avoids sampling a framebuffer's attached depth image.
+        bool wantsDepth=false;
+        for(const auto& entry:transparentEntities) {
+            auto* material=_registry.try_get<Material>(entry.entityHandle);
+            if(!material || material->materialId<0) continue;
+            auto* asset=AssetManager::GetMaterial(material->materialId);
+            if(!asset || asset->shaderId<0) continue;
+            auto* shaderAsset=AssetManager::Get<ShaderAsset>(asset->shaderId);
+            if(!shaderAsset) continue;
+            auto* shader=shaderAsset->GetShader();
+            if(!shader->IsLinked())shader->Link();
+            if(shader->GetUniformLocation("softSceneDepth",0)>=0){wantsDepth=true;break;}
+        }
+        GLint savedTexture=0,savedSampler=0,savedActive=GL_TEXTURE0,savedRead=0;
+        if(wantsDepth) {
+            RenderMetrics::Scope depthTiming("Soft volume depth copy");
+            glGetIntegerv(GL_VIEWPORT,softDepthViewport);
+            GLint samples=0,drawFramebuffer=0;glGetIntegerv(GL_SAMPLES,&samples);
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&drawFramebuffer);
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&savedRead);
+            glGetIntegerv(GL_ACTIVE_TEXTURE,&savedActive);
+            glActiveTexture(GL_TEXTURE15);glGetIntegerv(GL_TEXTURE_BINDING_2D,&savedTexture);
+            glGetIntegeri_v(GL_SAMPLER_BINDING,15,&savedSampler);glBindSampler(15,0);
+            if(samples<=1 && softDepthViewport[2]>0 && softDepthViewport[3]>0) {
+                if(!m_softDepthTexture)glGenTextures(1,&m_softDepthTexture);
+                glBindTexture(GL_TEXTURE_2D,m_softDepthTexture);
+                if(m_softDepthWidth!=softDepthViewport[2] || m_softDepthHeight!=softDepthViewport[3]) {
+                    m_softDepthWidth=softDepthViewport[2];m_softDepthHeight=softDepthViewport[3];
+                    glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,m_softDepthWidth,m_softDepthHeight,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
+                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+                    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+                }
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,drawFramebuffer);
+                glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,softDepthViewport[0],softDepthViewport[1],m_softDepthWidth,m_softDepthHeight);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,savedRead);
+                softDepthReady=true;
+            }
+            glActiveTexture(GL_TEXTURE0);
+            if(currentShader){currentShader->UnUse();currentShader=nullptr;}
+        }
         glDepthMask(GL_FALSE);
         for (const TransparentModelEntry &entry : transparentEntities)
             drawEntity(entry.entityHandle);
         glDepthMask(GL_TRUE);
+        if(wantsDepth) {
+            glActiveTexture(GL_TEXTURE15);glBindTexture(GL_TEXTURE_2D,savedTexture);
+            glBindSampler(15,savedSampler);glActiveTexture(savedActive);
+        }
         }
 
         if (currentShader != nullptr)
@@ -2137,6 +2258,7 @@ namespace Canis
             currentShader->UnUse();
         }
 
+        if (m_stereoPass != 1) {
         DrawTrails(_registry, projection, view, cameraPosition);
         {
         RenderMetrics::Scope timing("Debug geometry");
@@ -2144,6 +2266,7 @@ namespace Canis
         DrawDebugGizmoLines(projection, view);
         }
 
+        }
         glDisable(GL_CULL_FACE);
         glDisable(GL_BLEND);
         glDisable(GL_DEPTH_TEST);

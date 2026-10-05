@@ -34,12 +34,13 @@ namespace Canis
     class TextureAsset : public Asset
     {
     private:
-        GLTexture m_texture;
+        GLTexture m_texture{};
         std::string m_path = "";
 
     public:
         bool Load(std::string _path) override;
         bool Reload(std::string _path);
+        bool LoadDecoded(const std::string &path, const struct DecodedImage &image);
         bool Free() override;
         GLTexture GetGLTexture() { return m_texture; }
         GLTexture *GetPointerToTexture() { return &m_texture; }
@@ -182,6 +183,7 @@ namespace Canis
 
         MetaFileAsset() {}
 
+        bool LoadExisting(const std::string &path);
         void CreateMetaFile(std::string _path);
         void Save();
 

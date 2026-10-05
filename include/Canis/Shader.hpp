@@ -1,6 +1,7 @@
 #pragma once
 #include <string>
 #include <vector>
+#include <memory>
 //#include <glm/glm.hpp>
 #include <Canis/Math.hpp>
 #include <unordered_map>
@@ -17,6 +18,9 @@ namespace Canis
         void Compile(const std::string &_vertexShaderFilePath, const std::string &_fragmentShaderFilePath);
         void CompileSource(const std::string &vertex, const std::string &fragment, const std::string &name);
         void Link();
+        // Experimental opaque stereo: one vertex submission, two geometry invocations.
+        // Returns null for unsupported shader interfaces; never replaces the mono program.
+        Shader* StereoVariant();
         void AddAttribute(const std::string &_attributeName);
         void Use();
         void UnUse();
@@ -51,6 +55,9 @@ namespace Canis
         mutable std::unordered_map<std::string, size_t> m_lastValueCashe = {};
 
         std::string m_path = "";
+        std::string m_vertexSource, m_fragmentSource;
+        bool m_stereoAttempted = false;
+        std::unique_ptr<Shader> m_stereoVariant;
 
         void CompileShaderSource(std::string source, const std::string &name, unsigned int &id);
     };

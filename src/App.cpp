@@ -9,6 +9,7 @@
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
+#include <Canis/VR/VRMath.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 
@@ -117,6 +118,9 @@ namespace Canis
         bool editorRuntimeEnabled = false;
         RenderTarget runtimeRenderTarget = {};
         RenderTarget runtimePostProcessTarget = {};
+        RenderTarget stereoOpaqueTarget = {};
+        bool stereoSinglePassFailed = false;
+        bool stereoSinglePassLogged = false;
         RuntimeLaunchOptions launch = {};
         std::vector<RuntimeTimelineEvent> timeline = {};
         size_t nextTimelineEvent = 0u;
@@ -1189,8 +1193,7 @@ namespace Canis
         void LoadProjectAssetMetadata()
         {
             std::vector<std::string> paths = FindFilesInFolder("assets", "");
-            for (const std::string &path : paths)
-                (void)AssetManager::GetMetaFile(path);
+            AssetManager::LoadMetadataParallel(paths);
         }
 
         bool IsLoadableSceneFile(const fs::path &_path)
@@ -2484,21 +2487,113 @@ namespace Canis
             const Vector3 shadowCenter = (runtime.vr->WorldPose(eyes[0].pose).position +
                 runtime.vr->WorldPose(eyes[1].pose).position) * 0.5f;
             if (stereoRenderer) stereoRenderer->BeginStereoFrame(shadowCenter);
+            bool singlePass = false;
+#ifndef __EMSCRIPTEN__
+            const char* stereoOption = std::getenv("CANIS_VR_SINGLE_PASS");
+            singlePass = stereoOption && std::string(stereoOption)=="1" && GLEW_VERSION_4_1 &&
+                stereoRenderer && !runtime.stopEditorVR && !runtime.stereoSinglePassFailed &&
+                eyes[0].width==eyes[1].width && eyes[0].height==eyes[1].height &&
+                runtime.vr->GetDiagnostics().foveation.rfind("off",0)==0;
+#endif
+            bool opaqueReady = false;
+            int renderedEye = 0;
             const bool rendered = runtime.vr->RenderAndEndFrame(
                 [&](const VR::Eye& eye, const Matrix4& view, unsigned int framebuffer)
                 {
                     RenderMetrics::Scope timing("VR eye");
+                    const bool postProcess = (uint64_t)scene.GetEnvironmentPostProcessUUID() != 0;
+                    const int eyeIndex = renderedEye++;
+                    GLint eyeViewport[4], eyeScissor[4];
+                    glGetIntegerv(GL_VIEWPORT, eyeViewport);
+                    glGetIntegerv(GL_SCISSOR_BOX, eyeScissor);
+                    const bool eyeScissorEnabled = glIsEnabled(GL_SCISSOR_TEST);
                     glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+#ifndef __EMSCRIPTEN__
+                    if (singlePass && !opaqueReady) {
+                        RenderMetrics::Scope stereoTiming("VR single-pass opaque");
+                        try {
+                        GLint maxTextureSize=0;glGetIntegerv(GL_MAX_TEXTURE_SIZE,&maxTextureSize);
+                        if(eye.width<=0 || eye.height<=0 || eye.width>maxTextureSize/2 || eye.height>maxTextureSize)
+                            throw std::runtime_error("stereo atlas exceeds texture limits");
+                        EnsureRenderTarget(runtime.stereoOpaqueTarget,eye.width*2,eye.height);
+                        glBindFramebuffer(GL_FRAMEBUFFER,runtime.stereoOpaqueTarget.framebuffer);
+                        if(glCheckFramebufferStatus(GL_FRAMEBUFFER)!=GL_FRAMEBUFFER_COMPLETE)
+                            throw std::runtime_error("stereo framebuffer is incomplete");
+                        glDisable(GL_SCISSOR_TEST);glDepthMask(GL_TRUE);
+                        glViewport(0,0,eye.width,eye.height);
+                        const Color clear=window.GetClearColor();glClearColor(clear.r,clear.g,clear.b,clear.a);
+                        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+                        const GLfloat viewports[]={0,0,float(eye.width),float(eye.height),float(eye.width),0,float(eye.width),float(eye.height)};
+                        glViewportArrayv(0,2,viewports);
+                        Matrix4 views[2];Vector3 positions[2];
+                        for(int i=0;i<2;++i){auto pose=runtime.vr->WorldPose(eyes[i].pose);views[i]=glm::inverse(VR::PoseMatrix(pose));positions[i]=pose.position;}
+                        stereoRenderer->SetStereoViews(views[0],views[1],eyes[0].projection,eyes[1].projection,positions[0],positions[1]);
+                        window.SetRenderSize(eye.width,eye.height);
+                        scene.SetVRCamera(views[0],eyes[0].projection,clipPlanes.x,clipPlanes.y);
+                        stereoRenderer->SetStereoPass(1);
+                            stereoRenderer->Update(scene.GetRegistry(),deltaTime);
+                            opaqueReady=true;
+                            if(!runtime.stereoSinglePassLogged){Debug::Log("VR single-pass opaque active: geometry invocations, two indexed viewports; per-eye transparency/UI/post");runtime.stereoSinglePassLogged=true;}
+                        } catch(const std::exception& e) {
+                            Debug::Warning("VR single-pass fallback: %s",e.what());
+                            runtime.stereoSinglePassFailed=true;singlePass=false;
+                            glDepthMask(GL_TRUE);
+                        }
+                        stereoRenderer->SetStereoPass(0);
+                        glBindFramebuffer(GL_FRAMEBUFFER,framebuffer);
+                        glViewport(eyeViewport[0],eyeViewport[1],eyeViewport[2],eyeViewport[3]);
+                    }
+#endif
+                    if (postProcess || opaqueReady)
+                    {
+                        // Process eyes separately in HDR; never blur across the stereo seam.
+                        EnsureRenderTarget(runtime.runtimeRenderTarget, eye.width, eye.height);
+                        glBindFramebuffer(GL_FRAMEBUFFER, runtime.runtimeRenderTarget.framebuffer);
+                        glDisable(GL_SCISSOR_TEST);
+                        glViewport(0, 0, eye.width, eye.height);
+                        const Color clear = window.GetClearColor();
+                        glClearColor(clear.r, clear.g, clear.b, clear.a);
+                        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+                    }
+                    if (opaqueReady) {
+                        glBindFramebuffer(GL_READ_FRAMEBUFFER,runtime.stereoOpaqueTarget.framebuffer);
+                        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,runtime.runtimeRenderTarget.framebuffer);
+                        glBlitFramebuffer(eyeIndex*eye.width,0,(eyeIndex+1)*eye.width,eye.height,
+                            0,0,eye.width,eye.height,GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT,GL_NEAREST);
+                        glBindFramebuffer(GL_FRAMEBUFFER,runtime.runtimeRenderTarget.framebuffer);
+                    }
                     window.SetRenderSize(eye.width, eye.height);
                     scene.SetVRCamera(view, eye.projection, clipPlanes.x, clipPlanes.y);
                     // Render world geometry and world-space canvases with the eye camera.
                     // Screen-space UI still requires a separate XR composition path.
                     if (!runtime.stopEditorVR)
                     {
-                        if (auto* renderer = scene.GetSystem<MeshRenderer3DSystem>())
+                        if (auto* renderer = scene.GetSystem<MeshRenderer3DSystem>()) {
+                            renderer->SetStereoPass(opaqueReady ? 2 : 0);
                             renderer->Update(scene.GetRegistry(), deltaTime);
+                            renderer->SetStereoPass(0);
+                        }
                         if (auto* ui = scene.GetSystem<SpriteRenderer2DSystem>())
                             ui->Update(scene.GetRegistry(), deltaTime);
+                    }
+                    if (postProcess || opaqueReady)
+                    {
+                        const auto result = ApplyScenePostProcess(scene,
+                            runtime.runtimeRenderTarget.framebuffer,
+                            runtime.runtimeRenderTarget.colorTexture,
+                            runtime.runtimeRenderTarget.depthTexture,
+                            eye.width, eye.height, &runtime.runtimePostProcessTarget);
+                        glDisable(GL_SCISSOR_TEST);
+                        glBindFramebuffer(GL_READ_FRAMEBUFFER, result.framebuffer);
+                        glBindFramebuffer(GL_DRAW_FRAMEBUFFER, framebuffer);
+                        glBlitFramebuffer(0, 0, eye.width, eye.height,
+                            eyeViewport[0], eyeViewport[1],
+                            eyeViewport[0]+eyeViewport[2], eyeViewport[1]+eyeViewport[3],
+                            GL_COLOR_BUFFER_BIT, GL_NEAREST);
+                        glBindFramebuffer(GL_FRAMEBUFFER, framebuffer);
+                        glViewport(eyeViewport[0], eyeViewport[1], eyeViewport[2], eyeViewport[3]);
+                        glScissor(eyeScissor[0], eyeScissor[1], eyeScissor[2], eyeScissor[3]);
+                        if (eyeScissorEnabled) glEnable(GL_SCISSOR_TEST);
                     }
                 }, error);
             // Also reset after skipped/failed XR frames; desktop/editor renders own their map.
@@ -2782,6 +2877,7 @@ namespace Canis
             Debug::Log("VR summary: frames=%llu eyes=%llu skipped=%llu lastRenderCpuMs=%.3f", static_cast<unsigned long long>(d.frames), static_cast<unsigned long long>(d.renderedEyes), static_cast<unsigned long long>(d.skippedFrames), d.renderCpuMs);
             runtime->vr.reset();
         }
+        DestroyRenderTarget(runtime->stereoOpaqueTarget);
         DestroyRenderTarget(runtime->runtimeRenderTarget);
         DestroyRenderTarget(runtime->runtimePostProcessTarget);
         m_editor = nullptr;

@@ -401,3 +401,68 @@ This guide is intentionally broad. Good next docs to add later would be:
 - an asset pipeline guide
 - an editor guide
 - a scripting cookbook with examples
+
+## Experimental Single-Pass Opaque VR
+
+Set `CANIS_VR_SINGLE_PASS=1` before launching with `--vr` or `--vr-sim` to
+experiment with submitting opaque world meshes once for both eyes. Leave it unset
+(or set it to `0`) for the established two-pass renderer. This does not change the
+requested OpenGL version: the desktop VR context requests 4.5, and the experiment
+requires 4.1 viewport arrays and geometry-shader invocations. It does not require
+`OVR_multiview`, which is absent on the tested RX 7700S Mesa desktop driver even
+though that driver supports OpenGL 4.6.
+
+The pass renders opaque geometry to two indexed viewports in a shared HDR atlas.
+Cached shader variants run the existing vertex shader once per submitted vertex
+and emit triangles for each eye from its world position. Existing object
+instancing and model transforms are retained. Per-eye camera position is supplied
+to fragment shaders for specular lighting. The shared directional shadow map is
+still rendered once. Color and depth are then copied to each eye's intermediate
+buffer before its skybox, transparent objects, trails, debug drawing, world UI and
+post-processing. Bloom never crosses the stereo seam. OpenXR swapchain acquisition,
+release, projection submission and comfort fade use the established per-eye path.
+
+This is a geometry-shader-based opaque optimization, not hardware multiview or a
+single pass for the entire frame. Shader variants support the engine's ordinary
+`P`/`V` world-mesh contract with `vec3 worldPosition` or `fragmentWorldPos` outputs.
+View-dependent vertex deformation, unknown interfaces and failed variants cause
+fallback to the two-pass renderer for the remainder of the application session.
+Shader recompilation invalidates cached variants. Unsupported GL versions,
+unequal eye dimensions, active hardware foveation, or an oversized/incomplete
+stereo framebuffer also retain/fall back to two-pass rendering. The pass submits
+a conservative opaque superset instead of applying left-eye occlusion results to
+both eyes. A scene with heavy hidden geometry or costly geometry shaders may lose
+performance; measure representative scenes and actual headset resolution.
+
+Validation in MatrixMechanic includes asymmetric projection / per-eye shading
+pixel checks, existing instanced models with mirrored scales, renderer viewport
+checks, and a 13-view stereo scene comparison. Run
+`python3 scripts/halo/compare-stereo.py` from the game repository to reproduce the
+on/off capture and timing comparison. GPU timer-query results and CPU submission
+times exclude headset compositor cost; simulated VR does not establish headset
+frame pacing or comfort. The feature remains opt-in pending physical headset
+validation.
+
+
+## Soft Intersections for Transparent Meshes
+
+A transparent material whose main shader declares an active `softSceneDepth`
+sampler opts into an opaque-depth snapshot before transparent geometry. The
+renderer supplies `softDepthAvailable`, `softDepthViewport` (x, y, width, height),
+`softInverseProjection`, and `softTime` (simulation seconds, advanced once per
+stereo frame). Texture unit 15 is reserved while drawing these materials; custom
+material textures must not occupy that unit. Its prior texture and sampler are
+restored afterward. The snapshot is a separate depth texture, never the depth
+attachment currently being rendered into. Materials without this sampler incur
+no depth copy. The current implementation detects the main material shader,
+not independent material-slot shaders.
+
+Use `(gl_FragCoord.xy - softDepthViewport.xy) / softDepthViewport.zw` to sample
+the snapshot, reconstruct its view position with `softInverseProjection`, and
+compare linear eye depths for an intersection fade. The viewport origin matters
+for direct stereo mirrors. Single-pass opaque rendering is compatible: its
+per-eye depth transfer happens before this transparent pass. A depth-bearing,
+single-sampled draw target is required; for multisampled targets the availability
+uniform is false and the shader must omit the depth fade. The built-in Cairo
+light shafts demonstrate source UV fade, camera fade, inverted Fresnel, and
+optional animated cloud modulation on top of this depth support.

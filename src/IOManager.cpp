@@ -97,6 +97,49 @@ namespace Canis
 		return true;
 	}
 
+    size_t ImageRGBAByteSize(const std::string &path)
+    {
+        int width=0,height=0,channels=0;
+        if (!stbi_info(path.c_str(), &width, &height, &channels) || width<=0 || height<=0)
+            return 0;
+        return static_cast<size_t>(width)*static_cast<size_t>(height)*4;
+    }
+
+    DecodedImage DecodeImageRGBA(const std::string &path)
+    {
+        DecodedImage image;
+        int channels=0;
+        // Never mutate stb's process-global flip flag from a worker.
+        stbi_set_flip_vertically_on_load_thread(false);
+        unsigned char *pixels=stbi_load(path.c_str(), &image.width, &image.height, &channels, 4);
+        if (pixels)
+        {
+            try { image.pixels.assign(pixels,pixels+static_cast<size_t>(image.width)*image.height*4); }
+            catch (...) { stbi_image_free(pixels); throw; }
+            stbi_image_free(pixels);
+        }
+        else image.error=stbi_failure_reason()?stbi_failure_reason():"image decode failed";
+        return image;
+    }
+
+    GLTexture UploadDecodedImage(const DecodedImage &image)
+    {
+        GLTexture texture{};
+        if (image.width<=0 || image.height<=0 || image.pixels.size()!=static_cast<size_t>(image.width)*image.height*4)
+            return texture;
+        texture.width=image.width;texture.height=image.height;
+        glGenTextures(1,&texture.id);
+        glBindTexture(GL_TEXTURE_2D,texture.id);
+        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,image.width,image.height,0,GL_RGBA,GL_UNSIGNED_BYTE,image.pixels.data());
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR_MIPMAP_NEAREST);
+        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        glGenerateMipmap(GL_TEXTURE_2D);
+        glBindTexture(GL_TEXTURE_2D,0);
+        return texture;
+    }
+
 	GLTexture LoadImageToGLTexture(std::string filePath, int sourceFormat, int format)
 	{
 		GLTexture texture = {};

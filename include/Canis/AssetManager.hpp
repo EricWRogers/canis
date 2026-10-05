@@ -7,6 +7,8 @@
 #include <Canis/Debug.hpp>
 #include <Canis/AssetHandle.hpp>
 
+namespace YAML { class Node; }
+
 namespace Canis
 {
     namespace AssetManager
@@ -20,6 +22,10 @@ namespace Canis
         };
 
         AssetLibrary &GetAssetLibrary();
+
+        void LoadMetadataParallel(const std::vector<std::string> &paths);
+        size_t PreloadTexturesParallel(const std::vector<std::string> &paths);
+        void PreloadReferencedTextures(const YAML::Node &root);
 
         bool Has(std::string _name);
         int LoadMetaFile(const std::string &_path);

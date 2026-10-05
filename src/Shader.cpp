@@ -12,6 +12,7 @@
 #include <vector>
 #include <fstream>
 #include <sstream>
+#include <regex>
 
 namespace Canis
 {
@@ -72,6 +73,8 @@ namespace Canis
     void Shader::CompileSource(const std::string &vertex, const std::string &fragment, const std::string &name)
     {
         m_path = name;
+        m_vertexSource = vertex; m_fragmentSource = fragment;
+        m_stereoVariant.reset(); m_stereoAttempted = false;
 
         if (m_programId != 0)
         {
@@ -115,6 +118,99 @@ namespace Canis
 
         CompileShaderSource(vertex, name+":vertex", m_vertexShaderId);
         CompileShaderSource(fragment, name+":fragment", m_fragmentShaderId);
+    }
+
+
+    Shader* Shader::StereoVariant()
+    {
+#ifndef __EMSCRIPTEN__
+        if (m_stereoAttempted) return m_stereoVariant.get();
+        m_stereoAttempted = true;
+        if (!GLEW_VERSION_4_1) return nullptr;
+        // Restrict this experiment to ordinary world-mesh shaders. Camera-facing
+        // vertex deformation, interface blocks and explicit clip distances need
+        // a separately authored stereo implementation.
+        std::string vertex = std::regex_replace(m_vertexSource, std::regex(R"(/\*[\s\S]*?\*/|//[^\n]*)"), "");
+        std::string fragment = m_fragmentSource;
+        if (vertex.find("cameraPosition") != std::string::npos ||
+            vertex.find("gl_ClipDistance") != std::string::npos ||
+            vertex.find("gl_Layer") != std::string::npos ||
+            vertex.find("gl_ViewportIndex") != std::string::npos ||
+            vertex.find("gl_PointSize") != std::string::npos) return nullptr;
+        auto countToken = [&](const char* token) {
+            const std::regex pattern(std::string("\\b")+token+"\\b");
+            return std::distance(std::sregex_iterator(vertex.begin(),vertex.end(),pattern),std::sregex_iterator());
+        };
+        // Only the usual P*V world-position transform may depend on the view.
+        if(countToken("P")!=2 || countToken("V")!=2 || countToken("gl_Position")!=1 ||
+           fragment.find("gl_PrimitiveID")!=std::string::npos) return nullptr;
+        const std::regex output(R"(\b(?:(flat|smooth|noperspective)\s+)?out\s+(float|vec[234]|mat[234]|int|ivec[234]|uint|uvec[234])\s+(\w+)\s*;)");
+        struct Varying { std::string qualifier, type, name; };
+        std::vector<Varying> varyings;
+        for (std::sregex_iterator i(vertex.begin(), vertex.end(), output), end; i != end; ++i)
+            varyings.push_back({(*i)[1], (*i)[2], (*i)[3]});
+        if (varyings.empty()) return nullptr;
+        std::string geometry = "#version 410 core\nlayout(triangles, invocations=2) in;\nlayout(triangle_strip,max_vertices=3) out;\nuniform mat4 stereoView[2],stereoProjection[2];\nuniform vec3 stereoEyes[2];\n";
+        for (const auto& v : varyings)
+        {
+            const std::string q = v.qualifier.empty() ? "" : v.qualifier + " ";
+            geometry += q+"in "+v.type+" stereo_"+v.name+"[];\n"+q+"out "+v.type+" "+v.name+";\n";
+            vertex = std::regex_replace(vertex, std::regex("\\b"+v.name+"\\b"), "stereo_"+v.name);
+        }
+        const std::regex eyeUniform(R"(uniform\s+vec3\s+cameraPosition\s*;)");
+        const bool fragmentEye = std::regex_search(fragment, eyeUniform);
+        if (!fragmentEye && fragment.find("cameraPosition") != std::string::npos) return nullptr;
+        if (fragmentEye)
+        {
+            fragment = std::regex_replace(fragment, eyeUniform, "flat in vec3 cameraPosition;");
+            geometry += "flat out vec3 cameraPosition;\n";
+        }
+        std::string position;
+        // Preserve world-space precision at large scene coordinates. Reversing a
+        // projected position loses depth precision and changes coplanar surfaces.
+        for(const auto& v:varyings)
+            if(v.type=="vec3" && (v.name=="worldPosition" || v.name=="fragmentWorldPos"))
+                position="stereoProjection[eye]*stereoView[eye]*vec4(stereo_"+v.name+"[i],1)";
+        if(position.empty()) return nullptr;
+        geometry += "void main(){int eye=gl_InvocationID;for(int i=0;i<3;i++){gl_ViewportIndex=eye;gl_Position="+position+";";
+        if (fragmentEye) geometry += "cameraPosition=stereoEyes[eye];";
+        for (const auto& v : varyings) geometry += v.name+"=stereo_"+v.name+"[i];";
+        geometry += "EmitVertex();}EndPrimitive();}\n";
+        auto version = [](std::string source) {
+            const std::string marker = "[OPENGL VERSION]";
+            auto p = source.find(marker);
+            if (p != std::string::npos) source.replace(p, marker.size(), "#version 410 core");
+            return source;
+        };
+        vertex=version(vertex); fragment=version(fragment);
+        GLuint shaders[3] = {glCreateShader(GL_VERTEX_SHADER),glCreateShader(GL_GEOMETRY_SHADER),glCreateShader(GL_FRAGMENT_SHADER)};
+        const std::string sources[] = {vertex,geometry,fragment};
+        bool valid=true;
+        for (int i=0;i<3;++i)
+        {
+            const char* source=sources[i].c_str();glShaderSource(shaders[i],1,&source,nullptr);glCompileShader(shaders[i]);
+            GLint status=0;glGetShaderiv(shaders[i],GL_COMPILE_STATUS,&status);
+            if (!status) {
+                char log[2048];glGetShaderInfoLog(shaders[i],sizeof(log),nullptr,log);
+                Debug::Warning("Stereo variant unavailable for %s: %s",m_path.c_str(),log);valid=false;break;
+            }
+        }
+        auto variant=std::make_unique<Shader>();
+        if (valid) {
+            variant->m_programId=glCreateProgram();
+            for (size_t i=0;i<m_attributes.size();++i)glBindAttribLocation(variant->m_programId,i,m_attributes[i].c_str());
+            for (auto shader:shaders)glAttachShader(variant->m_programId,shader);
+            glLinkProgram(variant->m_programId);
+            GLint status=0;glGetProgramiv(variant->m_programId,GL_LINK_STATUS,&status);valid=status!=0;
+            if(!valid){char log[2048];glGetProgramInfoLog(variant->m_programId,sizeof(log),nullptr,log);Debug::Warning("Stereo link unavailable for %s: %s",m_path.c_str(),log);}
+            for(auto shader:shaders)glDetachShader(variant->m_programId,shader);
+        }
+        for(auto shader:shaders)glDeleteShader(shader);
+        if(valid){variant->m_isLinked=true;variant->m_path=m_path+":stereo";m_stereoVariant=std::move(variant);}
+        return m_stereoVariant.get();
+#else
+        return nullptr;
+#endif
     }
 
     void Shader::Link()

@@ -9,6 +9,17 @@
 
 namespace Canis
 {
+    struct DecodedImage
+    {
+        int width = 0, height = 0;
+        std::vector<unsigned char> pixels;
+        std::string error;
+    };
+    // CPU-only, thread-local stb settings; safe on asset workers.
+    DecodedImage DecodeImageRGBA(const std::string &path);
+    size_t ImageRGBAByteSize(const std::string &path);
+    // Requires the rendering thread's current GL context.
+    GLTexture UploadDecodedImage(const DecodedImage &image);
 	extern bool ReadFileToBuffer(std::string filePath, std::vector<unsigned char> &buffer);
 
 	extern GLTexture LoadImageToGLTexture(std::string filePath, int sourceFormat, int format);
