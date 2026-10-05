@@ -1048,6 +1048,10 @@ namespace Canis
 
     void MeshRenderer3DSystem::DestroyShadowMap()
     {
+        if(m_staticShadowTexture)glDeleteTextures(1,&m_staticShadowTexture);
+        if(m_staticShadowFramebuffer)glDeleteFramebuffers(1,&m_staticShadowFramebuffer);
+        m_staticShadowTexture=m_staticShadowFramebuffer=0;
+        m_staticShadowValid=false;m_staticShadowCasters.clear();
         if (m_shadowDepthTexture != 0)
         {
             glDeleteTextures(1, &m_shadowDepthTexture);
@@ -1099,8 +1103,11 @@ namespace Canis
         const Matrix4 lightOrientation = glm::lookAt(Vector3(0.0f), _directionalLightDirection, lightUp);
         Vector3 centerInLight = Vector3(lightOrientation * Vector4(_cameraPosition, 1.0f));
         const float worldUnitsPerTexel = (shadowExtent * 2.0f) / kDirectionalShadowMapSize;
-        centerInLight.x = std::round(centerInLight.x / worldUnitsPerTexel) * worldUnitsPerTexel;
-        centerInLight.y = std::round(centerInLight.y / worldUnitsPerTexel) * worldUnitsPerTexel;
+        // Integral texel blocks keep world-space texels aligned while allowing a
+        // static shadow bake to survive normal head motion inside an 8m region.
+        const float stableStep=std::max(1.f,std::floor(8.f/worldUnitsPerTexel))*worldUnitsPerTexel;
+        for(int axis=0;axis<3;++axis)
+            centerInLight[axis]=std::round(centerInLight[axis]/stableStep)*stableStep;
         const Vector3 shadowCenter = Vector3(glm::inverse(lightOrientation) * Vector4(centerInLight, 1.0f));
         const Vector3 lightPosition = shadowCenter - (_directionalLightDirection * shadowDistance);
 
@@ -1152,7 +1159,53 @@ namespace Canis
             glGetUniformLocation(m_shadowShader->GetProgramID(),"useInstanceMatrix")>=0;
 
         auto modelView = _registry.view<Transform, Model>();
+        auto isStatic=[&](const auto& candidate) {
+            const auto& model=_registry.get<Model>(candidate.handle);
+            return model.staticModel && !candidate.asset->HasDeformingGeometry() &&
+                !_registry.try_get<ModelAnimation>(candidate.handle);
+        };
+        const char* disabledCache=std::getenv("CANIS_DISABLE_STATIC_SHADOW_CACHE");
+        bool cacheEnabled=!disabledCache || std::string(disabledCache)!="1";
+        std::vector<StaticShadowCaster> staticCasters;
+        for(const auto& candidate:m_batchCache->candidates) {
+            const auto& model=_registry.get<Model>(candidate.handle);
+            if(model.castShadow && isStatic(candidate))
+                staticCasters.push_back({candidate.asset,candidate.asset->GetGeometryRevision(),model.nodeIndex,
+                    model.applyNodeTransform,RenderMatrix(candidate.handle,_registry.get<Transform>(candidate.handle))});
+        }
+        if(cacheEnabled && !m_staticShadowTexture) {
+            glGenTextures(1,&m_staticShadowTexture);glBindTexture(GL_TEXTURE_2D,m_staticShadowTexture);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
+            glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+            glGenFramebuffers(1,&m_staticShadowFramebuffer);glBindFramebuffer(GL_FRAMEBUFFER,m_staticShadowFramebuffer);
+            glFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,m_staticShadowTexture,0);
+#if defined(__EMSCRIPTEN__)
+            const GLenum cacheDrawBuffer=GL_NONE;glDrawBuffers(1,&cacheDrawBuffer);
+#else
+            glDrawBuffer(GL_NONE);
+#endif
+            glReadBuffer(GL_NONE);
+            cacheEnabled=glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE;
+            glBindFramebuffer(GL_FRAMEBUFFER,m_shadowFramebuffer);
+            if(!cacheEnabled) {
+                glDeleteTextures(1,&m_staticShadowTexture);m_staticShadowTexture=0;
+                glDeleteFramebuffers(1,&m_staticShadowFramebuffer);m_staticShadowFramebuffer=0;
+                m_staticShadowValid=false;
+            }
+        }
+        const bool cacheHit=cacheEnabled && m_staticShadowValid && staticCasters==m_staticShadowCasters &&
+            m_shadowLightSpaceMatrix==m_staticShadowMatrix && m_staticShadowProgram==m_shadowShader->GetProgramID();
+        if(cacheHit) {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,m_staticShadowFramebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,m_shadowFramebuffer);
+            glBlitFramebuffer(0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER,m_shadowFramebuffer);
+        }
         m_batchCache->visibility.Query(m_shadowLightSpaceMatrix,m_batchCache->candidates.size(),m_batchCache->hiddenCandidates);
+        // Cache contains only static depth; dynamic casters are composed every frame.
+        for(int phase=0;phase<2;++phase) {
+        if(phase==0 && cacheHit)continue;
+        shadowBatches.clear();
         size_t candidateIndex=0;
         for (const auto& candidate : m_batchCache->candidates)
         {
@@ -1161,7 +1214,7 @@ namespace Canis
             Transform &transform = modelView.get<Transform>(entityHandle);
             Model &modelRenderer = modelView.get<Model>(entityHandle);
             ModelAsset *model = candidate.asset;
-            if (!modelRenderer.castShadow) continue;
+            if (!modelRenderer.castShadow || isStatic(candidate)!=(phase==0)) continue;
 
             if (hidden || (candidate.cullable && BoundsOutsideFrustum(m_shadowLightSpaceMatrix*RenderMatrix(entityHandle,transform),candidate.minimum,candidate.maximum))) {
                 RenderMetrics::Cull(true);continue;
@@ -1203,6 +1256,16 @@ namespace Canis
         for (const auto& [key,matrices]:shadowBatches)
             if(auto* model=AssetManager::GetModel(std::get<0>(key)))
                 model->DrawInstanced(*m_shadowShader,matrices,-1,Color(1.f),std::get<1>(key),std::get<2>(key));
+        if(phase==0 && cacheEnabled) {
+            glBindFramebuffer(GL_READ_FRAMEBUFFER,m_shadowFramebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER,m_staticShadowFramebuffer);
+            glBlitFramebuffer(0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
+            glBindFramebuffer(GL_FRAMEBUFFER,m_shadowFramebuffer);
+            m_staticShadowCasters=staticCasters;m_staticShadowMatrix=m_shadowLightSpaceMatrix;
+            m_staticShadowProgram=m_shadowShader->GetProgramID();m_staticShadowValid=true;
+        }
+        }
+        if(!cacheEnabled)m_staticShadowValid=false;
         RenderMetrics::ShadowPass(false);
         m_shadowShader->UnUse();
 
@@ -1669,7 +1732,7 @@ namespace Canis
                 }
             }
 
-            const bool canBatch = modelRenderer.staticModel &&
+            const bool canBatch = modelRenderer.staticModel && !modelRenderer.bakedVisibility &&
                 RenderMetrics::InstancingEnabled() &&
                 !_registry.try_get<Terrain>(entry.entityHandle) &&
                 !AssetManager::GetModel(modelRenderer.modelId)->HasDeformingGeometry() &&
@@ -1992,6 +2055,15 @@ namespace Canis
                 }
             }
 
+            VisibilityView visibility;
+            visibility.count=m_stereoPass==1?2:1;
+            for(int eye=0;eye<visibility.count;++eye) {
+                visibility.clip[eye]=m_stereoPass==1?m_stereoProjections[eye]*m_stereoViews[eye]:projection*view;
+                visibility.eye[eye]=m_stereoPass==1?m_stereoEyes[eye]:cameraPosition;
+            }
+            const char* disabledBake=std::getenv("CANIS_DISABLE_BAKED_VISIBILITY");
+            const bool useVisibility=modelRenderer.staticModel && modelRenderer.bakedVisibility && !pose &&
+                !_registry.try_get<ModelAnimation>(entityHandle) && !EntityUsesTransparency(_registry,entityHandle) && (!disabledBake || std::string(disabledBake)!="1");
             model->Draw(
                 *currentShader,
                 RenderMatrix(entityHandle,transform),
@@ -2001,7 +2073,8 @@ namespace Canis
                 slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides,
                 modelRenderer.nodeIndex,
                 modelRenderer.applyNodeTransform,
-                materialAsset);
+                materialAsset,
+                useVisibility?&visibility:nullptr);
         };
 
         auto drawStaticBatch = [&](const StaticModelBatch &_batch) -> void

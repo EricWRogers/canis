@@ -1200,6 +1200,8 @@ namespace Canis
         i32 nodeIndex = -1;
         bool applyNodeTransform = true;
         bool staticModel = false;
+        // Opt-in contract: baked mesh remains opaque, rigid and undeformed.
+        bool bakedVisibility = false;
         bool castShadow = true;
         Color color = Color(1.0f);
     };

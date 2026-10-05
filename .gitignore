@@ -15,3 +15,5 @@ build/
 
 /managed/**/bin/
 /managed/**/obj/
+
+__pycache__/

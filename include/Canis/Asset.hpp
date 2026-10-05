@@ -5,6 +5,7 @@
 #include <map>
 
 #include <Canis/Shader.hpp>
+#include <Canis/BakedVisibility.hpp>
 #include <Canis/Data/GLTexture.hpp>
 #include <Canis/Data/Character.hpp>
 
@@ -667,7 +668,8 @@ namespace Canis
             const std::vector<MaterialAsset*> *_slotMaterialOverrides = nullptr,
             i32 _nodeIndex = -1,
             bool _applyNodeTransform = true,
-            const MaterialAsset *_baseMaterial = nullptr);
+            const MaterialAsset *_baseMaterial = nullptr,
+            const VisibilityView *_visibility = nullptr);
         void DrawInstanced(
             Shader &_shader,
             const std::vector<Matrix4> &_modelMatrices,
@@ -708,6 +710,8 @@ namespace Canis
         std::vector<Matrix4> m_bindLocalMatrices = {};
         Pose3D m_sharedPose = {};
         u64 m_geometryRevision = 0u;
+        BakedVisibility m_bakedVisibility;
+        std::vector<unsigned char> m_bakedRejected;
         mutable std::map<std::pair<i32,bool>,std::pair<Vector3,Vector3>> m_boundsCache;
 
         void EnsurePose(Pose3D &_pose) const;

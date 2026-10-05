@@ -70,6 +70,20 @@ namespace Canis
         unsigned int m_shadowFramebuffer = 0;
         unsigned int m_shadowDepthTexture = 0;
         Matrix4 m_shadowLightSpaceMatrix = Matrix4(1.0f);
+        unsigned int m_staticShadowTexture=0, m_staticShadowFramebuffer=0;
+        bool m_staticShadowValid=false;
+        Matrix4 m_staticShadowMatrix{1};
+        int m_staticShadowProgram=0;
+        struct StaticShadowCaster {
+            const void* asset=nullptr;
+            uint64_t revision=0;
+            int node=-1;
+            bool applyNode=true;
+            Matrix4 matrix{1};
+            bool operator==(const StaticShadowCaster&) const = default;
+        };
+        std::vector<StaticShadowCaster> m_staticShadowCasters;
+
 
         void CreateSkyboxGeometry();
         void DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view);

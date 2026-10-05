@@ -398,6 +398,81 @@ static void StereoPreparation(Window& window) {
     cached.OnDestroy();AssetManager::FreeModel(id);
 }
 
+static void VertexColorsSurviveInstancing() {
+    ModelAsset model;ModelAsset::PrimitiveBuild3D tri;
+    tri.vertices={{{-.8f,-.8f,0},{0,0,1},{},Color(1,0,0,1)},{{.8f,-.8f,0},{0,0,1},{},Color(0,1,0,1)},{{0,.8f,0},{0,0,1},{},Color(0,0,1,1)}};
+    tri.indices={0,1,2};Check(model.SetRuntimePrimitives({tri}),"Vertex color fixture failed");
+    Shader shader;shader.CompileSource("[OPENGL VERSION]\nlayout(location=0)in vec3 p;layout(location=7)in vec4 c;out vec4 color;void main(){gl_Position=vec4(p,1);color=c;}",
+        "[OPENGL VERSION]\nin vec4 color;out vec4 result;void main(){result=color;}","vertex colors after shadow instancing");shader.Link();shader.Use();
+    glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);
+    std::vector<unsigned char> before(320*240*4),after(before.size());
+    glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);model.Draw(shader,Matrix4(1));
+    glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,before.data());
+    model.DrawInstanced(shader,{Matrix4(1)});
+    glClear(GL_COLOR_BUFFER_BIT);model.Draw(shader,Matrix4(1));
+    glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,after.data());
+    Check(before==after,"Instanced draw corrupted the baked vertex-color stream");
+    model.Free();shader.UnUse();glEnable(GL_DEPTH_TEST);
+}
+
+static void BakedVisibilitySafety() {
+    BakedVisibility bake;
+    bake.bounds.push_back({Vector3(-.2f,-.2f,-3),Vector3(.2f,.2f,-2)});
+    bake.minimum=Vector3(-1);bake.cellSize=1;bake.dimensions=glm::ivec3(2);bake.hidden.resize(8);
+    VisibilityView view;view.count=1;view.eye[0]=Vector3(-.032f,0,0);view.eye[1]=Vector3(.032f,0,0);
+    view.clip[0]=view.clip[1]=glm::perspective(glm::radians(70.f),1.f,.1f,100.f);
+    bake.hidden[bake.Cell(view.eye[0])]={0};
+    Check(!bake.Visible(0,view,Matrix4(1)),"Baked occlusion ignored hidden primitive");
+    view.count=2;Check(bake.Visible(0,view,Matrix4(1)),"Left-eye bake incorrectly culled right-eye-visible primitive");
+    bake.hidden[bake.Cell(view.eye[1])]={0};Check(!bake.Visible(0,view,Matrix4(1)),"Both-eye occlusion not applied");
+    view.eye[1]=Vector3(100,0,0);Check(bake.Visible(0,view,Matrix4(1)),"Outside bake volume did not fail open");
+    Check(bake.Visible(0,view,glm::scale(Matrix4(1),Vector3(0))),"Singular model matrix did not fail open");
+    Matrix4 invalid(1);invalid[0][0]=std::numeric_limits<float>::quiet_NaN();
+    Check(bake.Visible(0,view,invalid),"Invalid model matrix did not fail open");
+    auto path=std::filesystem::temp_directory_path()/"canis-stale-visibility.json";
+    std::ofstream(path)<<R"({"version":1,"crc32":2,"bounds":[],"hidden":[]})";
+    Check(!bake.Load(path.string(),3,1) && bake.bounds.empty(),"Stale bake retained rejection data");
+    std::filesystem::remove(path);
+}
+
+static void StaticShadowBaking(Window& window) {
+    Scene scene;
+    auto sun=scene.CreateEntity("Sun");sun.AddComponent<Transform>();auto& light=*sun.AddComponent<DirectionalLight>();
+    light.direction=glm::normalize(Vector3(.7f,-.3f,-1));light.intensity=2;
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-1,-1,0},{0,0,1},{}},{{1,-1,0},{0,0,1},{}},{{1,1,0},{0,0,1},{}},{{-1,1,0},{0,0,1},{}}};quad.indices={0,1,2,0,2,3};
+    int id=AssetManager::CreateModel();Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Shadow fixture geometry failed");
+    auto make=[&](const char* name,Vector3 position,float size,bool stationary) {
+        auto e=scene.CreateEntity(name);auto& t=*e.AddComponent<Transform>();t.position=position;t.scale=Vector3(size);
+        auto& m=*e.AddComponent<Model>();m.modelId=id;m.staticModel=stationary;return e;
+    };
+    auto receiver=make("Receiver",Vector3(0,0,-5),3,true);
+    auto wall=make("Static caster",Vector3(-.8f,0,-3),.35f,true);
+    auto moving=make("Dynamic caster",Vector3(.4f,.4f,-4),.25f,false);
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&](bool cached) {
+        SDL_setenv_unsafe("CANIS_DISABLE_STATIC_SHADOW_CACHE",cached?"0":"1",1);
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    auto original=draw(true);draw(true);const auto reused=RenderMetrics::Latest().shadowDraws;
+    auto fresh=draw(false);const auto full=RenderMetrics::Latest().shadowDraws;
+    Check(original==fresh && reused<full,"Static shadow reuse changed pixels or failed to reduce shadow draws");
+    auto verify=[&]() {auto a=draw(true);auto b=draw(false);Check(a==b,"Static shadow invalidation/composition differs from uncached rendering");};
+    draw(true);moving.GetComponent<Transform>().position.x=-.2f;verify();
+    draw(true);wall.GetComponent<Transform>().position.y=.6f;verify();
+    draw(true);wall.GetComponent<Model>().castShadow=false;verify();
+    draw(true);wall.GetComponent<Model>().castShadow=true;wall.GetComponent<Transform>().active=false;verify();
+    wall.GetComponent<Transform>().active=true;draw(true);light.direction=glm::normalize(Vector3(-.6f,-.2f,-1));verify();
+    draw(true);quad.vertices[0].position.y=-.7f;Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Shadow geometry edit failed");verify();
+    Check(glGetError()==GL_NO_ERROR,"GL error in static shadow bake");
+    SDL_unsetenv_unsafe("CANIS_DISABLE_STATIC_SHADOW_CACHE");renderer.OnDestroy();AssetManager::FreeModel(id);
+}
+
 int main(int argc,char** argv) {
     try {
         if(argc>1)std::filesystem::current_path(argv[1]);
@@ -544,6 +619,9 @@ int main(int argc,char** argv) {
         StereoPreparation(window);
         SinglePassPixels();
         SoftDepthIntersections(window);
+        VertexColorsSurviveInstancing();
+        BakedVisibilitySafety();
+        StaticShadowBaking(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

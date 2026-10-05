@@ -5938,6 +5938,7 @@ namespace Canis
                         comp["nodeIndex"] = model.nodeIndex;
                     if (!model.applyNodeTransform)
                         comp["applyNodeTransform"] = model.applyNodeTransform;
+                    if (model.bakedVisibility) comp["bakedVisibility"] = true;
                     if (model.staticModel)
                         comp["static"] = model.staticModel;
                     if (!model.castShadow)
@@ -5969,6 +5970,7 @@ namespace Canis
                     model.nodeIndex = comp["nodeIndex"].as<i32>(-1);
                     model.applyNodeTransform = comp["applyNodeTransform"].as<bool>(true);
                     model.staticModel = comp["static"].as<bool>(false);
+                    model.bakedVisibility = comp["bakedVisibility"].as<bool>(false);
                     model.castShadow = comp["castShadow"].as<bool>(true);
                     std::string path = "";
                     if (auto modelAsset = comp["ModelAsset"])
@@ -6022,6 +6024,7 @@ namespace Canis
                 {
                     DrawInspectorColorField("color", _conf.name.c_str(), model->color);
                     DrawInspectorField(_editor, "static", _conf.name.c_str(), model->staticModel);
+                    DrawInspectorField(_editor, "bakedVisibility", _conf.name.c_str(), model->bakedVisibility);
                     DrawInspectorField(_editor, "castShadow", _conf.name.c_str(), model->castShadow);
                     std::string modelLabel = "[ empty ]";
                     ModelAsset* modelAsset = nullptr;

@@ -466,3 +466,97 @@ single-sampled draw target is required; for multisampled targets the availabilit
 uniform is false and the shader must omit the depth fade. The built-in Cairo
 light shafts demonstrate source UV fade, camera fade, inverted Fresnel, and
 optional animated cloud modulation on top of this depth support.
+
+## Static lighting and baked visibility (first performance pass)
+
+This pass preserves imported vertex/lightmap irradiance, caches static directional
+shadow depth, and adds offline visibility data. It does **not** generate new GI,
+unwrap lightmap UVs, or replace dynamic point-light shading with a general lightmapper.
+Research: [lightmap baking](https://docs.unity.com/en-us/engine/6000.6/manual/lighting-overview/direct-and-indirect-lighting/lightmapping/baking-before-runtime/lightmappers),
+[baked visibility cells](https://docs.unity.com/en-us/engine/6000.5/manual/cameras/occlusion-culling/occlusion-culling),
+and [visibility for lighting](https://developer.nvidia.com/gpugems/gpugems/part-ii-lighting-and-shadows/chapter-15-managing-visibility-pixel-lighting).
+
+Implementation sequence: establish a source-mesh baseline; reuse static shadow
+work; partition immutable meshes and bake conservative visibility; compare both
+VR eyes and independent feature switches; validate the mission and loading cost.
+A general authoring lightmapper remains a separate project.
+
+### Static shadow depth
+
+`Model.static` casters without deformation or animation populate a cached depth
+map. Moving casters render into a fresh copy of that map each frame, so moving
+objects continue casting and receiving shadows. The cache key includes static
+membership, hierarchy transforms, model geometry revision, node selection, light
+matrix and shadow shader program. Moving/removing a static object or changing the
+light direction rebuilds the map. The camera/light-space volume advances in
+approximately 8m blocks aligned to complete shadow texels, allowing ordinary head
+motion within a block to reuse the bake. The first frame and a volume transition
+still require a full static shadow render; this is a runtime cache, not a saved
+irradiance atlas. The cache adds one 2048² D24 texture and framebuffer to the existing combined
+shadow target.
+
+Set `CANIS_DISABLE_STATIC_SHADOW_CACHE=1` to compare full shadow rendering with
+identical light-space projection. Dynamic models must not be opted into visibility
+bakes; movement of an ordinary `static` model still invalidates its shadow cache.
+
+Instanced draws now restore attribute 7 to the imported vertex-color stream.
+Without this restoration, an instanced shadow pass replaced baked irradiance with
+instance colors in the subsequent ordinary draw. Adjacent primitives also reuse
+unchanged material bindings and model uniforms within one draw invocation.
+
+### Offline visibility
+
+`tools/bake-static-visibility.py INPUT.gltf OUTPUT.gltf` partitions rigid opaque
+meshes and writes `OUTPUT.gltf.visibility`. It requires Python 3 and NumPy. This
+initial converter targets the engine's POSITION/NORMAL/TEXCOORD_0/COLOR_0 layout
+and matrix-authored nodes; skinning, animations, sparse/normalized accessors and
+TRS nodes are rejected rather than converted incorrectly. Source assets remain
+unchanged. Original primitive order and complete glazing primitives are retained
+to preserve coplanar layer ordering. Embedded texture references are preserved
+and rebased because a material slot can override tint while retaining embedded albedo.
+
+The bake considers only opaque triangles in the same immutable asset. A target
+chunk is hidden only if its complete bounding box lies behind a triangle from
+**every** corner of the camera cell. It intersects the corresponding convex shadow
+volumes; it does not guess visibility from a handful of sampled rays. Door holes
+and uncertain cases stay visible. Moving doors and other changing occluders must
+remain separate from the immutable input. Transparent/cutout/displaced geometry
+must not be supplied as occluders. Largest-face selection intentionally sacrifices
+some culling opportunities to bound bake time. `--chunk-size`, `--cell-size`,
+`--minimum`, `--dimensions`, and `--occluders` control the bake.
+
+Opt in on the rendered component:
+
+```yaml
+Canis::Model:
+  ModelAsset: {path: assets/Models/compiled-station.gltf}
+  static: true
+  bakedVisibility: true
+```
+
+`bakedVisibility` is saved and exposed in the Model inspector. It is an explicit
+contract that the render shader leaves the mesh rigid and opaque. Animated and
+transparent entities bypass the bake. For custom shaders, clear the flag before
+introducing vertex displacement or alpha clipping. Baked mesh bounds provide
+primitive-level frustum rejection even outside the baked camera volume; PVS
+occlusion outside that volume falls back to visible. A CRC of the complete glTF
+and referenced buffer bytes invalidates stale tables when the output geometry or
+node hierarchy changes. Malformed/stale tables render all geometry; replacing
+runtime geometry clears the bake. Changing an input source requires rebaking its
+derived output; the Cairo scene builder checks the recorded source CRC for this.
+
+Single-pass stereo queries both eye frusta and cells and retains the union of
+visible chunks. Shadow passes never use camera occlusion data. Runtime transforms
+are converted into model-local coordinates, allowing a whole rigid assembly to
+move without making its own visibility proof stale.
+
+`CANIS_DISABLE_BAKED_VISIBILITY=1` disables primitive bounds and PVS together.
+`CANIS_DISABLE_BAKED_OCCLUSION=1` disables only PVS while retaining frustum rejection.
+The frame metrics include rejected primitives in `culled` and avoided static
+shadow work is visible in `shadow_draws`.
+
+Validation: `CanisRenderOptimizationTests` covers both-eye visibility, outside-cell
+fallback, invalid matrices, stale CRCs, static shadow reuse and invalidation,
+dynamic shadow composition, geometry edits, and preservation of vertex colors
+across instanced passes. `python3 tests/test_bake_static_visibility.py` independently
+checks the offline proof, door gaps and 36,480 sampled rays from proven-hidden boxes.

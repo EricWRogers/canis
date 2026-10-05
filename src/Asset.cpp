@@ -41,6 +41,86 @@
 
 namespace Canis
 {
+
+    bool BakedVisibility::Load(const std::string& path,uint32_t crc,size_t count) {
+        *this={};
+        if(!std::filesystem::exists(path)) return false;
+        try {
+            auto doc=YAML::LoadFile(path);
+            if(doc["version"].as<int>()!=1 || doc["crc32"].as<uint32_t>()!=crc) return false;
+            BakedVisibility data;
+            data.minimum=doc["minimum"].as<Vector3>();
+            data.cellSize=doc["cellSize"].as<float>();
+            for(int a=0;a<3;++a) data.dimensions[a]=doc["dimensions"][a].as<int>();
+            for(int a=0;a<3;++a)if(!std::isfinite(data.minimum[a]) || data.dimensions[a]>1000000)return false;
+            if(!std::isfinite(data.cellSize) || data.cellSize<=0 ||
+                data.dimensions.x<=0 || data.dimensions.y<=0 || data.dimensions.z<=0) return false;
+            const uint64_t cells=uint64_t(data.dimensions.x)*data.dimensions.y*data.dimensions.z;
+            if(cells>1000000 || doc["hidden"].size()!=cells || doc["bounds"].size()!=count) return false;
+            for(auto b:doc["bounds"]) {
+                Bounds bound{b[0].as<Vector3>(),b[1].as<Vector3>()};
+                for(int a=0;a<3;++a) if(!std::isfinite(bound.minimum[a]) || !std::isfinite(bound.maximum[a]) || bound.minimum[a]>bound.maximum[a])return false;
+                data.bounds.push_back(bound);
+            }
+            for(auto c:doc["hidden"]) {
+                std::vector<unsigned> ids=c.as<std::vector<unsigned>>();
+                for(auto id:ids) if(id>=count) return false;
+                std::sort(ids.begin(),ids.end());data.hidden.push_back(std::move(ids));
+            }
+            *this=std::move(data);return true;
+        } catch(...) { return false; }
+    }
+    int BakedVisibility::Cell(const Vector3& eye) const {
+        if(cellSize<=0) return -1;
+        glm::ivec3 c;
+        for(int a=0;a<3;++a) {
+            const float f=std::floor((eye[a]-minimum[a])/cellSize);
+            if(!std::isfinite(f) || f<0 || f>=dimensions[a]) return -1;
+            c[a]=int(f);
+        }
+        return (c.x*dimensions.y+c.y)*dimensions.z+c.z;
+    }
+    void BakedVisibility::Query(const VisibilityView& view,const Matrix4& model,std::vector<unsigned char>& rejected) const {
+        rejected.assign(bounds.size(),0);
+        if(bounds.empty() || view.count<1 || view.count>2)return;
+        for(int c=0;c<4;++c)for(int r=0;r<4;++r) {
+            if(!std::isfinite(model[c][r]))return;
+            for(int e=0;e<view.count;++e)if(!std::isfinite(view.clip[e][c][r]))return;
+        }
+        if(std::abs(glm::determinant(model))<1e-10f)return;
+        const Matrix4 inverse=glm::inverse(model);
+        const char* disabled=std::getenv("CANIS_DISABLE_BAKED_OCCLUSION");
+        Vector4 planes[2][6];const std::vector<unsigned>* occluded[2]{};
+        for(int eye=0;eye<view.count;++eye) {
+            auto cell=Cell(Vector3(inverse*Vector4(view.eye[eye],1)));
+            if((!disabled || std::string(disabled)!="1") && cell>=0)occluded[eye]=&hidden[cell];
+            const Matrix4 clip=view.clip[eye]*model;
+            for(int p=0;p<6;++p) {
+                int axis=p/2;float sign=p%2?1.f:-1.f;
+                planes[eye][p]=Vector4(clip[0][3]+sign*clip[0][axis],clip[1][3]+sign*clip[1][axis],
+                    clip[2][3]+sign*clip[2][axis],clip[3][3]+sign*clip[3][axis]);
+            }
+        }
+        for(size_t primitive=0;primitive<bounds.size();++primitive) {
+            const auto& b=bounds[primitive];
+            const Vector3 center=(b.minimum+b.maximum)*.5f,extent=(b.maximum-b.minimum)*.5f;
+            bool visible=false;
+            for(int eye=0;eye<view.count && !visible;++eye) {
+                if(occluded[eye] && std::binary_search(occluded[eye]->begin(),occluded[eye]->end(),unsigned(primitive)))continue;
+                bool outside=false;
+                for(const auto& plane:planes[eye]) {
+                    const Vector3 normal(plane);
+                    if(glm::dot(normal,center)+plane.w+glm::dot(glm::abs(normal),extent)<-1e-4f){outside=true;break;}
+                }
+                visible=!outside;
+            }
+            rejected[primitive]=!visible;
+        }
+    }
+    bool BakedVisibility::Visible(size_t primitive,const VisibilityView& view,const Matrix4& model) const {
+        std::vector<unsigned char> rejected;Query(view,model,rejected);
+        return primitive>=rejected.size() || !rejected[primitive];
+    }
     namespace
     {
         struct AssetLoadTimer
@@ -2209,6 +2289,14 @@ namespace Canis
         for (size_t nodeIndex = 0; nodeIndex < m_nodes.size(); ++nodeIndex)
             m_nodes[nodeIndex].globalMatrix = m_sharedPose.globalNodeMatrices[nodeIndex];
         ++m_geometryRevision;
+        if(std::filesystem::exists(_path+".visibility")) {
+            std::ifstream file(_path,std::ios::binary);
+            std::string text((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
+            uint32_t crc=SDL_crc32(0,text.data(),text.size());
+            for(const auto& buffer:gltfModel.buffers) crc=SDL_crc32(crc,buffer.data.data(),buffer.data.size());
+            if(!m_bakedVisibility.Load(_path+".visibility",crc,m_primitives.size()))
+                Debug::Warning("Invalid/stale visibility bake; rendering all primitives: %s",_path.c_str());
+        }
         return true;
     }
 
@@ -2264,6 +2352,7 @@ namespace Canis
     {
         ++m_geometryRevision;
         m_boundsCache.clear();
+        m_bakedVisibility={};
         for (Primitive3D &primitive : m_primitives)
         {
             for(auto& entry:primitive.instanceCache)
@@ -2733,14 +2822,26 @@ namespace Canis
         const std::vector<MaterialAsset*> *_slotMaterialOverrides,
         i32 _nodeIndex,
         bool _applyNodeTransform,
-        const MaterialAsset *_baseMaterial)
+        const MaterialAsset *_baseMaterial,
+        const VisibilityView *_visibility)
     {
         const Pose3D *pose = (_pose == nullptr) ? &m_sharedPose : _pose;
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
+        const bool applyBake=_visibility && !_pose && _nodeIndex<0 && !HasDeformingGeometry();
+        if(applyBake)m_bakedVisibility.Query(*_visibility,_modelMatrix,m_bakedRejected);
+        const MaterialAsset* lastSlot=nullptr;
+        bool slotBound=false,matrixBound=false,colorBound=false;
+        Matrix4 lastMatrix(1);Color lastColor(1);
+        i32 lastTexture=std::numeric_limits<i32>::min();
+        _shader.SetBool("useInstanceMatrix",false);_shader.SetBool("useInstanceColor",false);
+        _shader.SetInt("albedoMap",0);
 
         for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)
         {
             Primitive3D &primitive = m_primitives[primitiveIndex];
+            if (applyBake && primitiveIndex<m_bakedRejected.size() && m_bakedRejected[primitiveIndex]) {
+                RenderMetrics::Cull(false);continue;
+            }
             if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex))
                 continue;
             Matrix4 model = _modelMatrix;
@@ -2774,10 +2875,10 @@ namespace Canis
             // Material slots are also PBR slots, not only albedo overrides.
             // Apply their surface/emission values per primitive so a single
             // imported model can mix metal armor and emissive details.
-            if (_slotMaterialOverrides != nullptr)
+            const MaterialAsset* primitiveMaterial=slotMaterial ? slotMaterial : _baseMaterial;
+            if (_slotMaterialOverrides != nullptr && (!slotBound || primitiveMaterial!=lastSlot))
             {
-                const MaterialAsset *primitiveMaterial =
-                    slotMaterial != nullptr ? slotMaterial : _baseMaterial;
+                slotBound=true;lastSlot=primitiveMaterial;
                 const float specular = primitiveMaterial != nullptr
                     ? primitiveMaterial->specularValue : 0.5f;
                 const float roughness = primitiveMaterial != nullptr
@@ -2842,24 +2943,12 @@ namespace Canis
                 textureId = _overrideTextureId;
             }
 
-            _shader.SetBool("useInstanceMatrix", false);
-            _shader.SetBool("useInstanceColor", false);
-            _shader.SetMat4("M", model);
-            _shader.SetBool("useAlbedoMap", textureId >= 0);
-            _shader.SetInt("albedoMap", 0);
-            _shader.SetVec4("albedoValue", drawColor);
-
-            glActiveTexture(GL_TEXTURE0);
-            if (textureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(textureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
+            if(!matrixBound || lastMatrix!=model) {_shader.SetMat4("M",model);lastMatrix=model;matrixBound=true;}
+            if(!colorBound || lastColor!=drawColor) {_shader.SetVec4("albedoValue",drawColor);lastColor=drawColor;colorBound=true;}
+            if(lastTexture!=textureId) {
+                _shader.SetBool("useAlbedoMap",textureId>=0);glActiveTexture(GL_TEXTURE0);
+                auto* texture=textureId>=0?AssetManager::GetTexture(textureId):nullptr;
+                glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);lastTexture=textureId;
             }
 
             if (primitive.hasSkinning && !primitive.bindVertices.empty())
@@ -2999,6 +3088,12 @@ namespace Canis
                 nullptr,
                 static_cast<GLsizei>(_modelMatrices.size()));
             RenderMetrics::Draw(primitive.indices.size()/3,_modelMatrices.size());
+            // Attribute 7 is shared by graph instance colors and imported vertex
+            // colors. Restore the mesh stream for the following non-instanced pass
+            // (in particular baked irradiance after an instanced shadow draw).
+            glBindBuffer(GL_ARRAY_BUFFER,primitive.vbo);
+            glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
+            glVertexAttribDivisor(7,0);
         }
 
         _shader.SetBool("useInstanceMatrix", false);
