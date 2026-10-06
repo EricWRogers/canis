@@ -1,3 +1,5 @@
+#include <Canis/AssetManager.hpp>
+#include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/App.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Scripting/InputBindings.hpp>
@@ -67,6 +69,21 @@ void RegisterInputBindings(App& app) {
     b.Method(owner, "Input", "Prompt", [input](uint64_t id, int scheme) -> std::string {
         if (scheme < -1 || scheme > 1) throw std::invalid_argument("Invalid input scheme");
         return input()->Actions().Prompt({Identity(id)}, scheme < 0 ? input()->Actions().PromptScheme() : InputScheme(scheme)).text;
+    });
+    b.Method(owner, "Input", "PromptData", [input](uint64_t id, int scheme) -> std::string {
+        if(scheme < -1 || scheme > 1)throw std::invalid_argument("Invalid input scheme");
+        const auto prompt=input()->Actions().Prompt({Identity(id)},scheme < 0 ? input()->Actions().PromptScheme() : InputScheme(scheme));
+        ManagedJson glyphs=ManagedJson::array();
+        for(const auto& glyph:prompt.glyphs) {
+            auto* asset=AssetManager::GetTexture(glyph.texture);
+            if(!asset)continue;
+            const auto texture=asset->GetGLTexture();
+            const float width=(glyph.uv.z-glyph.uv.x)*texture.width;
+            const float height=(glyph.uv.w-glyph.uv.y)*texture.height;
+            if(width<=0 || height<=0)continue;
+            glyphs.push_back({{"Texture",glyph.texture},{"Uv",{glyph.uv.x,glyph.uv.y,glyph.uv.z,glyph.uv.w}},{"Aspect",width/height}});
+        }
+        return ManagedJson{{"Text",prompt.text},{"Glyphs",glyphs}}.dump();
     });
     b.Method(owner, "Input", "Map", [input](uint64_t id, bool enabled) {
         if (enabled) input()->EnableMap({Identity(id)}); else input()->DisableMap({Identity(id)});

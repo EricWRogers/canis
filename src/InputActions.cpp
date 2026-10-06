@@ -296,7 +296,8 @@ std::string InputActionSystem::ControlLabel(const std::string& path) const
         const char* localized = SDL_GetKeyName(key);
         if (localized && *localized) return localized;
     }
-    auto label = m_glyphLabels.find(m_glyphFamily + ":" + path);
+    const std::string family=path.starts_with("Mouse/")?"mouse":m_glyphFamily;
+    auto label = m_glyphLabels.find(family + ":" + path);
     if (label != m_glyphLabels.end()) return label->second;
     const auto name = path.substr(path.find('/') + 1);
     return std::regex_replace(name, std::regex("([a-z])([A-Z])"), "$1 $2");
@@ -312,7 +313,7 @@ InputPrompt InputActionSystem::Prompt(ActionId action, InputScheme scheme) const
         auto append = [&](const std::string& path) {
             if (!prompt.text.empty()) prompt.text += " / ";
             const std::string label = ControlLabel(path);
-            const std::string family = path.starts_with("Keyboard/") ? "keyboard_en_us" : m_glyphFamily;
+            const std::string family = path.starts_with("Keyboard/") ? "keyboard_en_us" : path.starts_with("Mouse/") ? "mouse" : m_glyphFamily;
             auto glyph = m_glyphs.find(family + ":" + path);
             // US key artwork is only valid when its printed label matches the current layout.
             static const std::unordered_map<std::string, std::string> punctuation = {

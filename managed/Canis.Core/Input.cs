@@ -40,6 +40,19 @@ public readonly struct ActionSnapshot
     }
 }
 
+/// <summary>Input artwork with normalized left/top/right/bottom atlas coordinates.</summary>
+public sealed class InputGlyph
+{
+    public string Texture {get;set;}="";
+    public float[] Uv {get;set;}=[];
+    public float Aspect {get;set;}=1;
+    public Vector4 SpriteUv => Uv.Length==4?new(Uv[0],1-Uv[3],Uv[2]-Uv[0],Uv[3]-Uv[1]):new(0,0,1,1);
+}
+public sealed class InputPrompt
+{
+    public string Text {get;set;}="";
+    public InputGlyph[] Glyphs {get;set;}=[];
+}
 /// <summary>Native input state, published once per frame. Main thread only.</summary>
 public static class Input
 {
@@ -88,6 +101,11 @@ public static class Input
         Action(new ActionId(Convert.ToUInt32(action)), controllerIndex);
     public static string Prompt(ActionId action, InputScheme? scheme = null) =>
         NativeBridge.Call<string>("Input.Prompt", (ulong)action.Value, scheme.HasValue ? (int)scheme.Value : -1);
+    /// <summary>Resolve the current binding and device-family artwork, including native Steam origins.</summary>
+    public static InputPrompt PromptDetails(ActionId action, InputScheme? scheme=null) =>
+        System.Text.Json.JsonSerializer.Deserialize<InputPrompt>(NativeBridge.Call<string>("Input.PromptData",(ulong)action.Value,scheme.HasValue?(int)scheme.Value:-1))!;
+    public static InputPrompt PromptDetails<T>(T action, InputScheme? scheme=null) where T:struct,Enum =>
+        PromptDetails(new ActionId(Convert.ToUInt32(action)),scheme);
     public static string Prompt<T>(T action, InputScheme? scheme = null) where T : struct, Enum =>
         Prompt(new ActionId(Convert.ToUInt32(action)), scheme);
 
