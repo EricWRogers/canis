@@ -221,6 +221,12 @@ namespace Canis
         return GameViewportContainsPoint(_x, _y);
     }
 
+    Vector2 InputManager::WindowMouseToPixels(Vector2 point,Vector2 logicalSize,Vector2 pixelSize)
+    {
+        if(logicalSize.x<=0 || logicalSize.y<=0 || pixelSize.x<=0 || pixelSize.y<=0)return point;
+        return point*pixelSize/logicalSize;
+    }
+
     void InputManager::UpdateMousePosition(unsigned int _eventWindowID, float _x, float _y, int _screenHeight, unsigned int _gameWindowID)
     {
         if (_eventWindowID == _gameWindowID &&
@@ -240,8 +246,15 @@ namespace Canis
         }
         else
         {
-            mouse.x = _x;
-            mouse.y = _screenHeight - _y;
+            Vector2 point(_x,_y);
+            if(auto* nativeWindow=SDL_GetWindowFromID(_eventWindowID)) {
+                int logicalWidth=0,logicalHeight=0,pixelWidth=0,pixelHeight=0;
+                if(SDL_GetWindowSize(nativeWindow,&logicalWidth,&logicalHeight) &&
+                   SDL_GetWindowSizeInPixels(nativeWindow,&pixelWidth,&pixelHeight))
+                    point=WindowMouseToPixels(point,Vector2(logicalWidth,logicalHeight),Vector2(pixelWidth,pixelHeight));
+            }
+            mouse.x = point.x;
+            mouse.y = _screenHeight - point.y;
         }
     }
 
@@ -319,7 +332,6 @@ namespace Canis
                 break;
             case SDL_EVENT_WINDOW_HIDDEN:
             case SDL_EVENT_WINDOW_MINIMIZED:
-            case SDL_EVENT_WINDOW_OCCLUDED:
             case SDL_EVENT_WINDOW_FOCUS_LOST:
                 m_unfilteredRightClick = false;
                 if (eventWindowID == mainWindowID)

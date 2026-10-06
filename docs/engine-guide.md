@@ -681,3 +681,11 @@ changing desktop OS focus or unplugging physical hardware. Disconnect clears the
 synthetic source; a reconnect starts neutral. Existing key/button/axis events
 continue to work. Physical SDL hotplug, focus and controller-origin glyph validation
 remain separate acceptance checks.
+
+Desktop input focus tracks actual focus loss, hiding and minimizing. An SDL
+`WINDOW_OCCLUDED` notification does not imply focus loss and no longer cancels game
+input: compositors can deliver it after a focused window is restored. Native mouse
+positions outside an editor Game viewport are converted from SDL window coordinates
+to drawable pixels before UI projection, matching fractional/high-DPI menu layouts.
+`CanisInputFocusTests` checks Enter/click after focused occlusion, focus/minimize
+recovery and 2×/1.25× coordinate scaling through the same input implementation.

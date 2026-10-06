@@ -175,6 +175,7 @@ namespace Canis
         Vector2 mouseRel;
         const std::string& GetTextInput() const { return m_textInput; }
 
+        static Vector2 WindowMouseToPixels(Vector2 point, Vector2 logicalSize, Vector2 pixelSize);
         bool GameInputFocused() const { return active && !m_windowWasBackgrounded && !m_actionEditorCaptured; }
         bool HasGamepad() const { return m_syntheticGamepadEnabled || !m_gameControllers.empty(); }
         bool active = true;
