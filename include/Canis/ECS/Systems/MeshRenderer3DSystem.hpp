@@ -1,6 +1,7 @@
 #pragma once
 #include <Canis/System.hpp>
 #include <Canis/Math.hpp>
+#include <Canis/LightingProbe.hpp>
 #include <memory>
 
 namespace Canis
@@ -13,6 +14,8 @@ namespace Canis
     public:
         MeshRenderer3DSystem() : System() { m_name = type_name<MeshRenderer3DSystem>(); }
 
+        void InvalidateLightingProbes() { m_probesDirty=true; }
+        int ReadyLightingProbeCount() const { return static_cast<int>(m_probeTextures.size()); }
         void InvalidateStaticShadowCache() { m_staticShadowValid=false; }
         bool HasStaticShadowCache() const { return m_staticShadowValid; }
         void Create() override;
@@ -40,6 +43,16 @@ namespace Canis
         }
 
     private:
+        bool m_capturingProbe=false, m_probesDirty=true;
+        Matrix4 m_probeView{1}, m_probeProjection{1};
+        Vector3 m_probePosition{0};
+        float m_probeNear=.1f, m_probeFar=100;
+        std::vector<LightingProbe> m_probeSettings;
+        std::vector<unsigned int> m_probeTextures;
+        std::vector<std::array<Vector3,9>> m_probeIrradiance;
+        void UpdateLightingProbes(entt::registry& registry);
+        void BindLightingProbes(Shader& shader);
+        void DestroyLightingProbes();
         int m_stereoPass = 0;
         Matrix4 m_stereoViews[2]{Matrix4(1),Matrix4(1)}, m_stereoProjections[2]{Matrix4(1),Matrix4(1)};
         Vector3 m_stereoEyes[2]{};

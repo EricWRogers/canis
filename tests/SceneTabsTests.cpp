@@ -172,8 +172,13 @@ namespace Canis
             auto& baking=app.scene.GetBakingSettings();
             baking.lightmaps=false;baking.staticShadows=false;baking.occlusion=false;
             baking.program=executable.string();baking.arguments="--fake-bake-success";
+            LightingProbe probe;probe.position=Vector3(3,4,5);probe.halfExtents=Vector3(8,9,10);
+            probe.diffuseIntensity=.4f;probe.specularIntensity=.8f;
+            app.scene.GetLightingProbes().push_back(probe);
             Check(app.scene.Save(),"Baking settings save failed");
             app.scene.Unload();app.scene.Load("first.scene");
+            Check(app.scene.GetLightingProbes().size()==1 && app.scene.GetLightingProbes()[0]==probe,
+                "Lighting probe settings did not survive scene reload");
             const auto& loaded=app.scene.GetBakingSettings();
             Check(!loaded.lightmaps && !loaded.staticShadows && !loaded.occlusion &&
                 loaded.program==executable.string() && loaded.arguments=="--fake-bake-success",

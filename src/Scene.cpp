@@ -525,6 +525,7 @@ namespace Canis
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
         m_baking = {};
+        m_lightingProbes.clear();
         ClearDebugGizmoLines();
         ClearLastRenderCamera();
         ClearEditorCameraOverrides();
@@ -628,6 +629,7 @@ namespace Canis
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
         m_baking = {};
+        m_lightingProbes.clear();
         m_paused = false;
         
         for (System* system : m_systems)
@@ -649,6 +651,21 @@ namespace Canis
             );
             m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
+            if(auto probes=environment["LightingProbes"]; probes && probes.IsSequence()) {
+                for(const auto& node:probes) {
+                    if(m_lightingProbes.size()>=4)break;
+                    LightingProbe probe;
+                    probe.enabled=node["Enabled"].as<bool>(true);
+                    probe.position=node["Position"].as<Vector3>(Vector3(0));
+                    probe.halfExtents=node["HalfExtents"].as<Vector3>(Vector3(5));
+                    probe.blendDistance=node["BlendDistance"].as<float>(1);
+                    probe.diffuseIntensity=node["DiffuseIntensity"].as<float>(1);
+                    probe.specularIntensity=node["SpecularIntensity"].as<float>(1);
+                    probe.nearClip=node["NearClip"].as<float>(.1f);
+                    probe.farClip=node["FarClip"].as<float>(100);
+                    probe.Sanitize();m_lightingProbes.push_back(probe);
+                }
+            }
             m_showColliders = environment["ShowColliders"].as<bool>(false);
             if (auto baking = environment["Baking"]) {
                 m_baking.lightmaps = baking["Lightmaps"].as<bool>(true);
@@ -961,6 +978,16 @@ namespace Canis
             postProcessAsset["uuid"] = (uint64_t)m_environmentPostProcessUUID;
             environment["PostProcessAsset"] = postProcessAsset;
         }
+        YAML::Node probes(YAML::NodeType::Sequence);
+        for(auto probe:m_lightingProbes) {
+            if(probes.size()>=4)break;
+            probe.Sanitize();YAML::Node p;
+            p["Enabled"]=probe.enabled;p["Position"]=probe.position;p["HalfExtents"]=probe.halfExtents;
+            p["BlendDistance"]=probe.blendDistance;p["DiffuseIntensity"]=probe.diffuseIntensity;
+            p["SpecularIntensity"]=probe.specularIntensity;p["NearClip"]=probe.nearClip;p["FarClip"]=probe.farClip;
+            probes.push_back(p);
+        }
+        environment["LightingProbes"]=probes;
         node["Environment"] = environment;
 
         YAML::Node entities = YAML::Node(YAML::NodeType::Sequence);

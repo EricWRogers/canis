@@ -481,6 +481,48 @@ static void StaticShadowBaking(Window& window) {
     SDL_unsetenv_unsafe("CANIS_DISABLE_STATIC_SHADOW_CACHE");renderer.OnDestroy();AssetManager::FreeModel(id);
 }
 
+static void LightingProbeRendering(Window& window) {
+    // A red wall behind the camera must illuminate/reflect in a dynamic white receiver.
+    const auto root=std::filesystem::temp_directory_path()/("canis-probes-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    std::ofstream(root/"red.material")<<"color: [1,0,0,1]\nbackFaceCulling: false\n";
+    Scene scene;scene.SetEnvironmentAmbientLight(Color(1,1,1,1));scene.SetEnvironmentAmbientLightIntensity(.3f);
+    const int id=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-2,-2,0},{0,0,1},{}},{{2,-2,0},{0,0,1},{}},{{2,2,0},{0,0,1},{}},{{-2,2,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Probe fixture geometry failed");
+    auto source=scene.CreateEntity("red source");auto& t=*source.AddComponent<Transform>();
+    t.position=Vector3(0,0,2);t.rotation.y=glm::pi<float>();t.scale=Vector3(3);
+    auto& sourceModel=*source.AddComponent<Model>();sourceModel.modelId=id;sourceModel.staticModel=true;
+    source.AddComponent<Material>()->materialId=AssetManager::LoadMaterial((root/"red.material").string());
+    auto receiver=scene.CreateEntity("dynamic receiver");receiver.AddComponent<Transform>()->position=Vector3(0,0,-3);
+    receiver.AddComponent<Model>()->modelId=id;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&]() {
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        renderer.Update(scene.GetRegistry(),0);
+        std::array<unsigned char,4> pixel{};glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+        GLint viewport[4];glGetIntegerv(GL_VIEWPORT,viewport);
+        Check(viewport[2]==320 && viewport[3]==240,"Probe capture leaked its viewport");
+        Check(scene.GetLastRenderCameraPosition()==Vector3(0),"Probe capture leaked its camera");
+        Check(glGetError()==GL_NO_ERROR,"OpenGL error during probe render");return pixel;
+    };
+    auto baseline=draw();LightingProbe probe;probe.halfExtents=Vector3(10);probe.specularIntensity=0;
+    scene.GetLightingProbes().push_back(probe);auto diffuse=draw();
+    Check(renderer.ReadyLightingProbeCount()==1,"Probe was not captured");
+    Check(diffuse[0]>baseline[0]+2 && diffuse[0]>diffuse[1]+2,"Captured red wall did not provide diffuse color bleeding");
+    Check(draw()==diffuse,"Cached probe changed between frames");
+    auto& p=scene.GetLightingProbes()[0];p.diffuseIntensity=0;p.specularIntensity=4;auto reflection=draw();
+    Check(reflection[0]>baseline[0]+2,"Probe reflection did not reach dynamic receiver");
+    sourceModel.staticModel=false;renderer.InvalidateLightingProbes();auto empty=draw();
+    Check(empty==baseline,"Dynamic objects leaked into static probe capture");
+    p.enabled=false;Check(draw()==baseline && renderer.ReadyLightingProbeCount()==0,"Disabled probe retained lighting");
+    scene.GetLightingProbes().clear();draw();renderer.OnDestroy();AssetManager::FreeModel(id);
+    std::filesystem::remove_all(root);
+}
+
 int main(int argc,char** argv) {
     try {
         if(argc>1)std::filesystem::current_path(argv[1]);
@@ -630,6 +672,7 @@ int main(int argc,char** argv) {
         VertexColorsSurviveInstancing();
         BakedVisibilitySafety();
         StaticShadowBaking(window);
+        LightingProbeRendering(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

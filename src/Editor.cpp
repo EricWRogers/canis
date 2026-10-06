@@ -15430,6 +15430,40 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::Separator();
         auto& baking=m_scene->GetBakingSettings();
         auto* renderer=m_scene->GetSystem<MeshRenderer3DSystem>();
+        if(ImGui::CollapsingHeader("Reflection probes / Global illumination",ImGuiTreeNodeFlags_DefaultOpen)) {
+            auto& probes=m_scene->GetLightingProbes();
+            ImGui::TextWrapped("Static scene captures provide box-projected reflections and diffuse indirect light. Captured on load; recapture after changing geometry or lighting.");
+            ImGui::BeginDisabled(probes.size()>=4);
+            if(ImGui::Button("Add lighting probe")) {
+                LightingProbe probe;
+                if(m_scene->HasLastRenderCamera())probe.position=m_scene->GetLastRenderCameraPosition();
+                probes.push_back(probe);
+            }
+            ImGui::EndDisabled();
+            for(size_t i=0;i<probes.size();++i) {
+                ImGui::PushID(static_cast<int>(i));
+                if(ImGui::TreeNode("Probe","Probe %d",static_cast<int>(i+1))) {
+                    auto& p=probes[i];
+                    ImGui::Checkbox("Enabled",&p.enabled);
+                    ImGui::DragFloat3("Capture position",&p.position.x,.1f);
+                    ImGui::DragFloat3("Box half extents",&p.halfExtents.x,.1f,.01f,10000.f);
+                    ImGui::DragFloat("Blend distance",&p.blendDistance,.1f,.001f,10000.f);
+                    ImGui::SliderFloat("Indirect diffuse",&p.diffuseIntensity,0,4);
+                    ImGui::SliderFloat("Reflections",&p.specularIntensity,0,4);
+                    ImGui::DragFloat("Capture near",&p.nearClip,.01f,.01f,100);
+                    ImGui::DragFloat("Capture far",&p.farClip,1,1,20000);
+                    p.Sanitize();
+                    if(ImGui::Button("Remove")) { probes.erase(probes.begin()+i);ImGui::TreePop();ImGui::PopID();break; }
+                    ImGui::TreePop();
+                }
+                ImGui::PopID();
+            }
+            ImGui::BeginDisabled(!renderer);
+            if(ImGui::Button("Recapture lighting probes"))renderer->InvalidateLightingProbes();
+            ImGui::EndDisabled();
+            ImGui::Text("Ready captures: %d / %d",renderer?renderer->ReadyLightingProbeCount():0,static_cast<int>(probes.size()));
+            ImGui::TextWrapped("64px HDR captures, up to four probes. Rough reflections use mipmaps; diffuse uses 9 spherical harmonics coefficients. Save the scene to retain placement.");
+        }
         if(ImGui::CollapsingHeader("Lightmap Baking",ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Use imported baked lighting",&baking.lightmaps);
             ImGui::TextWrapped("Uses the scene's existing lightmaps and vertex lighting. Generating new GI lightmaps is not available yet.");
@@ -16300,6 +16334,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetMat4("V", view);
         shader->SetVec3("cameraPosition", cameraPosition);
         shader->SetVec3("ambientLightColor", 0.22f, 0.25f, 0.31f);
+        shader->SetInt("canisProbeCount",0);shader->SetBool("canisProbeCapture",false);
         shader->SetFloat("ambientLightIntensity", 1.0f);
         shader->SetBool("useDirectionalLight", true);
         shader->SetVec3("directionalLightDirection", -0.45f, -0.8f, -0.35f);
@@ -16477,6 +16512,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetMat4("V", view);
         shader->SetVec3("cameraPosition", cameraPosition);
         shader->SetVec3("ambientLightColor", 0.72f, 0.76f, 0.82f);
+        shader->SetInt("canisProbeCount",0);shader->SetBool("canisProbeCapture",false);
         shader->SetFloat("ambientLightIntensity", 0.8f);
         shader->SetBool("useDirectionalLight", true);
         shader->SetVec3("directionalLightDirection", -0.45f, -0.8f, -0.35f);

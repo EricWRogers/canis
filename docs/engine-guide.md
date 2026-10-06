@@ -581,3 +581,44 @@ The program runs from the project folder and must update existing model outputs,
 not overwrite an open scene. Configuration never runs automatically on scene load.
 Cairo uses `python3 ../scripts/halo/bake-editor.py`, staging all three bakes before
 replacing assets while preserving the scene and source models.
+
+### Local reflection probes and indirect illumination
+
+In **Environment → Reflection probes / Global illumination**, add up to four probes.
+Place each capture point in open space inside its room, set its world-aligned box
+half extents to that room, and use the blend distance to fade inward from the box
+boundary. Overlapping probes blend per fragment; outside all boxes they contribute
+nothing. Settings are saved under `Environment.LightingProbes` and are also available
+through `Scene::GetLightingProbes()`.
+
+The renderer captures six 64×64 HDR faces from static models and the sky on first
+render, then reuses those textures for both VR eyes. Changing probe settings causes
+a recapture; after editing geometry, materials or lights, click **Recapture lighting
+probes** (or call `InvalidateLightingProbes`). Captures are transient, not exported
+lightmap assets. Their synchronous startup/recapture cost is 24 scene views at the
+four-probe limit; avoid recapturing during headset play.
+
+Diffuse indirect lighting is a solid-angle-weighted projection of captured radiance
+onto nine spherical-harmonic coefficients, convolved with the cosine kernel. This
+provides approximate one-bounce color bleeding from directly lit or emissive static
+surfaces. Existing lightmapped geometry can contribute its baked radiance. It does
+not solve additional dynamic bounces or bake new lightmaps. Local box projection
+corrects reflection parallax; ordinary mipmaps provide approximate roughness blur,
+not a GGX prefilter or a split-sum BRDF integration. Boxes have no visibility field,
+so keep them inside rooms to limit light leakage through walls.
+
+Shader integration is explicit: add `[CANIS PROBE LIGHTING]` after the version
+marker, then add `CanisProbeLighting(worldPosition, normal, viewDirection,
+linearAlbedo, roughness, fresnelF0, diffuseWeight)` before display conversion. During
+`canisProbeCapture`, output linear radiance without tone mapping or gamma encoding.
+Set diffuseWeight to zero on surfaces already receiving baked diffuse GI to avoid
+counting it twice. The default model, Cairo gameplay, worn hangar, and Anniversary
+shaders implement this contract. Other custom shaders and shader graphs must opt in;
+their existing output is otherwise captured as-is. Texture units 8–11 are reserved
+for probe maps in participating shaders. Material previews start with probes off.
+
+Research: [Ramamoorthi and Hanrahan's irradiance representation](https://lightfield.stanford.edu/papers/envmap/)
+establishes the compact nine-coefficient diffuse approximation;
+[Unity's box projection documentation](https://docs.unity.com/en-us/engine/6000.5/manual/lighting-overview/reflections/advanced-ref-probe)
+describes the local reflection correction used here. The implementation deliberately
+uses bounded static captures to suit the existing forward OpenGL and VR renderer.

@@ -719,6 +719,7 @@ namespace Canis
 
     void MeshRenderer3DSystem::OnDestroy()
     {
+        DestroyLightingProbes();m_probeSettings.clear();m_probesDirty=true;
         m_batchCache.reset();
         if (m_materialSampler) glDeleteSamplers(1, &m_materialSampler);
         m_materialSampler = 0;
@@ -1331,6 +1332,7 @@ namespace Canis
         m_skyboxShader->SetMat4("projection", _projection);
         m_skyboxShader->SetMat4("view", skyboxView);
         m_skyboxShader->SetInt("skybox", 0);
+        m_skyboxShader->SetBool("canisProbeCapture",m_capturingProbe);
 
         glBindVertexArray(m_skyboxVao);
         glActiveTexture(GL_TEXTURE0);
@@ -1348,6 +1350,25 @@ namespace Canis
     {
         if (m_shader == nullptr)
             return;
+        // Keep probe texture units private, including nested cubemap renders.
+        struct ProbeBindingScope {
+            GLint active=0, textures[4]{}, samplers[4]{};
+            ProbeBindingScope() {
+                glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
+                for(int i=0;i<4;++i) {
+                    glActiveTexture(GL_TEXTURE8+i);glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP,&textures[i]);
+                    glGetIntegeri_v(GL_SAMPLER_BINDING,8+i,&samplers[i]);
+                }
+                glActiveTexture(active);
+            }
+            ~ProbeBindingScope() {
+                for(int i=0;i<4;++i) {
+                    glActiveTexture(GL_TEXTURE8+i);glBindTexture(GL_TEXTURE_CUBE_MAP,textures[i]);glBindSampler(8+i,samplers[i]);
+                }
+                glActiveTexture(active);
+            }
+        } probeBindings;
+        if(!m_capturingProbe)UpdateLightingProbes(_registry);
         // Smooth magnification and trilinear minification for 3D materials.
         // Samplers leave shared texture objects (including pixel-art UI) unchanged.
         if (!m_materialSampler)
@@ -1399,6 +1420,7 @@ namespace Canis
             for (auto handle : models) {
                 auto& transform = models.get<Transform>(handle);
                 auto& model = models.get<Model>(handle);
+                if(m_capturingProbe && !model.staticModel)continue;
                 Entity* entity = model.entity ? model.entity : transform.entity;
                 if ((entity && !entity->Active()) || !transform.IsActiveInHierarchy() || model.modelId < 0) continue;
                 if (auto* blockout = _registry.try_get<BlockoutShape>(handle))
@@ -1449,7 +1471,11 @@ namespace Canis
         float cameraNearClip = 0.1f;
         float cameraFarClip = 100.0f;
 
-        if (scene->GetVRCamera().enabled)
+        if(m_capturingProbe) {
+            projection=m_probeProjection;view=m_probeView;cameraPosition=m_probePosition;
+            cameraNearClip=m_probeNear;cameraFarClip=m_probeFar;
+        }
+        else if (scene->GetVRCamera().enabled)
         {
             const auto& camera = scene->GetVRCamera();
             projection = camera.projection;
@@ -1519,7 +1545,7 @@ namespace Canis
             cameraPosition = eye;
         }
 
-        scene->SetLastRenderCamera(view, projection, cameraPosition, cameraNearClip, cameraFarClip);
+        if(!m_capturingProbe)scene->SetLastRenderCamera(view, projection, cameraPosition, cameraNearClip, cameraFarClip);
 
         DirectionalLightState directionalLight = GatherDirectionalLight(_registry);
         std::vector<PointLightState> pointLights = GatherPointLights(_registry);
@@ -1638,6 +1664,7 @@ namespace Canis
 
                 currentShader = activeShader;
                 currentShader->Use();
+                BindLightingProbes(*currentShader);
                 currentShader->SetBool("disableBakedLighting", !scene->GetBakingSettings().lightmaps);
                 currentShader->SetMat4("P", projection);
                 currentShader->SetMat4("V", view);
@@ -1690,7 +1717,7 @@ namespace Canis
         const char* disableRooms=std::getenv("CANIS_DISABLE_ROOM_CULLING");
         bool roomQueries=false;
 #ifndef __EMSCRIPTEN__
-        roomQueries=m_stereoPass == 0 && !scene->HasEditorCamera3DOverride() && m_shadowShader && m_skyboxVao &&
+        roomQueries=!m_capturingProbe && m_stereoPass == 0 && !scene->HasEditorCamera3DOverride() && m_shadowShader && m_skyboxVao &&
             (!disableRooms || std::string(disableRooms)!="1") && (GLEW_VERSION_3_3 || GLEW_ARB_occlusion_query2);
 #endif
         std::vector<MeshRendererCache::Input> batchInputs;
@@ -2057,7 +2084,7 @@ namespace Canis
             }
 
             VisibilityView visibility;
-            visibility.occlusionEnabled=scene->GetBakingSettings().occlusion;
+            visibility.occlusionEnabled=!m_capturingProbe && scene->GetBakingSettings().occlusion;
             visibility.count=m_stereoPass==1?2:1;
             for(int eye=0;eye<visibility.count;++eye) {
                 visibility.clip[eye]=m_stereoPass==1?m_stereoProjections[eye]*m_stereoViews[eye]:projection*view;
@@ -2333,7 +2360,7 @@ namespace Canis
             currentShader->UnUse();
         }
 
-        if (m_stereoPass != 1) {
+        if (!m_capturingProbe && m_stereoPass != 1) {
         DrawTrails(_registry, projection, view, cameraPosition);
         {
         RenderMetrics::Scope timing("Debug geometry");

@@ -1,3 +1,4 @@
+#include <Canis/ProbeLightingGLSL.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/OpenGL.hpp>
@@ -117,7 +118,12 @@ namespace Canis
             glBindAttribLocation(m_programId, static_cast<GLuint>(i), m_attributes[i].c_str());
 
         CompileShaderSource(vertex, name+":vertex", m_vertexShaderId);
-        CompileShaderSource(fragment, name+":fragment", m_fragmentShaderId);
+        std::string expandedFragment=fragment;
+        const std::string marker="[CANIS PROBE LIGHTING]";
+        if(auto at=expandedFragment.find(marker);at!=std::string::npos)
+            expandedFragment.replace(at,marker.size(),ProbeLightingGLSL);
+        m_fragmentSource=expandedFragment;
+        CompileShaderSource(expandedFragment, name+":fragment", m_fragmentShaderId);
     }
 
 
@@ -241,6 +247,14 @@ namespace Canis
             m_isLinked = true;
         }
 
+        // Cube and 2D samplers cannot alias even when the probe branch is disabled.
+        GLint previousProgram=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previousProgram);glUseProgram(m_programId);
+        for(int i=0;i<4;++i) {
+            const auto name="canisProbeMap"+std::to_string(i);
+            const GLint location=glGetUniformLocation(m_programId,name.c_str());
+            if(location>=0)glUniform1i(location,8+i);
+        }
+        glUseProgram(previousProgram);
         glDetachShader(m_programId, m_vertexShaderId);
         glDetachShader(m_programId, m_fragmentShaderId);
         glDeleteShader(m_vertexShaderId);

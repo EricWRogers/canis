@@ -4,6 +4,7 @@
 #include <Canis/Tag.hpp>
 #include <Canis/Entity.hpp>
 #include <Canis/Math.hpp>
+#include <Canis/LightingProbe.hpp>
 #include <Canis/Tweening/TweenWorld.hpp>
 #include <Canis/External/entt.hpp>
 
@@ -152,6 +153,8 @@ namespace Canis
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
         void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
+        std::vector<LightingProbe>& GetLightingProbes() { return m_lightingProbes; }
+        const std::vector<LightingProbe>& GetLightingProbes() const { return m_lightingProbes; }
         struct BakingSettings {
             bool lightmaps = true;
             bool staticShadows = true;
@@ -276,6 +279,7 @@ namespace Canis
         Vector2 m_editorCamera2DPosition = Vector2(0.0f);
         Color m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
         BakingSettings m_baking;
+        std::vector<LightingProbe> m_lightingProbes;
         float m_environmentAmbientLightIntensity = 1.0f;
         UUID m_environmentSkyboxUUID = UUID(0);
         UUID m_environmentPostProcessUUID = UUID(0);
