@@ -185,6 +185,8 @@ namespace Canis::Time
         }
     }
 
+    float GetTargetFPS() { return timeData ? timeData->targetFPS : 0.0f; }
+
     void SetTargetFPS(float _targetFPS)
     {
         if (timeData)

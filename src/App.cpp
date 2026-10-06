@@ -772,6 +772,7 @@ namespace Canis
             bool &_stopAfterFrame)
         {
             const YAML::Node &data = _event.data;
+            if(data["focus"])_input.SetSyntheticFocus(data["focus"].as<bool>());
 
             if (const YAML::Node keyboard = data["keyboard"]; keyboard && keyboard.IsMap())
             {
@@ -822,6 +823,7 @@ namespace Canis
 
             if (const YAML::Node gamepad = data["gamepad"]; gamepad && gamepad.IsMap())
             {
+                if(gamepad["connected"])_input.SetSyntheticGamepadConnected(gamepad["connected"].as<bool>());
                 Vector2 value = {};
                 if (ReadVector2(gamepad["leftStick"], value))
                     _input.SetSyntheticGamepadLeftStick(value);

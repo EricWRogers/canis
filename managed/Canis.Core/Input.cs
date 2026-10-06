@@ -79,6 +79,8 @@ public static class Input
     public static float GetRightTrigger(int controllerIndex = -1) => NativeBridge.Call<float>("Input.Trigger", controllerIndex, true);
     private static Vector2 XY(Vector3 value) => new(value.X, value.Y);
 
+    public static bool Focused => NativeBridge.Call<bool>("Input.Focused");
+    public static bool GamepadConnected => NativeBridge.Call<bool>("Input.GamepadConnected");
     public static InputScheme CurrentScheme => (InputScheme)NativeBridge.Call<int>("Input.Scheme");
     public static ActionSnapshot Action(ActionId action, int controllerIndex = -1) =>
         new(NativeBridge.Call<Vector4>("Input.Action", (ulong)action.Value, controllerIndex));

@@ -54,6 +54,8 @@ void RegisterInputBindings(App& app) {
     b.Method(owner, "Input", "MousePosition", [input]() -> Vector3 { return Vector3(input()->mouse, 0); });
     b.Method(owner, "Input", "Scroll", [input]() -> int { return input()->VerticalScroll(); });
     b.Method(owner, "Input", "Text", [input]() -> std::string { return input()->GetTextInput(); });
+    b.Method(owner, "Input", "Focused", [input]() -> bool { return input()->GameInputFocused(); });
+    b.Method(owner, "Input", "GamepadConnected", [input]() -> bool { return input()->HasGamepad(); });
     b.Method(owner, "Input", "Scheme", [input]() -> int { return int(input()->Actions().PromptScheme()); });
     // One typed call reads an immutable action snapshot. Vector2 travels in XY;
     // Z contains flags and W contains type/cancellation (all exactly representable).

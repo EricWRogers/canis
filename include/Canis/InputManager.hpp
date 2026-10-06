@@ -112,6 +112,8 @@ namespace Canis
         bool Update(void* _window);
         void BeginSyntheticInputFrame();
         void SetSyntheticKey(unsigned int _keyID, bool _down);
+        void SetSyntheticFocus(bool focused);
+        void SetSyntheticGamepadConnected(bool connected);
         void SetSyntheticMouseButton(unsigned int _button, bool _down);
         void AddSyntheticMouseDelta(Vector2 _delta);
         void SetSyntheticMousePosition(Vector2 _position);
@@ -173,6 +175,8 @@ namespace Canis
         Vector2 mouseRel;
         const std::string& GetTextInput() const { return m_textInput; }
 
+        bool GameInputFocused() const { return active && !m_windowWasBackgrounded && !m_actionEditorCaptured; }
+        bool HasGamepad() const { return m_syntheticGamepadEnabled || !m_gameControllers.empty(); }
         bool active = true;
         
     private:

@@ -4,6 +4,8 @@ namespace Canis;
 
 public static class Application
 {
+    /// <summary>Runtime rendering limit. Zero disables pacing; simulation delta remains unchanged.</summary>
+    public static float FrameLimit {get=>NativeBridge.Call<float>("Application.FrameLimit");set=>NativeBridge.Call("Application.SetFrameLimit",value);}
     public static void Quit() => NativeBridge.Call("Application.Quit");
 }
 

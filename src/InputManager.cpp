@@ -109,6 +109,18 @@ namespace Canis
         m_syntheticScrollVertical = 0;
     }
 
+    void InputManager::SetSyntheticFocus(bool focused)
+    {
+        if(!focused)ResetState();
+        else if(m_windowWasBackgrounded)m_resumeFrameResetRequested=true;
+        m_windowWasBackgrounded=!focused;
+    }
+    void InputManager::SetSyntheticGamepadConnected(bool connected)
+    {
+        if(!connected)ClearSyntheticState(InputCancellation::Disconnected);
+        else m_syntheticGamepadEnabled=true;
+    }
+
     void InputManager::SetSyntheticKey(unsigned int _keyID, bool _down)
     {
         for (const auto& c : InputControls()) if (c.key == _keyID && c.key != 0)

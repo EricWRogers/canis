@@ -658,3 +658,26 @@ while retaining the same partitioned geometry and PVS. This should produce
 identical pixels. Cairo's editor baker and `scripts/halo/bake-station.sh` enable
 room partitions; regenerate the source interior assembly first when source-room
 membership changes.
+
+### Desktop focus, controller availability and frame pacing
+
+Managed gameplay can read `Input.Focused` and `Input.GamepadConnected` alongside
+immutable action snapshots. Focus reflects the game window/editor routing state;
+controller availability includes the runtime's synthetic gamepad feed. Respond to
+`ActionSnapshot.Canceled` with `FocusLost`, `Disconnected` or `BackendChanged` by
+suspending held actions. Availability alone is insufficient when another controller
+remains connected. A fresh release/press gate prevents firing or jumping through
+pause, focus recovery or an input backend change.
+
+`Application.FrameLimit` reads/writes the runtime rendering target. Zero removes
+pacing; it does not alter the simulation delta. Values must be finite and in
+0–100000. Scene-specific presentation should save the prior limit and restore it
+on teardown; XR pacing remains controlled by the XR session.
+
+Runtime input timelines now accept top-level `focus: false/true` and
+`gamepad: {connected: false/true}` for reproducible input-loss/recovery checks.
+These exercise game input cancellation and synthetic availability, rather than
+changing desktop OS focus or unplugging physical hardware. Disconnect clears the
+synthetic source; a reconnect starts neutral. Existing key/button/axis events
+continue to work. Physical SDL hotplug, focus and controller-origin glyph validation
+remain separate acceptance checks.

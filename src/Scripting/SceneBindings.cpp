@@ -1,3 +1,4 @@
+#include <Canis/Time.hpp>
 #include <Canis/PlayerPrefs.hpp>
 #include <Canis/Scripting/TweenBindings.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
@@ -197,6 +198,11 @@ void RegisterSceneBindings(App& app)
     bindings.Method(owner, "PlayerPrefs", "DeleteAll", []() { PlayerPrefs::DeleteAll(); });
     bindings.Method(owner, "PlayerPrefs", "Save", []() { PlayerPrefs::SaveToFile(); });
 
+    bindings.Method(owner, "Application", "FrameLimit", []() -> float { return Time::GetTargetFPS(); });
+    bindings.Method(owner, "Application", "SetFrameLimit", [](float fps) {
+        if(!std::isfinite(fps)||fps<0||fps>100000)throw std::invalid_argument("Frame limit must be finite and between 0 and 100000");
+        Time::SetTargetFPS(fps);
+    });
     bindings.Method(owner, "Application", "Quit", [&app]() { app.scene.QuitGame(); });
     bindings.Method(owner, "Window", "Fullscreen", [&app]() -> bool {
         return (SDL_GetWindowFlags(static_cast<SDL_Window*>(app.scene.GetWindow().GetSDLWindow())) & SDL_WINDOW_FULLSCREEN) != 0;
