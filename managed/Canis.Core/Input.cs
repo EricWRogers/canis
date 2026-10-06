@@ -101,6 +101,8 @@ public static class Input
         Action(new ActionId(Convert.ToUInt32(action)), controllerIndex);
     public static string Prompt(ActionId action, InputScheme? scheme = null) =>
         NativeBridge.Call<string>("Input.Prompt", (ulong)action.Value, scheme.HasValue ? (int)scheme.Value : -1);
+    /// <summary>Changes when bindings, controller family, key layout, catalog or native origins change.</summary>
+    public static ulong PromptRevision => NativeBridge.Call<ulong>("Input.PromptRevision");
     /// <summary>Resolve the current binding and device-family artwork, including native Steam origins.</summary>
     public static InputPrompt PromptDetails(ActionId action, InputScheme? scheme=null) =>
         System.Text.Json.JsonSerializer.Deserialize<InputPrompt>(NativeBridge.Call<string>("Input.PromptData",(ulong)action.Value,scheme.HasValue?(int)scheme.Value:-1))!;

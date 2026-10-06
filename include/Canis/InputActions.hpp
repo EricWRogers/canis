@@ -132,12 +132,14 @@ public:
     bool SaveOverrides(const std::string& path, std::string& error) const;
     bool LoadOverrides(const std::string& path, std::string& error);
     std::vector<ActionId> Conflicts(ActionId action, const InputBinding& binding) const;
-    void SetGlyphFamily(const std::string& family) { m_glyphFamily = family; }
+    void SetGlyphFamily(const std::string& family) { if (m_glyphFamily != family) { m_glyphFamily = family; InvalidatePrompts(); } }
+    uint64_t PromptRevision() const { return m_promptRevision; }
+    void InvalidatePrompts() { ++m_promptRevision; }
     void SetGlyphCatalog(const std::string& path);
     void SetNativeInput(bool active);
     bool HasNativeInput() const { return m_nativeInput; }
     void RecordNative(ActionId action, Vector2 value);
-    void SetNativePrompt(ActionId action, InputPrompt prompt) { m_nativePrompts[action.value] = std::move(prompt); }
+    void SetNativePrompt(ActionId action, InputPrompt prompt);
 private:
     struct Event { std::string path; Vector2 value; uint64_t source; };
     struct State { ActionSnapshot snapshot; bool blocked = false, reactivating = false; InputCancellation pending = InputCancellation::None; };
@@ -167,6 +169,7 @@ private:
     std::chrono::steady_clock::time_point m_captureStart;
     bool m_nativeInput = false;
     std::unordered_map<uint32_t, InputPrompt> m_nativePrompts;
+    uint64_t m_promptRevision = 1;
     std::string m_glyphFamily = "unknown";
     std::unordered_map<std::string, InputGlyph> m_glyphs;
     std::unordered_map<std::string, std::string> m_glyphLabels;

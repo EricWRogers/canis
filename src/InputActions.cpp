@@ -176,6 +176,7 @@ bool InputActionSystem::RegisterSchema(const InputDocument& schema, std::string&
 }
 void InputActionSystem::UnregisterSchema()
 {
+    InvalidatePrompts();
     Cancel(InputCancellation::Reload);
     m_schema = {}; m_document = {}; m_defaults = {}; m_pendingDocument.reset(); m_indices.clear(); m_states.clear();
     m_enabled.clear(); m_thresholdDown.clear(); m_controllers.clear(); m_registered = false;
@@ -342,8 +343,21 @@ void InputActionSystem::SetNativeInput(bool active)
 {
     if (active == m_nativeInput) return;
     m_nativeInput = active;
+    InvalidatePrompts();
     RemoveSource(UINT64_MAX, InputCancellation::BackendChanged);
     m_nativePrompts.clear();
+}
+void InputActionSystem::SetNativePrompt(ActionId action, InputPrompt prompt)
+{
+    const auto existing = m_nativePrompts.find(action.value);
+    bool changed = existing == m_nativePrompts.end();
+    if (!changed) {
+        const auto& previous = existing->second;
+        changed = previous.text != prompt.text || previous.glyphs.size() != prompt.glyphs.size();
+        if (!changed) for (size_t i = 0; i < prompt.glyphs.size(); ++i)
+            if (previous.glyphs[i].texture != prompt.glyphs[i].texture || previous.glyphs[i].uv != prompt.glyphs[i].uv) { changed = true; break; }
+    }
+    if (changed) { m_nativePrompts[action.value] = std::move(prompt); InvalidatePrompts(); }
 }
 void InputActionSystem::RecordNative(ActionId action, Vector2 value)
 {
@@ -456,6 +470,7 @@ void InputActionSystem::Evaluate(bool active)
 {
     if (m_pendingDocument) {
         m_document = std::move(*m_pendingDocument); m_pendingDocument.reset();
+        InvalidatePrompts();
         m_thresholdDown.clear();
         for (auto& [source, controller] : m_controllers) controller.thresholds.clear();
         Cancel(InputCancellation::Reload);

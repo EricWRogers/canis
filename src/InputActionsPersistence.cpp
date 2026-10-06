@@ -205,6 +205,7 @@ bool InputActionSystem::LoadOverrides(const std::string& path, std::string& erro
 }
 void InputActionSystem::SetGlyphCatalog(const std::string& path)
 {
+    InvalidatePrompts();
     m_glyphs.clear(); m_glyphLabels.clear();
     try {
         const auto root=YAML::LoadFile(path);

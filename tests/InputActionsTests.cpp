@@ -179,5 +179,24 @@ int main()
     InputDocument parsed;
     Check(!ParseInputDocument("version: 1\nversion: 1\nmaps: []",parsed,error),"Duplicate YAML fields accepted");
     Check(!ParseInputDocument("version: 2\nmaps: []",parsed,error),"Unknown YAML version accepted");
+    InputActionSystem prompts; Setup(prompts);
+    auto revision = prompts.PromptRevision();
+    prompts.SetGlyphFamily("xbox");
+    Check(prompts.PromptRevision() != revision, "Family change did not invalidate prompts");
+    revision = prompts.PromptRevision(); prompts.SetGlyphFamily("xbox"); prompts.Evaluate(true);
+    Check(prompts.PromptRevision() == revision, "Unchanged family/evaluation invalidates prompt cache");
+    prompts.SetNativeInput(true); revision = prompts.PromptRevision();
+    prompts.SetNativePrompt({1001}, {"A", {{"a.png", Vector4(0,0,1,1)}}});
+    Check(prompts.PromptRevision() != revision, "New Steam origin did not invalidate prompts");
+    revision = prompts.PromptRevision();
+    prompts.SetNativePrompt({1001}, {"A", {{"a.png", Vector4(0,0,1,1)}}});
+    Check(prompts.PromptRevision() == revision, "Unchanged Steam poll invalidates prompt cache");
+    prompts.SetNativePrompt({1001}, {"A", {{"a.png", Vector4(0,0,.5f,1)}}});
+    Check(prompts.PromptRevision() != revision, "Steam crop change did not invalidate prompts");
+    revision = prompts.PromptRevision();
+    Check(prompts.QueueDocument(Defaults(), error), error.c_str()); prompts.Evaluate(true);
+    Check(prompts.PromptRevision() != revision, "Applied binding document did not invalidate prompts");
+    revision = prompts.PromptRevision(); prompts.InvalidatePrompts();
+    Check(prompts.PromptRevision() != revision, "Keyboard layout invalidation missing");
     std::cout << "Input action tests passed\n";
 }

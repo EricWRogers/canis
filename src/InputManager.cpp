@@ -394,6 +394,9 @@ namespace Canis
                 
                 m_lastInputDeviceType = (m_scrollVertical != 0.0f) ? InputDevice::MOUSE : m_lastInputDeviceType;
                 break;
+            case SDL_EVENT_KEYMAP_CHANGED:
+                m_actions.InvalidatePrompts();
+                break;
             case SDL_EVENT_KEY_UP:
                 #if CANIS_EDITOR
                 if (imguiWantsKeyboard && eventWindowID != mainWindowID && eventWindowID != gameWindowID)
@@ -971,9 +974,9 @@ namespace Canis
             ClearSyntheticState(InputCancellation::Capture);
         m_actionsWereAvailable = available;
         const auto family = GetControllerType();
-        m_actions.SetGlyphFamily(family == XBOX ? "xbox" : family == PLAYSTATION ? "playstation" : family == NINTENDO ? "switch" : "unknown");
-        if (m_lastControllerID < m_gameControllers.size() && m_gameControllers[m_lastControllerID].originalSteamController)
-            m_actions.SetGlyphFamily("steam_controller");
+        const bool originalSteam = m_lastControllerID < m_gameControllers.size() && m_gameControllers[m_lastControllerID].originalSteamController;
+        m_actions.SetGlyphFamily(originalSteam ? "steam_controller" :
+            family == XBOX ? "xbox" : family == PLAYSTATION ? "playstation" : family == NINTENDO ? "switch" : "unknown");
         // The SDL Steam family spans several models; native Steam origins select their own glyphs.
         if (actionInputProvider) actionInputProvider(m_actions);
         m_actions.Evaluate(available);

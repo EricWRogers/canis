@@ -70,6 +70,7 @@ void RegisterInputBindings(App& app) {
         if (scheme < -1 || scheme > 1) throw std::invalid_argument("Invalid input scheme");
         return input()->Actions().Prompt({Identity(id)}, scheme < 0 ? input()->Actions().PromptScheme() : InputScheme(scheme)).text;
     });
+    b.Method(owner, "Input", "PromptRevision", [input]() -> uint64_t { return input()->Actions().PromptRevision(); });
     b.Method(owner, "Input", "PromptData", [input](uint64_t id, int scheme) -> std::string {
         if(scheme < -1 || scheme > 1)throw std::invalid_argument("Invalid input scheme");
         const auto prompt=input()->Actions().Prompt({Identity(id)},scheme < 0 ? input()->Actions().PromptScheme() : InputScheme(scheme));
