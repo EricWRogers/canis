@@ -28,6 +28,8 @@
 #include <Canis/EditorRelease.hpp>
 #endif
 
+struct SDL_Process;
+
 namespace Canis
 {
     class Scene;
@@ -524,6 +526,11 @@ namespace Canis
         bool m_showHierarchyPanel = true;
         bool m_showInspectorPanel = true;
         bool m_showEnvironmentPanel = true;
+        SDL_Process* m_environmentBakeProcess = nullptr;
+        std::vector<std::string> m_environmentBakeModels;
+        std::string m_environmentBakeStatus;
+        void StartEnvironmentBake();
+        void UpdateEnvironmentBake();
         bool m_showSystemsPanel = true;
         bool m_showAssetsPanel = true;
         bool m_showScriptsPanel = true;

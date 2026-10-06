@@ -1165,7 +1165,7 @@ namespace Canis
                 !_registry.try_get<ModelAnimation>(candidate.handle);
         };
         const char* disabledCache=std::getenv("CANIS_DISABLE_STATIC_SHADOW_CACHE");
-        bool cacheEnabled=!disabledCache || std::string(disabledCache)!="1";
+        bool cacheEnabled=(!scene || scene->GetBakingSettings().staticShadows) && (!disabledCache || std::string(disabledCache)!="1");
         std::vector<StaticShadowCaster> staticCasters;
         for(const auto& candidate:m_batchCache->candidates) {
             const auto& model=_registry.get<Model>(candidate.handle);
@@ -1638,6 +1638,7 @@ namespace Canis
 
                 currentShader = activeShader;
                 currentShader->Use();
+                currentShader->SetBool("disableBakedLighting", !scene->GetBakingSettings().lightmaps);
                 currentShader->SetMat4("P", projection);
                 currentShader->SetMat4("V", view);
                 if (m_stereoPass == 1) {
@@ -2056,6 +2057,7 @@ namespace Canis
             }
 
             VisibilityView visibility;
+            visibility.occlusionEnabled=scene->GetBakingSettings().occlusion;
             visibility.count=m_stereoPass==1?2:1;
             for(int eye=0;eye<visibility.count;++eye) {
                 visibility.clip[eye]=m_stereoPass==1?m_stereoProjections[eye]*m_stereoViews[eye]:projection*view;

@@ -10,6 +10,7 @@ struct VisibilityView {
     Matrix4 clip[2]{Matrix4(1),Matrix4(1)};
     Vector3 eye[2]{};
     int count=1;
+    bool occlusionEnabled=true;
 };
 struct BakedVisibility {
     struct Bounds { Vector3 minimum{},maximum{}; };

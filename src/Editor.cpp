@@ -32,6 +32,7 @@
 #include <Canis/Terrain.hpp>
 #include <Canis/Blockout.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
 #include <Canis/ECS/Systems/CloudNavSystem.hpp>
 
@@ -5740,6 +5741,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     Editor::~Editor()
     {
+        if(m_environmentBakeProcess) {
+            SDL_KillProcess(m_environmentBakeProcess,true);
+            SDL_DestroyProcess(m_environmentBakeProcess);
+        }
 #if CANIS_CSHARP
         m_csharp.reset();
 #endif
@@ -6205,6 +6210,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_window->SetRenderSize(gameplayWidth, gameplayHeight);
 
         BeginSceneHistoryFrame();
+        UpdateEnvironmentBake();
 
         if (m_editorFontApplyQueued)
         {
@@ -15347,6 +15353,55 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
     }
 
+    void Editor::StartEnvironmentBake()
+    {
+        if(m_environmentBakeProcess || m_mode!=EditorMode::EDIT || !m_scene)return;
+        const auto& settings=m_scene->GetBakingSettings();
+        if(settings.program.empty())return;
+        std::vector<std::string> arguments{settings.program};
+        auto extra=TokenizeLaunchArguments(settings.arguments);
+        arguments.insert(arguments.end(),extra.begin(),extra.end());
+        std::vector<const char*> argv;
+        for(const auto& argument:arguments)argv.push_back(argument.c_str());
+        argv.push_back(nullptr);
+        m_environmentBakeModels.clear();
+        for(auto handle:m_scene->GetRegistry().view<Model>()) {
+            const auto& model=m_scene->GetRegistry().get<Model>(handle);
+            if(model.staticModel && model.bakedVisibility) {
+                if(auto* asset=AssetManager::GetModel(model.modelId))
+                    if(std::find(m_environmentBakeModels.begin(),m_environmentBakeModels.end(),asset->GetPath())==m_environmentBakeModels.end())
+                        m_environmentBakeModels.push_back(asset->GetPath());
+            }
+        }
+        // Arguments go directly to the process API, never through a shell.
+        // Output is inherited by the editor console; the UI polls without blocking.
+        m_environmentBakeProcess=SDL_CreateProcess(argv.data(),false);
+        m_environmentBakeStatus=m_environmentBakeProcess ? "Baking occlusion... You can continue editing." :
+            "Unable to start baker: "+std::string(SDL_GetError());
+    }
+
+    void Editor::UpdateEnvironmentBake()
+    {
+        if(!m_environmentBakeProcess)return;
+        int exitCode=0;
+        if(!SDL_WaitProcess(m_environmentBakeProcess,false,&exitCode))return;
+        if(m_mode!=EditorMode::EDIT) {
+            m_environmentBakeStatus="Bake finished. Return to Edit mode to apply it.";
+            return;
+        }
+        SDL_DestroyProcess(m_environmentBakeProcess);m_environmentBakeProcess=nullptr;
+        if(exitCode!=0) {
+            m_environmentBakeStatus="Bake failed (exit "+std::to_string(exitCode)+"). See the editor log. Loaded models were kept.";
+            return;
+        }
+        int loaded=0;
+        for(const auto& path:m_environmentBakeModels)
+            if(AssetManager::ReloadModel(path))++loaded;
+        m_environmentBakeStatus="Bake finished. Reloaded "+std::to_string(loaded)+" / "+
+            std::to_string(m_environmentBakeModels.size())+" models.";
+        if(m_scene)if(auto* renderer=m_scene->GetSystem<MeshRenderer3DSystem>())renderer->InvalidateStaticShadowCache();
+    }
+
     void Editor::DrawEnvironment()
     {
         if (!m_panelMaximizer.Begin("Environment", &m_showEnvironmentPanel))
@@ -15371,6 +15426,46 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (ImGui::SliderFloat("Ambient Intensity##", &ambientLightIntensity, 0.0f, 8.0f, "%.2f"))
             m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
         ImGui::TextDisabled("Scene-wide fill light for darker areas.");
+
+        ImGui::Separator();
+        auto& baking=m_scene->GetBakingSettings();
+        auto* renderer=m_scene->GetSystem<MeshRenderer3DSystem>();
+        if(ImGui::CollapsingHeader("Lightmap Baking",ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Use imported baked lighting",&baking.lightmaps);
+            ImGui::TextWrapped("Uses the scene's existing lightmaps and vertex lighting. Generating new GI lightmaps is not available yet.");
+            ImGui::Checkbox("Cache static shadows",&baking.staticShadows);
+            ImGui::BeginDisabled(!renderer || !baking.staticShadows);
+            if(ImGui::Button("Rebuild static shadows"))renderer->InvalidateStaticShadowCache();
+            ImGui::EndDisabled();
+            ImGui::TextDisabled("Shadow cache: %s",!baking.staticShadows ? "disabled" :
+                renderer && renderer->HasStaticShadowCache() ? "ready" : "waiting for next render");
+        }
+        if(ImGui::CollapsingHeader("Baked Occlusion",ImGuiTreeNodeFlags_DefaultOpen)) {
+            ImGui::Checkbox("Use baked occlusion",&baking.occlusion);
+            int enabled=0,valid=0;
+            for(auto handle:m_scene->GetRegistry().view<Model>()) {
+                const auto& model=m_scene->GetRegistry().get<Model>(handle);
+                if(!model.staticModel || !model.bakedVisibility)continue;
+                ++enabled;
+                if(auto* asset=AssetManager::GetModel(model.modelId);asset && asset->HasBakedVisibility())++valid;
+            }
+            ImGui::Text("Visibility data ready: %d / %d opted-in models",valid,enabled);
+            ImGui::TextWrapped("Frustum culling remains active when occlusion is off. Missing or stale bakes keep geometry visible.");
+            ImGui::BeginDisabled(m_environmentBakeProcess || baking.program.empty() || enabled==0 || m_mode!=EditorMode::EDIT);
+            if(ImGui::Button("Bake / rebake occlusion"))StartEnvironmentBake();
+            ImGui::EndDisabled();
+            if(baking.program.empty())ImGui::TextWrapped("Configure a project baker below to enable baking.");
+            if(!m_environmentBakeStatus.empty())ImGui::TextWrapped("%s",m_environmentBakeStatus.c_str());
+            if(ImGui::TreeNode("Baker configuration")) {
+                ImGui::BeginDisabled(m_environmentBakeProcess!=nullptr);
+                ImGui::InputText("Program",&baking.program);
+                ImGui::InputText("Arguments",&baking.arguments);
+                ImGui::EndDisabled();
+                ImGui::TextWrapped("Runs from the project folder. Rebuild the opted-in model files in place; do not rewrite the scene. Save the scene to retain these settings.");
+                ImGui::TreePop();
+            }
+        }
+
 
         ImGui::Separator();
         bool showColliders = m_scene->GetShowColliders();

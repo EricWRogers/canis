@@ -13,6 +13,8 @@ namespace Canis
     public:
         MeshRenderer3DSystem() : System() { m_name = type_name<MeshRenderer3DSystem>(); }
 
+        void InvalidateStaticShadowCache() { m_staticShadowValid=false; }
+        bool HasStaticShadowCache() const { return m_staticShadowValid; }
         void Create() override;
         void Ready() override;
         void Update(entt::registry &_registry, float _deltaTime) override;

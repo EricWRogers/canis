@@ -423,6 +423,9 @@ static void BakedVisibilitySafety() {
     view.clip[0]=view.clip[1]=glm::perspective(glm::radians(70.f),1.f,.1f,100.f);
     bake.hidden[bake.Cell(view.eye[0])]={0};
     Check(!bake.Visible(0,view,Matrix4(1)),"Baked occlusion ignored hidden primitive");
+    view.occlusionEnabled=false;
+    Check(bake.Visible(0,view,Matrix4(1)),"Scene occlusion switch did not disable PVS");
+    view.occlusionEnabled=true;
     view.count=2;Check(bake.Visible(0,view,Matrix4(1)),"Left-eye bake incorrectly culled right-eye-visible primitive");
     bake.hidden[bake.Cell(view.eye[1])]={0};Check(!bake.Visible(0,view,Matrix4(1)),"Both-eye occlusion not applied");
     view.eye[1]=Vector3(100,0,0);Check(bake.Visible(0,view,Matrix4(1)),"Outside bake volume did not fail open");
@@ -462,6 +465,11 @@ static void StaticShadowBaking(Window& window) {
     auto original=draw(true);draw(true);const auto reused=RenderMetrics::Latest().shadowDraws;
     auto fresh=draw(false);const auto full=RenderMetrics::Latest().shadowDraws;
     Check(original==fresh && reused<full,"Static shadow reuse changed pixels or failed to reduce shadow draws");
+    scene.GetBakingSettings().staticShadows=false;draw(true);
+    Check(RenderMetrics::Latest().shadowDraws==full,"Scene shadow-cache switch did not force full shadow rendering");
+    scene.GetBakingSettings().staticShadows=true;draw(true);renderer.InvalidateStaticShadowCache();
+    Check(!renderer.HasStaticShadowCache(),"Explicit shadow rebuild did not invalidate cache");
+    draw(true);Check(renderer.HasStaticShadowCache(),"Explicit shadow rebuild did not refill cache");
     auto verify=[&]() {auto a=draw(true);auto b=draw(false);Check(a==b,"Static shadow invalidation/composition differs from uncached rendering");};
     draw(true);moving.GetComponent<Transform>().position.x=-.2f;verify();
     draw(true);wall.GetComponent<Transform>().position.y=.6f;verify();

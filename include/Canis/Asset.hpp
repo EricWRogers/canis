@@ -670,6 +670,7 @@ namespace Canis
             bool _applyNodeTransform = true,
             const MaterialAsset *_baseMaterial = nullptr,
             const VisibilityView *_visibility = nullptr);
+        bool HasBakedVisibility() const { return !m_bakedVisibility.bounds.empty(); }
         void DrawInstanced(
             Shader &_shader,
             const std::vector<Matrix4> &_modelMatrices,

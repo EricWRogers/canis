@@ -152,6 +152,15 @@ namespace Canis
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
         void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
+        struct BakingSettings {
+            bool lightmaps = true;
+            bool staticShadows = true;
+            bool occlusion = true;
+            std::string program;
+            std::string arguments;
+        };
+        BakingSettings& GetBakingSettings() { return m_baking; }
+        const BakingSettings& GetBakingSettings() const { return m_baking; }
         bool GetShowColliders() const { return m_showColliders; }
         void SetShowColliders(bool _showColliders) { m_showColliders = _showColliders; }
         void SetLastRenderCamera(const Matrix4& _view, const Matrix4& _projection, const Vector3& _cameraPosition, float _nearClip, float _farClip);
@@ -266,6 +275,7 @@ namespace Canis
         Matrix4 m_editorCamera2DMatrix = Matrix4(1.0f);
         Vector2 m_editorCamera2DPosition = Vector2(0.0f);
         Color m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
+        BakingSettings m_baking;
         float m_environmentAmbientLightIntensity = 1.0f;
         UUID m_environmentSkyboxUUID = UUID(0);
         UUID m_environmentPostProcessUUID = UUID(0);

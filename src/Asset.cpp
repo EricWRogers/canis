@@ -97,7 +97,7 @@ namespace Canis
         Vector4 planes[2][6];const std::vector<unsigned>* occluded[2]{};
         for(int eye=0;eye<view.count;++eye) {
             auto cell=Cell(Vector3(inverse*Vector4(view.eye[eye],1)));
-            if((!disabled || std::string(disabled)!="1") && cell>=0)occluded[eye]=&hidden[cell];
+            if(view.occlusionEnabled && (!disabled || std::string(disabled)!="1") && cell>=0)occluded[eye]=&hidden[cell];
             const Matrix4 clip=view.clip[eye]*model;
             for(int p=0;p<6;++p) {
                 int axis=p/2;float sign=p%2?1.f:-1.f;

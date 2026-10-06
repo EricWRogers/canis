@@ -562,3 +562,22 @@ fallback, invalid matrices, stale CRCs, static shadow reuse and invalidation,
 dynamic shadow composition, geometry edits, and preservation of vertex colors
 across instanced passes. `python3 tests/test_bake_static_visibility.py` independently
 checks the offline proof, door gaps and 36,480 sampled rays from proven-hidden boxes.
+
+### Environment panel controls
+
+The Environment panel now groups Lightmap Baking and Baked Occlusion controls.
+Its settings serialize under `Environment.Baking` and participate in normal scene
+save/history. Lightmaps defaults on and sets the `disableBakedLighting` uniform;
+imported-lighting shaders must honor that uniform (the Cairo shader does). New
+GI lightmap generation is explicitly unavailable. Static Shadows enables cached
+directional depth; Rebuild Static Shadows invalidates it for the next render.
+Occlusion switches PVS independently of primitive frustum culling.
+
+A project can configure a baker Program and Arguments in the panel. The editor
+passes arguments directly to SDL's process API without shell expansion, polls the
+job without blocking, reports failure, and reloads opted-in model assets on success.
+Runs start only in Edit mode; completed jobs wait for Edit mode before applying.
+The program runs from the project folder and must update existing model outputs,
+not overwrite an open scene. Configuration never runs automatically on scene load.
+Cairo uses `python3 ../scripts/halo/bake-editor.py`, staging all three bakes before
+replacing assets while preserving the scene and source models.

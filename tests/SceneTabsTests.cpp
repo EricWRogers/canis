@@ -19,7 +19,7 @@ namespace Canis
 {
     struct EditorSceneTabsTestAccess
     {
-        static void Run(App& app, Editor& editor, Window& window)
+        static void Run(App& app, Editor& editor, Window& window, const fs::path& executable)
         {
             InputManager input;
             app.scene.Init(&app, &window, &input);
@@ -169,6 +169,31 @@ namespace Canis
                   app.scene.GetPath()=="first.scene", "Closing active dirty tab did not restore the other scene");
             editor.CloseSceneTab(0);
             Check(editor.m_sceneTabs.size()==1, "Last scene tab unexpectedly closed");
+            auto& baking=app.scene.GetBakingSettings();
+            baking.lightmaps=false;baking.staticShadows=false;baking.occlusion=false;
+            baking.program=executable.string();baking.arguments="--fake-bake-success";
+            Check(app.scene.Save(),"Baking settings save failed");
+            app.scene.Unload();app.scene.Load("first.scene");
+            const auto& loaded=app.scene.GetBakingSettings();
+            Check(!loaded.lightmaps && !loaded.staticShadows && !loaded.occlusion &&
+                loaded.program==executable.string() && loaded.arguments=="--fake-bake-success",
+                "Environment baking settings did not survive scene reload");
+            auto waitForBake=[&]() {
+                const auto deadline=SDL_GetTicks()+5000;
+                while(editor.m_environmentBakeProcess && SDL_GetTicks()<deadline) {
+                    editor.UpdateEnvironmentBake();SDL_Delay(1);
+                }
+                Check(!editor.m_environmentBakeProcess,"Asynchronous baker failed to finish");
+            };
+            editor.StartEnvironmentBake();
+            Check(editor.m_environmentBakeProcess,"Editor failed to launch bake process");
+            auto* running=editor.m_environmentBakeProcess;editor.StartEnvironmentBake();
+            Check(running==editor.m_environmentBakeProcess,"Duplicate click launched another bake");
+            waitForBake();Check(editor.m_environmentBakeStatus.find("Bake finished")!=std::string::npos,"Successful bake reported failure");
+            app.scene.GetBakingSettings().arguments="--fake-bake-failure";
+            editor.StartEnvironmentBake();waitForBake();
+            Check(editor.m_environmentBakeStatus.find("Bake failed (exit 7)")!=std::string::npos,"Baker exit failure was hidden");
+            ImGui::NewFrame();ImGui::SetNextWindowSize(ImVec2(800,900));editor.DrawEnvironment();ImGui::Render();
             editor.m_scene = nullptr;
         }
     };
@@ -176,7 +201,10 @@ namespace Canis
 
 int main(int argc, char** argv)
 {
+    if(argc==2 && std::string(argv[1])=="--fake-bake-success")return 0;
+    if(argc==2 && std::string(argv[1])=="--fake-bake-failure")return 7;
     if (argc != 2) return 1;
+    const auto executable=fs::absolute(argv[0]);
     const auto original=fs::current_path();
     auto temp=fs::temp_directory_path()/("canis-scene-tabs-"+std::to_string(SDL_GetTicksNS()));
     fs::create_directories(temp); fs::current_path(temp);
@@ -189,7 +217,7 @@ int main(int argc, char** argv)
         unsigned char* pixels; int width,height; io.Fonts->GetTexDataAsRGBA32(&pixels,&width,&height);
         {
             Canis::App app; Canis::Editor editor;
-            Canis::EditorSceneTabsTestAccess::Run(app,editor,window);
+            Canis::EditorSceneTabsTestAccess::Run(app,editor,window,executable);
         }
         ImGui::DestroyContext();
         fs::current_path(original); fs::remove_all(temp);

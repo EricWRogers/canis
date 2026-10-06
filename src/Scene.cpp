@@ -524,6 +524,7 @@ namespace Canis
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
+        m_baking = {};
         ClearDebugGizmoLines();
         ClearLastRenderCamera();
         ClearEditorCameraOverrides();
@@ -626,6 +627,7 @@ namespace Canis
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
+        m_baking = {};
         m_paused = false;
         
         for (System* system : m_systems)
@@ -648,6 +650,14 @@ namespace Canis
             m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
             m_showColliders = environment["ShowColliders"].as<bool>(false);
+            if (auto baking = environment["Baking"]) {
+                m_baking.lightmaps = baking["Lightmaps"].as<bool>(true);
+                m_baking.staticShadows = baking["StaticShadows"].as<bool>(true);
+                m_baking.occlusion = baking["Occlusion"].as<bool>(true);
+                m_baking.program = baking["Program"].as<std::string>("");
+                m_baking.arguments = baking["Arguments"].as<std::string>("");
+            }
+
 
             if (YAML::Node skyboxNode = environment["SkyboxAsset"])
             {
@@ -932,6 +942,13 @@ namespace Canis
         environment["AmbientLight"] = m_environmentAmbientLight;
         environment["AmbientLightIntensity"] = m_environmentAmbientLightIntensity;
         environment["ShowColliders"] = m_showColliders;
+        auto baking = environment["Baking"];
+        baking["Lightmaps"] = m_baking.lightmaps;
+        baking["StaticShadows"] = m_baking.staticShadows;
+        baking["Occlusion"] = m_baking.occlusion;
+        baking["Program"] = m_baking.program;
+        baking["Arguments"] = m_baking.arguments;
+
         if ((uint64_t)m_environmentSkyboxUUID != 0)
         {
             YAML::Node skyboxAsset(YAML::NodeType::Map);
