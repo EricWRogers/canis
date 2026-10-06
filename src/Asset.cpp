@@ -31,6 +31,10 @@
 #define STB_VORBIS_HEADER_ONLY
 #include <stb_vorbis.c>
 
+#if defined(CANIS_HAS_ZLIB)
+#include <zlib.h>
+#endif
+
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_filesystem.h>
 
@@ -2292,8 +2296,20 @@ namespace Canis
         if(std::filesystem::exists(_path+".visibility")) {
             std::ifstream file(_path,std::ios::binary);
             std::string text((std::istreambuf_iterator<char>(file)),std::istreambuf_iterator<char>());
-            uint32_t crc=SDL_crc32(0,text.data(),text.size());
-            for(const auto& buffer:gltfModel.buffers) crc=SDL_crc32(crc,buffer.data.data(),buffer.data.size());
+            auto updateCrc=[](uint32_t crc,const void* bytes,size_t size) -> uint32_t {
+#if defined(CANIS_HAS_ZLIB)
+                auto* data=static_cast<const Bytef*>(bytes);
+                while(size) {
+                    const auto length=static_cast<uInt>(std::min(size,size_t(std::numeric_limits<uInt>::max())));
+                    crc=static_cast<uint32_t>(::crc32(crc,data,length));data+=length;size-=length;
+                }
+                return crc;
+#else
+                return SDL_crc32(crc,bytes,size);
+#endif
+            };
+            uint32_t crc=updateCrc(0,text.data(),text.size());
+            for(const auto& buffer:gltfModel.buffers) crc=updateCrc(crc,buffer.data.data(),buffer.data.size());
             if(!m_bakedVisibility.Load(_path+".visibility",crc,m_primitives.size()))
                 Debug::Warning("Invalid/stale visibility bake; rendering all primitives: %s",_path.c_str());
         }

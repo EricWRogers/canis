@@ -541,7 +541,9 @@ introducing vertex displacement or alpha clipping. Baked mesh bounds provide
 primitive-level frustum rejection even outside the baked camera volume; PVS
 occlusion outside that volume falls back to visible. A CRC of the complete glTF
 and referenced buffer bytes invalidates stale tables when the output geometry or
-node hierarchy changes. Malformed/stale tables render all geometry; replacing
+node hierarchy changes. Native builds use zlib CRC-32 when available (SDL fallback
+otherwise), avoiding several seconds of scalar checksum work on large levels.
+Malformed/stale tables render all geometry; replacing
 runtime geometry clears the bake. Changing an input source requires rebaking its
 derived output; the Cairo scene builder checks the recorded source CRC for this.
 
