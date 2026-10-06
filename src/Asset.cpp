@@ -71,6 +71,24 @@ namespace Canis
                 for(auto id:ids) if(id>=count) return false;
                 std::sort(ids.begin(),ids.end());data.hidden.push_back(std::move(ids));
             }
+            if(auto rooms=doc["rooms"]) {
+                if(!rooms.IsSequence() || rooms.size()>count)return false;
+                std::vector<bool> assigned(count,false);
+                for(auto node:rooms) {
+                    Room room;room.name=node["name"].as<std::string>();
+                    room.primitives=node["primitives"].as<std::vector<unsigned>>();
+                    if(room.name.empty() || room.primitives.empty())return false;
+                    room.bounds={Vector3(std::numeric_limits<float>::max()),Vector3(std::numeric_limits<float>::lowest())};
+                    for(auto id:room.primitives) {
+                        if(id>=count || assigned[id])return false;
+                        assigned[id]=true;
+                        room.bounds.minimum=glm::min(room.bounds.minimum,data.bounds[id].minimum);
+                        room.bounds.maximum=glm::max(room.bounds.maximum,data.bounds[id].maximum);
+                    }
+                    data.rooms.push_back(std::move(room));
+                }
+                if(std::find(assigned.begin(),assigned.end(),false)!=assigned.end())return false;
+            }
             *this=std::move(data);return true;
         } catch(...) { return false; }
     }
@@ -105,20 +123,35 @@ namespace Canis
                     clip[2][3]+sign*clip[2][axis],clip[3][3]+sign*clip[3][axis]);
             }
         }
-        for(size_t primitive=0;primitive<bounds.size();++primitive) {
-            const auto& b=bounds[primitive];
+        auto outside=[&](const Bounds& b,int eye) {
             const Vector3 center=(b.minimum+b.maximum)*.5f,extent=(b.maximum-b.minimum)*.5f;
+            for(const auto& plane:planes[eye]) {
+                const Vector3 normal(plane);
+                if(glm::dot(normal,center)+plane.w+glm::dot(glm::abs(normal),extent)<-1e-4f)return true;
+            }
+            return false;
+        };
+        auto testPrimitive=[&](size_t primitive,unsigned eyes) {
             bool visible=false;
             for(int eye=0;eye<view.count && !visible;++eye) {
+                if(!(eyes&(1u<<eye)))continue;
                 if(occluded[eye] && std::binary_search(occluded[eye]->begin(),occluded[eye]->end(),unsigned(primitive)))continue;
-                bool outside=false;
-                for(const auto& plane:planes[eye]) {
-                    const Vector3 normal(plane);
-                    if(glm::dot(normal,center)+plane.w+glm::dot(glm::abs(normal),extent)<-1e-4f){outside=true;break;}
-                }
-                visible=!outside;
+                visible=!outside(bounds[primitive],eye);
             }
             rejected[primitive]=!visible;
+        };
+        const char* disableRooms=std::getenv("CANIS_DISABLE_BAKED_ROOMS");
+        if(rooms.empty() || (disableRooms && std::string(disableRooms)=="1")) {
+            for(size_t primitive=0;primitive<bounds.size();++primitive)testPrimitive(primitive,(1u<<view.count)-1);
+        } else {
+            // Room bounds are derived from their complete member bounds, never from
+            // a guessed enclosed volume. Either eye keeps the room alive in stereo.
+            for(const auto& room:rooms) {
+                unsigned eyes=0;
+                for(int eye=0;eye<view.count;++eye)if(!outside(room.bounds,eye))eyes|=1u<<eye;
+                if(!eyes)for(auto primitive:room.primitives)rejected[primitive]=1;
+                else for(auto primitive:room.primitives)testPrimitive(primitive,eyes);
+            }
         }
     }
     bool BakedVisibility::Visible(size_t primitive,const VisibilityView& view,const Matrix4& model) const {

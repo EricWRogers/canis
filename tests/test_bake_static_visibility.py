@@ -48,4 +48,36 @@ with tempfile.TemporaryDirectory() as directory:
     assert (output.parent/result['images'][0]['uri']).resolve()==(source/'albedo.png').resolve()
     assert result['materials'][0]['pbrMetallicRoughness']['baseColorTexture']['index']==0
     assert table['crc32']==zlib.crc32(output.with_suffix('.bin').read_bytes(),zlib.crc32(output.read_bytes()))
-print('PASS: fallback albedo references and generated visibility integrity')
+    # Two rooms occupy the same spatial cell: semantic partitioning must still
+    # separate them, preserving both triangles and their material/texture binding.
+    vertices=np.vstack([vertices,vertices+np.array([4,0,0],dtype='<f4')]).astype('<f4')
+    indices=np.arange(6,dtype='<u4');binary=vertices.tobytes()+indices.tobytes()
+    (source/'mesh.bin').write_bytes(binary)
+    g['buffers'][0]['byteLength']=len(binary)
+    g['bufferViews'][0]['byteLength']=vertices.nbytes
+    g['bufferViews'][1].update(byteOffset=vertices.nbytes,byteLength=indices.nbytes)
+    g['accessors'][0]['count']=6;g['accessors'][1]['count']=6
+    g['meshes'][0]['primitives'][0]['extras']={'canisRoomRanges':[
+        {'room':'left room','first':0,'count':1},{'room':'right room','first':1,'count':1}]}
+    path.write_text(json.dumps(g))
+    b.bake(path,output,32,np.array([0.,0.,0.]),[1,1,1],8,4,room_partition=True)
+    result=json.loads(output.read_text());table=json.loads(Path(str(output)+'.visibility').read_text())
+    assert len(result['meshes'])==2
+    assert {r['name'] for r in table['rooms']}=={'left room','right room'}
+    assert sorted(i for room in table['rooms'] for i in room['primitives'])==[0,1]
+    assert sum(result['accessors'][mesh['primitives'][0]['indices']]['count'] for mesh in result['meshes'])==6
+    assert all(mesh['primitives'][0]['material']==0 for mesh in result['meshes'])
+print('PASS: room partition geometry coverage, fallback textures and bake integrity')
+
+# Room provenance is exhaustive, stable, and does not guess ambiguous instance labels.
+names,ids=b.triangle_rooms({}, {'extras':{'canisRoomRanges':[
+    {'room':'A','first':0,'count':2},{'room':'B','first':2,'count':1},
+    {'room':'A','first':3,'count':1}]}},4)
+assert names==['A','B'] and ids.tolist()==[0,0,1,0]
+assert b.triangle_rooms({'extras':{'UnkName':'|ss_room_01+|ss_room_02+'}},{},3)[0]==['shared']
+assert b.triangle_rooms({'extras':{'UnkName':'|ss_room_01+|'}},{},3)[0]==['ss_room_01']
+for ranges in [[{'room':'A','first':1,'count':2}], [{'room':'A','first':0,'count':2}]]:
+    try:b.triangle_rooms({}, {'extras':{'canisRoomRanges':ranges}},3)
+    except AssertionError:pass
+    else:raise AssertionError('Incomplete room ranges accepted')
+print('PASS: room ranges preserve coverage and ambiguous provenance stays shared')

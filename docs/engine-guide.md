@@ -622,3 +622,39 @@ establishes the compact nine-coefficient diffuse approximation;
 [Unity's box projection documentation](https://docs.unity.com/en-us/engine/6000.5/manual/lighting-overview/reflections/advanced-ref-probe)
 describes the local reflection correction used here. The implementation deliberately
 uses bounded static captures to suit the existing forward OpenGL and VR renderer.
+
+### Room partitions for static visibility
+
+`tools/bake-static-visibility.py --rooms` preserves semantic room membership when
+partitioning a rigid opaque glTF. Exporters can provide
+`primitive.extras.canisRoomRanges`: an ordered list of `{room, first, count}` where
+`first` and `count` refer to triangles. Ranges must cover every triangle exactly
+once. A node with one unambiguous source room/corridor name can also supply its
+membership. Multiple source-room names and unlabelled geometry stay shared.
+
+Small room/material batches are anchored to their own geometry bounds so a room
+crossing a world-grid boundary is not unnecessarily split into several draws.
+Large batches retain bounded subdivisions at the configured chunk size. Shared
+geometry uses the existing spatial grid, and source glazing primitives remain
+whole to preserve their authored draw order. All positions, normals, UVs, baked
+lighting attributes, triangle coverage and material slots are retained.
+
+The visibility sidecar retains its version-1 cell/PVS format and adds an optional
+`rooms` array of `{name, primitives}`. Room groups may include shared spatial
+fallbacks. The loader validates exhaustive, unique membership and derives each
+group's bounds from the actual member bounds. Invalid data fails open through the
+existing unbaked rendering path; old sidecars without room groups still work.
+
+The renderer first tests the group bounds against each eye's frustum, then tests
+member chunks only for surviving eyes. A room survives if either VR eye sees it.
+The existing conservative triangle-occlusion proof remains responsible for hiding
+geometry behind walls; room names are not evidence of sealed boundaries. This
+partition pass does not infer a portal graph, visibility through open doorways,
+or changes caused by moving doors. Geometry and room groups stay in the same model
+asset, with no per-room entity requirement.
+
+Set `CANIS_DISABLE_BAKED_ROOMS=1` to compare the hierarchy with flat chunk tests
+while retaining the same partitioned geometry and PVS. This should produce
+identical pixels. Cairo's editor baker and `scripts/halo/bake-station.sh` enable
+room partitions; regenerate the source interior assembly first when source-room
+membership changes.

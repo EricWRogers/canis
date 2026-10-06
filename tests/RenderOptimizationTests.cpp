@@ -435,6 +435,23 @@ static void BakedVisibilitySafety() {
     auto path=std::filesystem::temp_directory_path()/"canis-stale-visibility.json";
     std::ofstream(path)<<R"({"version":1,"crc32":2,"bounds":[],"hidden":[]})";
     Check(!bake.Load(path.string(),3,1) && bake.bounds.empty(),"Stale bake retained rejection data");
+    using Canis::Scripting::ManagedJson;
+    auto fixture=ManagedJson::parse(R"({"version":1,"crc32":7,"minimum":[-1,-1,-1],"dimensions":[1,1,1],"cellSize":2,
+        "bounds":[[[-0.2,-0.2,-3],[0.2,0.2,-2]],[[20,0,-3],[21,1,-2]]],"hidden":[[]],
+        "rooms":[{"name":"near","primitives":[0]},{"name":"distant","primitives":[1]}]})");
+    auto load=[&]() {std::ofstream(path)<<fixture.dump();return bake.Load(path.string(),7,2);};
+    Check(load() && bake.rooms.size()==2,"Room bake failed to load");
+    for(int step=-20;step<=20;++step) {
+        view.count=2;view.occlusionEnabled=false;
+        for(int eye=0;eye<2;++eye)view.clip[eye]=glm::perspective(glm::radians(70.f),1.f,.1f,100.f)*
+            glm::translate(Matrix4(1),Vector3(float(step)+(eye?.032f:-.032f),0,0));
+        std::vector<unsigned char> grouped,flat;bake.Query(view,Matrix4(1),grouped);
+        auto rooms=std::move(bake.rooms);bake.Query(view,Matrix4(1),flat);bake.rooms=std::move(rooms);
+        Check(grouped==flat,"Room hierarchy differs from conservative per-primitive stereo culling");
+    }
+    fixture["rooms"][1]["primitives"]={0};Check(!load() && bake.rooms.empty(),"Duplicate room membership accepted");
+    fixture["rooms"].erase(1);Check(!load(),"Missing room membership accepted");
+    fixture.erase("rooms");Check(load() && bake.rooms.empty(),"Legacy bake without rooms rejected");
     std::filesystem::remove(path);
 }
 

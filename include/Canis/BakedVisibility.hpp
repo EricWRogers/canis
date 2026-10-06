@@ -14,7 +14,13 @@ struct VisibilityView {
 };
 struct BakedVisibility {
     struct Bounds { Vector3 minimum{},maximum{}; };
+    struct Room {
+        std::string name;
+        Bounds bounds;
+        std::vector<unsigned> primitives;
+    };
     std::vector<Bounds> bounds;
+    std::vector<Room> rooms;
     std::vector<std::vector<unsigned>> hidden;
     Vector3 minimum{};
     glm::ivec3 dimensions{};
