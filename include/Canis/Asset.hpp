@@ -76,6 +76,16 @@ namespace Canis
         float ssaoRadius = 0.85f;
         float ssaoBias = 0.025f;
         float ssaoStrength = 1.25f;
+        float fogClearDistance = 72.0f;
+        float fogDensity = 0.009f;
+        float fogHeight = 12.0f;
+        float fogHeightFalloff = 0.16f;
+        float fogMaxOpacity = 0.8f;
+        Vector3 fogColor = Vector3(0.26f,0.34f,0.38f);
+        float blurStartDistance = 72.0f;
+        float blurEndDistance = 240.0f;
+        float distanceBlurRadius = 4.0f;
+        float distanceBlurStrength = 1.0f;
     };
 
     class ShaderAsset : public Asset
@@ -118,9 +128,11 @@ namespace Canis
         unsigned int m_vao = 0;
         unsigned int m_vbo = 0;
         unsigned int m_fontSize = 0;
+        struct FontAtlas;
+        std::shared_ptr<FontAtlas> m_atlas;
+        bool m_sdf = false;
         static const int atlasWidth = 1024;
         static const int atlasHeight = 1024;
-        unsigned char m_atlasData[atlasWidth * atlasHeight * 4] = {};
     public:
         explicit TextAsset(unsigned int _fontSize) : m_fontSize(_fontSize) {}
 
@@ -132,6 +144,7 @@ namespace Canis
         unsigned int GetVAO() { return m_vao; }
         unsigned int GetVBO() { return m_vbo; }
         unsigned int GetFontSize() { return m_fontSize; }
+        bool IsSignedDistance() const { return m_sdf; }
         std::string GetPath() { return m_path; }
     };
 

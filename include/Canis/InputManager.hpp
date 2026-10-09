@@ -131,6 +131,7 @@ namespace Canis
         void SetGameInputWindowID(unsigned int _windowID) { m_gameInputWindowID = _windowID; }
         void SetGameMouseViewport(float _x, float _y, float _drawWidth, float _drawHeight, float _logicalWidth, float _logicalHeight);
         void ClearGameMouseViewport();
+        void SetEditorGameFocused(bool focused) { m_editorGameFocused = focused; }
 
         bool GetKey(unsigned int _keyID);
         bool JustPressedKey(unsigned int _keyID);
@@ -184,6 +185,7 @@ namespace Canis
         InputActionSystem m_actions;
         std::unordered_set<uint64_t> m_steamOwnedSources;
         bool m_actionEditorCaptured = false;
+        bool m_editorGameFocused = false;
         bool m_actionsWereAvailable = true;
         void ClearSyntheticState(InputCancellation reason);
         void PressKey(unsigned int _keyID);

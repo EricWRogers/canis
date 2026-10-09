@@ -1745,7 +1745,8 @@ namespace Canis
                 _width,
                 _height,
                 _scene.GetLastRenderProjection(),
-                _outputTarget);
+                _outputTarget,
+                _scene.GetLastRenderView());
         }
 
         std::string ResolvePendingSceneLoadPath(const std::string& _requestedPath, const Color& _clearColor)
@@ -4229,11 +4230,11 @@ namespace Canis
                     rigidbody.useGravity = comp["useGravity"].as<bool>(true);
                     rigidbody.gravityFactor = comp["gravityFactor"].as<float>(1.0f);
                     rigidbody.isSensor = comp["isSensor"].as<bool>(false);
-                    rigidbody.layer = comp["layer"].as<Mask>(
-                        comp["collisionLayer"].as<Mask>(
-                            comp["raycastMask"].as<Mask>(Rigidbody::DefaultLayer)));
-                    rigidbody.mask = comp["mask"].as<Mask>(
-                        comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask));
+                    const YAML::Node layer = comp["layer"] ? comp["layer"]
+                        : comp["collisionLayer"] ? comp["collisionLayer"] : comp["raycastMask"];
+                    const YAML::Node mask = comp["mask"] ? comp["mask"] : comp["collisionMask"];
+                    rigidbody.layer = layer ? layer.as<Mask>() : Rigidbody::DefaultLayer;
+                    rigidbody.mask = mask ? mask.as<Mask>() : Rigidbody::DefaultMask;
                     rigidbody.allowSleeping = comp["allowSleeping"].as<bool>(true);
                     rigidbody.lockRotationX = comp["lockRotationX"].as<bool>(false);
                     rigidbody.lockRotationY = comp["lockRotationY"].as<bool>(false);
@@ -4510,6 +4511,10 @@ namespace Canis
                     }
 
                     auto &meshCollider = *_entity.AddComponent<MeshCollider>();
+                    // Rigidbody construction can add a default box before the authored
+                    // mesh collider is decoded. Do not let that box replace the mesh.
+                    if (!_node["Canis::BoxCollider"])
+                        _entity.RemoveComponent<BoxCollider>();
                     meshCollider.active = comp["active"].as<bool>(true);
                     meshCollider.useAttachedModel = comp["useAttachedModel"].as<bool>(true);
                     meshCollider.modelPath.clear();

@@ -32,7 +32,8 @@ namespace Canis
         int _width,
         int _height,
         const Matrix4 &_projection,
-        RenderTarget *_outputTarget = nullptr);
+        RenderTarget *_outputTarget = nullptr,
+        const Matrix4 &_view = Matrix4(1.0f));
 
     void BlitFramebuffer(unsigned int _sourceFramebuffer, int _sourceWidth, int _sourceHeight, unsigned int _destinationFramebuffer, int _destinationWidth, int _destinationHeight);
 } // namespace Canis

@@ -142,10 +142,10 @@ namespace Canis
                 y -= lineHeight;
             }
 
-            const float xpos = x + (ch.bearingX * scaleX);
-            const float ypos = y - ((ch.sizeY - ch.bearingY) * scaleY);
-            const float w = ch.sizeX * scaleX;
-            const float h = ch.sizeY * scaleY;
+            const float xpos = x + (ch.imageBearing.x * scaleX);
+            const float ypos = y - ((ch.imageSize.y - ch.imageBearing.y) * scaleY);
+            const float w = ch.imageSize.x * scaleX;
+            const float h = ch.imageSize.y * scaleY;
 
             if (w > 0.0f && h > 0.0f)
             {
@@ -158,7 +158,8 @@ namespace Canis
                     _text->color,
                     _rotation,
                     Vector2(0.0f),
-                    textRotationPivot);
+                    textRotationPivot,
+                    font->IsSignedDistance());
             }
 
             x += advance;
@@ -220,7 +221,7 @@ namespace Canis
 
         int offset = 0;
         int cv = 0; // current vertex
-        spriteRenderBatch.emplace_back(offset, 4, glyphs[0]->textureId);
+        spriteRenderBatch.emplace_back(offset, 4, glyphs[0]->textureId, glyphs[0]->sdfText);
 
         vertices[cv++] = glyphs[0]->topRight;
         vertices[cv++] = glyphs[0]->bottomRight;
@@ -230,9 +231,9 @@ namespace Canis
         offset += 4;
         for (int cg = 1; cg < gSize; cg++)
         {
-            if (glyphs[cg]->textureId != glyphs[cg - 1]->textureId)
+            if (glyphs[cg]->textureId != glyphs[cg - 1]->textureId || glyphs[cg]->sdfText != glyphs[cg - 1]->sdfText)
             {
-                spriteRenderBatch.emplace_back(offset, 4, glyphs[cg]->textureId);
+                spriteRenderBatch.emplace_back(offset, 4, glyphs[cg]->textureId, glyphs[cg]->sdfText);
             }
             else
             {
@@ -280,7 +281,7 @@ namespace Canis
         CreateRenderBatches();
     }
 
-    void SpriteRenderer2DSystem::DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset)
+    void SpriteRenderer2DSystem::DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset, bool sdfText)
     {
         Glyph *newGlyph;
 
@@ -339,6 +340,7 @@ namespace Canis
         }
 
         newGlyph->textureId = texture.id;
+        newGlyph->sdfText = sdfText;
         newGlyph->depth = depth;
         newGlyph->angle = -angle;
 
@@ -384,6 +386,7 @@ namespace Canis
         }
 
         newGlyph->textureId = texture.id;
+        newGlyph->sdfText = false;
         newGlyph->depth = depth;
         newGlyph->angle = angle;
 
@@ -468,6 +471,7 @@ namespace Canis
         for (int i = 0; i < spriteRenderBatch.size(); i++)
         {
             glBindTexture(GL_TEXTURE_2D, spriteRenderBatch[i].texture);
+            spriteShader->SetBool("sdfText", spriteRenderBatch[i].sdfText);
 
             glDrawElements(GL_TRIANGLES, (spriteRenderBatch[i].numVertices / 4) * 6, GL_UNSIGNED_INT, (void *)((spriteRenderBatch[i].offset / 4) * 6 * sizeof(unsigned int))); // spriteRenderBatch[i].offset, spriteRenderBatch[i].numVertices);
         }

@@ -2,6 +2,8 @@
 #include <Canis/Window.hpp>
 #include <Canis/InputManager.hpp>
 #include <SDL3/SDL.h>
+#include <imgui.h>
+#include <backends/imgui_impl_sdl3.h>
 #include <iostream>
 #include <stdexcept>
 using namespace Canis;
@@ -50,6 +52,45 @@ maps:
         Check(!input.GameInputFocused(),"Minimize did not suspend input");
         event(SDL_EVENT_WINDOW_RESTORED);input.Update(&window);input.EvaluateActions();
         Check(input.GameInputFocused(),"Restore did not recover input");
+#if CANIS_EDITOR
+        // A focused Game image is not an editor text field. ImGui commonly requests
+        // keyboard capture for its window while the game's menu cursor is unlocked.
+        ImGui::CreateContext();
+        ImGui_ImplSDL3_InitForOpenGL(static_cast<SDL_Window*>(window.GetSDLWindow()), window.GetGLContext());
+        SetEditorRuntimeEnabled(true);
+        auto& io = ImGui::GetIO();
+        io.WantCaptureKeyboard = true;
+        io.WantTextInput = false;
+        input.SetGameInputWindowID(id);
+        input.SetGameMouseViewport(10,20,250,180,1000,720);
+        input.SetEditorGameFocused(true);
+        input.BeginSyntheticInputFrame();input.Update(&window);
+        input.SetSyntheticKey(SDL_SCANCODE_RETURN,true);
+        input.SetSyntheticMouseButton(1,true);
+        input.EvaluateActions();
+        Check(input.GameInputFocused(),"Focused editor Game panel was treated as captured editor input");
+        Check(input.Action({2}).pressed && input.JustLeftClicked(),"Unlocked editor menu lost Enter/click");
+        input.BeginSyntheticInputFrame();input.Update(&window);
+        input.SetSyntheticKey(SDL_SCANCODE_RETURN,false);input.SetSyntheticMouseButton(1,false);input.EvaluateActions();
+        io.WantTextInput = true;
+        input.Update(&window);input.SetSyntheticKey(SDL_SCANCODE_RETURN,true);input.EvaluateActions();
+        Check(!input.GameInputFocused() && !input.Action({2}).down,"Editor text entry leaked into gameplay");
+        io.WantTextInput = false;
+        input.SetEditorGameFocused(false);
+        input.Update(&window);input.SetSyntheticKey(SDL_SCANCODE_RETURN,true);input.EvaluateActions();
+        Check(!input.GameInputFocused() && !input.Action({2}).down,"Inspector keyboard focus leaked into gameplay");
+        input.SetEditorGameFocused(true);
+        input.Update(&window);input.SetSyntheticKey(SDL_SCANCODE_RETURN,false);input.EvaluateActions();
+        SDL_Event motion{};motion.type=SDL_EVENT_MOUSE_MOTION;motion.motion.windowID=id;
+        motion.motion.x=60;motion.motion.y=65;SDL_PushEvent(&motion);
+        input.Update(&window);input.EvaluateActions();
+        Check(input.mouse == Vector2(200,540),"Editor menu mouse coordinates were not scaled into the game image");
+        io.WantCaptureKeyboard = false;
+        input.ClearGameMouseViewport();input.Update(&window);input.EvaluateActions();
+        Check(!input.GameInputFocused(),"Hidden Game panel retained keyboard ownership");
+        ImGui_ImplSDL3_Shutdown();ImGui::DestroyContext();SetEditorRuntimeEnabled(false);
+        std::cout<<"EDITOR_MENU_INPUT_PASS unlocked Game focus, text/inspector isolation and scaled image coordinates\n";
+#endif
         std::cout<<"INPUT_FOCUS_PASS focused occlusion preserves Enter/click; actual focus loss/minimize suspend input\n";
     }catch(const std::exception& e){std::cerr<<e.what()<<'\n';return 1;}
 }

@@ -16,11 +16,12 @@ namespace Canis
     class RenderBatch
     {
     public:
-        RenderBatch(unsigned int Offset, unsigned int NumVertices, unsigned int Texture) : offset(Offset),
-                                                                         numVertices(NumVertices), texture(Texture) {}
+        RenderBatch(unsigned int Offset, unsigned int NumVertices, unsigned int Texture, bool SdfText = false) : offset(Offset),
+                                                                         numVertices(NumVertices), texture(Texture), sdfText(SdfText) {}
         unsigned int offset;
         unsigned int numVertices;
         unsigned int texture;
+        bool sdfText;
     };
 
     class SpriteRenderer2DSystem : public System
@@ -56,7 +57,7 @@ namespace Canis
 
         void End();
 
-        void DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset);
+        void DrawUI(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, float depth, const Color &color, const float &angle, const Vector2 &origin, const Vector2 &rotationOriginOffset, bool sdfText = false);
 
         void Draw(const Vector4 &destRect, const Vector4 &uvRect, const GLTexture &texture, const float &depth, const Color &color, const float &angle, const Vector2 &origin);
 

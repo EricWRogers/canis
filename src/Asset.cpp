@@ -25,6 +25,7 @@
 #include <cstdlib>
 #include <chrono>
 #include <unordered_map>
+#include <unordered_set>
 
 #include <glm/gtc/quaternion.hpp>
 #include <stb_image.h>
@@ -41,6 +42,7 @@
 #if defined(CANIS_HAS_FREETYPE)
 #include <ft2build.h>
 #include FT_FREETYPE_H
+#include FT_MODULE_H
 #endif
 
 namespace Canis
@@ -1035,6 +1037,16 @@ namespace Canis
             pass.ssaoRadius = settingsNode["ssaoRadius"].as<float>(pass.ssaoRadius);
             pass.ssaoBias = settingsNode["ssaoBias"].as<float>(pass.ssaoBias);
             pass.ssaoStrength = settingsNode["ssaoStrength"].as<float>(pass.ssaoStrength);
+            pass.fogClearDistance = std::max(0.0f, settingsNode["fogClearDistance"].as<float>(pass.fogClearDistance));
+            pass.fogDensity = std::max(0.0f, settingsNode["fogDensity"].as<float>(pass.fogDensity));
+            pass.fogHeight = settingsNode["fogHeight"].as<float>(pass.fogHeight);
+            pass.fogHeightFalloff = std::max(0.001f, settingsNode["fogHeightFalloff"].as<float>(pass.fogHeightFalloff));
+            pass.fogMaxOpacity = glm::clamp(settingsNode["fogMaxOpacity"].as<float>(pass.fogMaxOpacity),0.0f,1.0f);
+            pass.fogColor = settingsNode["fogColor"].as<Vector3>(pass.fogColor);
+            pass.blurStartDistance = std::max(0.0f, settingsNode["blurStartDistance"].as<float>(pass.blurStartDistance));
+            pass.blurEndDistance = std::max(pass.blurStartDistance+1.0f,settingsNode["blurEndDistance"].as<float>(pass.blurEndDistance));
+            pass.distanceBlurRadius = glm::clamp(settingsNode["distanceBlurRadius"].as<float>(pass.distanceBlurRadius),0.0f,32.0f);
+            pass.distanceBlurStrength = glm::clamp(settingsNode["distanceBlurStrength"].as<float>(pass.distanceBlurStrength),0.0f,1.0f);
 
             const std::string rawShaderPath = ResolveAssetRefPath(passNode["shader"]);
             if (rawShaderPath.empty())
@@ -1082,13 +1094,25 @@ namespace Canis
         return true;
     }
 
+    struct TextAsset::FontAtlas
+    {
+        unsigned int texture = 0;
+        unsigned int pixelSize = 64;
+        bool sdf = true;
+        Character characters[127] = {};
+        ~FontAtlas() { if (texture != 0) glDeleteTextures(1, &texture); }
+    };
+
     bool TextAsset::Load(std::string _path)
     {
+        Free();
         m_path = _path;
 
 #if defined(CANIS_HAS_FREETYPE)
         static constexpr int kGlyphPadding = 2;
-        static constexpr float kGlyphAlphaSharpen = 1.25f;
+        static constexpr unsigned int kSdfPixelSize = 64;
+        static std::unordered_map<std::string, std::weak_ptr<FontAtlas>> atlasCache;
+        static std::unordered_set<std::string> bitmapFonts;
 
         FT_Library fontLibrary;
         if (FT_Init_FreeType(&fontLibrary))
@@ -1105,91 +1129,82 @@ namespace Canis
             return false;
         }
 
-        FT_Set_Pixel_Sizes(fontFace, 0, m_fontSize);
-
-        int currentX = 0;
-        int currentY = 0;
-        int maxHeightInRow = 0;
-        memset(m_atlasData, 0, sizeof(m_atlasData));
-
-        for (unsigned char c = 32; c < 127; c++)
+        unsigned int spread = 8;
+        FT_Property_Set(fontLibrary, "bsdf", "spread", &spread);
+        auto buildAtlas = [&](bool sdf, unsigned int pixelSize) -> std::shared_ptr<FontAtlas>
         {
-            if (FT_Load_Char(fontFace, c, FT_LOAD_RENDER))
+            auto atlas = std::make_shared<FontAtlas>();
+            atlas->pixelSize = pixelSize; atlas->sdf = sdf;
+            FT_Set_Pixel_Sizes(fontFace, 0, pixelSize);
+            int currentX = 0, currentY = 0, maxHeightInRow = 0;
+            std::vector<unsigned char> pixels(atlasWidth * atlasHeight * 4, 0);
+            for (unsigned char c = 32; c < 127; ++c)
             {
-                Debug::Warning("Failed to load glyph: %d", c);
-                continue;
-            }
-
-            const int glyphWidth = static_cast<int>(fontFace->glyph->bitmap.width);
-            const int glyphHeight = static_cast<int>(fontFace->glyph->bitmap.rows);
-            const int paddedWidth = std::max(glyphWidth, 1) + (kGlyphPadding * 2);
-            const int paddedHeight = std::max(glyphHeight, 1) + (kGlyphPadding * 2);
-
-            if (currentX + paddedWidth > atlasWidth)
-            {
-                currentX = 0;
-                currentY += maxHeightInRow;
-                maxHeightInRow = 0;
-            }
-
-            if (currentY + paddedHeight > atlasHeight)
-            {
-                Debug::Error("Text atlas is too small for font '%s' at size %u", _path.c_str(), m_fontSize);
-                break;
-            }
-
-            for (int y = -kGlyphPadding; y < glyphHeight + kGlyphPadding; y++)
-            {
-                for (int x = -kGlyphPadding; x < glyphWidth + kGlyphPadding; x++)
+                if (FT_Load_Char(fontFace, c, FT_LOAD_RENDER | (sdf ? FT_LOAD_NO_HINTING | FT_LOAD_NO_BITMAP : 0))) return {};
+                auto& bitmap = fontFace->glyph->bitmap;
+                if (bitmap.width == 0 || bitmap.rows == 0) continue;
+                // Bitmap-to-SDF also handles overlapping contours in ordinary UI fonts.
+                if (sdf && FT_Render_Glyph(fontFace->glyph, FT_RENDER_MODE_SDF)) return {};
+                if (bitmap.pixel_mode != FT_PIXEL_MODE_GRAY) return {};
+                const int width = static_cast<int>(bitmap.width), height = static_cast<int>(bitmap.rows);
+                const int packedWidth = width + kGlyphPadding * 2, packedHeight = height + kGlyphPadding * 2;
+                if (currentX + packedWidth > atlasWidth) { currentX = 0; currentY += maxHeightInRow; maxHeightInRow = 0; }
+                if (currentY + packedHeight > atlasHeight) return {};
+                for (int y = 0; y < height; ++y)
                 {
-                    if (glyphWidth <= 0 || glyphHeight <= 0)
-                        continue;
-
-                    const int sourceX = std::clamp(x, 0, glyphWidth - 1);
-                    const int sourceY = std::clamp(y, 0, glyphHeight - 1);
-                    const unsigned char alpha =
-                        fontFace->glyph->bitmap.buffer[(sourceY * glyphWidth) + sourceX];
-                    const float alpha01 = static_cast<float>(alpha) / 255.0f;
-                    const unsigned char sharpenedAlpha =
-                        static_cast<unsigned char>(std::round(std::pow(alpha01, kGlyphAlphaSharpen) * 255.0f));
-                    const int atlasX = currentX + kGlyphPadding + x;
-                    const int atlasY = currentY + kGlyphPadding + y;
-                    const int atlasIndex = ((atlasY * atlasWidth) + atlasX) * 4;
-
-                    m_atlasData[atlasIndex + 0] = 255;
-                    m_atlasData[atlasIndex + 1] = 255;
-                    m_atlasData[atlasIndex + 2] = 255;
-                    m_atlasData[atlasIndex + 3] = sharpenedAlpha;
+                    const int sourceRow = bitmap.pitch >= 0 ? y : height - 1 - y;
+                    const auto* row = bitmap.buffer + sourceRow * std::abs(bitmap.pitch);
+                    for (int x = 0; x < width; ++x)
+                    {
+                        const int index = ((currentY + kGlyphPadding + y) * atlasWidth + currentX + kGlyphPadding + x) * 4;
+                        pixels[index] = pixels[index + 1] = pixels[index + 2] = 255;
+                        pixels[index + 3] = row[x];
+                    }
                 }
+                auto& character = atlas->characters[c];
+                character.imageSize = Vector2(width, height);
+                character.imageBearing = Vector2(fontFace->glyph->bitmap_left, fontFace->glyph->bitmap_top);
+                character.atlasPos = Vector2(float(currentX + kGlyphPadding) / atlasWidth, float(currentY + kGlyphPadding) / atlasHeight);
+                character.atlasSize = Vector2(float(width) / atlasWidth, float(height) / atlasHeight);
+                currentX += packedWidth; maxHeightInRow = std::max(maxHeightInRow, packedHeight);
             }
-
-            Character character = {};
-            character.sizeX = fontFace->glyph->bitmap.width;
-            character.sizeY = fontFace->glyph->bitmap.rows;
-            character.bearingX = fontFace->glyph->bitmap_left;
-            character.bearingY = fontFace->glyph->bitmap_top;
-            character.advance = static_cast<unsigned int>(fontFace->glyph->advance.x);
-            character.atlasPos = Vector2(
-                static_cast<float>(currentX + kGlyphPadding) / atlasWidth,
-                static_cast<float>(currentY + kGlyphPadding) / atlasHeight);
-            character.atlasSize = Vector2(
-                static_cast<float>(glyphWidth) / atlasWidth,
-                static_cast<float>(glyphHeight) / atlasHeight);
-
-            characters[c] = character;
-
-            currentX += paddedWidth;
-            maxHeightInRow = std::max(maxHeightInRow, paddedHeight);
+            glGenTextures(1, &atlas->texture); glBindTexture(GL_TEXTURE_2D, atlas->texture);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlasWidth, atlasHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, pixels.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR); glBindTexture(GL_TEXTURE_2D, 0);
+            Debug::Log("FONT_ATLAS mode=%s base=%u font=%s", sdf ? "sdf" : "bitmap", pixelSize, _path.c_str());
+            return atlas;
+        };
+        std::string key = _path + (bitmapFonts.contains(_path) ? ":bitmap:" + std::to_string(m_fontSize) : ":sdf");
+        m_atlas = atlasCache[key].lock();
+        if (!m_atlas)
+        {
+            m_atlas = buildAtlas(!bitmapFonts.contains(_path), bitmapFonts.contains(_path) ? m_fontSize : kSdfPixelSize);
+            if (!m_atlas && !bitmapFonts.contains(_path))
+            {
+                Debug::Warning("SDF rendering unavailable for '%s'; using bitmap text", _path.c_str());
+                bitmapFonts.insert(_path); key = _path + ":bitmap:" + std::to_string(m_fontSize);
+                m_atlas = buildAtlas(false, m_fontSize);
+            }
+            if (m_atlas) atlasCache[key] = m_atlas;
         }
-
-        glGenTextures(1, &m_texture);
-        glBindTexture(GL_TEXTURE_2D, m_texture);
-        glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, atlasWidth, atlasHeight, 0, GL_RGBA, GL_UNSIGNED_BYTE, m_atlasData);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
-        glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
-        glBindTexture(GL_TEXTURE_2D, 0);
+        if (!m_atlas) { FT_Done_Face(fontFace); FT_Done_FreeType(fontLibrary); return false; }
+        m_texture = m_atlas->texture; m_sdf = m_atlas->sdf;
+        FT_Set_Pixel_Sizes(fontFace, 0, m_fontSize);
+        const float imageScale = float(m_fontSize) / m_atlas->pixelSize;
+        for (unsigned char c = 32; c < 127; ++c)
+        {
+            // Preserve hinted advance/line metrics; only the glyph image is rescaled.
+            if (FT_Load_Char(fontFace, c, FT_LOAD_RENDER)) continue;
+            Character character = m_atlas->characters[c];
+            character.sizeX = fontFace->glyph->bitmap.width; character.sizeY = fontFace->glyph->bitmap.rows;
+            character.bearingX = fontFace->glyph->bitmap_left; character.bearingY = fontFace->glyph->bitmap_top;
+            character.advance = static_cast<unsigned int>(fontFace->glyph->advance.x);
+            character.imageSize *= imageScale; character.imageBearing *= imageScale;
+            characters[c] = character;
+        }
 
         FT_Done_Face(fontFace);
         FT_Done_FreeType(fontLibrary);
@@ -1219,8 +1234,8 @@ namespace Canis
         if (m_vao != 0)
             glDeleteVertexArrays(1, &m_vao);
 
-        if (m_texture != 0)
-            glDeleteTextures(1, &m_texture);
+        m_vbo = m_vao = m_texture = 0;
+        m_atlas.reset(); m_sdf = false;
 
         return true;
     }

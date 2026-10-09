@@ -2728,6 +2728,7 @@ namespace Canis
             int _width,
             int _height,
             const Matrix4 &_projection,
+            const Matrix4 &_view,
             RenderTarget *_outputTarget,
             bool _editorOnly=false)
         {
@@ -2752,7 +2753,8 @@ namespace Canis
                 _width,
                 _height,
                 _projection,
-                _outputTarget);
+                _outputTarget,
+                _view);
         }
 
         constexpr const char* kDefaultImguiIniContents = R"([Window][DockSpaceViewport_11111111]
@@ -6187,6 +6189,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             BeginPlayRender(m_window);
             m_scene->Render(_deltaTime);
             m_playRenderProjection = m_scene->GetLastRenderProjection();
+            m_playRenderView = m_scene->GetLastRenderView();
             EndGameRender(m_window);
         }
 
@@ -6197,6 +6200,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             BeginGameRender(m_window);
             m_scene->Render(_deltaTime);
             m_gameRenderProjection = m_scene->GetLastRenderProjection();
+            m_gameRenderView = m_scene->GetLastRenderView();
             RenderGameDebug();
             CacheSceneCameraFrameIfNeeded();
             EndGameRender(m_window);
@@ -8166,6 +8170,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     m_gameTextureWidth,
                     m_gameTextureHeight,
                     m_gameRenderProjection,
+                    m_gameRenderView,
                     &m_gameViewPostProcessTarget,true);
 
                 float targetW = static_cast<float>((m_gameTextureWidth > 0) ? m_gameTextureWidth : 1);
@@ -8576,13 +8581,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_focusGamePanelNextFrame = false;
         }
 
-        if (!m_panelMaximizer.Begin("Game", &m_showGamePanel)) {
+        // Arrow keys belong to the running game's menus, not ImGui navigation.
+        if (!m_panelMaximizer.Begin("Game", &m_showGamePanel, ImGuiWindowFlags_NoNavInputs)) {
             m_playViewHovered = false;
             m_playViewportDrawWidth = m_playViewportDrawHeight = 0;
             m_scene->GetInputManager().ClearGameMouseViewport();
             ImGui::End();
             return;
         }
+
+        m_scene->GetInputManager().SetEditorGameFocused(
+            m_mode == EditorMode::PLAY &&
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
+            !ImGui::IsAnyItemActive());
 
         m_playViewportPosX = 0.0f;
         m_playViewportPosY = 0.0f;
@@ -8652,6 +8663,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     m_playTextureWidth,
                     m_playTextureHeight,
                     m_playRenderProjection,
+                    m_playRenderView,
                     &m_playViewPostProcessTarget);
 
                 ImVec2 cursorScreen = ImGui::GetCursorScreenPos();
@@ -12803,6 +12815,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             const std::string shaderPath = ToLowerCopy(NormalizeShaderAssetPath(ResolveAssetRefPath(passNode["shader"])));
             const bool showBloomControls = shaderPath.find("bloom") != std::string::npos;
             const bool showColorControls = shaderPath.find("color_correction") != std::string::npos;
+            const bool showDistanceFogControls = shaderPath.find("distance_fog") != std::string::npos;
             const bool showSsaoControls = shaderPath.find("ssao") != std::string::npos;
 
             auto drawPassFloat = [&](const char *_label, const char *_key, float _defaultValue, float _speed, float _min, float _max, const char *_format) -> void
@@ -12835,6 +12848,27 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 drawPassFloat("exposure", "exposure", 1.0f, 0.01f, 0.0f, 8.0f, "%.2f");
                 drawPassFloat("contrast", "contrast", 1.05f, 0.01f, 0.0f, 4.0f, "%.2f");
                 drawPassFloat("saturation", "saturation", 1.0f, 0.01f, 0.0f, 4.0f, "%.2f");
+            }
+
+            if (showDistanceFogControls)
+            {
+                ImGui::TextUnformatted("Low fog (world metres)");
+                drawPassFloat("clear distance", "fogClearDistance", 72.0f, 1.0f, 0.0f, 1000.0f, "%.1f m");
+                drawPassFloat("density", "fogDensity", 0.009f, 0.0002f, 0.0f, 0.2f, "%.4f");
+                drawPassFloat("layer height", "fogHeight", 12.0f, 0.5f, -100.0f, 200.0f, "%.1f m");
+                drawPassFloat("height falloff", "fogHeightFalloff", 0.16f, 0.005f, 0.001f, 2.0f, "%.3f");
+                drawPassFloat("maximum opacity", "fogMaxOpacity", 0.8f, 0.01f, 0.0f, 1.0f, "%.2f");
+                Vector3 tint = passNode["settings"]["fogColor"].as<Vector3>(Vector3(0.26f,0.34f,0.38f));
+                if (ImGui::ColorEdit3("fog colour", &tint.x))
+                {
+                    passNode["settings"]["fogColor"] = tint;
+                    dirty = true;
+                }
+                ImGui::TextUnformatted("Distance blur");
+                drawPassFloat("blur starts", "blurStartDistance", 72.0f, 1.0f, 0.0f, 1000.0f, "%.1f m");
+                drawPassFloat("full blur distance", "blurEndDistance", 240.0f, 1.0f, 1.0f, 1500.0f, "%.1f m");
+                drawPassFloat("blur radius (720p pixels)", "distanceBlurRadius", 4.0f, 0.1f, 0.0f, 32.0f, "%.1f");
+                drawPassFloat("blur strength", "distanceBlurStrength", 1.0f, 0.01f, 0.0f, 1.0f, "%.2f");
             }
 
             if (showSsaoControls)

@@ -16,6 +16,7 @@ namespace Canis
         unsigned int textureId;
         float depth;
         float angle;
+        bool sdfText = false;
 
         SpriteVertex topLeft;
         SpriteVertex bottomLeft;

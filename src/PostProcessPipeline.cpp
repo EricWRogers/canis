@@ -205,7 +205,8 @@ namespace Canis
         int _width,
         int _height,
         const Matrix4 &_projection,
-        RenderTarget *_outputTarget)
+        RenderTarget *_outputTarget,
+        const Matrix4 &_view)
     {
         PostProcessResult result = {
             .framebuffer = _sourceFramebuffer,
@@ -282,6 +283,8 @@ namespace Canis
                     shader->SetInt("inputTexture", 0);
                     shader->SetInt("sceneDepthTexture", 1);
                     shader->SetMat4("inverseProjection", inverseProjection);
+                    shader->SetMat4("inverseView", glm::inverse(_view));
+                    shader->SetInt("hasSceneDepth", _sourceDepthTexture != 0 ? 1 : 0);
                     shader->SetVec2("resolution", resolution);
                     shader->SetVec2("texelSize", texelSize);
                     shader->SetFloat("time", elapsedTime);
@@ -296,6 +299,16 @@ namespace Canis
                     shader->SetFloat("ssaoRadius", pass.ssaoRadius);
                     shader->SetFloat("ssaoBias", pass.ssaoBias);
                     shader->SetFloat("ssaoStrength", pass.ssaoStrength);
+                    shader->SetFloat("fogClearDistance", pass.fogClearDistance);
+                    shader->SetFloat("fogDensity", pass.fogDensity);
+                    shader->SetFloat("fogHeight", pass.fogHeight);
+                    shader->SetFloat("fogHeightFalloff", pass.fogHeightFalloff);
+                    shader->SetFloat("fogMaxOpacity", pass.fogMaxOpacity);
+                    shader->SetVec3("fogColor", pass.fogColor);
+                    shader->SetFloat("blurStartDistance", pass.blurStartDistance);
+                    shader->SetFloat("blurEndDistance", pass.blurEndDistance);
+                    shader->SetFloat("distanceBlurRadius", pass.distanceBlurRadius);
+                    shader->SetFloat("distanceBlurStrength", pass.distanceBlurStrength);
 
                     glActiveTexture(GL_TEXTURE0);
                     glBindTexture(GL_TEXTURE_2D, currentColorTexture);

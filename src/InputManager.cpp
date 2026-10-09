@@ -270,7 +270,9 @@ namespace Canis
         Window* window = (Window*)_window;
 #if CANIS_EDITOR
         m_actionEditorCaptured = Canis::IsEditorRuntimeEnabled() && ImGui::GetCurrentContext() &&
-            (ImGui::GetIO().WantTextInput || (ImGui::GetIO().WantCaptureKeyboard && !window->IsMouseLocked()));
+            // Unlocked input belongs to the focused Game panel. ImGui's general
+            // keyboard-capture flag also covers that panel's own navigation.
+            (ImGui::GetIO().WantTextInput || (!m_editorGameFocused && !window->IsMouseLocked()));
 #endif
         if (window->IsMouseLocked())
             window->RefreshMouseLock();
@@ -565,6 +567,7 @@ namespace Canis
 
     void InputManager::ClearGameMouseViewport()
     {
+        m_editorGameFocused = false;
         m_gameMouseViewportEnabled = false;
         m_gameMouseViewportX = 0.0f;
         m_gameMouseViewportY = 0.0f;
