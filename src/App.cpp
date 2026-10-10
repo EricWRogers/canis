@@ -5913,6 +5913,77 @@ namespace Canis
 
         RegisterScript(materialConf);
 
+        ScriptConf lodConf{
+            .name = LODGroup::ScriptName,
+            .Construct = nullptr,
+            .Add = [](Entity& entity) { entity.AddComponent<LODGroup>(); },
+            .Has = [](Entity& entity) { return entity.HasComponent<LODGroup>(); },
+            .Remove = [](Entity& entity) { entity.RemoveComponent<LODGroup>(); },
+            .Get = [](Entity& entity) -> void* { return entity.HasComponent<LODGroup>() ? &entity.GetComponent<LODGroup>() : nullptr; },
+            .Encode = [](YAML::Node& node, Entity& entity) {
+                if (!entity.HasComponent<LODGroup>()) return;
+                const auto& group=entity.GetComponent<LODGroup>();
+                auto data=node[LODGroup::ScriptName];
+                data["enabled"]=group.enabled;data["profilePath"]=group.profilePath;
+                data["bias"]=group.bias;data["hysteresis"]=group.hysteresis;
+                data["cullHeight"]=group.cullHeight;data["shadowBias"]=group.shadowBias;
+                data["forcedLevel"]=group.forcedLevel;data["debugColors"]=group.debugColors;
+            },
+            .Decode = [](YAML::Node& node, Entity& entity, bool create) {
+                auto data=node[LODGroup::ScriptName];if(!data)return;
+                auto& group=*entity.AddComponent<LODGroup>();
+                group.enabled=data["enabled"].as<bool>(true);group.profilePath=data["profilePath"].as<std::string>("");
+                group.bias=data["bias"].as<float>(1);group.hysteresis=data["hysteresis"].as<float>(.15f);
+                group.cullHeight=data["cullHeight"].as<float>(0);group.shadowBias=data["shadowBias"].as<int>(1);
+                group.forcedLevel=data["forcedLevel"].as<int>(-1);group.debugColors=data["debugColors"].as<bool>(false);
+                if(create)group.Create();
+            },
+            .DrawInspector = [](Editor& editor, Entity& entity, const ScriptConf& conf) {
+                auto& group=entity.GetComponent<LODGroup>();
+                DrawInspectorField(editor,"enabled",conf.name.c_str(),group.enabled);
+                DrawInspectorField(editor,"profilePath",conf.name.c_str(),group.profilePath);
+                if(ImGui::BeginDragDropTarget()) {
+                    if(auto* payload=ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
+                        auto data=*static_cast<const AssetDragData*>(payload->Data);
+                        auto path=AssetManager::GetPath(data.uuid);
+                        if(GetFileExtension(path)=="lod")group.profilePath=path;
+                    }
+                    ImGui::EndDragDropTarget();
+                }
+                DrawInspectorField(editor,"bias",conf.name.c_str(),group.bias);
+                DrawInspectorField(editor,"hysteresis",conf.name.c_str(),group.hysteresis);
+                DrawInspectorField(editor,"cullHeight",conf.name.c_str(),group.cullHeight);
+                DrawInspectorField(editor,"shadowBias",conf.name.c_str(),group.shadowBias);
+                DrawInspectorField(editor,"forcedLevel",conf.name.c_str(),group.forcedLevel);
+                DrawInspectorField(editor,"debugColors",conf.name.c_str(),group.debugColors);
+                ImGui::Text("Last view: LOD %d | screen height %.2f%%",group.activeLevel,group.projectedHeight*100);
+                ImGui::TextWrapped("Force -1 selects automatically. Zero cull height keeps distant objects visible. Visual LOD never changes the collision model.");
+                auto profile=GetLODProfile(group.profilePath);
+                if(!profile)return;
+                auto edited=*profile;
+                bool changed=false;
+                for(size_t c=0;c<edited.chains.size();++c) {
+                    ImGui::PushID(int(c));auto& chain=edited.chains[c];
+                    if(ImGui::TreeNode(chain.sourcePath.c_str())) {
+                        for(size_t i=0;i<chain.levels.size();++i) {
+                            ImGui::PushID(int(i));auto& level=chain.levels[i];
+                            ImGui::Text("LOD %d",int(i));
+                            auto oldPath=level.modelPath;
+                            DrawModelColliderAssetField("LODModel",level.modelPath,level.modelId);
+                            changed|=oldPath!=level.modelPath;
+                            changed|=ImGui::DragFloat("Minimum screen height",&level.screenHeight,.001f,0,1,"%.3f");
+                            ImGui::PopID();
+                        }
+                        ImGui::TreePop();
+                    }
+                    ImGui::PopID();
+                }
+                if(changed && edited.Save())GetLODProfile(group.profilePath,true);
+                if(ImGui::Button("Reload LOD profile"))GetLODProfile(group.profilePath,true);
+            },
+        };
+        RegisterScript(lodConf);
+
         ScriptConf modelConf = {
             .name = "Canis::Model",
             .Construct = nullptr,

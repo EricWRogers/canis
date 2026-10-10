@@ -66,6 +66,7 @@ namespace
             r.on_destroy<DirectionalLight>().connect<&Context::Removed<DirectionalLight>>(this);
             r.on_destroy<Material>().connect<&Context::Removed<Material>>(this);
             r.on_destroy<MeshCollider>().connect<&Context::Removed<MeshCollider>>(this);
+            r.on_destroy<LODGroup>().connect<&Context::Removed<LODGroup>>(this);
             r.on_destroy<Model>().connect<&Context::Removed<Model>>(this);
             r.on_destroy<ModelAnimation>().connect<&Context::Removed<ModelAnimation>>(this);
             r.on_destroy<NavMeshSurface>().connect<&Context::Removed<NavMeshSurface>>(this);
@@ -105,6 +106,7 @@ namespace
             r.on_destroy<DirectionalLight>().disconnect(this);
             r.on_destroy<Material>().disconnect(this);
             r.on_destroy<MeshCollider>().disconnect(this);
+            r.on_destroy<LODGroup>().disconnect(this);
             r.on_destroy<Model>().disconnect(this);
             r.on_destroy<ModelAnimation>().disconnect(this);
             r.on_destroy<NavMeshSurface>().disconnect(this);
@@ -185,6 +187,8 @@ void RegisterSceneBindings(App& app)
     RegisterTweenBindings(app, [context](uint64_t id){return context->Resolve(id);});
     RegisterInputBindings(app);
     constexpr auto owner = "Canis.Scene";
+    bindings.Method(owner,"LODGroup","Level",[context](uint64_t id){ auto entity=context->Resolve(id);return entity.GetComponent<LODGroup>().activeLevel; });
+    bindings.Method(owner,"LODGroup","ScreenHeight",[context](uint64_t id){ auto entity=context->Resolve(id);return entity.GetComponent<LODGroup>().projectedHeight; });
     bindings.Method(owner, "PlayerPrefs", "HasKey", [](std::string key) { return PlayerPrefs::HasKey(key); });
     bindings.Method(owner, "PlayerPrefs", "GetString", [](std::string key, std::string fallback) { return PlayerPrefs::GetString(key, fallback); });
     bindings.Method(owner, "PlayerPrefs", "SetString", [](std::string key, std::string value) { PlayerPrefs::SetString(key, value); });

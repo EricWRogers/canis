@@ -7,6 +7,7 @@
 namespace Canis
 {
     class Shader;
+    struct Model;
     struct MeshRendererCache;
 
     class MeshRenderer3DSystem : public System
@@ -62,6 +63,11 @@ namespace Canis
         Vector3 m_stereoShadowCenter{0.0f};
         std::shared_ptr<MeshRendererCache> m_batchCache;
         const Matrix4& RenderMatrix(entt::entity handle, const Transform& transform);
+        bool LODBounds(entt::entity handle, const Model& model, Vector3& low, Vector3& high);
+        int RenderModelId(entt::entity handle, const Model& model) const;
+        int ShadowModelId(entt::entity handle, const Model& model) const;
+        Color LODColor(entt::entity handle, Color color) const;
+        void SelectLODs(entt::registry& registry, const Matrix4& view, const Matrix4& projection, uint64_t viewKey);
         static constexpr int kMaxPointLights = 8;
         static constexpr int kDirectionalShadowMapSize = 2048;
 

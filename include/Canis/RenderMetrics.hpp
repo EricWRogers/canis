@@ -12,6 +12,7 @@ namespace Canis::RenderMetrics
         double cpuSubmitMs=0, presentMs=0, gpuMs=-1;
         uint64_t instanceUploadBytes=0, instanceCacheHits=0, batchBuilds=0;
         uint64_t roomCulledInstances=0;
+        uint64_t lodInstances[4]{}, lodTriangles[4]{}, lodCulled=0;
     };
     const Frame& Latest();
     struct Pass { std::string name; double cpuMs=0, gpuMs=0, startMs=0; int depth=0; };
@@ -46,4 +47,6 @@ namespace Canis::RenderMetrics
     void InstanceCacheHit();
     void BatchBuild();
     void RoomCull(uint64_t count);
+    void LOD(int level, bool culled);
+    void SetLODLevel(int level);
 }

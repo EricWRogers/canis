@@ -90,6 +90,9 @@ namespace Canis::Profiler
         else ImGui::TextDisabled("GPU timing pending / unavailable");
         ImGui::TextWrapped("Model draws %llu (%llu shadow) | Submitted mesh instances %llu | Triangles %llu",
             (unsigned long long)render.draws,(unsigned long long)render.shadowDraws,(unsigned long long)render.instances,(unsigned long long)render.triangles);
+        ImGui::Text("LOD triangles: %llu / %llu / %llu / %llu | Distance culled: %llu",
+            (unsigned long long)render.lodTriangles[0],(unsigned long long)render.lodTriangles[1],
+            (unsigned long long)render.lodTriangles[2],(unsigned long long)render.lodTriangles[3],(unsigned long long)render.lodCulled);
         ImGui::Text("Culled: %llu view / %llu shadow",(unsigned long long)render.culled,(unsigned long long)render.shadowCulled);
         ImGui::TextWrapped("Instance uploads %.1f KiB | Buffer hits %llu | Batch builds %llu | Room-culled instances %llu",
             render.instanceUploadBytes/1024.0,(unsigned long long)render.instanceCacheHits,

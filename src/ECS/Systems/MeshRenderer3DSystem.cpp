@@ -22,6 +22,7 @@
 #include <map>
 #include <tuple>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 #include <stdexcept>
 
@@ -347,6 +348,7 @@ namespace Canis
         {
             uint64_t group=0;
             i32 modelId = -1;
+            int lodLevel = 0;
             i32 materialId = -1;
             i32 nodeIndex = -1;
             bool applyNodeTransform = true;
@@ -363,6 +365,7 @@ namespace Canis
             {
                 return std::tie(
                     group,
+                    lodLevel,
                     modelId,
                     materialId,
                     nodeIndex,
@@ -377,6 +380,7 @@ namespace Canis
                     materialColorA) <
                     std::tie(
                         _other.group,
+                        _other.lodLevel,
                         _other.modelId,
                         _other.materialId,
                         _other.nodeIndex,
@@ -551,6 +555,11 @@ namespace Canis
             bool cullable;
             Vector3 minimum, maximum;
         };
+        struct LODBoundsRecord { uint64_t profile=0,reload=0,geometry=0; Vector3 low{0},high{0}; bool valid=false; };
+        std::map<std::tuple<int,std::string,int,bool>,LODBoundsRecord> lodBounds;
+        struct LODState { int level=-1, source=-1; uint64_t revision=0; };
+        std::unordered_map<uint64_t,std::unordered_map<entt::entity,LODState>> lodViews;
+        std::unordered_map<entt::entity,int> renderModels,shadowModels,levels;
         std::vector<Candidate> candidates;
         StaticVisibility visibility;
         std::vector<StaticVisibility::Bounds> staticBounds;
@@ -713,6 +722,92 @@ namespace Canis
         CreateShadowMap();
         CreateSkyboxGeometry();
         CreateColliderDebugGeometry();
+    }
+
+    bool MeshRenderer3DSystem::LODBounds(entt::entity handle, const Model& model, Vector3& low, Vector3& high)
+    {
+        auto* group=scene->GetRegistry().try_get<LODGroup>(handle);
+        if(!group || !group->enabled)return false;
+        auto profile=GetLODProfile(group->profilePath);
+        if(!profile)return false;
+        auto chain=std::find_if(profile->chains.begin(),profile->chains.end(),[&](const auto& value){return value.sourceId==model.modelId;});
+        if(chain==profile->chains.end())return false;
+        auto& bounds=m_batchCache->lodBounds[{model.modelId,group->profilePath,model.nodeIndex,model.applyNodeTransform}];
+        auto* base=AssetManager::GetModel(model.modelId);
+        if(bounds.profile!=profile->revision || bounds.reload!=AssetManager::GetRenderReloadRevision() || bounds.geometry!=base->GetGeometryRevision()) {
+            bounds.valid=base->GetLocalBounds(bounds.low,bounds.high,model.nodeIndex,model.applyNodeTransform);
+            if(bounds.valid)for(const auto& level:chain->levels)if(auto* asset=AssetManager::GetModel(level.modelId)) {
+                Vector3 a,b;if(asset->GetLocalBounds(a,b,model.nodeIndex,model.applyNodeTransform)){bounds.low=glm::min(bounds.low,a);bounds.high=glm::max(bounds.high,b);}
+            }
+            bounds.profile=profile->revision;bounds.reload=AssetManager::GetRenderReloadRevision();bounds.geometry=base->GetGeometryRevision();
+        }
+        low=bounds.low;high=bounds.high;return bounds.valid;
+    }
+
+    int MeshRenderer3DSystem::RenderModelId(entt::entity handle, const Model& model) const
+    {
+        auto found = m_batchCache->renderModels.find(handle);
+        return found == m_batchCache->renderModels.end() ? model.modelId : found->second;
+    }
+    int MeshRenderer3DSystem::ShadowModelId(entt::entity handle, const Model& model) const
+    {
+        auto found = m_batchCache->shadowModels.find(handle);
+        return found == m_batchCache->shadowModels.end() ? model.modelId : found->second;
+    }
+    Color MeshRenderer3DSystem::LODColor(entt::entity handle, Color color) const
+    {
+        auto* group = scene->GetRegistry().try_get<LODGroup>(handle);
+        if (!group || !group->debugColors) return color;
+        static const Color colors[] = {Color(1,.3f,.3f,1),Color(1,.9f,.2f,1),Color(.2f,.8f,1,1),Color(.8f,.3f,1,1)};
+        auto found = m_batchCache->levels.find(handle);
+        return color * colors[found == m_batchCache->levels.end() ? 0 : std::clamp(found->second,0,3)];
+    }
+    void MeshRenderer3DSystem::SelectLODs(entt::registry& registry, const Matrix4& view, const Matrix4& projection, uint64_t viewKey)
+    {
+        auto& cache = *m_batchCache;
+        cache.renderModels.clear();cache.shadowModels.clear();cache.levels.clear();
+        auto& states = cache.lodViews[viewKey];
+        if (cache.lodViews.size() > 16)
+            for (auto it=cache.lodViews.begin();it!=cache.lodViews.end();++it) if (it->first!=viewKey) { cache.lodViews.erase(it);break; }
+        std::unordered_set<entt::entity> live;
+        const char* disabled = std::getenv("CANIS_DISABLE_LOD");
+        const bool enabled = !disabled || std::string(disabled)!="1";
+        for (const auto& candidate : cache.candidates)
+        {
+            auto handle=candidate.handle;live.insert(handle);
+            auto& model=registry.get<Model>(handle);
+            auto* group=registry.try_get<LODGroup>(handle);
+            if(group){group->activeLevel=0;group->projectedHeight=0;}
+            if (!group || !group->enabled || !enabled || m_capturingProbe || model.nodeIndex>=0 || candidate.asset->HasDeformingGeometry() || registry.try_get<ModelAnimation>(handle)) continue;
+            if(auto* material=registry.try_get<Material>(handle)) {
+                if(!material->materialIds.empty())continue;
+                if(material->materialId>=0)if(auto* asset=AssetManager::GetMaterial(material->materialId);asset && asset->shaderId>=0)
+                    if(auto* shader=AssetManager::Get<ShaderAsset>(asset->shaderId);shader && shader->GetShader()!=m_shader && shader->HasVertexDeformation())continue;
+            }
+            auto profile=GetLODProfile(group->profilePath);
+            if (!profile) continue;
+            auto chain=std::find_if(profile->chains.begin(),profile->chains.end(),[&](const auto& source){return source.sourceId==model.modelId;});
+            if (chain==profile->chains.end()) continue;
+            auto& state=states[handle];
+            if(state.source!=model.modelId || state.revision!=profile->revision)state.level=-1;
+            auto& transform=registry.get<Transform>(handle);
+            Vector3 low,high;
+            if (!LODBounds(handle,model,low,high)) continue;
+            float height=ProjectedLODHeight(low,high,RenderMatrix(handle,transform),view,projection);
+            if(m_stereoFrame)for(int eye=0;eye<2;++eye)
+                height=std::max(height,ProjectedLODHeight(low,high,RenderMatrix(handle,transform),m_stereoViews[eye],m_stereoProjections[eye]));
+            height*=std::clamp(group->bias,.01f,100.f);
+            int chosen=group->forcedLevel>=0 ? std::min(group->forcedLevel,int(chain->levels.size())-1)
+                : SelectLOD(chain->levels,height,state.level,group->hysteresis);
+            state={chosen,model.modelId,profile->revision};
+            group->activeLevel=chosen;group->projectedHeight=height;
+            bool culled=group->forcedLevel<0 && group->cullHeight>0 && height<group->cullHeight;
+            cache.renderModels[handle]=culled ? -1 : chain->levels[chosen].modelId;
+            cache.shadowModels[handle]=chain->levels[std::min(chosen+std::max(0,group->shadowBias),int(chain->levels.size())-1)].modelId;
+            cache.levels[handle]=chosen;
+            RenderMetrics::LOD(chosen,culled);
+        }
+        for(auto it=states.begin();it!=states.end();)if(!live.contains(it->first))it=states.erase(it);else++it;
     }
 
     void MeshRenderer3DSystem::Ready() {}
@@ -1171,7 +1266,7 @@ namespace Canis
         for(const auto& candidate:m_batchCache->candidates) {
             const auto& model=_registry.get<Model>(candidate.handle);
             if(model.castShadow && isStatic(candidate))
-                staticCasters.push_back({candidate.asset,candidate.asset->GetGeometryRevision(),model.nodeIndex,
+                staticCasters.push_back({AssetManager::GetModel(ShadowModelId(candidate.handle,model)),AssetManager::GetModel(ShadowModelId(candidate.handle,model))->GetGeometryRevision(),model.nodeIndex,
                     model.applyNodeTransform,RenderMatrix(candidate.handle,_registry.get<Transform>(candidate.handle))});
         }
         if(cacheEnabled && !m_staticShadowTexture) {
@@ -1214,7 +1309,7 @@ namespace Canis
             const auto entityHandle = candidate.handle;
             Transform &transform = modelView.get<Transform>(entityHandle);
             Model &modelRenderer = modelView.get<Model>(entityHandle);
-            ModelAsset *model = candidate.asset;
+            ModelAsset *model = AssetManager::GetModel(ShadowModelId(entityHandle,modelRenderer));
             if (!modelRenderer.castShadow || isStatic(candidate)!=(phase==0)) continue;
 
             if (hidden || (candidate.cullable && BoundsOutsideFrustum(m_shadowLightSpaceMatrix*RenderMatrix(entityHandle,transform),candidate.minimum,candidate.maximum))) {
@@ -1222,7 +1317,7 @@ namespace Canis
             }
             if (shadowInstancing && modelRenderer.staticModel && !model->HasDeformingGeometry() &&
                 !_registry.try_get<ModelAnimation>(entityHandle)) {
-                shadowBatches[{modelRenderer.modelId,modelRenderer.nodeIndex,modelRenderer.applyNodeTransform}].push_back(RenderMatrix(entityHandle,transform));
+                shadowBatches[{ShadowModelId(entityHandle,modelRenderer),modelRenderer.nodeIndex,modelRenderer.applyNodeTransform}].push_back(RenderMatrix(entityHandle,transform));
                 continue;
             }
 
@@ -1430,6 +1525,7 @@ namespace Canis
                 const auto& matrix=RenderMatrix(handle, transform);
                 Vector3 minimum{0},maximum{0};
                 const bool cullable=CullBounds(_registry,handle,*asset,model,m_shader,minimum,maximum);
+                if(cullable)LODBounds(handle,model,minimum,maximum);
                 if(cullable) {
                     auto& record=cache.frameMatrices.at(handle);
                     if(record.boundsRevision!=record.revision || record.localMinimum!=minimum || record.localMaximum!=maximum) {
@@ -1468,6 +1564,7 @@ namespace Canis
         Matrix4 projection = Matrix4(1.0f);
         Matrix4 view = Matrix4(1.0f);
         Vector3 cameraPosition = Vector3(0.0f, 0.0f, 0.0f);
+        uint64_t selectedCameraKey=0;
         float cameraNearClip = 0.1f;
         float cameraFarClip = 100.0f;
 
@@ -1515,6 +1612,7 @@ namespace Canis
                 {
                     camera = &candidateCamera;
                     cameraTransform = &candidateTransform;
+                    selectedCameraKey=uint64_t(entt::to_integral(entityHandle))+1;
                     break;
                 }
 
@@ -1522,6 +1620,7 @@ namespace Canis
                 {
                     camera = &candidateCamera;
                     cameraTransform = &candidateTransform;
+                    selectedCameraKey=uint64_t(entt::to_integral(entityHandle))+1;
                 }
             }
 
@@ -1545,6 +1644,9 @@ namespace Canis
             cameraPosition = eye;
         }
 
+        uint64_t lodViewKey=scene->HasEditorCamera3DOverride() ? UINT64_MAX-1 : selectedCameraKey;
+        if(m_stereoFrame)lodViewKey=UINT64_MAX-2;
+        SelectLODs(_registry,view,projection,lodViewKey);
         if(!m_capturingProbe)scene->SetLastRenderCamera(view, projection, cameraPosition, cameraNearClip, cameraFarClip);
 
         DirectionalLightState directionalLight = GatherDirectionalLight(_registry);
@@ -1600,7 +1702,9 @@ namespace Canis
             const auto entityHandle = candidate.handle;
             Transform &transform = modelView.get<Transform>(entityHandle);
             Model &modelRenderer = modelView.get<Model>(entityHandle);
-            ModelAsset *model = candidate.asset;
+            int visualId=RenderModelId(entityHandle,modelRenderer);
+            if(visualId<0){RenderMetrics::Cull(false);continue;}
+            ModelAsset *model = AssetManager::GetModel(visualId);
 
             if ((m_stereoPass == 1 && candidate.transparent) ||
                 (m_stereoPass == 2 && !candidate.transparent)) continue;
@@ -1763,7 +1867,7 @@ namespace Canis
             const bool canBatch = modelRenderer.staticModel && !modelRenderer.bakedVisibility &&
                 RenderMetrics::InstancingEnabled() &&
                 !_registry.try_get<Terrain>(entry.entityHandle) &&
-                !AssetManager::GetModel(modelRenderer.modelId)->HasDeformingGeometry() &&
+                !AssetManager::GetModel(RenderModelId(entry.entityHandle,modelRenderer))->HasDeformingGeometry() &&
                 usesInstancedModelShader &&
                 _registry.try_get<ModelAnimation>(entry.entityHandle) == nullptr &&
                 (material == nullptr || (material->materialIds.empty() && !HasMaterialFields(material->materialFields))) &&
@@ -1775,10 +1879,11 @@ namespace Canis
                 continue;
             }
 
-            const Color modelColor = graph ? Color(1.f) : modelRenderer.color;
+            const Color modelColor = graph ? Color(1.f) : LODColor(entry.entityHandle,modelRenderer.color);
             const Color materialColor = (!graph && material != nullptr) ? material->color : Color(1.0f);
             StaticModelBatchKey key = {};
-            key.modelId = modelRenderer.modelId;
+            key.modelId = RenderModelId(entry.entityHandle,modelRenderer);
+            if(auto level=m_batchCache->levels.find(entry.entityHandle);level!=m_batchCache->levels.end())key.lodLevel=level->second;
             key.materialId = materialId;
             key.nodeIndex = modelRenderer.nodeIndex;
             key.applyNodeTransform = modelRenderer.applyNodeTransform;
@@ -1793,8 +1898,8 @@ namespace Canis
             if(roomQueries)key.group=findGroup(findGroup,entry.entityHandle);
 
             batchInputs.push_back({key,RenderMatrix(entry.entityHandle,transform),
-                modelRenderer.color * (material ? material->color : Color(1.f)),entry.entityHandle,graph,
-                AssetManager::GetModel(modelRenderer.modelId)->GetGeometryRevision(),program,
+                LODColor(entry.entityHandle,modelRenderer.color) * (material ? material->color : Color(1.f)),entry.entityHandle,graph,
+                AssetManager::GetModel(key.modelId)->GetGeometryRevision(),program,
                 materialAsset ? uint64_t(materialAsset->info) : 0,
                 materialAsset ? materialAsset->albedoId : -1,
                 materialAsset ? materialAsset->color.a : 1.f});
@@ -1890,7 +1995,7 @@ namespace Canis
                 modelRenderer.modelId < 0)
                 return;
 
-            ModelAsset *model = AssetManager::GetModel(modelRenderer.modelId);
+            ModelAsset *model = AssetManager::GetModel(RenderModelId(entityHandle,modelRenderer));
             if (model == nullptr)
                 return;
 
@@ -1918,7 +2023,7 @@ namespace Canis
                     pose = &animation->pose;
             }
 
-            Color baseColor = modelRenderer.color;
+            Color baseColor = LODColor(entityHandle,modelRenderer.color);
             i32 overrideTextureId = -1;
             i32 specularTextureId = -1;
             i32 roughnessTextureId = -1;
@@ -2093,6 +2198,8 @@ namespace Canis
             const char* disabledBake=std::getenv("CANIS_DISABLE_BAKED_VISIBILITY");
             const bool useVisibility=modelRenderer.staticModel && modelRenderer.bakedVisibility && !pose &&
                 !_registry.try_get<ModelAnimation>(entityHandle) && !EntityUsesTransparency(_registry,entityHandle) && (!disabledBake || std::string(disabledBake)!="1");
+            auto level=m_batchCache->levels.find(entityHandle);
+            RenderMetrics::SetLODLevel(level==m_batchCache->levels.end()?0:level->second);
             model->Draw(
                 *currentShader,
                 RenderMatrix(entityHandle,transform),
@@ -2104,10 +2211,12 @@ namespace Canis
                 modelRenderer.applyNodeTransform,
                 materialAsset,
                 useVisibility?&visibility:nullptr);
+            RenderMetrics::SetLODLevel(-1);
         };
 
         auto drawStaticBatch = [&](const StaticModelBatch &_batch) -> void
         {
+            RenderMetrics::SetLODLevel(_batch.key.lodLevel);
             ModelAsset *model = AssetManager::GetModel(_batch.key.modelId);
             if (model == nullptr)
                 return;
@@ -2265,6 +2374,7 @@ namespace Canis
         for (const StaticModelBatch &batch : staticBatches)
         {
             drawStaticBatch(batch);
+            RenderMetrics::SetLODLevel(-1);
         }
 #ifndef __EMSCRIPTEN__
         if(roomQueries) {

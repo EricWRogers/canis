@@ -9,6 +9,7 @@ file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
 file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/LOD.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Blockout.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/BlockoutEditing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/PostProcessPipeline.cpp"
@@ -315,6 +316,9 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisRigidbodyRotationTests tests/RigidbodyRotationTests.cpp)
     target_link_libraries(CanisRigidbodyRotationTests PRIVATE CanisEngine)
     add_test(NAME CanisRigidbodyRotationTests COMMAND CanisRigidbodyRotationTests)
+    add_executable(CanisLODTests tests/LODTests.cpp)
+    target_link_libraries(CanisLODTests PRIVATE CanisEngine)
+    add_test(NAME CanisLODTests COMMAND CanisLODTests)
     add_executable(CanisProfilerTests tests/ProfilerTests.cpp)
     target_link_libraries(CanisProfilerTests PRIVATE CanisEngine)
     add_test(NAME CanisProfilerTests COMMAND CanisProfilerTests)
