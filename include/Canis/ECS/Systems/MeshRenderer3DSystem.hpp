@@ -15,7 +15,7 @@ namespace Canis
     public:
         MeshRenderer3DSystem() : System() { m_name = type_name<MeshRenderer3DSystem>(); }
 
-        void InvalidateLightingProbes() { m_probesDirty=true; }
+        void InvalidateLightingProbes() { m_probesDirty=true; m_forceProbeCapture=true; }
         int ReadyLightingProbeCount() const { return static_cast<int>(m_probeTextures.size()); }
         void InvalidateStaticShadowCache() { m_staticShadowValid=false; }
         bool HasStaticShadowCache() const { return m_staticShadowValid; }
@@ -44,7 +44,7 @@ namespace Canis
         }
 
     private:
-        bool m_capturingProbe=false, m_probesDirty=true;
+        bool m_capturingProbe=false, m_probesDirty=true, m_forceProbeCapture=false;
         Matrix4 m_probeView{1}, m_probeProjection{1};
         Vector3 m_probePosition{0};
         float m_probeNear=.1f, m_probeFar=100;

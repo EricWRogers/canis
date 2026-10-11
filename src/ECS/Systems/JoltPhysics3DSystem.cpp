@@ -35,6 +35,7 @@
 #include <mutex>
 #include <type_traits>
 #include <tuple>
+#include <string_view>
 #include <unordered_map>
 #include <thread>
 #include <vector>
@@ -410,7 +411,7 @@ namespace Canis
 
         // Compare authored values directly: public component fields can change without
         // an EnTT update signal. Runtime velocities/contact lists are intentionally absent.
-        struct BodySettings
+        template<typename Path> struct BodySettingsData
         {
             decltype(RigidbodySettings(Rigidbody{})) body;
             Vector3 worldScale{1.0f};
@@ -418,10 +419,10 @@ namespace Canis
             Vector3 offset{0.0f}, size{1.0f};
             float radius = 0.0f, halfHeight = 0.0f;
             bool attached = false, applyNodeTransform = true;
-            std::string modelPath;
+            Path modelPath;
             i32 modelId = -1, nodeIndex = -1;
             u64 geometryRevision = 0;
-            bool operator==(const BodySettings& other) const
+            template<typename OtherPath> bool operator==(const BodySettingsData<OtherPath>& other) const
             {
                 // Matrix decomposition introduces rounding when a hierarchy rotates.
                 // Compare against the scale of the existing shape (never the previous
@@ -439,14 +440,24 @@ namespace Canis
                            other.halfHeight, other.attached, other.applyNodeTransform,
                            other.modelPath, other.modelId, other.nodeIndex, other.geometryRevision);
             }
+            BodySettingsData() = default;
+            template<typename OtherPath> explicit BodySettingsData(const BodySettingsData<OtherPath>& other)
+                : body(other.body), worldScale(other.worldScale), shape(other.shape), offset(other.offset),
+                  size(other.size), radius(other.radius), halfHeight(other.halfHeight), attached(other.attached),
+                  applyNodeTransform(other.applyNodeTransform), modelPath(other.modelPath), modelId(other.modelId),
+                  nodeIndex(other.nodeIndex), geometryRevision(other.geometryRevision) {}
         };
+        using BodySettings = BodySettingsData<std::string>;
+        using BodySettingsView = BodySettingsData<std::string_view>;
 
-        BodySettings CaptureSettings(entt::registry& registry, entt::entity handle,
+        BodySettingsView CaptureSettings(entt::registry& registry, entt::entity handle,
             const Vector3& worldScale, const Rigidbody& body,
             const BoxCollider* box, const SphereCollider* sphere, const CapsuleCollider* capsule,
             const MeshCollider* mesh, const ConvexMeshCollider* convex)
         {
-            BodySettings settings;
+            // The comparison borrows the authored path. Only a created/rebuilt
+            // body owns a snapshot, avoiding thousands of allocations per frame.
+            BodySettingsView settings;
             settings.body = RigidbodySettings(body);
             settings.worldScale = worldScale;
             if (box) {
@@ -924,7 +935,7 @@ namespace Canis
         {
             JPH::BodyID bodyID;
             BodySettings settings;
-            uint64_t seenFrame = 0, syncedWorldRevision = 0;
+            uint64_t seenFrame = 0, syncedWorldRevision = 0, syncedParentRevision = 0;
             Vector3 syncedLocalPosition = Vector3(0.0f);
             Quaternion syncedLocalRotation = Quaternion(Vector3(0.0f));
             bool hasSyncedTransform = false;
@@ -947,15 +958,17 @@ namespace Canis
         std::unordered_map<entt::entity, CachedTransform> transforms;
         uint64_t syncFrame = 0, transformRevision = 0;
 
-        const CachedTransform& WorldTransform(entt::entity handle, const Transform& transform)
+        const CachedTransform& WorldTransform(entt::registry& registry, entt::entity handle, const Transform& transform)
         {
             auto& cached = transforms[handle];
             if (cached.frame == syncFrame) return cached;
             const CachedTransform* parent = nullptr;
             entt::entity parentHandle = entt::null;
-            if (transform.parent != nullptr && transform.parent->HasComponent<Transform>()) {
-                parentHandle = transform.parent->GetHandle();
-                parent = &WorldTransform(parentHandle, transform.parent->GetComponent<Transform>());
+            parentHandle = transform.parent.GetHandle();
+            if (const auto* parentTransform = registry.try_get<Transform>(parentHandle)) {
+                parent = &WorldTransform(registry, parentHandle, *parentTransform);
+            } else {
+                parentHandle = entt::null;
             }
             const auto parentRevision = parent ? parent->revision : 0;
             if (!cached.revision || cached.parent != parentHandle || cached.parentRevision != parentRevision ||
@@ -992,6 +1005,7 @@ namespace Canis
         std::unique_ptr<JPH::JobSystemThreadPool> jobSystem = nullptr;
         JPH::BodyInterface *bodyInterface = nullptr;
         std::unordered_map<entt::entity, BodyRuntimeData> bodies = {};
+        std::vector<entt::entity> movingBodies, staleBodies;
         float accumulator = 0.0f;
         bool initialized = false;
 
@@ -1039,6 +1053,7 @@ namespace Canis
                 RemoveBodyFromWorld(entry.second.bodyID);
             bodies.clear();
             transforms.clear();
+            movingBodies.clear();staleBodies.clear();
 
             bodyInterface = nullptr;
             if (contactListener != nullptr)
@@ -1201,53 +1216,53 @@ namespace Canis
                 bodyInterface->ActivateBody(_bodyID);
         }
 
-        bool EnsureBodyForEntity(entt::registry &_registry, entt::entity _entityHandle)
+        BodyRuntimeData* EnsureBodyForEntity(entt::registry &_registry, entt::entity _entityHandle)
         {
             Transform *transform = _registry.try_get<Transform>(_entityHandle);
             Rigidbody *rigidbody = _registry.try_get<Rigidbody>(_entityHandle);
             if (transform == nullptr || rigidbody == nullptr)
             {
                 RemoveBody(_entityHandle);
-                return false;
+                return nullptr;
             }
 
             Entity *entity = rigidbody->entity != nullptr ? rigidbody->entity : transform->entity;
-            if (entity == nullptr || !entity->Active() || !rigidbody->active)
+            const auto* metadata = _registry.try_get<EntityMetadata>(_entityHandle);
+            if (entity == nullptr || !metadata || !metadata->active || !rigidbody->active)
             {
                 RemoveBody(_entityHandle);
-                return false;
+                return nullptr;
             }
 
             BoxCollider *boxCollider = _registry.try_get<BoxCollider>(_entityHandle);
-            SphereCollider *sphereCollider = _registry.try_get<SphereCollider>(_entityHandle);
-            CapsuleCollider *capsuleCollider = _registry.try_get<CapsuleCollider>(_entityHandle);
-            MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle);
-            ConvexMeshCollider *convexMeshCollider = _registry.try_get<ConvexMeshCollider>(_entityHandle);
-
             if (boxCollider != nullptr && !boxCollider->active)
                 boxCollider = nullptr;
+            SphereCollider *sphereCollider = _registry.try_get<SphereCollider>(_entityHandle);
             if (sphereCollider != nullptr && !sphereCollider->active)
                 sphereCollider = nullptr;
+            CapsuleCollider *capsuleCollider = _registry.try_get<CapsuleCollider>(_entityHandle);
             if (capsuleCollider != nullptr && !capsuleCollider->active)
                 capsuleCollider = nullptr;
+            MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle);
             if (meshCollider != nullptr && !meshCollider->active)
                 meshCollider = nullptr;
+            ConvexMeshCollider *convexMeshCollider = _registry.try_get<ConvexMeshCollider>(_entityHandle);
             if (convexMeshCollider != nullptr && !convexMeshCollider->active)
                 convexMeshCollider = nullptr;
 
             if (boxCollider == nullptr && sphereCollider == nullptr && capsuleCollider == nullptr && meshCollider == nullptr && convexMeshCollider == nullptr)
             {
                 RemoveBody(_entityHandle);
-                return false;
+                return nullptr;
             }
 
-            const auto& world = WorldTransform(_entityHandle, *transform);
+            const auto& world = WorldTransform(_registry, _entityHandle, *transform);
             const auto settings = CaptureSettings(_registry, _entityHandle, world.scale, *rigidbody,
                 boxCollider, sphereCollider, capsuleCollider, meshCollider, convexMeshCollider);
             auto bodyIt = bodies.find(_entityHandle);
             if (bodyIt != bodies.end() && bodyIt->second.settings == settings) {
                 bodyIt->second.seenFrame = syncFrame;
-                return true;
+                return &bodyIt->second;
             }
 
             Profiler::Scope rebuildTiming(bodyIt != bodies.end() ? "Physics body rebuild" : "Physics body creation",
@@ -1267,7 +1282,7 @@ namespace Canis
             if (shape == nullptr)
             {
                 RemoveBody(_entityHandle);
-                return false;
+                return nullptr;
             }
 
             const JPH::EMotionType motionType = ToMotionType(rigidbody->motionType);
@@ -1309,14 +1324,15 @@ namespace Canis
             {
                 Debug::Log("JoltPhysics3DSystem: failed to create body for entity '%s'.", entity->GetName().c_str());
                 RemoveBody(_entityHandle);
-                return false;
+                return nullptr;
             }
 
             BodyRuntimeData runtimeData;
             runtimeData.bodyID = bodyID;
-            runtimeData.settings = settings;
+            runtimeData.settings = BodySettings(settings);
             runtimeData.seenFrame = syncFrame;
             runtimeData.syncedWorldRevision = world.revision;
+            runtimeData.syncedParentRevision = world.parentRevision;
             runtimeData.syncedLocalPosition = transform->position;
             runtimeData.syncedLocalRotation = transform->rotation;
             runtimeData.hasSyncedTransform = true;
@@ -1326,46 +1342,26 @@ namespace Canis
             runtimeData.currentWorldRotation = runtimeData.previousWorldRotation;
             runtimeData.hasPhysicsPose = true;
             bodies[_entityHandle] = runtimeData;
-            return true;
+            return &bodies.at(_entityHandle);
         }
 
-        std::vector<entt::entity> SyncBodiesBeforeStep(entt::registry &_registry, float _physicsDeltaTime)
+        const std::vector<entt::entity>& SyncBodiesBeforeStep(entt::registry &_registry, float _physicsDeltaTime)
         {
             Profiler::Scope timing("Physics body synchronization", Profiler::Category::Physics);
-            std::vector<entt::entity> activeBodies = {};
+            movingBodies.clear();
             ++syncFrame;
 
             auto rigidbodyView = _registry.view<Rigidbody, Transform>();
             for (const entt::entity entityHandle : rigidbodyView)
             {
-                if (!EnsureBodyForEntity(_registry, entityHandle))
+                BodyRuntimeData* runtime = EnsureBodyForEntity(_registry, entityHandle);
+                if (!runtime)
                     continue;
-
-                activeBodies.push_back(entityHandle);
-            }
-
-            std::vector<entt::entity> staleEntities = {};
-            staleEntities.reserve(bodies.size());
-            for (const auto &entry : bodies)
-            {
-                const entt::entity entityHandle = entry.first;
-                if (entry.second.seenFrame != syncFrame)
-                    staleEntities.push_back(entityHandle);
-            }
-
-            for (const entt::entity entityHandle : staleEntities)
-                RemoveBody(entityHandle);
-
-            for (const entt::entity entityHandle : activeBodies)
-            {
-                auto bodyIt = bodies.find(entityHandle);
-                Transform *transform = _registry.try_get<Transform>(entityHandle);
-                Rigidbody *rigidbody = _registry.try_get<Rigidbody>(entityHandle);
-                if (bodyIt == bodies.end() || transform == nullptr || rigidbody == nullptr)
-                    continue;
-
-                BodyRuntimeData &runtimeData = bodyIt->second;
+                Transform* transform = &rigidbodyView.get<Transform>(entityHandle);
+                Rigidbody* rigidbody = &rigidbodyView.get<Rigidbody>(entityHandle);
+                BodyRuntimeData &runtimeData = *runtime;
                 const JPH::EMotionType motionType = ToMotionType(rigidbody->motionType);
+                if(motionType!=JPH::EMotionType::Static)movingBodies.push_back(entityHandle);
 
                 const bool transformEdited = !runtimeData.hasSyncedTransform
                     || !NearlyEqual(transform->position, runtimeData.syncedLocalPosition)
@@ -1378,7 +1374,12 @@ namespace Canis
                 const auto& world = transforms.at(entityHandle);
                 const bool staticMoved = motionType == JPH::EMotionType::Static &&
                     (!runtimeData.hasPhysicsPose || runtimeData.syncedWorldRevision != world.revision);
-                if (staticMoved || transformEdited)
+                // Moving a door container must also move its kinematic child colliders.
+                // Track the parent independently so physics interpolation of the
+                // body's own Transform does not cancel MoveKinematic commands.
+                const bool parentMoved = motionType == JPH::EMotionType::Kinematic &&
+                    runtimeData.syncedParentRevision != world.parentRevision;
+                if (staticMoved || transformEdited || parentMoved)
                 {
                     const JPH::EActivation activation = (motionType == JPH::EMotionType::Static)
                         ? JPH::EActivation::DontActivate
@@ -1398,6 +1399,7 @@ namespace Canis
                     runtimeData.currentWorldRotation = runtimeData.previousWorldRotation;
                     runtimeData.hasPhysicsPose = true;
                     runtimeData.syncedWorldRevision = world.revision;
+                    runtimeData.syncedParentRevision = world.parentRevision;
                 }
 
                 if (motionType == JPH::EMotionType::Dynamic)
@@ -1427,13 +1429,14 @@ namespace Canis
                 }
             }
 
-            // Keep stationary scenery out of pose capture/interpolation, and retire
-            // cached hierarchy nodes no longer used by any live physics body.
-            std::erase_if(activeBodies, [&](entt::entity handle) {
-                return _registry.get<Rigidbody>(handle).motionType == RigidbodyMotionType::STATIC;
-            });
+            staleBodies.clear();
+            for(const auto& [handle,runtime]:bodies)
+                if(runtime.seenFrame!=syncFrame)staleBodies.push_back(handle);
+            for(auto handle:staleBodies)RemoveBody(handle);
+            // Only moving bodies need pose capture/interpolation. Static body
+            // edits are still checked in the single synchronization pass above.
             std::erase_if(transforms, [&](const auto& entry) { return entry.second.frame != syncFrame; });
-            return activeBodies;
+            return movingBodies;
         }
 
         void ApplyContactFrameData(entt::registry &_registry)
@@ -1599,7 +1602,7 @@ namespace Canis
                 kMaxSubSteps);
             const float physicsDeltaTime = static_cast<float>(stepCount) * kFixedTimeStep;
 
-            std::vector<entt::entity> activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
+            const auto& activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
 
             for (int step = 0; step < stepCount; ++step)
             {

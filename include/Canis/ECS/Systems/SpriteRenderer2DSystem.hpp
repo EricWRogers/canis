@@ -72,7 +72,10 @@ namespace Canis
         void Ready() override;
 
         void Update(entt::registry &_registry, float _deltaTime) override;
+        void RenderWorldUI(entt::registry &_registry, float _deltaTime);
+        void RenderScreenSpaceUI(entt::registry &_registry);
     private:
+        void RenderLayers(entt::registry &_registry, float _deltaTime, bool _worldOnly, bool _screenOnly);
         void DrawText(
             Entity* _entity,
             RectTransform* _transform,

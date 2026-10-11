@@ -921,16 +921,48 @@ namespace Canis
                 break;
             }
 
+            // Face orientation is authored independently of the cube face order.
+            // Unity six-sided skies need half turns on the two pole faces after
+            // the scene's handedness conversion; ordinary Canis skies default to zero.
+            const auto face = root[faceNames[i]];
+            int rotation = face.IsMap() ? face["rotation"].as<int>(0) : 0;
+            rotation = (rotation % 360 + 360) % 360;
+            if (rotation % 90 != 0)
+            {
+                Debug::Warning("Skybox face rotation must be a multiple of 90 degrees: %s", faceNames[i]);
+                stbi_image_free(data);
+                loadedAllFaces = false;
+                break;
+            }
+            std::vector<stbi_uc> rotated;
+            const stbi_uc* pixels = data;
+            int outputWidth = width, outputHeight = height;
+            if (rotation)
+            {
+                if (rotation != 180)
+                    std::swap(outputWidth, outputHeight);
+                rotated.resize(size_t(width) * height * 4);
+                for (int y = 0; y < height; ++y)
+                    for (int x = 0; x < width; ++x)
+                    {
+                        int destX = rotation == 90 ? height-1-y : rotation == 180 ? width-1-x : y;
+                        int destY = rotation == 90 ? x : rotation == 180 ? height-1-y : width-1-x;
+                        std::copy_n(data+(size_t(y)*width+x)*4,4,
+                                    rotated.data()+(size_t(destY)*outputWidth+destX)*4);
+                    }
+                pixels = rotated.data();
+            }
+
             glTexImage2D(
                 GL_TEXTURE_CUBE_MAP_POSITIVE_X + i,
                 0,
                 GL_RGBA,
-                width,
-                height,
+                outputWidth,
+                outputHeight,
                 0,
                 GL_RGBA,
                 GL_UNSIGNED_BYTE,
-                data);
+                pixels);
             stbi_image_free(data);
         }
 
@@ -2179,6 +2211,8 @@ namespace Canis
                     continue;
 
                 Primitive3D outputPrimitive;
+                outputPrimitive.bakedLighting = primitive.extras.IsObject() &&
+                    primitive.extras.Has("canisBakedLighting") && primitive.extras.Get("canisBakedLighting").Get<bool>();
                 outputPrimitive.nodeIndex = static_cast<i32>(nodeIndex);
                 outputPrimitive.skinIndex = node.skin;
                 outputPrimitive.materialSlot = getMaterialSlot(primitive.material);
@@ -2326,6 +2360,20 @@ namespace Canis
                 if (!texturePath.empty())
                     outputPrimitive.textureId = AssetManager::LoadTexture(texturePath);
 
+                if (primitive.material>=0 && primitive.material<int(gltfModel.materials.size())) {
+                    const auto& material=gltfModel.materials[primitive.material];
+                    auto loadMap=[&](int index) -> int {
+                        if(index<0||index>=int(gltfModel.textures.size()))return -1;
+                        int image=gltfModel.textures[index].source;if(image<0||image>=int(gltfModel.images.size()))return -1;
+                        const auto& data=gltfModel.images[image];
+                        auto path=data.uri.empty()?ExtractEmbeddedTexture(data,image,std::filesystem::path(_path)):
+                            (std::filesystem::path(_path).parent_path()/data.uri).lexically_normal().string();
+                        return path.empty()?-1:AssetManager::LoadTexture(path);
+                    };
+                    outputPrimitive.normalTextureId=loadMap(material.normalTexture.index);
+                    outputPrimitive.emissionTextureId=loadMap(material.emissiveTexture.index);
+                    if(material.emissiveFactor.size()>=3)outputPrimitive.emissionFactor={material.emissiveFactor[0],material.emissiveFactor[1],material.emissiveFactor[2]};
+                }
                 if (!UploadPrimitive(outputPrimitive))
                     continue;
 
@@ -2943,6 +2991,11 @@ namespace Canis
             if (_slotMaterialOverrides != nullptr && (!slotBound || primitiveMaterial!=lastSlot))
             {
                 slotBound=true;lastSlot=primitiveMaterial;
+                if(primitiveMaterial && (primitiveMaterial->info&MATERIAL_BACK_FACE_CULLING)) {
+                    glEnable(GL_CULL_FACE);glCullFace(GL_BACK);
+                } else if(primitiveMaterial && (primitiveMaterial->info&MATERIAL_FRONT_FACE_CULLING)) {
+                    glEnable(GL_CULL_FACE);glCullFace(GL_FRONT);
+                } else glDisable(GL_CULL_FACE);
                 const float specular = primitiveMaterial != nullptr
                     ? primitiveMaterial->specularValue : 0.5f;
                 const float roughness = primitiveMaterial != nullptr
@@ -3009,6 +3062,7 @@ namespace Canis
 
             if(!matrixBound || lastMatrix!=model) {_shader.SetMat4("M",model);lastMatrix=model;matrixBound=true;}
             if(!colorBound || lastColor!=drawColor) {_shader.SetVec4("albedoValue",drawColor);lastColor=drawColor;colorBound=true;}
+            _shader.SetFloat("alphaCutoff",drawColor.a<.999f?0.f:.5f);
             if(lastTexture!=textureId) {
                 _shader.SetBool("useAlbedoMap",textureId>=0);glActiveTexture(GL_TEXTURE0);
                 auto* texture=textureId>=0?AssetManager::GetTexture(textureId):nullptr;
@@ -3033,6 +3087,23 @@ namespace Canis
                     vertices->data());
             }
 
+            if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
+                _shader.SetBool("useNormalMap",primitive.normalTextureId>=0);
+                if(primitive.normalTextureId>=0) {
+                    _shader.SetInt("normalMap",5);glActiveTexture(GL_TEXTURE5);
+                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.normalTextureId)->GetGLTexture().id);
+                }
+            }
+            if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
+                _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
+                if(primitive.emissionTextureId>=0) {
+                    _shader.SetInt("embeddedEmissionMap",7);glActiveTexture(GL_TEXTURE7);
+                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.emissionTextureId)->GetGLTexture().id);
+                }
+                _shader.SetVec3("embeddedEmissionFactor",primitive.emissionFactor);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
             glBindVertexArray(primitive.vao);
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
             RenderMetrics::Draw(primitive.indices.size()/3);
@@ -3099,6 +3170,7 @@ namespace Canis
             _shader.SetBool("useAlbedoMap", textureId >= 0);
             _shader.SetInt("albedoMap", 0);
             _shader.SetVec4("albedoValue", _baseColor * primitive.baseColor);
+            _shader.SetFloat("alphaCutoff",(_baseColor * primitive.baseColor).a<.999f?0.f:.5f);
 
             glActiveTexture(GL_TEXTURE0);
             if (textureId >= 0)
@@ -3145,6 +3217,28 @@ namespace Canis
             glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,matrixStride,reinterpret_cast<void*>(offsetof(Instance,color)));
             glVertexAttribDivisor(7,1);
 
+            if (primitive.bakedLighting && !_instanceColors) {
+                glBindBuffer(GL_ARRAY_BUFFER, primitive.vbo);
+                glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
+                glVertexAttribDivisor(7,0);
+            }
+            if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
+                _shader.SetBool("useNormalMap",primitive.normalTextureId>=0);
+                if(primitive.normalTextureId>=0) {
+                    _shader.SetInt("normalMap",5);glActiveTexture(GL_TEXTURE5);
+                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.normalTextureId)->GetGLTexture().id);
+                }
+            }
+            if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
+                _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
+                if(primitive.emissionTextureId>=0) {
+                    _shader.SetInt("embeddedEmissionMap",7);glActiveTexture(GL_TEXTURE7);
+                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.emissionTextureId)->GetGLTexture().id);
+                }
+                _shader.SetVec3("embeddedEmissionFactor",primitive.emissionFactor);
+            }
+            glActiveTexture(GL_TEXTURE0);
+            _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
             glDrawElementsInstanced(
                 GL_TRIANGLES,
                 static_cast<GLsizei>(primitive.indices.size()),

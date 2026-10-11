@@ -17,6 +17,7 @@
 #include <Canis/RenderVisibility.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
+#include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -97,6 +98,29 @@ static void ImportedTextureLoading() {
     Check(embedded.Load((root/"embedded.gltf").string()),"Embedded image decoding failed");
     int extracted=AssetManager::GetID((root/"embedded_textures/colors.tga").string());
     Check(extracted>=0&&pixels(extracted)==expected,"Embedded image extraction changed orientation or colors");
+    {
+        std::ofstream skyFile(root/"orientation.skybox");
+        for (const char* face : {"right","left","top","bottom","front","back"})
+            skyFile << face << ":\n  path: " << (root/"colors.png").string()
+                    << "\n  rotation: " << (std::string(face)=="top" ? 180 :
+                        std::string(face)=="right" ? 90 : std::string(face)=="bottom" ? -90 : 0) << '\n';
+        skyFile.close();
+        SkyboxAsset sky;
+        Check(sky.Load((root/"orientation.skybox").string()),"Skybox face orientation fixture failed");
+        glBindTexture(GL_TEXTURE_CUBE_MAP,sky.GetTexture());
+        const int order[6][4]={{2,0,3,1},{0,1,2,3},{3,2,1,0},{1,3,0,2},{0,1,2,3},{0,1,2,3}};
+        for (int face=0;face<6;++face)
+        {
+            std::vector<unsigned char> actual(16);
+            glGetTexImage(GL_TEXTURE_CUBE_MAP_POSITIVE_X+face,0,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
+            for(int pixel=0;pixel<4;++pixel)
+                for(int channel=0;channel<4;++channel)
+                    Check(actual[pixel*4+channel]==expected[order[face][pixel]*4+channel],
+                          "Cube face rotation changed its corner colors or a neighboring face");
+        }
+        glBindTexture(GL_TEXTURE_CUBE_MAP,0);
+        sky.Free();
+    }
     external.Free();embedded.Free();std::filesystem::remove_all(root);
     std::cout << "Imported textures share GPU cache, ignore unused images, and retain external/embedded pixel orientation\n";
 }
@@ -415,6 +439,33 @@ static void VertexColorsSurviveInstancing() {
     model.Free();shader.UnUse();glEnable(GL_DEPTH_TEST);
 }
 
+static void PickingIdsIgnoreMaterialTint() {
+    Shader shader("assets/shaders/editor_model_pick.vs","assets/shaders/editor_model_pick.fs");shader.Link();shader.Use();
+    shader.SetMat4("P",Matrix4(1));shader.SetMat4("V",Matrix4(1));
+    GLuint framebuffer,texture;glGenFramebuffers(1,&framebuffer);glGenTextures(1,&texture);
+    glBindFramebuffer(GL_FRAMEBUFFER,framebuffer);glActiveTexture(GL_TEXTURE0);glBindTexture(GL_TEXTURE_2D,texture);
+    glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,32,32,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+    glFramebufferTexture2D(GL_FRAMEBUFFER,GL_COLOR_ATTACHMENT0,GL_TEXTURE_2D,texture,0);
+    Check(glCheckFramebufferStatus(GL_FRAMEBUFFER)==GL_FRAMEBUFFER_COMPLETE,"Picking regression framebuffer is incomplete");
+    const bool dither=glIsEnabled(GL_DITHER),srgb=glIsEnabled(GL_FRAMEBUFFER_SRGB);
+    glViewport(0,0,32,32);glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_DITHER);glDisable(GL_FRAMEBUFFER_SRGB);glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);
+    ModelAsset model;ModelAsset::PrimitiveBuild3D part;
+    part.vertices={{{-1,-1,0},{0,0,1},{}},{{1,-1,0},{0,0,1},{}},{{1,1,0},{0,0,1},{}},{{-1,1,0},{0,0,1},{}}};part.indices={0,1,2,0,2,3};
+    for(const Color tint:{Color(.926f,.926f,.926f,1),Color(.3f,.6f,.8f,.18f),Color(0,0,0,0)}) {
+        part.baseColor=tint;Check(model.SetRuntimePrimitives({part}),"Picking regression mesh failed");
+        for(uint32_t id:{1u,255u,256u,5107u,65537u,0x78563412u}) {
+            const std::array<unsigned char,4> expected={static_cast<unsigned char>(id),static_cast<unsigned char>(id>>8),static_cast<unsigned char>(id>>16),static_cast<unsigned char>(id>>24)};
+            shader.SetVec4("entityIdColor",Color(expected[0],expected[1],expected[2],expected[3])/255.f);
+            glClearColor(0,0,0,0);glClear(GL_COLOR_BUFFER_BIT);model.Draw(shader,Matrix4(1),nullptr,-1,Color(.4f,.7f,.2f,.5f));
+            std::array<unsigned char,4> pixel{};glReadPixels(16,16,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+            Check(pixel==expected,"Imported material color or alpha corrupted the editor selection ID");
+        }
+    }
+    Check(glGetError()==GL_NO_ERROR,"Picking regression produced an OpenGL error");
+    model.Free();shader.UnUse();glBindFramebuffer(GL_FRAMEBUFFER,0);glDeleteFramebuffers(1,&framebuffer);glDeleteTextures(1,&texture);glViewport(0,0,320,240);
+    if(dither)glEnable(GL_DITHER);if(srgb)glEnable(GL_FRAMEBUFFER_SRGB);
+}
+
 static void BakedVisibilitySafety() {
     BakedVisibility bake;
     bake.bounds.push_back({Vector3(-.2f,-.2f,-3),Vector3(.2f,.2f,-2)});
@@ -453,6 +504,188 @@ static void BakedVisibilitySafety() {
     fixture["rooms"].erase(1);Check(!load(),"Missing room membership accepted");
     fixture.erase("rooms");Check(load() && bake.rooms.empty(),"Legacy bake without rooms rejected");
     std::filesystem::remove(path);
+}
+
+static void MaterialSlotCulling(Window& window) {
+    const auto root=std::filesystem::temp_directory_path()/("canis-slot-culling-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    for (auto name : {"red","green"})
+        std::ofstream(root/(std::string(name)+".material")) << "shader: {path: assets/shaders/model3d}\ncolor: "
+            << (std::string(name)=="red" ? "[1,0.1,0.1,1]" : "[0.1,1,0.1,1]") << "\nbackFaceCulling: false\n";
+    const int red=AssetManager::LoadMaterial((root/"red.material").string());
+    const int green=AssetManager::LoadMaterial((root/"green.material").string());
+    int id=AssetManager::CreateModel();
+    ModelAsset::PrimitiveBuild3D left,right;
+    left.vertices={{{-1,-1,0},{0,0,1},{}},{{0,-1,0},{0,0,1},{}},{{0,1,0},{0,0,1},{}},{{-1,1,0},{0,0,1},{}}};
+    left.indices={0,1,2,0,2,3};left.materialSlot=0;
+    right=left;right.materialSlot=1;for(auto& v:right.vertices)v.position.x+=1;
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({left,right},{"left","right"}),"Slot culling geometry failed");
+    Scene scene;
+    auto make=[&](Vector3 position,bool stationary) {
+        auto e=scene.CreateEntity("Slotted mesh");e.AddComponent<Transform>()->position=position;
+        auto& m=*e.AddComponent<Model>();m.modelId=id;m.staticModel=stationary;
+        e.AddComponent<Material>()->materialIds={red,green};return e;
+    };
+    auto visible=make({0,0,-3},true);
+    std::vector<Entity> outside;
+    for(int i=0;i<12;++i)outside.push_back(make({20.f+i*2,0,-3},true));
+    auto parent=scene.CreateEntity("Moving door root");parent.AddComponent<Transform>()->position={20,0,0};
+    auto moving=make({0,0,-2},false);moving.GetComponent<Transform>().SetParent(&parent);
+    moving.GetComponent<Transform>().position={0,0,-2};
+    auto& body=*moving.AddComponent<Rigidbody>();body.motionType=RigidbodyMotionType::KINEMATIC;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&]() {
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    auto original=draw();
+    std::cout << "Slot visibility fixture draws=" << RenderMetrics::Latest().draws
+              << " culled=" << RenderMetrics::Latest().culled << '\n';
+    Check(RenderMetrics::Latest().draws==2 && RenderMetrics::Latest().culled==13,
+          "Safe material-slot meshes bypassed static/dynamic frustum culling");
+    for(auto e:outside)e.GetComponent<Transform>().active=false;
+    moving.GetComponent<Transform>().active=false;
+    Check(original==draw(),"Culling changed the visible slotted mesh pixels");
+    moving.GetComponent<Transform>().active=true;parent.GetComponent<Transform>().position={0,0,0};
+    draw();Check(RenderMetrics::Latest().draws==4,"Moving a door parent left its slotted child incorrectly culled");
+    parent.GetComponent<Transform>().position={20,0,0};
+    outside[0].GetComponent<Transform>().active=true;outside[0].GetComponent<Transform>().position={0,0,-4};
+    draw();Check(RenderMetrics::Latest().draws==4,"Editing a static mesh failed to update its visibility bounds");
+    outside[0].GetComponent<Transform>().position={20,0,-2};
+    // Unknown custom shaders can move vertices beyond the mesh's imported bounds.
+    std::ofstream(root/"offset.vs") << "[OPENGL VERSION]\nlayout(location=0) in vec3 vertexPosition;uniform mat4 P,V,M;void main(){vec4 p=M*vec4(vertexPosition,1);p.x-=20.;gl_Position=P*V*p;}\n";
+    std::ofstream(root/"offset.fs") << "[OPENGL VERSION]\nout vec4 color;void main(){color=vec4(1,0,1,1);}\n";
+    std::ofstream(root/"offset.material") << "shader: {path: '"<<(root/"offset").string()<<"'}\nbackFaceCulling: false\n";
+    const int offset=AssetManager::LoadMaterial((root/"offset.material").string());
+    auto& material=outside[0].GetComponent<Material>();material.materialIds={red,offset};
+    draw();Check(RenderMetrics::Latest().draws==4,"Unknown shader in a later material slot was incorrectly culled");
+    material.materialIds={red,green};material.materialId=offset;
+    auto deformed=draw();
+    Check(RenderMetrics::Latest().draws==4 && deformed[(120*320+160)*4]>200 && deformed[(120*320+160)*4+2]>200,
+          "Custom vertex displacement was culled using undeformed bounds");
+    Check(glGetError()==GL_NO_ERROR,"GL error in material slot visibility test");
+    renderer.OnDestroy();AssetManager::FreeModel(id);std::filesystem::remove_all(root);
+    std::cout << "Material-slot culling preserves pixels, moving parents, static edits and unsafe shaders\n";
+}
+
+static void OverlayDepthIsolation(Window& window) {
+    Scene scene;
+    scene.Init(nullptr,&window,nullptr);
+    auto camera=scene.CreateEntity("Camera");camera.AddComponent<Transform>();
+    auto& view=*camera.AddComponent<Camera>();view.primary=true;view.nearClip=.1f;view.farClip=100;
+    int id=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-1,-1,0},{0,0,1},{}},{{1,-1,0},{0,0,1},{}},{{1,1,0},{0,0,1},{}},{{-1,1,0},{0,0,1},{}}};quad.indices={0,1,2,0,2,3};
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Overlay occluder geometry failed");
+    auto occluder=scene.CreateEntity("Near cockpit wall");occluder.AddComponent<Transform>()->position={0,0,-.15f};
+    occluder.AddComponent<Model>()->modelId=id;
+    GLuint texture=0;glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);
+    const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    auto canvas=scene.CreateEntity("Overlay");auto& canvasRect=*canvas.AddComponent<RectTransform>();
+    canvasRect.anchorMin={0,0};canvasRect.anchorMax={1,1};canvasRect.size={0,0};canvasRect.depth=0;
+    auto& settings=*canvas.AddComponent<Canvas>();settings.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;settings.screenSize={320,240};
+    auto sprite=[&](const char* name,Entity parent,Vector2 size,Vector2 position,float depth,Color color) {
+        auto e=scene.CreateEntity(name);auto& rect=*e.AddComponent<RectTransform>();rect.SetParent(&parent);
+        rect.position=position;rect.size=size;rect.depth=depth;
+        auto& image=*e.AddComponent<Sprite2D>();image.textureHandle.texture.id=texture;image.color=color;return e;
+    };
+    sprite("Menu background",canvas,{60,60},{-80,0},.1f,{1,0,0,1});
+    sprite("Menu foreground",canvas,{20,20},{-80,0},.2f,{0,1,0,1});
+    auto world=scene.CreateEntity("World canvas");world.AddComponent<Transform>()->position={.08f,0,-.3f};
+    world.AddComponent<RectTransform>()->depth=0;world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
+    sprite("World label behind wall",world,{.04f,.04f},{0,0},0,{0,0,1,1});
+    MeshRenderer3DSystem meshes;meshes.scene=&scene;meshes.window=&window;meshes.Create();
+    SpriteRenderer2DSystem ui;ui.scene=&scene;ui.window=&window;ui.Create();
+    for(bool editor2D:{false,true}) {
+        scene.ClearEditorCameraOverrides();
+        if(editor2D)scene.SetEditorCamera2DOverride(glm::ortho(-160.f,160.f,-120.f,120.f,-100.f,100.f),{0,0});
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);glClearDepth(1);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        meshes.Update(scene.GetRegistry(),1.f/60);
+        float sceneDepth=0,overlayDepth=0;glReadPixels(80,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&sceneDepth);
+        ui.Update(scene.GetRegistry(),1.f/60);
+        glReadPixels(80,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&overlayDepth);
+        Check(std::abs(sceneDepth-overlayDepth)<.000001f,"Overlay UI changed scene depth needed by postprocessing");
+        std::array<unsigned char,4> pixel{};glReadPixels(80,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+        Check(pixel[1]>240 && pixel[0]<10 && pixel[2]<10,
+              "3D scene depth hid overlay UI or broke its foreground/background ordering");
+        if(!editor2D) {
+            glReadPixels(206,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+            Check(!(pixel[2]>240 && pixel[0]<10 && pixel[1]<10),"World-space UI lost occlusion behind scene geometry");
+        }
+    }
+    window.SetRenderSize(320,120);
+    scene.SetEditorCamera2DOverride(glm::ortho(-160.f,160.f,-60.f,60.f,-100.f,100.f),{0,0});
+    Check(glm::distance(canvasRect.GetResolvedSize(),Vector2(160,120))<.001f,
+          "Narrow Scene panel did not fit the full reference canvas");
+    glViewport(0,0,320,120);glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    meshes.Update(scene.GetRegistry(),1.f/60);ui.Update(scene.GetRegistry(),1.f/60);
+    std::array<unsigned char,4> fitted{};glReadPixels(120,60,1,1,GL_RGBA,GL_UNSIGNED_BYTE,fitted.data());
+    Check(fitted[1]>240 && fitted[0]<10,"Reference canvas fitting broke overlay positions or layers");
+    scene.SetEditorCamera2DOverride(glm::ortho(-160.f,160.f,-60.f,60.f,-100.f,100.f)*
+                                    glm::translate(Matrix4(1),Vector3(-20,0,0)),{20,0});
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);meshes.Update(scene.GetRegistry(),1.f/60);ui.Update(scene.GetRegistry(),1.f/60);
+    glReadPixels(100,60,1,1,GL_RGBA,GL_UNSIGNED_BYTE,fitted.data());
+    Check(fitted[1]>240 && fitted[0]<10,"Scene camera panning did not move the overlay preview");
+    window.SetRenderSize(320,240);glViewport(0,0,320,240);
+    Check(glGetError()==GL_NO_ERROR,"Overlay depth isolation produced an OpenGL error");
+    scene.ClearEditorCameraOverrides();ui.OnDestroy();meshes.OnDestroy();AssetManager::FreeModel(id);glDeleteTextures(1,&texture);
+    std::cout << "Overlay UI survives near geometry in Game/2D Scene views and world UI retains occlusion\n";
+}
+
+static void ScreenUiAfterPostProcessing(Window& window) {
+    auto root=std::filesystem::temp_directory_path()/("canis-post-ui-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    std::filesystem::copy_file("assets/shaders/postprocess_color_correction.vs",root/"black.vs");
+    std::ofstream(root/"black.fs") << "[OPENGL VERSION]\nout vec4 color;void main(){color=vec4(0,0,0,1);}\n";
+    std::ofstream(root/"test.postprocess") << "passes:\n- shader: {path: '"<<(root/"black").string()<<"'}\n";
+    PostProcessAsset effect;Check(effect.Load((root/"test.postprocess").string()),"Post UI fixture shader failed");
+    Scene scene;scene.Init(nullptr,&window,nullptr);window.SetRenderSize(320,240);
+    auto projection=glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f);
+    scene.SetLastRenderCamera(Matrix4(1),projection,{0,0,0},.1f,100.f);
+    auto* ui=static_cast<SpriteRenderer2DSystem*>(scene.CreateRenderSystem(new SpriteRenderer2DSystem()));ui->Create();
+    GLuint texture=0;glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);
+    const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+    auto canvas=[&](unsigned mode) {
+        auto e=scene.CreateEntity("Canvas");auto& rect=*e.AddComponent<RectTransform>();
+        rect.anchorMin={0,0};rect.anchorMax={1,1};rect.size={0,0};
+        auto& c=*e.AddComponent<Canvas>();c.renderMode=mode;c.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;c.screenSize={320,240};return e;
+    };
+    auto sprite=[&](Entity parent,Vector2 position,Vector2 size,Color color) {
+        auto e=scene.CreateEntity("Sprite");auto& rect=*e.AddComponent<RectTransform>();
+        if(parent)rect.SetParent(parent.TryGet());rect.position=position;rect.size=size;
+        auto& s=*e.AddComponent<Sprite2D>();s.textureHandle.texture.id=texture;s.color=color;return e;
+    };
+    auto overlay=canvas(CanvasRenderMode::SCREEN_SPACE_OVERLAY);sprite(overlay,{-80,0},{20,20},{0,1,0,1});
+    auto cameraUi=canvas(CanvasRenderMode::SCREEN_SPACE_CAMERA);sprite(cameraUi,{-40,0},{20,20},{1,0,1,1});
+    auto world=canvas(CanvasRenderMode::WORLD_SPACE);world.AddComponent<Transform>()->position={0,0,-1};
+    sprite(world,{0,0},{.2f,.2f},{0,0,1,1});
+    sprite({}, {80,0},{20,20},{1,1,0,1}); // Ordinary 2D scene sprite, not a UI canvas.
+    RenderTarget raw,processed;EnsureRenderTarget(raw,320,240);
+    glBindFramebuffer(GL_FRAMEBUFFER,raw.framebuffer);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+    glClearColor(1,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    auto pixel=[&](int x){std::array<unsigned char,4> value{};glReadPixels(x,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,value.data());return value;};
+    scene.Render(1.f/60,true);
+    Check(pixel(80)[0]>240 && pixel(80)[1]<10 && pixel(120)[0]>240 && pixel(120)[2]<10,
+          "Screen canvases were already baked into the world render before postprocessing");
+    Check(pixel(160)[2]>240 && pixel(240)[0]>240 && pixel(240)[1]>240,
+          "World UI or ordinary 2D sprites were incorrectly deferred with the HUD");
+    auto output=ApplyPostProcessChain(&effect,raw.framebuffer,raw.colorTexture,raw.depthTexture,320,240,projection,&processed);
+    scene.CompositeScreenSpaceUI(output.framebuffer,320,240);
+    glBindFramebuffer(GL_FRAMEBUFFER,output.framebuffer);
+    Check(pixel(80)[1]>240 && pixel(80)[0]<10 && pixel(120)[0]>240 && pixel(120)[2]>240,
+          "Postprocessing modified or hid screen-space overlay/camera UI");
+    Check(pixel(160)[0]<10 && pixel(160)[2]<10 && pixel(240)[0]<10 && pixel(240)[1]<10,
+          "World-space UI or ordinary sprites incorrectly bypassed postprocessing");
+    Check(glGetError()==GL_NO_ERROR,"Post UI composition produced an OpenGL error");
+    glBindFramebuffer(GL_FRAMEBUFFER,0);scene.Unload();glDeleteTextures(1,&texture);
+    DestroyRenderTarget(raw);DestroyRenderTarget(processed);effect.Free();std::filesystem::remove_all(root);
+    std::cout << "Screen canvases bypass postprocessing; world UI and 2D scene sprites retain it\n";
 }
 
 static void StaticShadowBaking(Window& window) {
@@ -498,6 +731,88 @@ static void StaticShadowBaking(Window& window) {
     SDL_unsetenv_unsafe("CANIS_DISABLE_STATIC_SHADOW_CACHE");renderer.OnDestroy();AssetManager::FreeModel(id);
 }
 
+// Dynamic rigid instances must keep the static cache warm, track current transforms,
+// and match the conservative individual-draw fallback at the pixel level.
+static void DynamicRigidBatches(Window& window)
+{
+    Scene scene;
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.25f,-.25f,0},{0,0,1},{}},{{.25f,-.25f,0},{0,0,1},{}},
+                   {{.25f,.25f,0},{0,0,1},{}},{{-.25f,.25f,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};
+    int id=AssetManager::CreateModel();
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Dynamic rigid fixture failed");
+    std::vector<Entity> moving;
+    for(int i=0;i<6;++i) {
+        auto e=scene.CreateEntity("Rigid actor");
+        auto& t=*e.AddComponent<Transform>();t.position=Vector3((i-2.5f)*.55f,0,-3);
+        auto& m=*e.AddComponent<Model>();m.modelId=id;m.staticModel=false;m.castShadow=false;
+        moving.push_back(e);
+    }
+    for(int i=0;i<2;++i) {
+        auto e=scene.CreateEntity("Static neighbor");
+        e.AddComponent<Transform>()->position=Vector3((i-.5f)*.6f,.8f,-4);
+        auto& m=*e.AddComponent<Model>();m.modelId=id;m.staticModel=true;m.castShadow=false;
+    }
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&]() {
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    auto baseline=draw();draw();
+    Check(RenderMetrics::Latest().draws==2,"Rigid actors were not batched separately from static neighbors");
+    moving[0].GetComponent<Transform>().position.y=.5f;
+    moving[1].GetComponent<Transform>().scale=Vector3(-.8f,1.2f,1);
+    // Legacy assets sometimes claim to be static while their body is kinematic.
+    // Such actors still belong in transient batches and must not invalidate a bake.
+    moving[2].GetComponent<Model>().staticModel=true;
+    moving[2].AddComponent<Rigidbody>()->motionType=RigidbodyMotionType::KINEMATIC;
+    auto updated=draw();
+    Check(updated!=baseline && RenderMetrics::Latest().batchBuilds==0,"Moving actors invalidated static batches or retained stale matrices");
+    // A per-entity field override forces the existing individual-draw path.
+    for(auto e:moving)e.AddComponent<Material>()->materialFields.SetFloat("rigidParitySentinel",0);
+    auto individual=draw();
+    Check(individual==updated,"Dynamic batching changed pixels/normal transforms");
+    for(auto e:moving)e.RemoveComponent<Material>();
+    auto hidden=moving.back();hidden.GetComponent<Transform>().position=Vector3(100,0,-3);
+    auto culled=draw();
+    Check(RenderMetrics::Latest().culled>0 && RenderMetrics::Latest().instances==7,"Moving offscreen actor was not culled");
+    hidden.Active()=false;Check(draw()==culled,"Dynamic culling removed visible geometry");
+    hidden.Active()=true;hidden.GetComponent<Transform>().position=Vector3(1.2f,0,-3);
+    Check(draw()!=culled,"Re-entering dynamic actor stayed culled");
+    Check(glGetError()==GL_NO_ERROR,"GL error in dynamic rigid batching");
+    renderer.OnDestroy();AssetManager::FreeModel(id);
+}
+
+static void MirroredNormalMapping() {
+    auto read=[](const char* path){std::ifstream file(path);return std::string(std::istreambuf_iterator<char>(file),{});};
+    Shader shader;shader.CompileSource(read("assets/shaders/model3d.vs"),read("assets/shaders/model3d.fs"),"mirrored normal mapping");shader.Link();shader.Use();
+    const float vertices[]={-1,-1,0, 0,0,1, 0,0,  1,-1,0, 0,0,1, 1,0,  1,1,0, 0,0,1, 1,1,
+                            -1,-1,0, 0,0,1, 0,0,  1,1,0, 0,0,1, 1,1, -1,1,0, 0,0,1, 0,1};
+    GLuint vao,vbo,texture;glGenVertexArrays(1,&vao);glGenBuffers(1,&vbo);glGenTextures(1,&texture);
+    glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_DYNAMIC_DRAW);
+    for(int attribute=0;attribute<3;attribute++){glEnableVertexAttribArray(attribute);glVertexAttribPointer(attribute,attribute==2?2:3,GL_FLOAT,GL_FALSE,8*sizeof(float),reinterpret_cast<void*>(size_t(attribute==0?0:attribute==1?3:6)*sizeof(float)));}
+    shader.SetMat4("P",Matrix4(1));shader.SetMat4("V",Matrix4(1));shader.SetMat4("M",Matrix4(1));shader.SetBool("useInstanceMatrix",false);
+    shader.SetBool("useNormalMap",true);shader.SetInt("normalMap",5);shader.SetBool("useAlbedoMap",false);shader.SetVec4("albedoValue",Color(.6f,.6f,.6f,1));
+    shader.SetVec3("cameraPosition",{0,0,3});shader.SetVec3("ambientLightColor",Vector3(0));shader.SetFloat("ambientLightIntensity",0);
+    shader.SetBool("useDirectionalLight",true);shader.SetBool("useDirectionalShadow",false);shader.SetVec3("directionalLightDirection",{-1,0,-1});shader.SetVec3("directionalLightColor",Vector3(1));shader.SetFloat("directionalLightIntensity",1);
+    shader.SetInt("pointLightCount",0);shader.SetFloat("specularValue",0);shader.SetFloat("roughnessValue",.5f);shader.SetFloat("metallicValue",0);
+    shader.SetFloat("alphaCutoff",.5f);shader.SetBool("useBakedVertexLighting",false);shader.SetBool("useEmbeddedEmissionMap",false);shader.SetBool("canisProbeCapture",false);shader.SetInt("canisProbeCount",0);
+    for(int i=0;i<MaxLightingProbes;i++)shader.SetInt("canisProbeMap"+std::to_string(i),8+i);
+    glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);
+    auto draw=[&](unsigned char red){
+        const unsigned char pixel[]={red,128,230,255};glActiveTexture(GL_TEXTURE5);glBindSampler(5,0);glBindTexture(GL_TEXTURE_2D,texture);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
+        glClear(GL_COLOR_BUFFER_BIT);glDrawArrays(GL_TRIANGLES,0,6);std::array<unsigned char,4> color;glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,color.data());return color;
+    };
+    auto ordinary=draw(204);std::vector<float> mirrored(std::begin(vertices),std::end(vertices));for(int i=0;i<6;i++)mirrored[i*8+6]=1-mirrored[i*8+6];glBufferSubData(GL_ARRAY_BUFFER,0,sizeof(vertices),mirrored.data());auto reversed=draw(51);
+    Check(ordinary[0]>50,"Normal mapping fixture rendered blank");for(int c=0;c<3;c++)Check(std::abs(int(ordinary[c])-int(reversed[c]))<=1,"Mirrored UVs reversed the physical normal-map tangent basis");
+    Check(glGetError()==GL_NO_ERROR,"Normal map regression produced an OpenGL error");glDeleteTextures(1,&texture);glDeleteBuffers(1,&vbo);glDeleteVertexArrays(1,&vao);shader.UnUse();glActiveTexture(GL_TEXTURE0);
+}
+
 static void LightingProbeRendering(Window& window) {
     // A red wall behind the camera must illuminate/reflect in a dynamic white receiver.
     const auto root=std::filesystem::temp_directory_path()/("canis-probes-"+std::to_string(SDL_GetTicksNS()));
@@ -515,11 +830,12 @@ static void LightingProbeRendering(Window& window) {
     auto receiver=scene.CreateEntity("dynamic receiver");receiver.AddComponent<Transform>()->position=Vector3(0,0,-3);
     receiver.AddComponent<Model>()->modelId=id;
     MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    MeshRenderer3DSystem* activeRenderer=&renderer;
     auto draw=[&]() {
         scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
         glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
         glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-        renderer.Update(scene.GetRegistry(),0);
+        activeRenderer->Update(scene.GetRegistry(),0);
         std::array<unsigned char,4> pixel{};glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
         GLint viewport[4];glGetIntegerv(GL_VIEWPORT,viewport);
         Check(viewport[2]==320 && viewport[3]==240,"Probe capture leaked its viewport");
@@ -527,12 +843,23 @@ static void LightingProbeRendering(Window& window) {
         Check(glGetError()==GL_NO_ERROR,"OpenGL error during probe render");return pixel;
     };
     auto baseline=draw();LightingProbe probe;probe.halfExtents=Vector3(10);probe.specularIntensity=0;
+    probe.cachePath=(root/"room.probe").string();
     scene.GetLightingProbes().push_back(probe);auto diffuse=draw();
     Check(renderer.ReadyLightingProbeCount()==1,"Probe was not captured");
     Check(diffuse[0]>baseline[0]+2 && diffuse[0]>diffuse[1]+2,"Captured red wall did not provide diffuse color bleeding");
     Check(draw()==diffuse,"Cached probe changed between frames");
+    Check(std::filesystem::exists(probe.cachePath),"Reflection probe capture was not persisted");
+    const auto savedTime=std::filesystem::last_write_time(probe.cachePath);
+    MeshRenderer3DSystem reloaded;reloaded.scene=&scene;reloaded.window=&window;reloaded.Create();
+    activeRenderer=&reloaded;
+    Check(draw()==diffuse,"Persisted reflection capture changed on reload");
+    Check(std::filesystem::last_write_time(probe.cachePath)==savedTime,"Valid reflection cache was recaptured on reload");
+    reloaded.OnDestroy();activeRenderer=&renderer;
     auto& p=scene.GetLightingProbes()[0];p.diffuseIntensity=0;p.specularIntensity=4;auto reflection=draw();
     Check(reflection[0]>baseline[0]+2,"Probe reflection did not reach dynamic receiver");
+    p.diffuseIntensity=1;p.specularIntensity=0;p.halfExtents.z=3;auto boundary=draw();
+    Check(boundary[0]>baseline[0]+2,"Reflection/GI faded away on a room's projection-box surface");
+    p.halfExtents.z=10;p.diffuseIntensity=0;p.specularIntensity=4;
     sourceModel.staticModel=false;renderer.InvalidateLightingProbes();auto empty=draw();
     Check(empty==baseline,"Dynamic objects leaked into static probe capture");
     p.enabled=false;Check(draw()==baseline && renderer.ReadyLightingProbeCount()==0,"Disabled probe retained lighting");
@@ -687,8 +1014,14 @@ int main(int argc,char** argv) {
         SinglePassPixels();
         SoftDepthIntersections(window);
         VertexColorsSurviveInstancing();
+        PickingIdsIgnoreMaterialTint();
         BakedVisibilitySafety();
+        MaterialSlotCulling(window);
+        OverlayDepthIsolation(window);
+        ScreenUiAfterPostProcessing(window);
         StaticShadowBaking(window);
+        DynamicRigidBatches(window);
+        MirroredNormalMapping();
         LightingProbeRendering(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;

@@ -542,8 +542,24 @@ namespace Canis
 
     void SpriteRenderer2DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
+        RenderLayers(_registry, _deltaTime, false, false);
+    }
+
+    void SpriteRenderer2DSystem::RenderWorldUI(entt::registry &_registry, float _deltaTime)
+    {
+        RenderLayers(_registry, _deltaTime, true, false);
+    }
+
+    void SpriteRenderer2DSystem::RenderScreenSpaceUI(entt::registry &_registry)
+    {
+        RenderLayers(_registry, 0.f, false, true);
+    }
+
+    void SpriteRenderer2DSystem::RenderLayers(entt::registry &_registry, float _deltaTime, bool _worldOnly, bool _screenOnly)
+    {
         RenderMetrics::Scope timing("Sprites and UI");
         m_time += _deltaTime;
+        if (_registry.view<RectTransform>().empty()) return;
         
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
@@ -555,7 +571,7 @@ namespace Canis
         const bool editor3DOverride = scene->HasEditorCamera3DOverride();
         const bool vrCamera = scene->GetVRCamera().enabled;
         const bool renderScreenSpaceUi = !editor3DOverride && !vrCamera;
-        const bool renderWorldSpaceUi = vrCamera || !editorCameraOverride;
+        const bool renderWorldSpaceUi = !_screenOnly && (vrCamera || !editorCameraOverride);
         Matrix4 overrideProjection = Matrix4(1.0f);
         camera2D = nullptr;
 
@@ -586,7 +602,11 @@ namespace Canis
 
         auto renderPass = [&](unsigned int _renderMode, const Matrix4* _projectionOverride, bool _useCameraProjection) -> void
         {
-            Begin(glyphSortType);
+            const bool overlay = _renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
+                                 (_screenOnly && _renderMode == CanvasRenderMode::SCREEN_SPACE_CAMERA);
+            // Positive UI depth is closer to the viewer. Paint distant layers
+            // first, then foregrounds, independently of the scene depth buffer.
+            Begin(overlay ? GlyphSortType::BACK_TO_FRONT : glyphSortType);
 
             auto renderView = _registry.view<RectTransform>();
             const std::vector<Entity*>& sceneEntities = scene->GetEntities();
@@ -613,8 +633,11 @@ namespace Canis
                 markVisited(_entity);
 
                 RectTransform &transform = _entity->GetComponent<RectTransform>();
+                const bool screenCanvas = transform.GetCanvas() != nullptr &&
+                                          transform.GetCanvasRenderMode() != CanvasRenderMode::WORLD_SPACE;
                 const bool shouldRender = transform.IsActiveInHierarchy() &&
-                    transform.GetCanvasRenderMode() == _renderMode;
+                    transform.GetCanvasRenderMode() == _renderMode &&
+                    (!_worldOnly || !screenCanvas) && (!_screenOnly || screenCanvas);
 
                 if (shouldRender)
                 {
@@ -729,13 +752,23 @@ namespace Canis
             }
 
             End();
+            GLboolean previousDepthMask = GL_TRUE;
+            const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST);
+            if (overlay)
+            {
+                glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
+                glDisable(GL_DEPTH_TEST);
+                glDepthMask(GL_FALSE);
+            }
             SpriteRenderBatch(_useCameraProjection, _projectionOverride);
+            if (overlay)
+            {
+                glDepthMask(previousDepthMask);
+                if (previousDepthTest) glEnable(GL_DEPTH_TEST);
+            }
         };
 
         Matrix4 centeredCameraProjection = glm::ortho(-halfWidth, halfWidth, -halfHeight, halfHeight, -100.0f, 100.0f);
-
-        if (renderScreenSpaceUi)
-            renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_OVERLAY, &centeredCameraProjection, false);
 
         const Matrix4* cameraProjectionOverride = nullptr;
         bool useCameraProjection = true;
@@ -750,9 +783,6 @@ namespace Canis
             cameraProjectionOverride = &centeredCameraProjection;
             useCameraProjection = false;
         }
-
-        if (renderScreenSpaceUi)
-            renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
 
         if (renderWorldSpaceUi)
         {
@@ -780,6 +810,15 @@ namespace Canis
 
             if (hasWorldProjection)
                 renderPass(Canis::CanvasRenderMode::WORLD_SPACE, &worldProjection, false);
+        }
+
+        // World-space UI uses scene depth; overlays paint afterward without touching it.
+        if (renderScreenSpaceUi)
+        {
+            renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_CAMERA, cameraProjectionOverride, useCameraProjection);
+            if (!_worldOnly)
+                renderPass(Canis::CanvasRenderMode::SCREEN_SPACE_OVERLAY,
+                           editorCameraOverride ? &overrideProjection : &centeredCameraProjection, false);
         }
 
         glDisable(GL_DEPTH_TEST);

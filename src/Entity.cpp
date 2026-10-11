@@ -227,7 +227,9 @@ RectTransform::LayoutData RectTransform::GetLayout() const
             const float canvasScale = GetCanvasOverlayScaleFactor();
             parentScale = Vector2(canvasScale);
             parentLogicalSize = GetCanvasOverlayLogicalSize();
-            parentMin = Vector2(-screenWidth * 0.5f, -screenHeight * 0.5f);
+            if (entity->scene.HasEditorCamera2DOverride() && FindCanvas())
+                parentActualSize = parentLogicalSize * canvasScale;
+            parentMin = -parentActualSize * .5f;
             parentPivot = Vector2(0.0f);
         }
         else
@@ -296,6 +298,11 @@ float RectTransform::GetCanvasOverlayScaleFactor() const
     const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
     const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
 
+    // Preview authored UI as a complete reference canvas in the 2D Scene panel.
+    // Runtime width/height scaling still uses the actual Game viewport.
+    if (entity->scene.HasEditorCamera2DOverride())
+        return std::min(screenWidth / referenceWidth, screenHeight / referenceHeight);
+
     switch (canvas->scaleMode)
     {
     case CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH:
@@ -311,6 +318,10 @@ Vector2 RectTransform::GetCanvasOverlayLogicalSize() const
 {
     if (entity == nullptr)
         return Vector2(0.0f);
+
+    if (entity->scene.HasEditorCamera2DOverride())
+        if (const auto* canvas = FindCanvas(); canvas && canvas->renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+            return glm::max(canvas->screenSize, Vector2(1));
 
     const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
     const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());

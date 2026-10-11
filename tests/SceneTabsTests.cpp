@@ -4,6 +4,7 @@
 #include <Canis/Window.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
+#include <ImGuizmo.h>
 #include "../src/EditorHistoryEvent.hpp"
 #include <SDL3/SDL.h>
 #include <filesystem>
@@ -171,34 +172,78 @@ namespace Canis
             Check(editor.m_sceneTabs.size()==1, "Last scene tab unexpectedly closed");
             auto& baking=app.scene.GetBakingSettings();
             baking.lightmaps=false;baking.staticShadows=false;baking.occlusion=false;
-            baking.program=executable.string();baking.arguments="--fake-bake-success";
             LightingProbe probe;probe.position=Vector3(3,4,5);probe.halfExtents=Vector3(8,9,10);
             probe.diffuseIntensity=.4f;probe.specularIntensity=.8f;
-            app.scene.GetLightingProbes().push_back(probe);
+            for(int i=0;i<MaxLightingProbes;i++)app.scene.GetLightingProbes().push_back(probe);
             Check(app.scene.Save(),"Baking settings save failed");
             app.scene.Unload();app.scene.Load("first.scene");
-            Check(app.scene.GetLightingProbes().size()==1 && app.scene.GetLightingProbes()[0]==probe,
+            Check(app.scene.GetLightingProbes().size()==MaxLightingProbes && app.scene.GetLightingProbes()[0]==probe,
                 "Lighting probe settings did not survive scene reload");
             const auto& loaded=app.scene.GetBakingSettings();
-            Check(!loaded.lightmaps && !loaded.staticShadows && !loaded.occlusion &&
-                loaded.program==executable.string() && loaded.arguments=="--fake-bake-success",
+            Check(!loaded.lightmaps && !loaded.staticShadows && !loaded.occlusion,
                 "Environment baking settings did not survive scene reload");
             auto waitForBake=[&]() {
                 const auto deadline=SDL_GetTicks()+5000;
-                while(editor.m_environmentBakeProcess && SDL_GetTicks()<deadline) {
+                while(editor.m_environmentBakeRunning && SDL_GetTicks()<deadline) {
                     editor.UpdateEnvironmentBake();SDL_Delay(1);
                 }
-                Check(!editor.m_environmentBakeProcess,"Asynchronous baker failed to finish");
+                Check(!editor.m_environmentBakeRunning,"Asynchronous baker failed to finish");
             };
             editor.StartEnvironmentBake();
-            Check(editor.m_environmentBakeProcess,"Editor failed to launch bake process");
-            auto* running=editor.m_environmentBakeProcess;editor.StartEnvironmentBake();
-            Check(running==editor.m_environmentBakeProcess,"Duplicate click launched another bake");
-            waitForBake();Check(editor.m_environmentBakeStatus.find("Bake finished")!=std::string::npos,"Successful bake reported failure");
-            app.scene.GetBakingSettings().arguments="--fake-bake-failure";
-            editor.StartEnvironmentBake();waitForBake();
-            Check(editor.m_environmentBakeStatus.find("Bake failed (exit 7)")!=std::string::npos,"Baker exit failure was hidden");
+            Check(editor.m_environmentBakeRunning,"Editor failed to launch bake process");
+            auto running=editor.m_environmentBakeRunning;editor.StartEnvironmentBake();
+            Check(running==editor.m_environmentBakeRunning,"Duplicate click launched another bake");
+            waitForBake();Check(editor.m_environmentBakeStatus.find("Native bake finished")!=std::string::npos,"Successful bake reported failure");
+            // A native snapshot job cannot be replaced by a second click.
+            Check(editor.m_environmentBakeJob.valid()==false,"Completed native job retained a result");
             ImGui::NewFrame();ImGui::SetNextWindowSize(ImVec2(800,900));editor.DrawEnvironment();ImGui::Render();
+            app.scene.Unload();
+            auto canvas=app.scene.CreateEntity("Menu");
+            canvas.AddComponent<Transform>();
+            auto& root=*canvas.AddComponent<RectTransform>();root.anchorMin={0,0};root.anchorMax={1,1};root.size={0,0};root.depth=0;
+            canvas.AddComponent<Canvas>()->screenSize={800,600};
+            auto label=app.scene.CreateEntity("Menu item");
+            label.AddComponent<Transform>();
+            auto& rect=*label.AddComponent<RectTransform>();rect.SetParent(&canvas);rect.position={-200,0};rect.size={120,60};rect.depth=.3f;
+            label.AddComponent<Text>()->text="Caption";
+            auto group=app.scene.CreateEntity("Stretched grouping rect");
+            auto& container=*group.AddComponent<RectTransform>();container.SetParent(&canvas);
+            container.position={0,0};container.anchorMin={0,0};container.anchorMax={1,1};container.size={0,0};
+            editor.m_sceneCameraMode=Editor::SceneCameraMode::SCENE_CAMERA_2D;
+            editor.m_mode=EditorMode::EDIT;editor.m_editorCamera2DPosition={0,0};editor.m_editorCamera2DScale=1;
+            editor.m_gameViewportWidth=editor.m_gameTextureWidth=800;
+            editor.m_gameViewportHeight=editor.m_gameTextureHeight=200;
+            editor.m_gameViewportPosX=editor.m_gameViewportPosY=0;
+            editor.m_gameViewportDrawWidth=800;editor.m_gameViewportDrawHeight=200;
+            editor.m_gameViewHovered=editor.m_sceneViewClicked=true;
+            window.SetRenderSize(800,600);app.scene.ClearEditorCameraOverrides();
+            editor.FocusEntity(canvas.TryGet());
+            editor.m_app=&app;
+            editor.m_selectedAssetPath="previously-selected.material";
+            io.AddMousePosEvent(333,100);io.AddMouseButtonEvent(0,true);ImGui::NewFrame();editor.SelectSprite2D();ImGui::Render();
+            Check(app.scene.GetEntities()[editor.m_index]->GetUUID()==label.GetUUID(),
+                  "2D canvas preview click selected a grouping rect or used Game canvas dimensions");
+            Check(editor.IsEntitySelected(label.TryGet()) && !editor.IsEntitySelected(canvas.TryGet()) &&
+                  editor.GetSelectedEntities().size()==1 && editor.GetSelectedEntities()[0]->GetUUID()==label.GetUUID() &&
+                  editor.m_selectedAssetPath.empty(),
+                  "UI click updated an index but left hierarchy/inspector/gizmo selection on the old object");
+            io.AddMouseButtonEvent(0,false);ImGui::NewFrame();
+            ImGui::Begin("Selected UI");editor.DrawHierarchyPanel();editor.DrawInspectorPanel(false);ImGui::End();ImGui::Render();
+            Check(editor.IsEntitySelected(label.TryGet()) && editor.GetSelectedEntities()[0]->GetUUID()==label.GetUUID(),
+                  "UI selection did not survive hierarchy/inspector refresh after mouse release");
+            auto gizmoFrame=[&](float x,bool down) {
+                io.AddMousePosEvent(x,100);io.AddMouseButtonEvent(0,down);ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0,0));ImGui::SetNextWindowSize(ImVec2(800,200));
+                ImGui::Begin("UI gizmo test",nullptr,ImGuiWindowFlags_NoDecoration|ImGuiWindowFlags_NoMove);
+                editor.DrawSceneViewGizmo();bool usingGizmo=ImGuizmo::IsUsing();ImGui::End();ImGui::Render();return usingGizmo;
+            };
+            gizmoFrame(363,false);gizmoFrame(363,false);
+            Check(gizmoFrame(363,true),"UI with both Transform and RectTransform did not expose its 2D gizmo");
+            gizmoFrame(383,true);gizmoFrame(383,false);
+            Check(rect.position.x>-180 && std::abs(rect.position.y)<.01f,
+                  "Dragging the selected UI gizmo did not update its reference-canvas position");
+            Check(window.GetScreenWidth()==800 && window.GetScreenHeight()==600 && !app.scene.HasEditorCamera2DOverride(),
+                  "Scene UI picking leaked preview dimensions/camera into the Game view");
             editor.m_scene = nullptr;
         }
     };

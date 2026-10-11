@@ -6,6 +6,7 @@
 #endif
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
+#include <Canis/LightingBake.hpp>
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
@@ -2646,7 +2647,7 @@ namespace Canis
             glClearColor(clear.r, clear.g, clear.b, clear.a);
             glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
-            scene.Render(deltaTime);
+            scene.Render(deltaTime, true);
             glBindFramebuffer(GL_FRAMEBUFFER, 0);
 
             PostProcessResult postProcessResult = ApplyScenePostProcess(
@@ -2657,6 +2658,8 @@ namespace Canis
                 runtime.runtimeRenderTarget.width,
                 runtime.runtimeRenderTarget.height,
                 &runtime.runtimePostProcessTarget);
+            scene.CompositeScreenSpaceUI(postProcessResult.framebuffer,
+                                         runtime.runtimeRenderTarget.width, runtime.runtimeRenderTarget.height);
             captureFramebuffer = postProcessResult.framebuffer;
             captureWidth = runtime.runtimeRenderTarget.width;
             captureHeight = runtime.runtimeRenderTarget.height;
@@ -2722,11 +2725,13 @@ namespace Canis
 
         {
             RenderMetrics::EndSubmit();
+            // Rendering CPU work ends before presentation can wait on the
+            // driver/compositor or vertical sync. Report that wait separately.
+            m_renderTimeMs = static_cast<float>(SDL_GetTicksNS() - renderStart) / 1000000.0f;
             Profiler::Scope scope("Present", Profiler::Category::Wait);
             window.SwapBuffer();
             RenderMetrics::EndPresent();
         }
-        m_renderTimeMs = static_cast<float>(SDL_GetTicksNS() - renderStart) / 1000000.0f;
 
         {
             Profiler::Scope scope("Frame limiter", Profiler::Category::Wait);
@@ -3100,6 +3105,7 @@ namespace Canis
         RegisterParticleEmitterComponent(*this);
         RegisterTrailComponents(*this);
         RegisterAudioComponents(*this);
+        RegisterBakeLight(*this);
         RegisterParticleEmitterSystem(*this);
 
         ScriptConf canvasConf = {

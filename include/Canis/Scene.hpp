@@ -82,6 +82,8 @@ namespace Canis
         uint64_t ScriptingEpoch() const { return m_scriptingEpoch; }
         void UpdateEditor();
         void Render(float _deltaTime);
+        void Render(float _deltaTime, bool _deferScreenSpaceUI);
+        void CompositeScreenSpaceUI(unsigned int _framebuffer, int _width, int _height);
         void Unload();
         
         bool Save();
@@ -159,8 +161,6 @@ namespace Canis
             bool lightmaps = true;
             bool staticShadows = true;
             bool occlusion = true;
-            std::string program;
-            std::string arguments;
         };
         BakingSettings& GetBakingSettings() { return m_baking; }
         const BakingSettings& GetBakingSettings() const { return m_baking; }

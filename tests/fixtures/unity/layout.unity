@@ -1,0 +1,22 @@
+%YAML 1.1
+--- !u!104 &100
+RenderSettings:
+  m_SkyboxMaterial: {guid: eeeeeeeeeeeeeeeeeeeeeeeeeeeeeeee, fileID: 2100000}
+--- !u!1001 &1
+PrefabInstance:
+  m_SourcePrefab: {guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, fileID: 100100000}
+  m_Modification:
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, fileID: 400000}
+      propertyPath: m_LocalPosition.x
+      value: 6
+--- !u!1001 &2
+PrefabInstance:
+  m_SourcePrefab: {guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, fileID: 100100000}
+  m_Modification:
+    m_TransformParent: {fileID: 0}
+    m_Modifications:
+    - target: {guid: bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb, fileID: 400000}
+      propertyPath: m_LocalPosition.x
+      value: 12

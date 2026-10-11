@@ -1,12 +1,15 @@
 #pragma once
 #include <Canis/Math.hpp>
 #include <array>
+#include <string>
 #include <cmath>
 
 namespace Canis {
-// World-aligned influence/projection box. Captures are transient and rebuilt on load.
+inline constexpr int MaxLightingProbes = 6;
+// World-aligned influence/projection box with optional persisted HDR captures.
 struct LightingProbe {
     bool enabled = true;
+    std::string cachePath;
     Vector3 position{0}, halfExtents{5};
     float blendDistance = 1, diffuseIntensity = 1, specularIntensity = 1;
     float nearClip = .1f, farClip = 100;

@@ -406,21 +406,34 @@ namespace Canis
             float distanceSquared = 0.0f;
         };
 
+        bool StaticRenderTransform(entt::registry& registry, entt::entity handle, const Model& model)
+        {
+            if (!model.staticModel)
+                return false;
+            const auto* body = registry.try_get<Rigidbody>(handle);
+            return !body || !body->active || body->motionType == RigidbodyMotionType::STATIC;
+        }
+
         bool CullBounds(entt::registry& registry,entt::entity handle,ModelAsset& asset,
                         Model& model,Shader* defaultShader,Vector3& minimum,Vector3& maximum)
         {
-            if (!RenderMetrics::CullingEnabled() || !model.staticModel || asset.HasDeformingGeometry() ||
+            if (!RenderMetrics::CullingEnabled() || asset.HasDeformingGeometry() ||
                 registry.try_get<ModelAnimation>(handle) || registry.try_get<Terrain>(handle)) return false;
             if (auto* material=registry.try_get<Material>(handle)) {
-                if(!material->materialIds.empty())return false;
-                if(material->materialId>=0)if(auto* source=AssetManager::GetMaterial(material->materialId)) {
-                    if(source->shaderId>=0) {
-                        auto* shader=AssetManager::Get<ShaderAsset>(source->shaderId);
-                        if(!shader)return false;
-                        if(shader->GetShader()!=defaultShader &&
-                           (!shader->SupportsGraphInstancing() || shader->HasVertexDeformation()))return false;
-                    }
-                }
+                auto safeShader = [defaultShader](i32 materialId) {
+                    if (materialId < 0) return true; // Empty slots use the base material.
+                    auto* source = AssetManager::GetMaterial(materialId);
+                    if (!source) return false;
+                    if (source->shaderId < 0) return true;
+                    auto* shader = AssetManager::Get<ShaderAsset>(source->shaderId);
+                    return shader && (shader->GetShader() == defaultShader ||
+                        (shader->SupportsGraphInstancing() && !shader->HasVertexDeformation()));
+                };
+                if (!safeShader(material->materialId)) return false;
+                // Texture/color slots do not expand geometry. Check every shader
+                // before admitting the complete mesh bounds into static visibility.
+                for (i32 slot : material->materialIds)
+                    if (!safeShader(slot)) return false;
             }
             return asset.GetLocalBounds(minimum,maximum,model.nodeIndex,model.applyNodeTransform);
         }
@@ -1257,7 +1270,7 @@ namespace Canis
         auto modelView = _registry.view<Transform, Model>();
         auto isStatic=[&](const auto& candidate) {
             const auto& model=_registry.get<Model>(candidate.handle);
-            return model.staticModel && !candidate.asset->HasDeformingGeometry() &&
+            return StaticRenderTransform(_registry, candidate.handle, model) && !candidate.asset->HasDeformingGeometry() &&
                 !_registry.try_get<ModelAnimation>(candidate.handle);
         };
         const char* disabledCache=std::getenv("CANIS_DISABLE_STATIC_SHADOW_CACHE");
@@ -1315,7 +1328,7 @@ namespace Canis
             if (hidden || (candidate.cullable && BoundsOutsideFrustum(m_shadowLightSpaceMatrix*RenderMatrix(entityHandle,transform),candidate.minimum,candidate.maximum))) {
                 RenderMetrics::Cull(true);continue;
             }
-            if (shadowInstancing && modelRenderer.staticModel && !model->HasDeformingGeometry() &&
+            if (shadowInstancing && !model->HasDeformingGeometry() &&
                 !_registry.try_get<ModelAnimation>(entityHandle)) {
                 shadowBatches[{ShadowModelId(entityHandle,modelRenderer),modelRenderer.nodeIndex,modelRenderer.applyNodeTransform}].push_back(RenderMatrix(entityHandle,transform));
                 continue;
@@ -1515,7 +1528,7 @@ namespace Canis
             for (auto handle : models) {
                 auto& transform = models.get<Transform>(handle);
                 auto& model = models.get<Model>(handle);
-                if(m_capturingProbe && !model.staticModel)continue;
+                if(m_capturingProbe && !StaticRenderTransform(_registry, handle, model))continue;
                 Entity* entity = model.entity ? model.entity : transform.entity;
                 if ((entity && !entity->Active()) || !transform.IsActiveInHierarchy() || model.modelId < 0) continue;
                 if (auto* blockout = _registry.try_get<BlockoutShape>(handle))
@@ -1526,7 +1539,9 @@ namespace Canis
                 Vector3 minimum{0},maximum{0};
                 const bool cullable=CullBounds(_registry,handle,*asset,model,m_shader,minimum,maximum);
                 if(cullable)LODBounds(handle,model,minimum,maximum);
-                if(cullable) {
+                // Moving rigid models use per-view bounds tests. Keep the spatial
+                // tree static so one moving actor cannot rebuild the city BVH.
+                if(cullable && StaticRenderTransform(_registry, handle, model)) {
                     auto& record=cache.frameMatrices.at(handle);
                     if(record.boundsRevision!=record.revision || record.localMinimum!=minimum || record.localMaximum!=maximum) {
                         Vector3 lo(FLT_MAX),hi(-FLT_MAX);
@@ -1826,6 +1841,9 @@ namespace Canis
 #endif
         std::vector<MeshRendererCache::Input> batchInputs;
         batchInputs.reserve(opaqueEntities.size());
+        // Transient rigid batches are separate from cached static batches:
+        // moving a robot must not invalidate the city's instance buffers.
+        std::map<StaticModelBatchKey, StaticModelBatch> dynamicBatches;
         std::vector<TransparentModelEntry> remainingOpaqueEntities = {};
         remainingOpaqueEntities.reserve(opaqueEntities.size());
         std::unordered_map<entt::entity,uint64_t> groupMembership;
@@ -1864,7 +1882,7 @@ namespace Canis
                 }
             }
 
-            const bool canBatch = modelRenderer.staticModel && !modelRenderer.bakedVisibility &&
+            const bool canBatch = !modelRenderer.bakedVisibility &&
                 RenderMetrics::InstancingEnabled() &&
                 !_registry.try_get<Terrain>(entry.entityHandle) &&
                 !AssetManager::GetModel(RenderModelId(entry.entityHandle,modelRenderer))->HasDeformingGeometry() &&
@@ -1895,7 +1913,20 @@ namespace Canis
             key.materialColorG = materialColor.g;
             key.materialColorB = materialColor.b;
             key.materialColorA = materialColor.a;
-            if(roomQueries)key.group=findGroup(findGroup,entry.entityHandle);
+            const bool stationary = StaticRenderTransform(_registry, entry.entityHandle, modelRenderer);
+            if(roomQueries && stationary)key.group=findGroup(findGroup,entry.entityHandle);
+
+            if (!stationary)
+            {
+                auto& batch = dynamicBatches[key];
+                batch.key = key;
+                batch.graph = graph;
+                batch.modelMatrices.push_back(RenderMatrix(entry.entityHandle, transform));
+                batch.colors.push_back(LODColor(entry.entityHandle, modelRenderer.color) *
+                    (material ? material->color : Color(1.f)));
+                batch.sourceEntries.push_back(entry);
+                continue;
+            }
 
             batchInputs.push_back({key,RenderMatrix(entry.entityHandle,transform),
                 LODColor(entry.entityHandle,modelRenderer.color) * (material ? material->color : Color(1.f)),entry.entityHandle,graph,
@@ -1971,6 +2002,9 @@ namespace Canis
             const auto offset=Vector3(RenderMatrix(entry.entityHandle,_registry.get<Transform>(entry.entityHandle))[3])-cameraPosition;
             entry.distanceSquared=glm::dot(offset,offset);remainingOpaqueEntities.push_back(entry);
         }
+        for (const auto& [key, batch] : dynamicBatches)
+            if (batch.modelMatrices.size() == 1)
+                remainingOpaqueEntities.push_back(batch.sourceEntries.front());
 
         std::sort(
             remainingOpaqueEntities.begin(),
@@ -2373,6 +2407,13 @@ namespace Canis
         RenderMetrics::Scope timing("Opaque geometry");
         for (const StaticModelBatch &batch : staticBatches)
         {
+            drawStaticBatch(batch);
+            RenderMetrics::SetLODLevel(-1);
+        }
+        for (const auto& [key, batch] : dynamicBatches)
+        {
+            if (batch.modelMatrices.size() <= 1)
+                continue;
             drawStaticBatch(batch);
             RenderMetrics::SetLODLevel(-1);
         }

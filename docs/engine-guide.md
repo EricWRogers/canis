@@ -506,14 +506,10 @@ unchanged material bindings and model uniforms within one draw invocation.
 
 ### Offline visibility
 
-`tools/bake-static-visibility.py INPUT.gltf OUTPUT.gltf` partitions rigid opaque
-meshes and writes `OUTPUT.gltf.visibility`. It requires Python 3 and NumPy. This
-initial converter targets the engine's POSITION/NORMAL/TEXCOORD_0/COLOR_0 layout
-and matrix-authored nodes; skinning, animations, sparse/normalized accessors and
-TRS nodes are rejected rather than converted incorrectly. Source assets remain
-unchanged. Original primitive order and complete glazing primitives are retained
-to preserve coplanar layer ordering. Embedded texture references are preserved
-and rebased because a material slot can override tint while retaining embedded albedo.
+`canis-asset-tool bake-visibility INPUT.gltf OUTPUT.gltf [chunkSize cellSize minX minY minZ dimX dimY dimZ]`
+partitions rigid meshes and writes `OUTPUT.gltf.visibility` entirely in C++.
+Animated/skinned inputs are rejected. Transparent primitives are retained and never
+used as occluders. Source assets remain unchanged; external image references are rebased.
 
 The bake considers only opaque triangles in the same immutable asset. A target
 chunk is hidden only if its complete bounding box lies behind a triangle from
@@ -522,8 +518,7 @@ volumes; it does not guess visibility from a handful of sampled rays. Door holes
 and uncertain cases stay visible. Moving doors and other changing occluders must
 remain separate from the immutable input. Transparent/cutout/displaced geometry
 must not be supplied as occluders. Largest-face selection intentionally sacrifices
-some culling opportunities to bound bake time. `--chunk-size`, `--cell-size`,
-`--minimum`, `--dimensions`, and `--occluders` control the bake.
+some culling opportunities to bound bake time. The native CLI accepts chunk size, cell size, minimum and dimensions as positional arguments; the C++ API also exposes the occluder budget.
 
 Opt in on the rendered component:
 
@@ -560,8 +555,7 @@ shadow work is visible in `shadow_draws`.
 Validation: `CanisRenderOptimizationTests` covers both-eye visibility, outside-cell
 fallback, invalid matrices, stale CRCs, static shadow reuse and invalidation,
 dynamic shadow composition, geometry edits, and preservation of vertex colors
-across instanced passes. `python3 tests/test_bake_static_visibility.py` independently
-checks the offline proof, door gaps and 36,480 sampled rays from proven-hidden boxes.
+across instanced passes. `CanisNativeBakeTests` checks the offline proof, partial coverage, camera cells crossing occluders, and native lighting/import behavior.
 
 ### Environment panel controls
 
@@ -569,34 +563,34 @@ The Environment panel now groups Lightmap Baking and Baked Occlusion controls.
 Its settings serialize under `Environment.Baking` and participate in normal scene
 save/history. Lightmaps defaults on and sets the `disableBakedLighting` uniform;
 imported-lighting shaders must honor that uniform (the Cairo shader does). New
-GI lightmap generation is explicitly unavailable. Static Shadows enables cached
-directional depth; Rebuild Static Shadows invalidates it for the next render.
+Native C++ baking generates shadowed direct irradiance, ambient occlusion and one diffuse
+bounce in subdivided vertex colors. This is vertex lighting, not a UV lightmap atlas.
+Static Shadows enables cached directional depth; Rebuild Static Shadows invalidates it.
 Occlusion switches PVS independently of primitive frustum culling.
 
-A project can configure a baker Program and Arguments in the panel. The editor
-passes arguments directly to SDL's process API without shell expansion, polls the
-job without blocking, reports failure, and reloads opted-in model assets on success.
-Runs start only in Edit mode; completed jobs wait for Edit mode before applying.
-The program runs from the project folder and must update existing model outputs,
-not overwrite an open scene. Configuration never runs automatically on scene load.
-Cairo uses `python3 ../scripts/halo/bake-editor.py`, staging all three bakes before
-replacing assets while preserving the scene and source models.
+The native bake runs asynchronously on a detached scene snapshot. Runs start in Edit
+mode; completed jobs wait for Edit mode before applying. There is no external baker
+Program/Arguments setting or Python process. Save the scene after applying the bake.
+`canis-asset-tool bake-lighting INPUT.scene OUTPUT_MODEL_DIRECTORY [vertexSpacing indirectSamples]`
+also creates an adjacent `INPUT-baked.scene` using the same implementation.
+Imported material slots remain editable and collision keeps the original unsubdivided mesh.
 
 ### Local reflection probes and indirect illumination
 
-In **Environment → Reflection probes / Global illumination**, add up to four probes.
+In **Environment → Reflection probes / Global illumination**, add up to six probes.
 Place each capture point in open space inside its room, set its world-aligned box
-half extents to that room, and use the blend distance to fade inward from the box
-boundary. Overlapping probes blend per fragment; outside all boxes they contribute
+half extents to that room, and use the blend distance to fade outside the projection box
+boundary. Surface reflections remain visible on the box boundaries, and reflected
+rays leaving a neighboring room are rejected. Overlapping probes blend per fragment; outside all boxes they contribute
 nothing. Settings are saved under `Environment.LightingProbes` and are also available
 through `Scene::GetLightingProbes()`.
 
 The renderer captures six 64×64 HDR faces from static models and the sky on first
 render, then reuses those textures for both VR eyes. Changing probe settings causes
 a recapture; after editing geometry, materials or lights, click **Recapture lighting
-probes** (or call `InvalidateLightingProbes`). Captures are transient, not exported
-lightmap assets. Their synchronous startup/recapture cost is 24 scene views at the
-four-probe limit; avoid recapturing during headset play.
+probes** (or call `InvalidateLightingProbes`). Captures can be persisted through each probe's `CachePath`; valid caches reload without recapturing. Fresh captures require six
+scene views per probe (36 at the six-probe limit). These are cubemaps, not lightmap
+atlases.
 
 Diffuse indirect lighting is a solid-angle-weighted projection of captured radiance
 onto nine spherical-harmonic coefficients, convolved with the cosine kernel. This
@@ -625,39 +619,8 @@ uses bounded static captures to suit the existing forward OpenGL and VR renderer
 
 ### Room partitions for static visibility
 
-`tools/bake-static-visibility.py --rooms` preserves semantic room membership when
-partitioning a rigid opaque glTF. Exporters can provide
-`primitive.extras.canisRoomRanges`: an ordered list of `{room, first, count}` where
-`first` and `count` refer to triangles. Ranges must cover every triangle exactly
-once. A node with one unambiguous source room/corridor name can also supply its
-membership. Multiple source-room names and unlabelled geometry stay shared.
-
-Small room/material batches are anchored to their own geometry bounds so a room
-crossing a world-grid boundary is not unnecessarily split into several draws.
-Large batches retain bounded subdivisions at the configured chunk size. Shared
-geometry uses the existing spatial grid, and source glazing primitives remain
-whole to preserve their authored draw order. All positions, normals, UVs, baked
-lighting attributes, triangle coverage and material slots are retained.
-
-The visibility sidecar retains its version-1 cell/PVS format and adds an optional
-`rooms` array of `{name, primitives}`. Room groups may include shared spatial
-fallbacks. The loader validates exhaustive, unique membership and derives each
-group's bounds from the actual member bounds. Invalid data fails open through the
-existing unbaked rendering path; old sidecars without room groups still work.
-
-The renderer first tests the group bounds against each eye's frustum, then tests
-member chunks only for surviving eyes. A room survives if either VR eye sees it.
-The existing conservative triangle-occlusion proof remains responsible for hiding
-geometry behind walls; room names are not evidence of sealed boundaries. This
-partition pass does not infer a portal graph, visibility through open doorways,
-or changes caused by moving doors. Geometry and room groups stay in the same model
-asset, with no per-room entity requirement.
-
-Set `CANIS_DISABLE_BAKED_ROOMS=1` to compare the hierarchy with flat chunk tests
-while retaining the same partitioned geometry and PVS. This should produce
-identical pixels. Cairo's editor baker and `scripts/halo/bake-station.sh` enable
-room partitions; regenerate the source interior assembly first when source-room
-membership changes.
+The native converter uses a conservative spatial grid. Room grouping is not inferred
+from mesh names; uncertain visibility stays visible.
 
 ### Desktop focus, controller availability and frame pacing
 

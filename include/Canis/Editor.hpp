@@ -21,6 +21,8 @@
 #include <Canis/ScriptWorkspace.hpp>
 #include <Canis/EditorPanelMaximizer.hpp>
 #include <Canis/Asset.hpp>
+#include <Canis/LightingBake.hpp>
+#include <future>
 #include <Canis/AssetHandle.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Blockout.hpp>
@@ -526,8 +528,9 @@ namespace Canis
         bool m_showHierarchyPanel = true;
         bool m_showInspectorPanel = true;
         bool m_showEnvironmentPanel = true;
-        SDL_Process* m_environmentBakeProcess = nullptr;
-        std::vector<std::string> m_environmentBakeModels;
+        std::future<LightingBakeResult> m_environmentBakeJob;
+        std::atomic<bool> m_environmentBakeCancel{false};
+        bool m_environmentBakeRunning = false;
         std::string m_environmentBakeStatus;
         void StartEnvironmentBake();
         void UpdateEnvironmentBake();

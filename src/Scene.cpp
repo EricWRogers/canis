@@ -5,6 +5,7 @@
 #include <Canis/Scene.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/RenderMetrics.hpp>
+#include <Canis/OpenGL.hpp>
 #include <Canis/App.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Editor.hpp>
@@ -418,17 +419,50 @@ namespace Canis
 
     void Scene::Render(float _deltaTime)
     {
+        Render(_deltaTime, false);
+    }
+
+    void Scene::Render(float _deltaTime, bool _deferScreenSpaceUI)
+    {
         Profiler::Scope frameScope("Scene.Render", RenderMetrics::ProfileCategory());
         //Canis::Debug::Log("Render Update %i", m_renderSystems.size());
         for (System* renderer : m_renderSystems)
         {
             Profiler::Scope scope(renderer->GetName(), RenderMetrics::ProfileCategory());
             const Uint64 start = SDL_GetTicksNS();
-            renderer->Update(m_registry, _deltaTime);
+            if (auto* ui=dynamic_cast<SpriteRenderer2DSystem*>(renderer); ui && _deferScreenSpaceUI)
+                ui->RenderWorldUI(m_registry, _deltaTime);
+            else
+                renderer->Update(m_registry, _deltaTime);
             const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
             if (SystemTiming* timing = GetSystemTiming(renderer))
                 timing->renderMs = elapsedMs;
         }
+    }
+
+    void Scene::CompositeScreenSpaceUI(unsigned int _framebuffer, int _width, int _height)
+    {
+        if (!m_window || _width <= 0 || _height <= 0) return;
+        RenderMetrics::Scope timing("Screen-space UI composition");
+        GLint draw=0,read=0,viewport[4];
+        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&draw);glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&read);
+        glGetIntegerv(GL_VIEWPORT,viewport);
+        const int width=m_window->GetScreenWidth(),height=m_window->GetScreenHeight();
+        m_window->SetRenderSize(_width,_height);
+        glBindFramebuffer(GL_FRAMEBUFFER,_framebuffer);glViewport(0,0,_width,_height);
+        for (System* renderer : m_renderSystems)
+        {
+            if (auto* ui = dynamic_cast<SpriteRenderer2DSystem*>(renderer))
+            {
+                const Uint64 start = SDL_GetTicksNS();
+                ui->RenderScreenSpaceUI(m_registry);
+                if (SystemTiming* systemTiming = GetSystemTiming(renderer))
+                    systemTiming->renderMs += static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
+            }
+        }
+        m_window->SetRenderSize(width,height);
+        glBindFramebuffer(GL_DRAW_FRAMEBUFFER,draw);glBindFramebuffer(GL_READ_FRAMEBUFFER,read);
+        glViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
     }
 
     void Scene::UpdateEditor()
@@ -653,9 +687,10 @@ namespace Canis
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
             if(auto probes=environment["LightingProbes"]; probes && probes.IsSequence()) {
                 for(const auto& node:probes) {
-                    if(m_lightingProbes.size()>=4)break;
+                    if(m_lightingProbes.size()>=MaxLightingProbes)break;
                     LightingProbe probe;
                     probe.enabled=node["Enabled"].as<bool>(true);
+                    probe.cachePath=node["CachePath"].as<std::string>("");
                     probe.position=node["Position"].as<Vector3>(Vector3(0));
                     probe.halfExtents=node["HalfExtents"].as<Vector3>(Vector3(5));
                     probe.blendDistance=node["BlendDistance"].as<float>(1);
@@ -671,8 +706,6 @@ namespace Canis
                 m_baking.lightmaps = baking["Lightmaps"].as<bool>(true);
                 m_baking.staticShadows = baking["StaticShadows"].as<bool>(true);
                 m_baking.occlusion = baking["Occlusion"].as<bool>(true);
-                m_baking.program = baking["Program"].as<std::string>("");
-                m_baking.arguments = baking["Arguments"].as<std::string>("");
             }
 
 
@@ -963,8 +996,6 @@ namespace Canis
         baking["Lightmaps"] = m_baking.lightmaps;
         baking["StaticShadows"] = m_baking.staticShadows;
         baking["Occlusion"] = m_baking.occlusion;
-        baking["Program"] = m_baking.program;
-        baking["Arguments"] = m_baking.arguments;
 
         if ((uint64_t)m_environmentSkyboxUUID != 0)
         {
@@ -980,9 +1011,9 @@ namespace Canis
         }
         YAML::Node probes(YAML::NodeType::Sequence);
         for(auto probe:m_lightingProbes) {
-            if(probes.size()>=4)break;
+            if(probes.size()>=MaxLightingProbes)break;
             probe.Sanitize();YAML::Node p;
-            p["Enabled"]=probe.enabled;p["Position"]=probe.position;p["HalfExtents"]=probe.halfExtents;
+            p["Enabled"]=probe.enabled;p["CachePath"]=probe.cachePath;p["Position"]=probe.position;p["HalfExtents"]=probe.halfExtents;
             p["BlendDistance"]=probe.blendDistance;p["DiffuseIntensity"]=probe.diffuseIntensity;
             p["SpecularIntensity"]=probe.specularIntensity;p["NearClip"]=probe.nearClip;p["FarClip"]=probe.farClip;
             probes.push_back(p);

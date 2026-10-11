@@ -579,6 +579,9 @@ namespace Canis
             Color baseColor = Color(1.0f);
             bool hasSkinning = false;
             bool dynamicVertices = false;
+            bool bakedLighting = false;
+            i32 normalTextureId = -1, emissionTextureId = -1;
+            Vector3 emissionFactor{0};
         };
 
         struct Node3D
