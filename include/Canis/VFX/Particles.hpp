@@ -10,15 +10,21 @@ namespace Canis
 {
     struct ParticleEmitter
     {
-    public:
-        static constexpr const char* ScriptName = "Canis::ParticleEmitter";
+      public:
+        static constexpr const char *ScriptName = "Canis::ParticleEmitter";
 
         ParticleEmitter() = default;
-        explicit ParticleEmitter(Entity& _entity) : entity(&_entity) {}
-        Entity* entity = nullptr;
+        explicit ParticleEmitter(Entity &_entity) : entity(&_entity)
+        {
+        }
+        Entity *entity = nullptr;
 
-        void Create() {}
-        void Destroy() {}
+        void Create()
+        {
+        }
+        void Destroy()
+        {
+        }
 
         bool playOnStart = true;
         bool playing = false;
@@ -29,6 +35,14 @@ namespace Canis
         // 0 retains the existing box volume, 1 is a point, 2 is the local XZ plane.
         int spawnShape = 0;
         bool useAgeUniforms = true;
+        int maxParticles = 2048;
+        int maxSpawnPerFrame = 512;
+        // Zero chooses a new seed on Play; positive values reproduce the effect.
+        int randomSeed = 0;
+        // 0: none, 1: world horizontal plane, 2: native physics sweep.
+        int collisionMode = 0;
+        float collisionPlaneHeight = 0;
+        Entity impactEmitter;
         int burstCount = 18;
         int spawnCount = 2;
         float emissionDuration = 0.08f;
@@ -59,6 +73,8 @@ namespace Canis
             spawnAccumulator = 0.0f;
             hasTriggeredBurst = false;
             pendingDestroy = false;
+            randomState = 0;
+            totalSpawned = totalDropped = totalImpacts = 0;
         }
 
         void Stop()
@@ -77,25 +93,39 @@ namespace Canis
         bool hasTriggeredBurst = false;
         bool pendingDestroy = false;
         bool editorPreviewSelected = false;
+        bool editorPreviewPaused = false;
         int cachedModelId = -1;
         int cachedMaterialId = -1;
+        std::string cachedModelPath, cachedMaterialPath;
+        uint32_t randomState = 0;
+        uint64_t totalSpawned = 0, totalDropped = 0, totalImpacts = 0;
+        int spawnedThisFrame = 0;
     };
 
     class ParticleEmitterSystem : public System
     {
-    public:
+      public:
         ParticleEmitterSystem();
         void Create() override;
-        void Update(entt::registry& _registry, float _deltaTime) override;
-        void UpdateEditorPreview(entt::registry& _registry, float _deltaTime, Entity* _selectedEntity);
+        void Update(entt::registry &_registry, float _deltaTime) override;
+        void UpdateEditorPreview(entt::registry &_registry, float _deltaTime,
+                                 Entity *_selectedEntity);
 
-    private:
-        void UpdateInternal(entt::registry& _registry, float _deltaTime, Entity* _previewEmitter, bool _editorPreview);
+      private:
+        struct Impact
+        {
+            entt::entity emitter;
+            Vector3 position, normal;
+        };
+        std::vector<entt::entity> m_expiredParticles;
+        std::vector<Impact> m_impacts;
+        void UpdateInternal(entt::registry &_registry, float _deltaTime, Entity *_previewEmitter,
+                            bool _editorPreview);
     };
 
-    void RegisterParticleEmitterComponent(App& _app);
-    void UnRegisterParticleEmitterComponent(App& _app);
+    void RegisterParticleEmitterComponent(App &_app);
+    void UnRegisterParticleEmitterComponent(App &_app);
 
-    void RegisterParticleEmitterSystem(App& _app);
-    void UnRegisterParticleEmitterSystem(App& _app);
-}
+    void RegisterParticleEmitterSystem(App &_app);
+    void UnRegisterParticleEmitterSystem(App &_app);
+} // namespace Canis

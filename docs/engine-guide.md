@@ -444,7 +444,7 @@ frame pacing or comfort. The feature remains opt-in pending physical headset
 validation.
 
 
-## Soft Intersections for Transparent Meshes
+## Particle Emitters
 
 Particle emitters expose **Spawn shape** with Box, Point and Plane (local XZ).
 Box is the default to preserve existing effects. `spawnExtents` contains local half
@@ -456,6 +456,42 @@ space. Native render tests verify all shapes under a rotated, scaled parent.
 shader does not consume particle age/lifetime uniforms; this leaves material field
 overrides empty so opaque ShaderGraph particles can use dynamic instance batches.
 Particle colour and scale still animate, and expiry still removes registry handles.
+
+The first improvement pass follows five steps: profile ordinary weather, bound
+particle growth/catch-up, make timing and randomness reproducible, add collision
+effects, and expose controls with regressions. All five are implemented in the
+native system. Simulation remains CPU-based and feeds the existing mesh renderer.
+
+`maxParticles` defaults to 2048 and `maxSpawnPerFrame` to 512. Live limits include
+impact particles, and reducing the live cap trims existing particles immediately.
+Missed emissions above the frame budget are dropped rather than queued into future
+frames. Continuous emitters age catch-up particles from their actual birth times
+and stop spawning at their finite emission duration. Gravity and drag use analytic
+integration; equivalent seeded runs at 30 and 120 updates/second match within the
+native regression tolerance. Scratch buffers retain their capacity between frames.
+
+`randomSeed=0` chooses a fresh seed when played. Positive seeds reproduce each
+emitter independently of other effects. Inactive parents stop emission; deleting
+an emitter or removing its component cleans its particles on the next update.
+Changing a model/material path invalidates the emitter's asset cache.
+
+**Collision** offers None, a cheap horizontal World plane at
+`collisionPlaneHeight`, or swept native colliders through the scene physics API.
+Connect `impactEmitter` to an authored emitter configured as a burst with
+`playOnStart=false` and `destroyEntityWhenDone=false`. Impacts spawn at the hit
+point, orient to its normal, and remain in world space. Multiple hits share the
+target's live/frame budgets. A collision-disabled target avoids effect feedback.
+The registry is mutated only after the particle update iteration completes.
+
+The inspector has Restart, Stop and Clear controls and live/spawned/dropped/hit
+counts. Stop drains an effect without destroying the authored emitter. In Edit
+mode, stopped/cleared previews stay stopped until restarted or selected again.
+Tests cover high-rate bursts, long frames, finite durations, invalid deltas, seeded
+repeatability, parent activation, owner removal, and fast impacts on planes and
+native walls. Mesh/sprite transparency batching, billboard rendering, richer
+curves/shapes and GPU simulation remain separate scaling work for larger effects.
+
+## Soft Intersections for Transparent Meshes
 
 A transparent material whose main shader declares an active `softSceneDepth`
 sampler opts into an opaque-depth snapshot before transparent geometry. The

@@ -19,6 +19,7 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 #include <Canis/VFX/Particles.hpp>
+#include <Canis/ECS/Systems/JoltPhysics3DSystem.hpp>
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -721,6 +722,79 @@ static void ParticleSpawnShapes(Window& window) {
     std::cout << "Point, plane and legacy box particle shapes respect transformed local bounds and expiry\n";
 }
 
+static void ParticleBudgetsTimingAndCollisions(Window& window) {
+    auto configure=[](Entity& e)->ParticleEmitter& {
+        auto& emitter=*e.AddComponent<ParticleEmitter>();emitter.entity=e.TryGet();
+        emitter.modelPath=emitter.materialPath="";emitter.destroyEntityWhenDone=false;
+        emitter.randomSeed=123;emitter.useAgeUniforms=false;return emitter;
+    };
+    {
+        Scene scene;scene.Init(nullptr,&window,nullptr);auto e=scene.CreateEntity("Budgeted emitter");e.AddComponent<Transform>();
+        auto& emitter=configure(e);emitter.burstCount=100000;emitter.maxParticles=17;emitter.maxSpawnPerFrame=5;
+        emitter.looping=true;emitter.particleLifetime=5;emitter.Play();
+        ParticleEmitterSystem system;system.scene=&scene;system.Update(scene.GetRegistry(),0);
+        Check(emitter.particles.size()==5&&emitter.totalDropped==99995,"Burst escaped per-frame spawn limit");
+        for(int i=0;i<20;i++){system.Update(scene.GetRegistry(),.02f);Check(emitter.particles.size()<=17&&emitter.spawnedThisFrame<=5,"Loop escaped live/per-frame limits");}
+        emitter.maxParticles=1;system.Update(scene.GetRegistry(),0);
+        Check(emitter.particles.size()==1,"Reducing the live cap did not trim existing particles");emitter.maxParticles=17;
+        emitter.burstMode=false;emitter.spawnCount=100000;emitter.spawnInterval=.001f;emitter.Play();
+        system.Update(scene.GetRegistry(),30);Check(emitter.particles.size()<=17&&emitter.spawnedThisFrame<=5,"Long-frame catch-up escaped particle limits");
+        system.Update(scene.GetRegistry(),std::numeric_limits<float>::quiet_NaN());system.Update(scene.GetRegistry(),-1);
+        for(auto h:emitter.particles)Check(std::isfinite(scene.GetRegistry().get<Transform>(h).position.x),"Invalid delta poisoned particle simulation");
+        e.RemoveComponent<ParticleEmitter>();system.Update(scene.GetRegistry(),0);
+        auto remaining=scene.GetRegistry().view<Model,Material>();
+        Check(remaining.begin()==remaining.end(),"Removing an emitter left orphaned particles");
+    }
+    auto simulate=[&](int steps) {
+        Scene scene;scene.Init(nullptr,&window,nullptr);auto e=scene.CreateEntity("Seeded emitter");e.AddComponent<Transform>();
+        auto& emitter=configure(e);emitter.burstMode=false;emitter.looping=true;emitter.spawnInterval=.01f;emitter.spawnCount=1;
+        emitter.particleLifetime=3;emitter.gravity=-3;emitter.drag=.7f;emitter.Play();
+        ParticleEmitterSystem system;system.scene=&scene;for(int i=0;i<steps;i++)system.Update(scene.GetRegistry(),1.f/steps);
+        std::vector<Vector3> positions;for(auto h:emitter.particles)positions.push_back(scene.GetRegistry().get<Transform>(h).position);
+        return positions;
+    };
+    auto slow=simulate(30),fast=simulate(120),repeat=simulate(30);
+    Check(slow.size()==100&&fast.size()==slow.size()&&slow==repeat,"Seeded emission count or repeatability differs");
+    for(size_t i=0;i<slow.size();i++)Check(glm::distance(slow[i],fast[i])<.002f,"Particle motion/emission depends on frame rate");
+    {
+        Scene scene;scene.Init(nullptr,&window,nullptr);auto parent=scene.CreateEntity("Parent");parent.AddComponent<Transform>();
+        auto e=scene.CreateEntity("Finite emitter");e.AddComponent<Transform>()->SetParent(parent.TryGet());auto& emitter=configure(e);
+        emitter.burstMode=false;emitter.spawnCount=3;emitter.spawnInterval=.02f;emitter.emissionDuration=.08f;emitter.particleLifetime=3;
+        emitter.spawnShape=1;emitter.minVelocity=emitter.maxVelocity={1,0,0};emitter.speedMin=emitter.speedMax=2;emitter.drag=emitter.gravity=0;
+        emitter.Play();ParticleEmitterSystem system;system.scene=&scene;system.Update(scene.GetRegistry(),1);
+        Check(emitter.particles.size()==12&&!emitter.playing,"Finite emitter emitted beyond its duration during a long frame");
+        for(auto h:emitter.particles)Check(scene.GetRegistry().get<Transform>(h).position.x>1.83f,"Catch-up particles ignored their actual birth times");
+        emitter.looping=true;emitter.Play();parent.GetComponent<Transform>().active=false;system.Update(scene.GetRegistry(),.1f);
+        Check(emitter.totalSpawned==0,"Inactive parent still emitted particles");
+    }
+    for(int collisionMode:{1,2}) {
+        Scene scene;scene.Init(nullptr,&window,nullptr);
+        if(collisionMode==2) {
+            auto floor=scene.CreateEntity("Physics wall");floor.AddComponent<Transform>()->position={-.5f,0,0};
+            floor.AddComponent<Rigidbody>()->motionType=RigidbodyMotionType::STATIC;floor.AddComponent<BoxCollider>()->size={1,10,10};
+            auto* physics=static_cast<JoltPhysics3DSystem*>(scene.CreateSystem(new JoltPhysics3DSystem()));physics->Create();physics->Update(scene.GetRegistry(),1.f/60);
+        }
+        auto source=scene.CreateEntity("Rain");source.AddComponent<Transform>()->position={0,1,0};auto& rain=configure(source);
+        auto target=scene.CreateEntity("Impact emitter");target.AddComponent<Transform>()->position={100,100,100};auto& splash=configure(target);
+        splash.playOnStart=false;splash.burstCount=3;splash.maxParticles=5;splash.maxSpawnPerFrame=4;
+        splash.spawnShape=1;splash.localSpace=true;splash.speedMin=splash.speedMax=2;splash.drag=splash.gravity=0;
+        splash.minVelocity=splash.maxVelocity={0,1,0};
+        rain.spawnShape=1;rain.burstCount=8;rain.particleLifetime=2;rain.minVelocity=rain.maxVelocity={0,-1,0};
+        if(collisionMode==2){source.GetComponent<Transform>().position={1,0,0};rain.minVelocity=rain.maxVelocity={-1,0,0};}
+        rain.speedMin=rain.speedMax=40;rain.gravity=rain.drag=0;rain.collisionMode=collisionMode;rain.impactEmitter=target;
+        rain.Play();ParticleEmitterSystem system;system.scene=&scene;system.Update(scene.GetRegistry(),0);system.Update(scene.GetRegistry(),.1f);
+        Check(rain.particles.empty()&&rain.totalImpacts==8,"Swept particles tunneled through their collision surface");
+        Check(splash.particles.size()==4&&splash.totalDropped>0,"Impact bursts escaped the shared frame budget");
+        Vector3 impactOrigin=collisionMode==1?Vector3(0,.015f,0):Vector3(.015f,0,0);
+        for(auto h:splash.particles)Check(glm::distance(scene.GetRegistry().get<Transform>(h).position,impactOrigin)<.001f,"Impact emitter spawned at its authored origin instead of the hit");
+        system.Update(scene.GetRegistry(),.1f);
+        auto moved=impactOrigin+(collisionMode==1?Vector3(0,.2f,0):Vector3(.2f,0,0));
+        for(auto h:splash.particles)Check(glm::distance(scene.GetRegistry().get<Transform>(h).position,moved)<.001f,"Impact particles followed the template transform or ignored the surface normal");
+        scene.Unload();
+    }
+    std::cout<<"Particle budgets, seeds, frame-independent motion, finite duration, orphan cleanup and swept impact emitters passed\n";
+}
+
 static void ShadowTextureIsolation(Window& window) {
     auto root=std::filesystem::temp_directory_path()/("canis-shadow-samplers-"+std::to_string(SDL_GetTicksNS()));
     std::filesystem::create_directories(root);
@@ -1114,6 +1188,7 @@ int main(int argc,char** argv) {
         StaticShadowBaking(window);
         ShadowTextureIsolation(window);
         ParticleSpawnShapes(window);
+        ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);
