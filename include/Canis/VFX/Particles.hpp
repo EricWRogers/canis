@@ -26,6 +26,9 @@ namespace Canis
         bool burstMode = true;
         bool destroyEntityWhenDone = true;
         bool localSpace = false;
+        // 0 retains the existing box volume, 1 is a point, 2 is the local XZ plane.
+        int spawnShape = 0;
+        bool useAgeUniforms = true;
         int burstCount = 18;
         int spawnCount = 2;
         float emissionDuration = 0.08f;

@@ -98,6 +98,7 @@ namespace Canis
         m_isLinked = false;
         m_locationsCashe.clear();
         m_lastValueCashe.clear();
+        m_uniformTypes.clear();
         m_numberOfAttributes = static_cast<int>(m_attributes.size());
 
         //Getting vertex shaderID
@@ -247,6 +248,20 @@ namespace Canis
             m_isLinked = true;
         }
 
+        m_uniformTypes.clear();
+        GLint uniformCount = 0, maximumNameLength = 0;
+        glGetProgramiv(m_programId, GL_ACTIVE_UNIFORMS, &uniformCount);
+        glGetProgramiv(m_programId, GL_ACTIVE_UNIFORM_MAX_LENGTH, &maximumNameLength);
+        std::vector<GLchar> uniformName(std::max(1, maximumNameLength));
+        for (GLint index = 0; index < uniformCount; ++index)
+        {
+            GLsizei length = 0;
+            GLint size = 0;
+            GLenum type = 0;
+            glGetActiveUniform(m_programId, index, uniformName.size(), &length, &size, &type, uniformName.data());
+            m_uniformTypes.emplace(std::string(uniformName.data(), length), type);
+        }
+
         // Cube and 2D samplers cannot alias even when the probe branch is disabled.
         GLint previousProgram=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previousProgram);glUseProgram(m_programId);
         for(int i=0;i<4;++i) {
@@ -274,6 +289,12 @@ namespace Canis
 
         if (m_programId != 0)
             glBindAttribLocation(m_programId, attributeIndex, _attributeName.c_str());
+    }
+
+    unsigned int Shader::GetUniformType(const std::string &uniformName) const
+    {
+        auto found = m_uniformTypes.find(uniformName);
+        return found == m_uniformTypes.end() ? 0 : found->second;
     }
 
     GLint Shader::GetUniformLocation(const std::string &_uniformName, const size_t _valueHash) const

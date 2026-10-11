@@ -18,6 +18,7 @@
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
+#include <Canis/VFX/Particles.hpp>
 #include <SDL3/SDL.h>
 #include <filesystem>
 #include <fstream>
@@ -688,6 +689,97 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     std::cout << "Screen canvases bypass postprocessing; world UI and 2D scene sprites retain it\n";
 }
 
+static void ParticleSpawnShapes(Window& window) {
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    auto parent=scene.CreateEntity("Emitter parent");auto& parentTransform=*parent.AddComponent<Transform>();
+    parentTransform.position={3,4,-2};parentTransform.rotation=glm::angleAxis(.7f,Vector3(1,0,0));
+    parentTransform.scale={2,3,4};
+    auto source=scene.CreateEntity("Emitter");auto& transform=*source.AddComponent<Transform>();
+    transform.position={1,2,3};transform.SetParent(parent.TryGet());
+    auto& emitter=*source.AddComponent<ParticleEmitter>();emitter.entity=source.TryGet();
+    emitter.modelPath=emitter.materialPath="";emitter.spawnExtents={-4,-3,-6};emitter.burstCount=256;
+    emitter.destroyEntityWhenDone=false;emitter.speedMin=emitter.speedMax=0;emitter.gravity=emitter.drag=0;
+    emitter.particleLifetime=2;emitter.useAgeUniforms=false;
+    ParticleEmitterSystem system;system.scene=&scene;system.window=&window;system.Create();
+    for(int shape:{0,1,2}) for(bool local:{false,true}) {
+        emitter.spawnShape=shape;emitter.localSpace=local;emitter.Play();system.Update(scene.GetRegistry(),0);
+        Check(emitter.particles.size()==256,"Particle shape did not emit the authored burst count");
+        Vector3 range(0);auto inverse=glm::inverse(transform.GetModelMatrix());
+        for(auto handle:emitter.particles) {
+            auto offset=Vector3(inverse*Vector4(scene.GetRegistry().get<Transform>(handle).position,1));
+            range=glm::max(range,glm::abs(offset));
+            Check(std::abs(offset.x)<=4.001f&&std::abs(offset.y)<=3.001f&&std::abs(offset.z)<=6.001f,
+                  "Spawn shape escaped its half extents under a rotated/scaled parent");
+            if(shape==1)Check(glm::length(offset)<.001f,"Point emitter spread away from its origin");
+            if(shape==2)Check(std::abs(offset.y)<.001f,"Plane emitter spawned outside local XZ plane");
+        }
+        if(shape!=1)Check(range.x>3.2f&&range.z>4.8f,"Plane/box emitter did not cover its width and depth");
+        if(shape==0)Check(range.y>2.4f,"Legacy box emitter lost its height volume");
+        system.Update(scene.GetRegistry(),3); // Expiry must clean registry handles in every mode.
+        Check(emitter.particles.empty(),"Shape emitter retained expired particles");
+    }
+    std::cout << "Point, plane and legacy box particle shapes respect transformed local bounds and expiry\n";
+}
+
+static void ShadowTextureIsolation(Window& window) {
+    auto root=std::filesystem::temp_directory_path()/("canis-shadow-samplers-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    const float vertices[]={-1,-1,0,0,0,1,0,0, 1,-1,0,0,0,1,1,0, 1,1,0,0,0,1,1,1,
+                            -1,-1,0,0,0,1,0,0, 1,1,0,0,0,1,1,1, -1,1,0,0,0,1,0,1};
+    std::ofstream binary(root/"quad.bin",std::ios::binary);binary.write(reinterpret_cast<const char*>(vertices),sizeof(vertices));binary.close();
+    std::filesystem::copy_file("assets/defaults/textures/square.png",root/"normal.png");
+    std::ofstream(root/"quad.gltf") << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+      "nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"material":0}]}],
+      "buffers":[{"uri":"quad.bin","byteLength":192}],"bufferViews":[{"buffer":0,"byteLength":192,"byteStride":32}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":6,"type":"VEC3","min":[-1,-1,0],"max":[1,1,0]},
+                   {"bufferView":0,"byteOffset":12,"componentType":5126,"count":6,"type":"VEC3"},
+                   {"bufferView":0,"byteOffset":24,"componentType":5126,"count":6,"type":"VEC2"}],
+      "materials":[{"normalTexture":{"index":0}}],"textures":[{"source":0}],"images":[{"uri":"normal.png"}]})";
+    auto read=[](const char* path){std::ifstream f(path);return std::string(std::istreambuf_iterator<char>(f),{});};
+    auto fragment=read("assets/shaders/model3d.fs");
+    auto replace=[&](const std::string& before,const std::string& after){auto at=fragment.find(before);Check(at!=std::string::npos,"Shadow comparison fixture changed");fragment.replace(at,before.size(),after);};
+    replace("uniform sampler2D directionalShadowMap;","uniform sampler2DShadow directionalShadowMap;");
+    replace("float sampleDepth = texture(directionalShadowMap, projCoords.xy + offset).r;",
+            "float visibility = texture(directionalShadowMap, vec3(projCoords.xy + offset, currentDepth - bias));");
+    replace("shadow += (currentDepth - bias > sampleDepth) ? 1.0 : 0.0;","shadow += 1.0 - visibility;");
+    std::ofstream(root/"comparison.vs") << read("assets/shaders/model3d.vs");
+    std::ofstream(root/"comparison.fs") << fragment;
+    std::ofstream(root/"comparison.material") << "shader: {path: '"<<(root/"comparison").string()<<"'}\ncolor: [1,1,1,1]\n";
+    int id=AssetManager::LoadModel((root/"quad.gltf").string());
+    int materialId=AssetManager::LoadMaterial((root/"comparison.material").string());
+    Scene scene;auto sun=scene.CreateEntity("Sun");sun.AddComponent<Transform>();
+    sun.AddComponent<DirectionalLight>()->direction=glm::normalize(Vector3(.7f,-.3f,-1));
+    auto receiver=scene.CreateEntity("Normal-mapped receiver");receiver.AddComponent<Transform>()->position={0,0,-5};
+    auto& receiverModel=*receiver.AddComponent<Model>();receiverModel.modelId=id;receiverModel.castShadow=false;
+    auto caster=scene.CreateEntity("Normal-mapped caster");caster.AddComponent<Transform>()->position={-.5f,0,-3};
+    caster.GetComponent<Transform>().scale=Vector3(.25f);caster.AddComponent<Model>()->modelId=id;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    int rawId=AssetManager::LoadShader("assets/shaders/model3d");
+    for(bool comparison:{false,true,false,true}) {
+        if(comparison) {
+            receiver.AddComponent<Material>()->materialId=materialId;
+            caster.AddComponent<Material>()->materialId=materialId;
+        } else {receiver.RemoveComponent<Material>();caster.RemoveComponent<Material>();}
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        renderer.Update(scene.GetRegistry(),1.f/60);
+        auto* shader=AssetManager::Get<ShaderAsset>(comparison?AssetManager::GetMaterial(materialId)->shaderId:rawId)->GetShader();
+        Check(shader->GetUniformType("directionalShadowMap")==unsigned(comparison?GL_SAMPLER_2D_SHADOW:GL_SAMPLER_2D),"Incorrect cached shadow uniform type");
+        GLint shadowUnit=-1,normalUnit=-1;
+        glGetUniformiv(shader->GetProgramID(),shader->GetUniformLocation("directionalShadowMap",0),&shadowUnit);
+        glGetUniformiv(shader->GetProgramID(),shader->GetUniformLocation("normalMap",0),&normalUnit);
+        Check(shadowUnit!=normalUnit,"Normal map aliases directional shadow texture unit");
+        glActiveTexture(GL_TEXTURE0+shadowUnit);GLint format=0,mode=0;
+        glGetTexLevelParameteriv(GL_TEXTURE_2D,0,GL_TEXTURE_INTERNAL_FORMAT,&format);
+        glGetTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_COMPARE_MODE,&mode);
+        Check(format==GL_DEPTH_COMPONENT24,"Imported normal map replaced the directional shadow depth texture");
+        Check(mode==(comparison?GL_COMPARE_REF_TO_TEXTURE:GL_NONE),"Shadow sampler type and depth comparison state disagree");
+        Check(glGetError()==GL_NO_ERROR,"Shadow/normal-map binding produced an OpenGL error");
+    }
+    renderer.OnDestroy();AssetManager::FreeModel(id);glActiveTexture(GL_TEXTURE0);std::filesystem::remove_all(root);
+    std::cout << "Imported normal maps preserve shadows; raw and comparison shaders use matching depth sampling\n";
+}
+
 static void StaticShadowBaking(Window& window) {
     Scene scene;
     auto sun=scene.CreateEntity("Sun");sun.AddComponent<Transform>();auto& light=*sun.AddComponent<DirectionalLight>();
@@ -1020,6 +1112,8 @@ int main(int argc,char** argv) {
         OverlayDepthIsolation(window);
         ScreenUiAfterPostProcessing(window);
         StaticShadowBaking(window);
+        ShadowTextureIsolation(window);
+        ParticleSpawnShapes(window);
         DynamicRigidBatches(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);

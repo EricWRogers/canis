@@ -39,6 +39,7 @@ namespace Canis
 
         bool IsLinked() { return m_isLinked; }
         int GetUniformLocation(const std::string &uniformName, const size_t _valueHash) const;
+        unsigned int GetUniformType(const std::string &uniformName) const;
         int GetProgramID() { return m_programId; }
 
     private:
@@ -53,6 +54,7 @@ namespace Canis
 
         mutable std::unordered_map<std::string, int> m_locationsCashe = {};
         mutable std::unordered_map<std::string, size_t> m_lastValueCashe = {};
+        std::unordered_map<std::string, unsigned int> m_uniformTypes;
 
         std::string m_path = "";
         std::string m_vertexSource, m_fragmentSource;

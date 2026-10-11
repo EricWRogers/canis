@@ -27,6 +27,7 @@ namespace Canis
             Vector3 endScale = Vector3(0.0f);
             entt::entity emitterHandle = entt::null;
             bool localSpace = false;
+            bool useAgeUniforms = true;
             Color startColor = Color(1.0f);
             Color endColor = Color(1.0f);
         };
@@ -125,7 +126,9 @@ namespace Canis
             Material& particleMaterial = _registry.emplace<Material>(particleHandle);
             SimpleParticle& particle = _registry.emplace<SimpleParticle>(particleHandle);
 
-            const Vector3 randomOffset = RandomVector3(-_emitter.spawnExtents, _emitter.spawnExtents);
+            const Vector3 extents = glm::abs(_emitter.spawnExtents);
+            Vector3 randomOffset = _emitter.spawnShape == 1 ? Vector3(0) : RandomVector3(-extents, extents);
+            if (_emitter.spawnShape == 2) randomOffset.y = 0;
             const Vector3 randomDirection = RandomVector3(_emitter.minVelocity, _emitter.maxVelocity);
             const float directionLength = glm::length(randomDirection);
             const Vector3 normalizedDirection = (directionLength > 0.0001f)
@@ -156,9 +159,13 @@ namespace Canis
 
             particleMaterial.materialId = _emitter.cachedMaterialId;
             particleMaterial.color = _emitter.startColor;
-            particleMaterial.materialFields.SetFloat("particleAge", 0.0f);
-            particleMaterial.materialFields.SetFloat("particleLifetime", std::max(_emitter.particleLifetime, 0.001f));
-            particleMaterial.materialFields.SetFloat("particleNormalizedAge", 0.0f);
+            particle.useAgeUniforms = _emitter.useAgeUniforms;
+            if (particle.useAgeUniforms)
+            {
+                particleMaterial.materialFields.SetFloat("particleAge", 0.0f);
+                particleMaterial.materialFields.SetFloat("particleLifetime", std::max(_emitter.particleLifetime, 0.001f));
+                particleMaterial.materialFields.SetFloat("particleNormalizedAge", 0.0f);
+            }
 
             // Velocity ranges are always authored relative to the emitter.
             // World-space particles inherit its orientation once at spawn;
@@ -216,6 +223,8 @@ namespace Canis
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, burstMode);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, destroyEntityWhenDone);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, localSpace);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spawnShape);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, useAgeUniforms);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, burstCount);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spawnCount);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, emissionDuration);
@@ -252,6 +261,10 @@ namespace Canis
             DrawInspectorField(_editor, "burstMode", _conf.name.c_str(), component->burstMode);
             DrawInspectorField(_editor, "destroyEntityWhenDone", _conf.name.c_str(), component->destroyEntityWhenDone);
             DrawInspectorField(_editor, "localSpace", _conf.name.c_str(), component->localSpace);
+            const char* shapes[] = {"Box", "Point", "Plane (XZ)"};
+            component->spawnShape = std::clamp(component->spawnShape, 0, 2);
+            DrawInspectorComboField("Spawn shape", _conf.name.c_str(), &component->spawnShape, shapes, 3);
+            DrawInspectorField(_editor, "useAgeUniforms", _conf.name.c_str(), component->useAgeUniforms);
             DrawInspectorField(_editor, "burstCount", _conf.name.c_str(), component->burstCount);
             DrawInspectorField(_editor, "spawnCount", _conf.name.c_str(), component->spawnCount);
             DrawInspectorField(_editor, "emissionDuration", _conf.name.c_str(), component->emissionDuration);
@@ -395,9 +408,12 @@ namespace Canis
             const Color color = glm::mix(particle.startColor, particle.endColor, t);
             model.color = color;
             material.color = color;
-            material.materialFields.SetFloat("particleAge", particle.age);
-            material.materialFields.SetFloat("particleLifetime", particle.lifetime);
-            material.materialFields.SetFloat("particleNormalizedAge", t);
+            if (particle.useAgeUniforms)
+            {
+                material.materialFields.SetFloat("particleAge", particle.age);
+                material.materialFields.SetFloat("particleLifetime", particle.lifetime);
+                material.materialFields.SetFloat("particleNormalizedAge", t);
+            }
 
             if (particle.age >= particle.lifetime)
                 expiredParticles.push_back(entityHandle);

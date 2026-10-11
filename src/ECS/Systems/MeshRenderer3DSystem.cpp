@@ -1498,6 +1498,7 @@ namespace Canis
         struct MaterialSamplerScope
         {
             GLint previous[5]{};
+            GLint previousShadowSampler = 0;
             explicit MaterialSamplerScope(GLuint sampler)
             {
                 for (GLuint unit = 0; unit < 5; ++unit)
@@ -1505,11 +1506,14 @@ namespace Canis
                     glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &previous[unit]);
                     glBindSampler(unit, sampler);
                 }
+                glGetIntegeri_v(GL_SAMPLER_BINDING, 6, &previousShadowSampler);
+                glBindSampler(6, 0);
             }
             ~MaterialSamplerScope()
             {
                 for (GLuint unit = 0; unit < 5; ++unit)
                     glBindSampler(unit, static_cast<GLuint>(previous[unit]));
+                glBindSampler(6, static_cast<GLuint>(previousShadowSampler));
             }
         };
         if(!m_batchCache)m_batchCache=std::make_shared<MeshRendererCache>();
@@ -1795,12 +1799,12 @@ namespace Canis
                     }
                 }
                 currentShader->SetVec3("cameraPosition", cameraPosition);
+                currentShader->SetFloat("softTime", m_effectTime);
                 if(currentShader->GetUniformLocation("softSceneDepth",0)>=0) {
                     currentShader->SetBool("softDepthAvailable",softDepthReady);
                     currentShader->SetInt("softSceneDepth",15);
                     currentShader->SetVec4("softDepthViewport",Vector4(softDepthViewport[0],softDepthViewport[1],softDepthViewport[2],softDepthViewport[3]));
                     currentShader->SetMat4("softInverseProjection",glm::inverse(projection));
-                    currentShader->SetFloat("softTime",m_effectTime);
                 }
                 const Color ambientLight = scene->GetEnvironmentAmbientLight();
                 currentShader->SetVec3("ambientLightColor", ambientLight.r, ambientLight.g, ambientLight.b);
@@ -1812,10 +1816,17 @@ namespace Canis
                 currentShader->SetFloat("directionalLightIntensity", directionalLight.intensity);
                 currentShader->SetBool("useDirectionalShadow", directionalLight.enabled && m_shadowDepthTexture != 0);
                 currentShader->SetMat4("directionalLightSpaceMatrix", m_shadowLightSpaceMatrix);
-                // Units 0-4 belong to material maps; shadows must survive per-material binding.
-                currentShader->SetInt("directionalShadowMap", 5);
-                glActiveTexture(GL_TEXTURE5);
+                // Material maps occupy 0-5, embedded emission uses 7 and probes
+                // use 8-11. Normal maps must never replace the shadow texture.
+                currentShader->SetInt("directionalShadowMap", 6);
+                glActiveTexture(GL_TEXTURE6);
                 glBindTexture(GL_TEXTURE_2D, m_shadowDepthTexture);
+                // Raw depth/manual PCF and hardware comparison samplers require
+                // different texture state. Mixing them produces undefined reads.
+                const bool comparison = currentShader->GetUniformType("directionalShadowMap") == GL_SAMPLER_2D_SHADOW;
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_COMPARE_MODE, comparison ? GL_COMPARE_REF_TO_TEXTURE : GL_NONE);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, comparison ? GL_LINEAR : GL_NEAREST);
+                glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, comparison ? GL_LINEAR : GL_NEAREST);
 
                 currentShader->SetInt("pointLightCount", static_cast<int>(pointLights.size()));
                 for (size_t lightIndex = 0; lightIndex < pointLights.size(); ++lightIndex)

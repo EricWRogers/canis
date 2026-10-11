@@ -446,6 +446,17 @@ validation.
 
 ## Soft Intersections for Transparent Meshes
 
+Particle emitters expose **Spawn shape** with Box, Point and Plane (local XZ).
+Box is the default to preserve existing effects. `spawnExtents` contains local half
+extents; Plane uses its X/Z values and ignores Y. Point uses only the emitter origin.
+Emitter rotation and parent scale affect the spawn region in both local and world
+space. Native render tests verify all shapes under a rotated, scaled parent.
+
+`useAgeUniforms` defaults to true for existing particle shaders. Disable it when a
+shader does not consume particle age/lifetime uniforms; this leaves material field
+overrides empty so opaque ShaderGraph particles can use dynamic instance batches.
+Particle colour and scale still animate, and expiry still removes registry handles.
+
 A transparent material whose main shader declares an active `softSceneDepth`
 sampler opts into an opaque-depth snapshot before transparent geometry. The
 renderer supplies `softDepthAvailable`, `softDepthViewport` (x, y, width, height),
@@ -498,6 +509,15 @@ shadow target.
 Set `CANIS_DISABLE_STATIC_SHADOW_CACHE=1` to compare full shadow rendering with
 identical light-space projection. Dynamic models must not be opted into visibility
 bakes; movement of an ordinary `static` model still invalidates its shadow cache.
+
+Directional shadow depth uses texture unit 6, separate from imported normal maps
+on unit 5, embedded emission on unit 7 and reflection probes on units 8–11. Shader
+linking caches active uniform types; the renderer uses nearest raw-depth sampling
+for `sampler2D` and linear comparison sampling for `sampler2DShadow`. The shadow
+unit's prior sampler binding is restored after rendering. These modes must agree
+with the GLSL sampler type ([OpenGL sampling rules](https://wikis.khronos.org/opengl/Sampler_Object)).
+The GPU regression imports normal-mapped geometry and alternates both shader
+types, checking that normal maps cannot replace shadow depth.
 
 Instanced draws now restore attribute 7 to the imported vertex-color stream.
 Without this restoration, an instanced shadow pass replaced baked irradiance with
