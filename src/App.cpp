@@ -6234,6 +6234,7 @@ namespace Canis
                     comp["playAnimation"] = animation.playAnimation;
                     comp["loop"] = animation.loop;
                     comp["animationSpeed"] = animation.animationSpeed;
+                    comp["updateRate"] = animation.updateRate;
                     comp["animationTime"] = animation.animationTime;
                     comp["animationIndex"] = animation.animationIndex;
                     comp["rootMotionMask"] = animation.rootMotionMask;
@@ -6251,6 +6252,7 @@ namespace Canis
                     animation.playAnimation = comp["playAnimation"].as<bool>(true);
                     animation.loop = comp["loop"].as<bool>(true);
                     animation.animationSpeed = comp["animationSpeed"].as<float>(1.0f);
+                    animation.updateRate = comp["updateRate"].as<float>(0.0f);
                     animation.animationTime = comp["animationTime"].as<float>(0.0f);
                     animation.animationIndex = comp["animationIndex"].as<i32>(0);
                     animation.rootMotionMask =
@@ -6267,6 +6269,7 @@ namespace Canis
                     DrawInspectorField(_editor, "playAnimation", _conf.name.c_str(), animation->playAnimation);
                     DrawInspectorField(_editor, "loop", _conf.name.c_str(), animation->loop);
                     DrawInspectorField(_editor, "animationSpeed", _conf.name.c_str(), animation->animationSpeed);
+                    DrawInspectorField(_editor, "updateRate", _conf.name.c_str(), animation->updateRate);
                     DrawInspectorField(_editor, "animationTime", _conf.name.c_str(), animation->animationTime);
                     DrawInspectorField(_editor, "rootMotionMask", _conf.name.c_str(), animation->rootMotionMask);
 

@@ -49,6 +49,7 @@ namespace Canis
                 modelAnimation.poseModelId = animationModelId;
                 modelAnimation.poseGeometryRevision = model->GetGeometryRevision();
                 modelAnimation.poseInitialized = false;
+                modelAnimation.poseUpdateAccumulator = 0.0;
                 modelAnimation.lastEvaluatedAnimationIndex = -1;
                 modelAnimation.lastEvaluatedAnimationTime = 0.0f;
                 modelAnimation.lastEvaluatedRootMotionMask = Vector3(0.0f);
@@ -115,6 +116,29 @@ namespace Canis
             const bool transitionActive =
                 modelAnimation.transitionDuration > 0.0f &&
                 !modelAnimation.transitionLocalNodeMatrices.empty();
+            if (transitionActive)
+                modelAnimation.transitionElapsed += std::max(deltaTime, 0.0f);
+
+            // Advance clocks above every frame, but sample/skin only at the requested
+            // cadence. Preserve fractional time and coalesce missed ticks at low FPS.
+            // Clip changes, invalidated poses and editor scrubbing refresh immediately.
+            const bool forceEvaluation = !modelAnimation.poseInitialized ||
+                modelAnimation.lastEvaluatedAnimationIndex != modelAnimation.animationIndex ||
+                glm::length(modelAnimation.lastEvaluatedRootMotionMask - modelAnimation.rootMotionMask) > 1e-6f ||
+                deltaTime <= 0.0f;
+            if (modelAnimation.updateRate > 0.0f && std::isfinite(modelAnimation.updateRate))
+            {
+                const double interval = 1.0 / modelAnimation.updateRate;
+                modelAnimation.poseUpdateAccumulator += std::max(deltaTime, 0.0f);
+                if (!forceEvaluation && modelAnimation.poseUpdateAccumulator + 1e-7 < interval)
+                    continue;
+                modelAnimation.poseUpdateAccumulator = forceEvaluation ? 0.0 :
+                    std::max(0.0, modelAnimation.poseUpdateAccumulator -
+                        interval * std::floor((modelAnimation.poseUpdateAccumulator + 1e-7) / interval));
+            }
+            else
+                modelAnimation.poseUpdateAccumulator = 0.0;
+
             if (!modelAnimation.poseInitialized || animationChanged ||
                 transitionActive || !modelAnimation.layers.empty())
             {
@@ -127,8 +151,6 @@ namespace Canis
 
                 if (transitionActive)
                 {
-                    modelAnimation.transitionElapsed +=
-                        std::max(deltaTime, 0.0f);
                     const float targetWeight = std::clamp(
                         modelAnimation.transitionElapsed /
                             modelAnimation.transitionDuration,

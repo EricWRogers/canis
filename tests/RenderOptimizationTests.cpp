@@ -214,6 +214,69 @@ static void ImportedHierarchyGeometry() {
     std::cout << "Imported hierarchy collision geometry and bounds passed\n";
 }
 
+// Pose sampling is capped independently of render FPS, playback and physics.
+static void AnimationUpdateCadence() {
+    const auto root=std::filesystem::temp_directory_path()/("canis-animation-rate-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    const float data[]={0,0,0, 1,0,0, 0,1,0, 0,10, 0,0,0, 10,0,0};
+    std::ofstream binary(root/"mesh.bin",std::ios::binary);
+    binary.write(reinterpret_cast<const char*>(data),sizeof(data));binary.close();
+    std::ofstream(root/"animated.gltf") << R"({
+      "asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],"nodes":[{"mesh":0}],
+      "meshes":[{"primitives":[{"attributes":{"POSITION":0}}]}],
+      "buffers":[{"uri":"mesh.bin","byteLength":68}],
+      "bufferViews":[{"buffer":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":8},{"buffer":0,"byteOffset":44,"byteLength":24}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[1,1,0]},
+        {"bufferView":1,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[10]},
+        {"bufferView":2,"componentType":5126,"count":2,"type":"VEC3"}],
+      "animations":[
+        {"samplers":[{"input":1,"output":2}],"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]},
+        {"samplers":[{"input":1,"output":2}],"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]}]
+    })";
+    Scene scene;auto actor=scene.CreateEntity("48 Hz animation");actor.AddComponent<Transform>();
+    actor.AddComponent<Model>()->modelId=AssetManager::LoadModel((root/"animated.gltf").string());
+    auto& animation=*actor.AddComponent<ModelAnimation>();ModelAnimation3DSystem evaluator;
+    for (const int fps : {60,120,144,30}) {
+        animation=ModelAnimation(actor);animation.updateRate=48;
+        evaluator.Update(scene.GetRegistry(),0);
+        int evaluations=0;
+        for (int frame=0;frame<fps;frame++) {
+            const float previous=animation.lastEvaluatedAnimationTime;
+            evaluator.Update(scene.GetRegistry(),1.f/fps);
+            evaluations+=animation.lastEvaluatedAnimationTime!=previous;
+        }
+        Check(evaluations==std::min(fps,48),"48 Hz animation sampling depended on render FPS");
+        Check(std::abs(animation.animationTime-1.f)<.00001f,"Animation throttling changed playback speed");
+        Check(std::abs(animation.pose.localNodeMatrices[0][3].x-1.f)<.00001f,"Animation pose did not sample the current playback time");
+    }
+    animation.transitionLocalNodeMatrices=animation.pose.localNodeMatrices;
+    animation.transitionDuration=.12f;animation.transitionElapsed=0;
+    animation.animationIndex=1;
+    evaluator.Update(scene.GetRegistry(),1.f/144);
+    Check(animation.lastEvaluatedAnimationIndex==1,"Clip change waited for a pose tick");
+    for(int i=0;i<24;i++)evaluator.Update(scene.GetRegistry(),1.f/144);
+    Check(animation.transitionLocalNodeMatrices.empty(),"Throttled crossfade ran slower than real time");
+    animation.externalLocalNodeMatrices=animation.pose.localNodeMatrices;
+    for(int i=0;i<10;i++) {
+        animation.externalLocalNodeMatrices[0][3].x=20.f+i;
+        evaluator.Update(scene.GetRegistry(),1.f/144);
+        Check(animation.pose.localNodeMatrices[0][3].x==20.f+i,"Pose limit throttled external/ragdoll animation");
+    }
+    animation.externalLocalNodeMatrices.clear();
+    evaluator.Update(scene.GetRegistry(),1.f/144);
+    Check(animation.lastEvaluatedAnimationIndex==1,"External pose did not immediately restore clip playback");
+    animation.animationTime=5;evaluator.Update(scene.GetRegistry(),0);
+    Check(animation.lastEvaluatedAnimationTime==5,"Editor scrubbing was throttled");
+    animation.updateRate=0;
+    for(int i=0;i<10;i++) {
+        const float previous=animation.lastEvaluatedAnimationTime;
+        evaluator.Update(scene.GetRegistry(),1.f/144);
+        Check(animation.lastEvaluatedAnimationTime!=previous,"Default per-frame animation changed");
+    }
+    std::filesystem::remove_all(root);
+    std::cout << "48 Hz animation cadence, playback, crossfades and external pose isolation passed\n";
+}
+
 static void RoomOcclusion(Window& window) {
     Scene scene;
     scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
@@ -1320,6 +1383,7 @@ int main(int argc,char** argv) {
         Window window("Renderer tests",320,240,true);
         ImportedTextureLoading();
         ImportedHierarchyGeometry();
+        AnimationUpdateCadence();
         Time::Init(120);
         Time::StartFrame();SDL_Delay(2200);Time::EndFrame();
         const auto resumed=SDL_GetTicks();
