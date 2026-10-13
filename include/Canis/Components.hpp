@@ -983,6 +983,8 @@ namespace Canis
         explicit WheeledVehicle(Entity& owner):entity(&owner){}
         Entity* entity=nullptr;
         std::vector<Entity> wheels;
+        // Optional descendant Transform defining the body's mass centre.
+        Entity centerOfMass=nullptr;
         float wheelRadius=.58f, wheelWidth=.42f;
         float axleWidth=2.4f, wheelbase=3.1f;
         float suspensionMin=.18f, suspensionMax=.55f;
@@ -998,6 +1000,7 @@ namespace Canis
         float highSpeedSteeringRatio=1.f, steeringFadeSpeedKph=90.f;
         float throttle=0, steering=0, brake=0, handbrake=0;
         float appliedThrottle=0, appliedSteering=0;
+        Vector3 effectiveCenterOfMass{0};
         uint64_t rebuildCount=0;
         int groundedWheels=0;
         float speed=0;

@@ -748,7 +748,8 @@ static void CombinedColliderAndVehicle(Window& window) {
     ground.GetComponent<Transform>().position={0,0,0};ground.GetComponent<Transform>().scale={1,1,1};
     auto car=scene.CreateEntity("Rover");car.AddComponent<Transform>()->position={0,1.1f,8};
     auto& body=*car.AddComponent<Rigidbody>();body.motionType=RigidbodyMotionType::DYNAMIC;body.mass=1400;body.useGravity=true;
-    car.AddComponent<BoxCollider>()->size={2,.5f,3.9f};auto& vehicle=*car.AddComponent<WheeledVehicle>();
+    auto& chassis=*car.AddComponent<BoxCollider>();chassis.size={2,.5f,3.9f};chassis.offset={0,-.08f,0};
+    auto& vehicle=*car.AddComponent<WheeledVehicle>();
     for(int i=0;i<180;i++)physics->Update(scene.GetRegistry(),1.f/60);
     Check(vehicle.groundedWheels==4&&car.GetComponent<Transform>().position.y>.5f,"Jolt vehicle suspension failed to settle on combined ground");
     float start=car.GetComponent<Transform>().position.z;vehicle.throttle=1;
@@ -778,6 +779,37 @@ static void CombinedColliderAndVehicle(Window& window) {
     Check(vehicle.rebuildCount==vehicleBuilds+1,"Wheel geometry edit did not rebuild native wheel collision");
     vehicle.steering=0;
     vehicle.throttle=0;vehicle.brake=1;for(int i=0;i<60;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(glm::distance(vehicle.effectiveCenterOfMass,Vector3(0,-.08f,0))<.0001f,"Unassigned vehicle centre changed automatic shape mass centre");
+    const auto originalPose=car.GetComponent<Transform>().position;
+    const auto originalRotation=car.GetComponent<Transform>().rotation;
+    RaycastHit chassisBefore,chassisAfter;
+    const auto queryOrigin=originalPose+Vector3(0,5,0);
+    Check(physics->Raycast(queryOrigin,{0,-1,0},chassisBefore,10)&&chassisBefore.entity==car,"Vehicle mass-centre query fixture missed the chassis");
+    auto mount=scene.CreateEntity("Balance mount");auto& mountTransform=*mount.AddComponent<Transform>();
+    mountTransform.SetParent(car.TryGet());mountTransform.position={.1f,-.2f,.15f};mountTransform.rotation=glm::angleAxis(.4f,Vector3(0,1,0));
+    auto marker=scene.CreateEntity("Centre of mass");auto& markerTransform=*marker.AddComponent<Transform>();
+    markerTransform.SetParent(mount.TryGet());markerTransform.position={.05f,-.3f,-.05f};
+    vehicle.centerOfMass=marker;
+    physics->Update(scene.GetRegistry(),0);
+    auto expectedCentre=Vector3(mountTransform.GetLocalMatrix()*markerTransform.GetLocalMatrix()*Vector4(0,0,0,1));
+    Check(glm::distance(vehicle.effectiveCenterOfMass,expectedCentre)<.0001f,"Native Jolt mass centre did not match nested marker position");
+    Check(physics->Raycast(queryOrigin,{0,-1,0},chassisAfter,10)&&chassisAfter.entity==car&&
+        glm::distance(chassisBefore.point,chassisAfter.point)<.001f&&glm::distance(car.GetComponent<Transform>().position,originalPose)<.001f,
+        "Adjusting mass centre moved the chassis collider or model origin");
+    auto balanceBuilds=vehicle.rebuildCount;
+    car.GetComponent<Transform>().position+=Vector3(17,5,-7);car.GetComponent<Transform>().rotation=glm::angleAxis(.7f,Vector3(0,1,0));
+    physics->Update(scene.GetRegistry(),0);
+    Check(vehicle.rebuildCount==balanceBuilds&&glm::distance(vehicle.effectiveCenterOfMass,expectedCentre)<.0001f,
+        "Vehicle translation/rotation changed local mass centre or rebuilt the body");
+    markerTransform.position.y=-.5f;physics->Update(scene.GetRegistry(),0);
+    expectedCentre=Vector3(mountTransform.GetLocalMatrix()*markerTransform.GetLocalMatrix()*Vector4(0,0,0,1));
+    Check(vehicle.rebuildCount==balanceBuilds+1&&glm::distance(vehicle.effectiveCenterOfMass,expectedCentre)<.0001f,
+        "Moving mass-centre marker failed to update physical balance");
+    car.GetComponent<Transform>().scale={2,3,2};physics->Update(scene.GetRegistry(),0);
+    Check(glm::distance(vehicle.effectiveCenterOfMass,expectedCentre*Vector3(2,3,2))<.0001f,
+        "Mass-centre marker did not follow chassis scale");
+    car.GetComponent<Transform>().scale={1,1,1};car.GetComponent<Transform>().position=originalPose;
+    car.GetComponent<Transform>().rotation=originalRotation;physics->Update(scene.GetRegistry(),0);
     {
         App app;RegisterWheeledVehicle(app);
         auto* codec=app.GetComponentConf(WheeledVehicle::ScriptName);
@@ -785,10 +817,13 @@ static void CombinedColliderAndVehicle(Window& window) {
         auto copy=scene.CreateEntity("Reloaded vehicle settings");codec->Decode(saved,copy,false);
         const auto& restored=copy.GetComponent<WheeledVehicle>();
         Check(restored.engineMaxRPM==7000&&restored.brakeTorque==3000&&restored.handbrakeTorque==6000&&
-            restored.steeringFadeSpeedKph==1&&restored.wheelWidth==vehicle.wheelWidth,
+            restored.steeringFadeSpeedKph==1&&restored.wheelWidth==vehicle.wheelWidth&&restored.centerOfMass==marker,
             "Vehicle tuning did not survive the native scene/prefab codec round trip");
         scene.Destroy(copy);
     }
+    scene.Destroy(marker);physics->Update(scene.GetRegistry(),0);
+    Check(glm::distance(vehicle.effectiveCenterOfMass,Vector3(0,-.08f,0))<.0001f,
+        "Deleted centre marker failed to restore automatic centre of mass");
     car.RemoveComponent<WheeledVehicle>();physics->Update(scene.GetRegistry(),1.f/60);
     collider.active=false;physics->Update(scene.GetRegistry(),1.f/60);Check(physics->GetBodyCount()==1,"Disabling combined collider left its body active");
     collider.active=true;scene.UpdateEditor();
@@ -798,6 +833,47 @@ static void CombinedColliderAndVehicle(Window& window) {
         "Removing the combined component in edit mode retained stale collision geometry");
     scene.Unload();AssetManager::FreeModel(modelId);
     std::cout<<"Combined ground caches edits; native AWD, live handling, input response, steering and tuning persistence passed\n";
+}
+
+static void VehicleMassBalance(Window& window) {
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    ModelAsset::PrimitiveBuild3D plane;
+    plane.vertices={{{-150,0,-150},{0,1,0},{}},{{150,0,-150},{0,1,0},{}},{{150,0,150},{0,1,0},{}},{{-150,0,150},{0,1,0},{}}};
+    plane.indices={0,2,1,0,3,2};
+    int modelId=AssetManager::CreateModel();Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({plane}),"Vehicle balance ground failed");
+    auto ground=scene.CreateEntity("Ground");ground.AddComponent<Transform>();ground.AddComponent<CombineMeshCollider>();
+    auto floor=scene.CreateEntity("Floor");floor.AddComponent<Transform>()->SetParent(ground.TryGet());floor.AddComponent<Model>()->modelId=modelId;
+    std::array<Entity,2> cars;
+    for(int i=0;i<2;i++) {
+        cars[i]=scene.CreateEntity(i?"Low mass centre":"Automatic mass centre");
+        cars[i].AddComponent<Transform>()->position={i?20.f:-20.f,1.1f,20};
+        auto& body=*cars[i].AddComponent<Rigidbody>();body.motionType=RigidbodyMotionType::DYNAMIC;body.mass=1400;body.useGravity=true;
+        body.linearDamping=.05f;body.angularDamping=.2f;
+        auto& shape=*cars[i].AddComponent<BoxCollider>();shape.size={2.05f,.5f,3.9f};shape.offset={0,-.08f,0};
+        auto& vehicle=*cars[i].AddComponent<WheeledVehicle>();
+        if(i) {
+            auto marker=scene.CreateEntity("Centre marker");auto& t=*marker.AddComponent<Transform>();t.SetParent(cars[i].TryGet());t.position={0,-.6f,0};
+            vehicle.centerOfMass=marker;
+        }
+    }
+    auto* physics=static_cast<JoltPhysics3DSystem*>(scene.CreateSystem(new JoltPhysics3DSystem()));physics->Create();
+    for(int i=0;i<180;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    for(auto car:cars)car.GetComponent<WheeledVehicle>().throttle=1;
+    for(auto car:cars)std::cout<<"BALANCE_SETTLE "<<car.GetName()<<" y="<<car.GetComponent<Transform>().position.y<<" contacts="<<car.GetComponent<WheeledVehicle>().groundedWheels<<" com="<<car.GetComponent<WheeledVehicle>().effectiveCenterOfMass.y<<" builds="<<car.GetComponent<WheeledVehicle>().rebuildCount<<'\n';
+    for(int i=0;i<120;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    for(auto car:cars)car.GetComponent<WheeledVehicle>().steering=1;
+    for(auto car:cars)std::cout<<"BALANCE_DRIVE "<<car.GetName()<<" y="<<car.GetComponent<Transform>().position.y<<" speed="<<car.GetComponent<WheeledVehicle>().speed<<" builds="<<car.GetComponent<WheeledVehicle>().rebuildCount<<'\n';
+    std::array<float,2> maxTilt{};
+    for(int frame=0;frame<90;frame++) {
+        physics->Update(scene.GetRegistry(),1.f/60);
+        for(int i=0;i<2;i++) {
+            auto up=cars[i].GetComponent<Transform>().rotation*Vector3(0,1,0);
+            maxTilt[i]=std::max(maxTilt[i],std::acos(std::clamp(up.y,-1.f,1.f)));
+        }
+    }
+    std::cout<<"Vehicle cornering tilt: automatic="<<maxTilt[0]<<" / lowered="<<maxTilt[1]<<" radians\n";
+    Check(maxTilt[0]>.01f && maxTilt[1]<maxTilt[0]*.8f,"Lowering physical mass centre did not reduce body tipping in the native cornering test");
+    scene.Unload();AssetManager::FreeModel(modelId);
 }
 
 static void ParticleSpawnShapes(Window& window) {
@@ -1318,6 +1394,7 @@ int main(int argc,char** argv) {
         ShadowTextureIsolation(window);
         ParticleSpawnShapes(window);
         CombinedColliderAndVehicle(window);
+        VehicleMassBalance(window);
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
         MirroredNormalMapping();

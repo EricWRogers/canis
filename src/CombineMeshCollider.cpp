@@ -32,6 +32,7 @@ void RegisterCombineMeshCollider(App &app) {
 void RegisterWheeledVehicle(App &app) {
   vehicleConf = {};
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, wheels);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, centerOfMass);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, wheelRadius);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, wheelWidth);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, axleWidth);
@@ -86,6 +87,17 @@ void RegisterWheeledVehicle(App &app) {
         ImGui::SetTooltip("%s", help);
     };
     ImGui::TextDisabled("Settings update while driving.");
+    if (ImGui::CollapsingHeader("Body balance",
+                                ImGuiTreeNodeFlags_DefaultOpen)) {
+      field("centerOfMass",
+            "Optional child or descendant Transform. Its position sets the "
+            "actual mass centre without moving the collision shape. Empty = "
+            "automatic centre. Lower local Y for more stable cornering.");
+      ImGui::TextDisabled("Move the marker's Transform to adjust balance.");
+      if (vehicle.centerOfMass &&
+          !vehicle.centerOfMass.HasComponent<Transform>())
+        ImGui::TextWrapped("The centre marker needs a Transform.");
+    }
     if (ImGui::CollapsingHeader("Power and brakes",
                                 ImGuiTreeNodeFlags_DefaultOpen)) {
       field("engineTorque",
@@ -139,6 +151,10 @@ void RegisterWheeledVehicle(App &app) {
     }
     ImGui::Text("Wheel contacts: %d / 4", vehicle.groundedWheels);
     ImGui::Text("Speed: %.1f km/h", vehicle.speed * 3.6f);
+    ImGui::Text("Physics mass centre: %.2f, %.2f, %.2f m",
+                vehicle.effectiveCenterOfMass.x,
+                vehicle.effectiveCenterOfMass.y,
+                vehicle.effectiveCenterOfMass.z);
     ImGui::Text("Applied throttle: %.2f / steering: %.2f",
                 vehicle.appliedThrottle, vehicle.appliedSteering);
     ImGui::Text("Constraint builds: %llu",

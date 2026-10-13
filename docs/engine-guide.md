@@ -310,6 +310,15 @@ at rest to that fraction at `steeringFadeSpeedKph`. Braking cancels smoothed thr
 immediately. Runtime applied-input telemetry and constraint build count help tune
 and verify these changes.
 
+`WheeledVehicle::centerOfMass` is an optional descendant `Entity` with a
+`Transform`. Its origin specifies the absolute mass centre in chassis space,
+including nested transforms and the body's scale. Jolt's `OffsetCenterOfMassShape`
+shifts mass/inertia while leaving collider geometry and the model origin fixed.
+An empty, deleted, non-Transform or non-descendant reference uses the automatic
+shape centre. Reference/marker edits invalidate the body settings and rebuild the
+body/vehicle constraint; ordinary vehicle translation and rotation reuse the body.
+`effectiveCenterOfMass` reports Jolt's actual local centre during simulation.
+
 `CanisRenderOptimizationTests` verifies seam queries, cache reuse, inactive/empty
 ground, hot-replaced geometry, transformed/mirrored parents, suspension, forward
 driving, steering and cleanup.

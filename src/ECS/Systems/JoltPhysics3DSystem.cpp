@@ -25,6 +25,7 @@
 #include <Jolt/Physics/Collision/Shape/CapsuleShape.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <Jolt/Physics/Collision/Shape/MeshShape.h>
+#include <Jolt/Physics/Collision/Shape/OffsetCenterOfMassShape.h>
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
@@ -420,6 +421,8 @@ namespace Canis
             Vector3 worldScale{1.0f};
             int shape = 0;
             Vector3 offset{0.0f}, size{1.0f};
+            bool customCenterOfMass=false;
+            Vector3 centerOfMass{0};
             float radius = 0.0f, halfHeight = 0.0f;
             bool attached = false, applyNodeTransform = true;
             Path modelPath;
@@ -436,6 +439,8 @@ namespace Canis
                         std::abs(a - b) > 2.e-6f * std::max(std::abs(a), std::abs(b)))
                         return false;
                 }
+                if(customCenterOfMass!=other.customCenterOfMass ||
+                    (customCenterOfMass && !NearlyEqual(centerOfMass,other.centerOfMass,2e-5f)))return false;
                 // Authored collider and body settings retain exact comparison.
                 return std::tie(body, shape, offset, size, radius, halfHeight, attached,
                            applyNodeTransform, modelPath, modelId, nodeIndex, geometryRevision) ==
@@ -446,7 +451,8 @@ namespace Canis
             BodySettingsData() = default;
             template<typename OtherPath> explicit BodySettingsData(const BodySettingsData<OtherPath>& other)
                 : body(other.body), worldScale(other.worldScale), shape(other.shape), offset(other.offset),
-                  size(other.size), radius(other.radius), halfHeight(other.halfHeight), attached(other.attached),
+                  size(other.size), customCenterOfMass(other.customCenterOfMass), centerOfMass(other.centerOfMass),
+                  radius(other.radius), halfHeight(other.halfHeight), attached(other.attached),
                   applyNodeTransform(other.applyNodeTransform), modelPath(other.modelPath), modelId(other.modelId),
                   nodeIndex(other.nodeIndex), geometryRevision(other.geometryRevision) {}
         };
@@ -1102,6 +1108,8 @@ namespace Canis
             {
                 auto& vehicle=registry.get<WheeledVehicle>(handle);vehicle.groundedWheels=0;
                 vehicle.speed=bodyInterface->GetLinearVelocity(runtime.body).Length();
+                const auto center=bodyInterface->GetShape(runtime.body)->GetCenterOfMass();
+                vehicle.effectiveCenterOfMass={center.GetX(),center.GetY(),center.GetZ()};
                 for(int i=0;i<4;i++)
                 {
                     if(runtime.constraint->GetWheel(i)->HasContact())++vehicle.groundedWheels;
@@ -1486,6 +1494,30 @@ namespace Canis
             if(combined)combinedShape=CombinedShape(_registry,_entityHandle,*transform,*combined);
             auto settings = CaptureSettings(_registry, _entityHandle, world.scale, *rigidbody,
                 boxCollider, sphereCollider, capsuleCollider, meshCollider, convexMeshCollider);
+            if(!combined && rigidbody->motionType==RigidbodyMotionType::DYNAMIC)
+            if(auto* vehicle=_registry.try_get<WheeledVehicle>(_entityHandle);vehicle && vehicle->centerOfMass)
+            {
+                // Walk local transforms instead of subtracting world positions:
+                // this remains stable as the vehicle moves and rotates.
+                auto marker=vehicle->centerOfMass;
+                Matrix4 relative(1);
+                for(int depth=0;depth<128 && marker && &marker.scene.GetRegistry()==&_registry;depth++)
+                {
+                    if(marker.GetHandle()==_entityHandle)
+                    {
+                        if(depth>0)
+                        {
+                            Vector3 centre=glm::mat3_cast(glm::conjugate(world.rotation))*glm::mat3(world.matrix)*Vector3(relative[3]);
+                            if(std::isfinite(centre.x)&&std::isfinite(centre.y)&&std::isfinite(centre.z))
+                            {settings.customCenterOfMass=true;settings.centerOfMass=centre;}
+                        }
+                        break;
+                    }
+                    auto* markerTransform=marker.TryGetComponent<Transform>();if(!markerTransform)break;
+                    relative=markerTransform->GetLocalMatrix()*relative;
+                    marker=markerTransform->parent;
+                }
+            }
             if(combined){settings.shape=6;settings.geometryRevision=combinedMeshes.at(_entityHandle).revision;}
             auto bodyIt = bodies.find(_entityHandle);
             if (bodyIt != bodies.end() && bodyIt->second.settings == settings) {
@@ -1515,6 +1547,20 @@ namespace Canis
             {
                 RemoveBody(_entityHandle);
                 return nullptr;
+            }
+
+            if(settings.customCenterOfMass)
+            {
+                // Jolt expects a shift from the shape's automatic centre, while
+                // the marker specifies an absolute point in chassis coordinates.
+                auto result=JPH::OffsetCenterOfMassShapeSettings(
+                    ToJoltVec3(settings.centerOfMass)-shape->GetCenterOfMass(),shape.GetPtr()).Create();
+                if(result.HasError())
+                {
+                    Debug::Warning("Vehicle centre of mass: %s",result.GetError().c_str());
+                    return nullptr;
+                }
+                shape=result.Get();
             }
 
             const JPH::EMotionType motionType = ToMotionType(rigidbody->motionType);
