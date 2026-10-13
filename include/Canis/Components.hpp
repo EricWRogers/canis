@@ -960,6 +960,51 @@ namespace Canis
         std::vector<Entity> stayed = {};
     };
 
+    struct CombineMeshCollider
+    {
+        static constexpr const char* ScriptName = "Canis::CombineMeshCollider";
+        CombineMeshCollider() = default;
+        explicit CombineMeshCollider(Entity& owner) : entity(&owner) {}
+        Entity* entity = nullptr;
+        bool active = true;
+        float friction = .9f;
+        float weldDistance = .001f;
+        uint64_t rebuildVersion = 0;
+        int sourceModels = 0, triangleCount = 0;
+        uint64_t rebuildCount = 0;
+        std::vector<Entity> entered, exited, stayed;
+        void Create() {}
+    };
+    void RegisterCombineMeshCollider(class App& app);
+    struct WheeledVehicle
+    {
+        static constexpr const char* ScriptName="Canis::WheeledVehicle";
+        WheeledVehicle()=default;
+        explicit WheeledVehicle(Entity& owner):entity(&owner){}
+        Entity* entity=nullptr;
+        std::vector<Entity> wheels;
+        float wheelRadius=.58f, wheelWidth=.42f;
+        float axleWidth=2.4f, wheelbase=3.1f;
+        float suspensionMin=.18f, suspensionMax=.55f;
+        float springFrequency=2.2f, springDamping=.8f;
+        float steeringDegrees=42.f, rearSteerRatio=-.25f;
+        float engineTorque=850.f;
+        float engineMaxRPM=6000.f;
+        float brakeTorque=1500.f, handbrakeTorque=4000.f;
+        float longitudinalGrip=1.f, lateralGrip=1.f;
+        float antiRollStiffness=0.f;
+        // Response rates are per second; zero keeps immediate input.
+        float throttleResponse=0.f, steeringResponse=0.f;
+        float highSpeedSteeringRatio=1.f, steeringFadeSpeedKph=90.f;
+        float throttle=0, steering=0, brake=0, handbrake=0;
+        float appliedThrottle=0, appliedSteering=0;
+        uint64_t rebuildCount=0;
+        int groundedWheels=0;
+        float speed=0;
+        void Create(){}
+    };
+    void RegisterWheeledVehicle(class App& app);
+
     struct MeshCollider
     {
     public:

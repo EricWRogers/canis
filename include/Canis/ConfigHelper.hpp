@@ -94,6 +94,19 @@ inline void SetRegisteredProperty(YAML::Node& node, Component& component, Entity
     GetRegisteredPropertyOwnerEntity(component).scene.GetEntityAfterLoad(node.as<UUID>(UUID(0)), value);
 }
 inline YAML::Node GetRegisteredProperty(const Entity& value) { return YAML::Node(value.GetUUID()); }
+template<typename Component>
+inline void SetRegisteredProperty(YAML::Node& node,Component& component,std::vector<Entity>& values)
+{
+    values.clear();values.resize(node.size());
+    for(size_t i=0;i<values.size();i++)
+        GetRegisteredPropertyOwnerEntity(component).scene.GetEntityAfterLoad(node[i].as<UUID>(UUID(0)),values[i]);
+}
+inline YAML::Node GetRegisteredProperty(const std::vector<Entity>& values)
+{
+    YAML::Node node(YAML::NodeType::Sequence);
+    for(const auto& value:values)node.push_back(value.GetUUID());
+    return node;
+}
 template <typename Component>
 inline YAML::Node GetRegisteredProperty(Component&, const Entity& value) { return YAML::Node(value.GetUUID()); }
 

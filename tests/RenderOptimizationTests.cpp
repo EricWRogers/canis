@@ -690,6 +690,116 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     std::cout << "Screen canvases bypass postprocessing; world UI and 2D scene sprites retain it\n";
 }
 
+static void CombinedColliderAndVehicle(Window& window) {
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    ModelAsset::PrimitiveBuild3D plane;
+    plane.vertices={{{-15,0,-15},{0,1,0},{}},{{15,0,-15},{0,1,0},{}},{{15,0,15},{0,1,0},{}},{{-15,0,15},{0,1,0},{}}};
+    plane.indices={0,2,1,0,3,2};
+    int modelId=AssetManager::CreateModel();Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({plane}),"Combined collider fixture failed");
+    auto ground=scene.CreateEntity("Gound");ground.AddComponent<Transform>();auto& collider=*ground.AddComponent<CombineMeshCollider>();
+    std::vector<Entity> tiles;
+    for(float z:{-15.f,15.f}) {
+        auto tile=scene.CreateEntity("Tile");auto& t=*tile.AddComponent<Transform>();t.position={0,0,z};t.SetParent(ground.TryGet());
+        tile.AddComponent<Model>()->modelId=modelId;tiles.push_back(tile);
+    }
+    auto parked=scene.CreateEntity("Edit mode dynamic body");parked.AddComponent<Transform>()->position={0,10,0};
+    parked.AddComponent<Rigidbody>()->motionType=RigidbodyMotionType::DYNAMIC;parked.AddComponent<BoxCollider>();
+    auto* physics=static_cast<JoltPhysics3DSystem*>(scene.CreateSystem(new JoltPhysics3DSystem()));physics->Create();
+    scene.UpdateEditor();
+    Check(collider.sourceModels==2&&collider.triangleCount==4&&collider.rebuildCount==1,
+        "Edit mode failed to cook combined ground and populate Inspector diagnostics");
+    for(int i=0;i<30;i++)scene.UpdateEditor();
+    Check(physics->GetBodyCount()==1&&parked.GetComponent<Transform>().position.y==10&&collider.rebuildCount==1,
+        "Combined editor preview advanced dynamic physics or rebuilt unchanged geometry");
+    ++collider.rebuildVersion;scene.UpdateEditor();
+    Check(collider.rebuildCount==2,"Editor rebuild request did not refresh combined collision");
+    tiles[0].GetComponent<Transform>().position.y=.5f;scene.UpdateEditor();
+    RaycastHit editHit;
+    Check(physics->Raycast({0,5,-15},{0,-1,0},editHit,10)&&std::abs(editHit.point.y-.5f)<.001f,
+        "Edit mode child transform did not refresh combined collision queries");
+    tiles[0].GetComponent<Transform>().position.y=0;scene.UpdateEditor();
+    scene.Destroy(parked);physics->Update(scene.GetRegistry(),1.f/60);
+    Check(!ground.HasComponent<Rigidbody>()&&physics->GetBodyCount()==1,"Combined collider did not own one static body without per-tile bodies");
+    for(float z:{-29.f,-.001f,0.f,.001f,29.f}) {
+        RaycastHit hit;Check(physics->Raycast({0,5,z},{0,-1,0},hit,10)&&hit.entity==ground&&std::abs(hit.point.y)<.001f,"Combined ground has a hole or incorrect query owner at a tile seam");
+    }
+    auto builds=collider.rebuildCount;for(int i=0;i<30;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(collider.rebuildCount==builds,"Unchanged combined ground rebuilt every frame");
+    tiles[0].SetActive(false);physics->Update(scene.GetRegistry(),1.f/60);
+    RaycastHit inactiveHit;Check(!physics->Raycast({0,5,-15},{0,-1,0},inactiveHit,10),"Inactive child remained in combined collision geometry");
+    tiles[1].SetActive(false);physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->GetBodyCount()==0,"Empty combined ground retained a body");
+    builds=collider.rebuildCount;
+    for(int i=0;i<10;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(collider.rebuildCount==builds,"Empty combined ground rebuilt every frame");
+    tiles[0].SetActive(true);tiles[1].SetActive(true);physics->Update(scene.GetRegistry(),1.f/60);
+    for(auto& vertex:plane.vertices)vertex.position.y=.25f;
+    Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({plane}),"Combined collider geometry replacement failed");
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->Raycast({0,5,15},{0,-1,0},inactiveHit,10)&&std::abs(inactiveHit.point.y-.25f)<.001f,"Geometry revision did not invalidate combined collision shape");
+    for(auto& vertex:plane.vertices)vertex.position.y=0;
+    AssetManager::GetModel(modelId)->SetRuntimePrimitives({plane});
+    tiles[0].GetComponent<Transform>().position.y=1;physics->Update(scene.GetRegistry(),1.f/60);
+    RaycastHit hit;Check(physics->Raycast({0,5,-15},{0,-1,0},hit,10)&&std::abs(hit.point.y-1)<.001f,"Child transform edit failed to rebuild combined ground");
+    tiles[0].GetComponent<Transform>().position.y=0;
+    ground.GetComponent<Transform>().position={3,2,0};ground.GetComponent<Transform>().scale={-1,1,1};
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->Raycast({3,7,15},{0,-1,0},hit,10)&&std::abs(hit.point.y-2)<.001f,"Combined ground failed under translated/mirrored parent");
+    ground.GetComponent<Transform>().position={0,0,0};ground.GetComponent<Transform>().scale={1,1,1};
+    auto car=scene.CreateEntity("Rover");car.AddComponent<Transform>()->position={0,1.1f,8};
+    auto& body=*car.AddComponent<Rigidbody>();body.motionType=RigidbodyMotionType::DYNAMIC;body.mass=1400;body.useGravity=true;
+    car.AddComponent<BoxCollider>()->size={2,.5f,3.9f};auto& vehicle=*car.AddComponent<WheeledVehicle>();
+    for(int i=0;i<180;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.groundedWheels==4&&car.GetComponent<Transform>().position.y>.5f,"Jolt vehicle suspension failed to settle on combined ground");
+    float start=car.GetComponent<Transform>().position.z;vehicle.throttle=1;
+    for(int i=0;i<120;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.speed>2&&car.GetComponent<Transform>().position.z<start-2,"Native AWD vehicle did not drive across combined ground");
+    auto vehicleBuilds=vehicle.rebuildCount;
+    vehicle.steeringResponse=1;vehicle.steering=1;
+    vehicle.engineMaxRPM=7000;vehicle.brakeTorque=3000;vehicle.handbrakeTorque=6000;
+    vehicle.longitudinalGrip=.8f;vehicle.lateralGrip=.9f;vehicle.antiRollStiffness=1000;
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.appliedSteering>0&&vehicle.appliedSteering<.05f,"Vehicle steering response failed to smooth a sudden input");
+    Check(vehicle.rebuildCount==vehicleBuilds,"Live vehicle handling edits rebuilt the constraint");
+    vehicle.steeringResponse=0;vehicle.highSpeedSteeringRatio=0;vehicle.steeringFadeSpeedKph=1;
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(std::abs(vehicle.appliedSteering)<.001f,"Vehicle high-speed steering reduction did not apply");
+    vehicle.throttle=0;vehicle.throttleResponse=1;
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.appliedThrottle>0&&vehicle.appliedThrottle<1,"Vehicle throttle response did not ease pedal release");
+    vehicle.brake=1;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.appliedThrottle==0,"Vehicle continued smoothed acceleration while braking");
+    vehicle.brake=0;vehicle.throttle=1;vehicle.throttleResponse=0;
+    vehicle.highSpeedSteeringRatio=1;vehicle.longitudinalGrip=vehicle.lateralGrip=1;vehicle.antiRollStiffness=0;
+    vehicle.steering=1;float startX=car.GetComponent<Transform>().position.x;
+    for(int i=0;i<45;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(car.GetComponent<Transform>().position.x>startX+.2f,"Positive vehicle steering did not turn right with native -Z forward");
+    vehicle.wheelWidth+=.02f;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(vehicle.rebuildCount==vehicleBuilds+1,"Wheel geometry edit did not rebuild native wheel collision");
+    vehicle.steering=0;
+    vehicle.throttle=0;vehicle.brake=1;for(int i=0;i<60;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    {
+        App app;RegisterWheeledVehicle(app);
+        auto* codec=app.GetComponentConf(WheeledVehicle::ScriptName);
+        YAML::Node saved;codec->Encode(saved,car);
+        auto copy=scene.CreateEntity("Reloaded vehicle settings");codec->Decode(saved,copy,false);
+        const auto& restored=copy.GetComponent<WheeledVehicle>();
+        Check(restored.engineMaxRPM==7000&&restored.brakeTorque==3000&&restored.handbrakeTorque==6000&&
+            restored.steeringFadeSpeedKph==1&&restored.wheelWidth==vehicle.wheelWidth,
+            "Vehicle tuning did not survive the native scene/prefab codec round trip");
+        scene.Destroy(copy);
+    }
+    car.RemoveComponent<WheeledVehicle>();physics->Update(scene.GetRegistry(),1.f/60);
+    collider.active=false;physics->Update(scene.GetRegistry(),1.f/60);Check(physics->GetBodyCount()==1,"Disabling combined collider left its body active");
+    collider.active=true;scene.UpdateEditor();
+    Check(physics->GetBodyCount()==2,"Editor preview did not restore re-enabled combined ground");
+    ground.RemoveComponent<CombineMeshCollider>();scene.UpdateEditor();
+    Check(physics->GetBodyCount()==1&&!physics->Raycast({0,5,15},{0,-1,0},hit,10),
+        "Removing the combined component in edit mode retained stale collision geometry");
+    scene.Unload();AssetManager::FreeModel(modelId);
+    std::cout<<"Combined ground caches edits; native AWD, live handling, input response, steering and tuning persistence passed\n";
+}
+
 static void ParticleSpawnShapes(Window& window) {
     Scene scene;scene.Init(nullptr,&window,nullptr);
     auto parent=scene.CreateEntity("Emitter parent");auto& parentTransform=*parent.AddComponent<Transform>();
@@ -850,6 +960,25 @@ static void ShadowTextureIsolation(Window& window) {
         Check(mode==(comparison?GL_COMPARE_REF_TO_TEXTURE:GL_NONE),"Shadow sampler type and depth comparison state disagree");
         Check(glGetError()==GL_NO_ERROR,"Shadow/normal-map binding produced an OpenGL error");
     }
+    // A magnified normal map must interpolate rather than produce square
+    // reflection patches. Shared texture defaults remain suitable for pixel UI.
+    auto normal=AssetManager::GetTexture(AssetManager::LoadTexture((root/"normal.png").string()))->GetGLTexture();
+    const unsigned char colors[]={255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255};
+    glBindTexture(GL_TEXTURE_2D,normal.id);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,2,2,0,GL_RGBA,GL_UNSIGNED_BYTE,colors);
+    glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);glGenerateMipmap(GL_TEXTURE_2D);
+    std::ofstream(root/"filter.vs") << read("assets/shaders/model3d.vs");
+    std::ofstream(root/"filter.fs") << "[OPENGL VERSION]\nuniform sampler2D normalMap;uniform bool useNormalMap;out vec4 color;void main(){color=useNormalMap?texture(normalMap,vec2(.5,.5)):vec4(1,0,0,1);}\n";
+    std::ofstream(root/"filter.material") << "shader: {path: '"<<(root/"filter").string()<<"'}\ncolor: [1,1,1,1]\n";
+    int filtered=AssetManager::LoadMaterial((root/"filter.material").string());
+    receiver.GetComponent<Material>().materialId=filtered;caster.GetComponent<Material>().materialId=filtered;
+    glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    renderer.Update(scene.GetRegistry(),1.f/60);
+    std::array<unsigned char,4> pixel{};glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+    for(int c=0;c<3;c++)Check(pixel[c]>=125&&pixel[c]<=130,"Imported normal map magnification used nearest sampling");
+    glActiveTexture(GL_TEXTURE5);glBindTexture(GL_TEXTURE_2D,normal.id);GLint filter=0;
+    glGetTexParameteriv(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,&filter);
+    Check(filter==GL_NEAREST,"3D normal filtering changed shared texture defaults used by UI");
+    Check(glGetError()==GL_NO_ERROR,"Normal-map filtering produced an OpenGL error");
     renderer.OnDestroy();AssetManager::FreeModel(id);glActiveTexture(GL_TEXTURE0);std::filesystem::remove_all(root);
     std::cout << "Imported normal maps preserve shadows; raw and comparison shaders use matching depth sampling\n";
 }
@@ -1188,6 +1317,7 @@ int main(int argc,char** argv) {
         StaticShadowBaking(window);
         ShadowTextureIsolation(window);
         ParticleSpawnShapes(window);
+        CombinedColliderAndVehicle(window);
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
         MirroredNormalMapping();

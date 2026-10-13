@@ -39,6 +39,10 @@ namespace Canis
             auto time = std::filesystem::last_write_time(path, error).time_since_epoch().count();
             bytes(&time, sizeof(time));
         };
+        // Capture filtering changes radiance even when all source assets stay
+        // unchanged. Rebuild caches captured with nearest-sampled normal maps.
+        constexpr uint32_t captureRevision = 2;
+        bytes(&captureRevision, sizeof(captureRevision));
         const auto ambient = scene.GetEnvironmentAmbientLight();
         bytes(&ambient, sizeof(ambient));
         const float ambientIntensity = scene.GetEnvironmentAmbientLightIntensity();

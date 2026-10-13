@@ -14,7 +14,11 @@ namespace Canis
         void Create() override;
         void Ready() override;
         void Update(entt::registry &_registry, float _deltaTime) override;
+        // Cook static combined geometry for authoring queries and Inspector
+        // diagnostics without stepping physics or touching dynamic bodies.
+        void UpdateCombinedCollidersInEditor(entt::registry &_registry);
         void OnDestroy() override;
+        size_t GetBodyCount() const;
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, RaycastHit &_hit, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max()) const;
         bool Raycast(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max()) const;
         std::vector<RaycastHit> RaycastAll(const Vector3 &_origin, const Vector3 &_direction, float _maxDistance = std::numeric_limits<float>::infinity(), u32 _mask = std::numeric_limits<u32>::max()) const;

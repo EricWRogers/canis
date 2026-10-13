@@ -28,6 +28,9 @@
 #include <Jolt/Physics/Collision/Shape/RotatedTranslatedShape.h>
 #include <Jolt/Physics/Collision/Shape/Shape.h>
 #include <Jolt/Physics/Collision/Shape/SphereShape.h>
+#include <Jolt/Physics/Vehicle/VehicleConstraint.h>
+#include <Jolt/Physics/Vehicle/WheeledVehicleController.h>
+#include <Jolt/Physics/Body/BodyLock.h>
 #include <Jolt/Physics/PhysicsSystem.h>
 
 #include <glm/gtc/quaternion.hpp>
@@ -707,6 +710,7 @@ namespace Canis
             ClearColliderContactVectors<SphereCollider>(_registry);
             ClearColliderContactVectors<CapsuleCollider>(_registry);
             ClearColliderContactVectors<MeshCollider>(_registry);
+            ClearColliderContactVectors<CombineMeshCollider>(_registry);
             ClearColliderContactVectors<ConvexMeshCollider>(_registry);
         }
 
@@ -724,6 +728,8 @@ namespace Canis
 
             if (MeshCollider *meshCollider = _registry.try_get<MeshCollider>(_entityHandle))
                 _func(*meshCollider);
+            if (auto* combined = _registry.try_get<CombineMeshCollider>(_entityHandle))
+                _func(*combined);
 
             if (ConvexMeshCollider *collider = _registry.try_get<ConvexMeshCollider>(_entityHandle))
                 _func(*collider);
@@ -957,6 +963,213 @@ namespace Canis
         };
         std::unordered_map<entt::entity, CachedTransform> transforms;
         uint64_t syncFrame = 0, transformRevision = 0;
+        struct CombinedSource
+        {
+            entt::entity handle;
+            int model, node;
+            bool apply;
+            uint64_t revision;
+            Matrix4 local;
+            bool operator==(const CombinedSource& other) const
+            {
+                if(handle!=other.handle || model!=other.model || node!=other.node || apply!=other.apply || revision!=other.revision)return false;
+                for(int column=0;column<4;column++)for(int row=0;row<4;row++)
+                    if(std::abs(local[column][row]-other.local[column][row])>2e-5f)return false;
+                return true;
+            }
+        };
+        struct CombinedRuntime
+        {
+            std::vector<CombinedSource> sources;
+            std::vector<CombinedSource> pendingSources;
+            std::vector<entt::entity> traversal;
+            JPH::RefConst<JPH::Shape> shape;
+            Matrix4 rootBasis{0};
+            float weld=-1;
+            uint64_t request=0, revision=0;
+        };
+        std::unordered_map<entt::entity,CombinedRuntime> combinedMeshes;
+        struct VehicleRuntime
+        {
+            JPH::Ref<JPH::VehicleConstraint> constraint;
+            JPH::BodyID body;
+            std::array<float,6> geometry;
+            std::array<JPH::Ref<JPH::WheelSettingsWV>,4> wheels;
+            std::array<float,11> tuning{};
+            float throttle=0,steering=0;
+        };
+        std::unordered_map<entt::entity,VehicleRuntime> vehicles;
+        void RemoveVehicle(entt::entity handle)
+        {
+            auto it=vehicles.find(handle);if(it==vehicles.end())return;
+            physicsSystem->RemoveStepListener(it->second.constraint.GetPtr());
+            physicsSystem->RemoveConstraint(it->second.constraint.GetPtr());vehicles.erase(it);
+        }
+        void SyncVehicles(entt::registry& registry,float dt)
+        {
+            std::vector<entt::entity> stale;
+            for(auto& [handle,runtime]:vehicles)
+                if(!registry.valid(handle)||!registry.all_of<WheeledVehicle,Rigidbody>(handle)||
+                    registry.get<Rigidbody>(handle).motionType!=RigidbodyMotionType::DYNAMIC||
+                    !bodies.contains(handle)||bodies.at(handle).bodyID!=runtime.body)stale.push_back(handle);
+            for(auto handle:stale)RemoveVehicle(handle);
+            for(auto handle:registry.view<WheeledVehicle,Rigidbody,Transform>())
+            {
+                auto& vehicle=registry.get<WheeledVehicle>(handle);
+                auto found=bodies.find(handle);if(found==bodies.end())continue;
+                if(registry.get<Rigidbody>(handle).motionType!=RigidbodyMotionType::DYNAMIC)continue;
+                std::array<float,6> geometry{vehicle.wheelRadius,vehicle.wheelWidth,vehicle.axleWidth,vehicle.wheelbase,vehicle.suspensionMin,vehicle.suspensionMax};
+                if(auto it=vehicles.find(handle);it!=vehicles.end() && it->second.geometry!=geometry)RemoveVehicle(handle);
+                if(!vehicles.contains(handle))
+                {
+                    JPH::VehicleConstraintSettings configuration;configuration.mForward=JPH::Vec3(0,0,-1);
+                    auto* controller=new JPH::WheeledVehicleControllerSettings();controller->mEngine.mMaxTorque=std::max(1.f,vehicle.engineTorque);
+                    for(int axle=0;axle<2;axle++)
+                    {
+                        JPH::VehicleDifferentialSettings differential;differential.mLeftWheel=axle*2;differential.mRightWheel=axle*2+1;differential.mEngineTorqueRatio=.5f;
+                        controller->mDifferentials.push_back(differential);
+                        JPH::VehicleAntiRollBar bar;bar.mLeftWheel=axle*2;bar.mRightWheel=axle*2+1;bar.mStiffness=0;
+                        configuration.mAntiRollBars.push_back(bar);
+                    }
+                    configuration.mController=controller;
+                    std::array<JPH::Ref<JPH::WheelSettingsWV>,4> wheelSettings;
+                    for(int index=0;index<4;index++)
+                    {
+                        auto* wheel=new JPH::WheelSettingsWV();
+                        wheelSettings[index]=wheel;
+                        wheel->mPosition=JPH::Vec3((index%2?1:-1)*vehicle.axleWidth*.5f,.05f,(index<2?-1:1)*vehicle.wheelbase*.5f);
+                        wheel->mWheelForward=JPH::Vec3(0,0,-1);
+                        wheel->mRadius=std::max(.05f,vehicle.wheelRadius);wheel->mWidth=std::max(.03f,vehicle.wheelWidth);
+                        wheel->mSuspensionMinLength=std::max(.02f,vehicle.suspensionMin);
+                        wheel->mSuspensionMaxLength=std::max(wheel->mSuspensionMinLength+.01f,vehicle.suspensionMax);
+                        wheel->mSuspensionSpring.mFrequency=std::max(.1f,vehicle.springFrequency);wheel->mSuspensionSpring.mDamping=std::max(0.f,vehicle.springDamping);
+                        wheel->mMaxSteerAngle=glm::radians(vehicle.steeringDegrees)*(index<2?1.f:vehicle.rearSteerRatio);
+                        wheel->mMaxHandBrakeTorque=index<2?0:4000;
+                        configuration.mWheels.push_back(wheel);
+                    }
+                    JPH::BodyLockWrite lock(physicsSystem->GetBodyLockInterface(),found->second.bodyID);if(!lock.Succeeded())continue;
+                    auto* constraint=new JPH::VehicleConstraint(lock.GetBody(),configuration);
+                    constraint->SetVehicleCollisionTester(new JPH::VehicleCollisionTesterCastCylinder(ToObjectLayer(JPH::EMotionType::Dynamic)));
+                    physicsSystem->AddConstraint(constraint);physicsSystem->AddStepListener(constraint);
+                    vehicles.emplace(handle,VehicleRuntime{constraint,found->second.bodyID,geometry,wheelSettings});
+                    ++vehicle.rebuildCount;
+                }
+                auto& runtime=vehicles.at(handle);
+                auto* controller=static_cast<JPH::WheeledVehicleController*>(runtime.constraint->GetController());
+                std::array<float,11> tuning{vehicle.springFrequency,vehicle.springDamping,vehicle.steeringDegrees,vehicle.rearSteerRatio,
+                    vehicle.engineTorque,vehicle.engineMaxRPM,vehicle.brakeTorque,vehicle.handbrakeTorque,vehicle.longitudinalGrip,vehicle.lateralGrip,vehicle.antiRollStiffness};
+                if(runtime.tuning!=tuning)
+                {
+                    // These wheel settings are owned by this constraint. Updating
+                    // them between simulation steps preserves wheel spin and RPM.
+                    controller->GetEngine().mMaxTorque=std::max(0.f,vehicle.engineTorque);
+                    controller->GetEngine().mMaxRPM=std::max(1001.f,vehicle.engineMaxRPM);
+                    controller->GetEngine().ClampRPM();
+                    for(int i=0;i<4;i++)
+                    {
+                        auto& wheel=*runtime.wheels[i];
+                        wheel.mSuspensionSpring.mFrequency=std::max(.1f,vehicle.springFrequency);
+                        wheel.mSuspensionSpring.mDamping=std::max(0.f,vehicle.springDamping);
+                        wheel.mMaxSteerAngle=glm::radians(std::clamp(vehicle.steeringDegrees,0.f,80.f))*(i<2?1.f:std::clamp(vehicle.rearSteerRatio,-1.f,1.f));
+                        wheel.mMaxBrakeTorque=std::max(0.f,vehicle.brakeTorque);
+                        wheel.mMaxHandBrakeTorque=i<2?0:std::max(0.f,vehicle.handbrakeTorque);
+                        const float longitudinal=std::max(0.f,vehicle.longitudinalGrip),lateral=std::max(0.f,vehicle.lateralGrip);
+                        wheel.mLongitudinalFriction.Clear();wheel.mLongitudinalFriction.AddPoint(0,0);
+                        wheel.mLongitudinalFriction.AddPoint(.06f,1.2f*longitudinal);wheel.mLongitudinalFriction.AddPoint(.2f,longitudinal);
+                        wheel.mLateralFriction.Clear();wheel.mLateralFriction.AddPoint(0,0);
+                        wheel.mLateralFriction.AddPoint(3,1.2f*lateral);wheel.mLateralFriction.AddPoint(20,lateral);
+                    }
+                    for(auto& bar:runtime.constraint->GetAntiRollBars())bar.mStiffness=std::max(0.f,vehicle.antiRollStiffness);
+                    runtime.tuning=tuning;
+                    bodyInterface->ActivateBody(found->second.bodyID);
+                }
+                float speedKph=bodyInterface->GetLinearVelocity(found->second.bodyID).Length()*3.6f;
+                float steeringRatio=glm::mix(1.f,std::clamp(vehicle.highSpeedSteeringRatio,0.f,1.f),
+                    std::clamp(speedKph/std::max(1.f,vehicle.steeringFadeSpeedKph),0.f,1.f));
+                auto respond=[dt](float previous,float target,float rate) {
+                    return rate>0?glm::mix(previous,target,1.f-std::exp(-rate*std::max(0.f,dt))):target;
+                };
+                runtime.throttle=vehicle.brake>0?0:respond(runtime.throttle,std::clamp(vehicle.throttle,-1.f,1.f),vehicle.throttleResponse);
+                runtime.steering=respond(runtime.steering,std::clamp(vehicle.steering,-1.f,1.f)*steeringRatio,vehicle.steeringResponse);
+                vehicle.appliedThrottle=runtime.throttle;vehicle.appliedSteering=runtime.steering;
+                controller->SetDriverInput(runtime.throttle,runtime.steering,std::clamp(vehicle.brake,0.f,1.f),std::clamp(vehicle.handbrake,0.f,1.f));
+                if(std::abs(vehicle.throttle)>.01f||std::abs(vehicle.steering)>.01f)bodyInterface->ActivateBody(found->second.bodyID);
+            }
+        }
+        void SyncVehicleWheels(entt::registry& registry)
+        {
+            for(auto& [handle,runtime]:vehicles)
+            {
+                auto& vehicle=registry.get<WheeledVehicle>(handle);vehicle.groundedWheels=0;
+                vehicle.speed=bodyInterface->GetLinearVelocity(runtime.body).Length();
+                for(int i=0;i<4;i++)
+                {
+                    if(runtime.constraint->GetWheel(i)->HasContact())++vehicle.groundedWheels;
+                    if(i>=int(vehicle.wheels.size())||!vehicle.wheels[i]||!vehicle.wheels[i].HasComponent<Transform>())continue;
+                    auto matrix=runtime.constraint->GetWheelLocalTransform(i,JPH::Vec3(1,0,0),JPH::Vec3(0,1,0));
+                    auto& transform=vehicle.wheels[i].GetComponent<Transform>();
+                    auto position=matrix.GetTranslation();transform.position={position.GetX(),position.GetY(),position.GetZ()};
+                    transform.rotation=ToCanisRotation(matrix.GetRotation().GetQuaternion());
+                }
+            }
+        }
+
+        JPH::RefConst<JPH::Shape> CombinedShape(entt::registry& registry,entt::entity root,Transform& rootTransform,CombineMeshCollider& component)
+        {
+            const auto& world=WorldTransform(registry,root,rootTransform);
+            const Matrix4 inverse=glm::inverse(world.matrix);
+            auto& cache=combinedMeshes[root];
+            auto& sources=cache.pendingSources;sources.clear();
+            auto& stack=cache.traversal;stack.clear();
+            for(auto child:rootTransform.children)if(child)stack.push_back(child.GetHandle());
+            while(!stack.empty())
+            {
+                auto child=stack.back();stack.pop_back();
+                auto* transform=registry.try_get<Transform>(child);
+                if(!transform || !transform->IsActiveInHierarchy())continue;
+                if(auto* body=registry.try_get<Rigidbody>(child);body && body->motionType!=RigidbodyMotionType::STATIC)continue;
+                if(registry.all_of<CombineMeshCollider>(child))continue;
+                if(auto* model=registry.try_get<Model>(child))
+                    if(auto* asset=AssetManager::GetModel(model->modelId);asset && !asset->HasDeformingGeometry() && !registry.all_of<ModelAnimation>(child))
+                        sources.push_back({child,model->modelId,model->nodeIndex,model->applyNodeTransform,asset->GetGeometryRevision(),inverse*WorldTransform(registry,child,*transform).matrix});
+                for(auto descendant:transform->children)if(descendant)stack.push_back(descendant.GetHandle());
+            }
+            std::sort(sources.begin(),sources.end(),[](auto& a,auto& b){return entt::to_integral(a.handle)<entt::to_integral(b.handle);});
+            Matrix4 rigid=glm::translate(Matrix4(1),world.position)*glm::mat4_cast(world.rotation);
+            Matrix4 rootScale=glm::inverse(rigid)*world.matrix;
+            bool basisMatches=true;
+            for(int column=0;column<4;column++)for(int row=0;row<4;row++)
+                if(std::abs(rootScale[column][row]-cache.rootBasis[column][row])>2e-5f)basisMatches=false;
+            if(cache.revision && sources==cache.sources && basisMatches && cache.weld==component.weldDistance && cache.request==component.rebuildVersion)return cache.shape;
+            Profiler::Scope timing("Combined collider build",Profiler::Category::Physics);
+            JPH::TriangleList triangles;
+            const float weld=std::max(0.f,component.weldDistance);
+            for(auto& source:sources)
+            {
+                const bool mirrored=glm::determinant(glm::mat3(rootScale*source.local))<0;
+                std::vector<Vector3> vertices;std::vector<u32> indices;
+                if(!AssetManager::GetModel(source.model)->BuildTriangleMesh(vertices,indices,source.node,source.apply))continue;
+                for(auto& vertex:vertices)
+                {
+                    vertex=Vector3(rootScale*source.local*Vector4(vertex,1));
+                    if(weld>.000001f)vertex=glm::round(vertex/weld)*weld;
+                }
+                for(size_t i=0;i+2<indices.size();i+=3)
+                {
+                    auto a=vertices[indices[i]],b=vertices[indices[i+1]],c=vertices[indices[i+2]];
+                    if(mirrored)std::swap(b,c);
+                    if(glm::length(glm::cross(b-a,c-a))<1e-8f)continue;
+                    triangles.push_back(JPH::Triangle(JPH::Float3(a.x,a.y,a.z),JPH::Float3(b.x,b.y,b.z),JPH::Float3(c.x,c.y,c.z)));
+                }
+            }
+            component.sourceModels=int(sources.size());component.triangleCount=int(triangles.size());++component.rebuildCount;
+            cache.sources.swap(sources);cache.rootBasis=rootScale;cache.weld=component.weldDistance;cache.request=component.rebuildVersion;++cache.revision;
+            if(triangles.empty()){cache.shape=nullptr;return nullptr;}
+            auto result=JPH::MeshShapeSettings(triangles).Create();
+            if(result.HasError()){Debug::Warning("CombineMeshCollider: %s",result.GetError().c_str());cache.shape=nullptr;}
+            else cache.shape=result.Get();
+            return cache.shape;
+        }
 
         const CachedTransform& WorldTransform(entt::registry& registry, entt::entity handle, const Transform& transform)
         {
@@ -1049,11 +1262,14 @@ namespace Canis
             if (!initialized)
                 return;
 
+            while(!vehicles.empty())RemoveVehicle(vehicles.begin()->first);
+
             for (auto &entry : bodies)
                 RemoveBodyFromWorld(entry.second.bodyID);
             bodies.clear();
             transforms.clear();
             movingBodies.clear();staleBodies.clear();
+            combinedMeshes.clear();
 
             bodyInterface = nullptr;
             if (contactListener != nullptr)
@@ -1087,6 +1303,7 @@ namespace Canis
 
         void RemoveBody(entt::entity _entityHandle)
         {
+            RemoveVehicle(_entityHandle);
             auto bodyIt = bodies.find(_entityHandle);
             if (bodyIt == bodies.end())
                 return;
@@ -1220,6 +1437,14 @@ namespace Canis
         {
             Transform *transform = _registry.try_get<Transform>(_entityHandle);
             Rigidbody *rigidbody = _registry.try_get<Rigidbody>(_entityHandle);
+            auto* combined=_registry.try_get<CombineMeshCollider>(_entityHandle);
+            Rigidbody combinedBody;
+            if(combined)
+            {
+                combinedBody.motionType=RigidbodyMotionType::STATIC;combinedBody.useGravity=false;
+                combinedBody.active=combined->active;combinedBody.friction=combined->friction;
+                rigidbody=&combinedBody;
+            }
             if (transform == nullptr || rigidbody == nullptr)
             {
                 RemoveBody(_entityHandle);
@@ -1250,15 +1475,18 @@ namespace Canis
             if (convexMeshCollider != nullptr && !convexMeshCollider->active)
                 convexMeshCollider = nullptr;
 
-            if (boxCollider == nullptr && sphereCollider == nullptr && capsuleCollider == nullptr && meshCollider == nullptr && convexMeshCollider == nullptr)
+            if (boxCollider == nullptr && sphereCollider == nullptr && capsuleCollider == nullptr && meshCollider == nullptr && convexMeshCollider == nullptr && combined==nullptr)
             {
                 RemoveBody(_entityHandle);
                 return nullptr;
             }
 
             const auto& world = WorldTransform(_registry, _entityHandle, *transform);
-            const auto settings = CaptureSettings(_registry, _entityHandle, world.scale, *rigidbody,
+            JPH::RefConst<JPH::Shape> combinedShape;
+            if(combined)combinedShape=CombinedShape(_registry,_entityHandle,*transform,*combined);
+            auto settings = CaptureSettings(_registry, _entityHandle, world.scale, *rigidbody,
                 boxCollider, sphereCollider, capsuleCollider, meshCollider, convexMeshCollider);
+            if(combined){settings.shape=6;settings.geometryRevision=combinedMeshes.at(_entityHandle).revision;}
             auto bodyIt = bodies.find(_entityHandle);
             if (bodyIt != bodies.end() && bodyIt->second.settings == settings) {
                 bodyIt->second.seenFrame = syncFrame;
@@ -1268,9 +1496,13 @@ namespace Canis
             Profiler::Scope rebuildTiming(bodyIt != bodies.end() ? "Physics body rebuild" : "Physics body creation",
                 Profiler::Category::Physics);
             if (bodyIt != bodies.end())
-                RemoveBodyFromWorld(bodyIt->second.bodyID);
+            {
+                // Erase the retired ID too: an empty/invalid replacement shape
+                // must not try to destroy that same Jolt body a second time.
+                RemoveBody(_entityHandle);
+            }
 
-            JPH::RefConst<JPH::Shape> shape = BuildShape(
+            JPH::RefConst<JPH::Shape> shape = combined ? combinedShape : BuildShape(
                 _registry,
                 _entityHandle,
                 *transform,
@@ -1345,15 +1577,45 @@ namespace Canis
             return &bodies.at(_entityHandle);
         }
 
+        void SyncCombinedColliders(entt::registry& _registry)
+        {
+            for(auto handle:_registry.view<CombineMeshCollider,Transform>())
+            {
+                if(auto* runtime=EnsureBodyForEntity(_registry,handle))
+                {
+                    const auto& world=transforms.at(handle);
+                    if(runtime->syncedWorldRevision!=world.revision)
+                    {
+                        bodyInterface->SetPositionAndRotation(runtime->bodyID,ToJoltPosition(world.position),ToJoltRotation(world.rotation),JPH::EActivation::DontActivate);
+                        runtime->syncedWorldRevision=world.revision;
+                    }
+                }
+            }
+            std::erase_if(combinedMeshes,[&](const auto& item){
+                if(_registry.valid(item.first)&&_registry.all_of<CombineMeshCollider,Transform>(item.first))return false;
+                RemoveBody(item.first);return true;
+            });
+        }
+
         const std::vector<entt::entity>& SyncBodiesBeforeStep(entt::registry &_registry, float _physicsDeltaTime)
         {
             Profiler::Scope timing("Physics body synchronization", Profiler::Category::Physics);
             movingBodies.clear();
             ++syncFrame;
+            SyncCombinedColliders(_registry);
 
             auto rigidbodyView = _registry.view<Rigidbody, Transform>();
             for (const entt::entity entityHandle : rigidbodyView)
             {
+                if(_registry.all_of<CombineMeshCollider>(entityHandle))continue;
+                bool combinedChild=false;
+                auto ancestor=rigidbodyView.get<Transform>(entityHandle).parent;
+                for(int depth=0;ancestor && depth<128;depth++)
+                {
+                    if(ancestor.HasComponent<CombineMeshCollider>() && ancestor.GetComponent<CombineMeshCollider>().active){combinedChild=true;break;}
+                    auto* parent=ancestor.TryGetComponent<Transform>();if(!parent)break;ancestor=parent->parent;
+                }
+                if(combinedChild && rigidbodyView.get<Rigidbody>(entityHandle).motionType==RigidbodyMotionType::STATIC)continue;
                 BodyRuntimeData* runtime = EnsureBodyForEntity(_registry, entityHandle);
                 if (!runtime)
                     continue;
@@ -1603,6 +1865,7 @@ namespace Canis
             const float physicsDeltaTime = static_cast<float>(stepCount) * kFixedTimeStep;
 
             const auto& activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
+            SyncVehicles(_registry,physicsDeltaTime);
 
             for (int step = 0; step < stepCount; ++step)
             {
@@ -1616,6 +1879,7 @@ namespace Canis
                 _registry,
                 activeBodies,
                 accumulator / kFixedTimeStep);
+            SyncVehicleWheels(_registry);
             { Profiler::Scope timing("Physics contact events", Profiler::Category::Physics);
               ApplyContactFrameData(_registry); }
         }
@@ -1660,7 +1924,9 @@ namespace Canis
                     continue;
 
                 const Rigidbody *rigidbody = _registry.try_get<Rigidbody>(entityHandle);
-                if (rigidbody == nullptr || (rigidbody->layer & _mask) == 0u)
+                const auto* combined=_registry.try_get<CombineMeshCollider>(entityHandle);
+                const u32 layer=rigidbody?u32(rigidbody->layer):combined?u32(Rigidbody::DefaultLayer):0u;
+                if ((layer & _mask) == 0u)
                     continue;
 
                 const JPH::RVec3 hitPoint = ray.GetPointOnRay(hitResult.mFraction);
@@ -1702,6 +1968,11 @@ namespace Canis
         OnDestroy();
     }
 
+    size_t JoltPhysics3DSystem::GetBodyCount() const
+    {
+        return m_impl ? m_impl->bodies.size() : 0;
+    }
+
     void JoltPhysics3DSystem::Create()
     {
         if (m_impl == nullptr)
@@ -1720,6 +1991,16 @@ namespace Canis
             return;
 
         m_impl->Update(_registry, _deltaTime);
+    }
+
+    void JoltPhysics3DSystem::UpdateCombinedCollidersInEditor(entt::registry& registry)
+    {
+        if (!m_impl || !m_impl->physicsSystem)
+            return;
+        if (m_impl->combinedMeshes.empty() && registry.view<CombineMeshCollider>().empty())
+            return;
+        ++m_impl->syncFrame;
+        m_impl->SyncCombinedColliders(registry);
     }
 
     void JoltPhysics3DSystem::OnDestroy()

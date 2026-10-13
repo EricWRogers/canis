@@ -266,6 +266,54 @@ Both are `Canis::Mask`, which is a lightweight wrapper over `u32`.
 
 In the editor, `Mask` is drawn as a 32-bit toggle grid so collision filtering can be edited visually instead of as raw integers.
 
+### Combined Static Meshes And Vehicles
+
+Add `Canis::CombineMeshCollider` to a parent with `Transform`. It gathers rigid
+descendant `Model` geometry into one static Jolt mesh, without requiring a
+`Rigidbody` on the parent or child tile colliders. Nested combined colliders,
+animated/deforming models and non-static rigidbody subtrees are excluded. Static
+child rigidbodies are suppressed while their ancestor combined collider is active.
+Native raycasts and contact events identify the combined parent.
+
+The cooked shape is cached. Child transforms, active state, hierarchy, model/node
+selection, geometry revisions and parent scale invalidate it; moving the parent
+updates the body's pose. `weldDistance` quantizes vertices to align touching tile
+edges (default 1 mm), and mirrored transforms preserve triangle winding. The
+Inspector exposes friction, welding, an explicit rebuild button and build/model/
+triangle counters. Empty collections keep no body and do not rebuild each frame.
+Edit mode cooks this same cached static geometry after authoring pose evaluation,
+so the counters, native ground queries and rebuild button work before Play.
+This preview never steps simulation or initializes dynamic bodies or vehicle
+constraints. Removing or disabling the combined collider removes its preview body.
+Group connected static ground in bounded regions for large worlds; one enormous
+body reduces broadphase granularity even though Jolt still uses the mesh's triangle tree.
+
+`Canis::WheeledVehicle` attaches a native four-wheel constraint to a dynamic
+`Rigidbody` with a chassis collider. Local **−Z** is forward. Assign wheel entities
+in front-left, front-right, rear-left, rear-right order; they should be children of
+the chassis with unit scale. Wheel radius/width, track width, wheelbase, suspension,
+steering, rear steering ratio and engine torque are editable. The constraint drives
+both axles and casts cylinders for wheel contact. Runtime `throttle`, `steering`,
+`brake` and `handbrake` inputs control it; `groundedWheels` and `speed` report results.
+The system updates wheel transforms and removes constraints/listeners before a
+body is rebuilt, the component is removed or the scene is unloaded.
+
+The vehicle Inspector groups power/brakes, steering/grip, suspension and wheel
+geometry, with units in hover help. `engineMaxRPM`, `brakeTorque`,
+`handbrakeTorque`, `longitudinalGrip`, `lateralGrip` and `antiRollStiffness` are
+serialized alongside the original dimensions and spring settings. Handling edits
+update owned Jolt wheel settings between simulation steps, preserving engine RPM
+and wheel angular velocity; wheel dimensions/placement/travel rebuild the constraint.
+`throttleResponse` and `steeringResponse` are exponential response rates per second
+(0 = instantaneous). `highSpeedSteeringRatio` fades steering authority from full
+at rest to that fraction at `steeringFadeSpeedKph`. Braking cancels smoothed throttle
+immediately. Runtime applied-input telemetry and constraint build count help tune
+and verify these changes.
+
+`CanisRenderOptimizationTests` verifies seam queries, cache reuse, inactive/empty
+ground, hot-replaced geometry, transformed/mirrored parents, suspension, forward
+driving, steering and cleanup.
+
 ### Trigger-Style Behavior
 
 Jolt sensors are exposed through `Rigidbody::isSensor`.
@@ -554,6 +602,10 @@ unit's prior sampler binding is restored after rendering. These modes must agree
 with the GLSL sampler type ([OpenGL sampling rules](https://wikis.khronos.org/opengl/Sampler_Object)).
 The GPU regression imports normal-mapped geometry and alternates both shader
 types, checking that normal maps cannot replace shadow depth.
+Material samplers cover units 0–5, including normal maps. Linear magnification,
+trilinear mipmaps and anisotropic filtering keep close wet highlights smooth while
+leaving shared texture defaults and UI rendering unchanged. Probe fingerprints
+include a capture revision so older nearest-normal captures are rebuilt once.
 
 Instanced draws now restore attribute 7 to the imported vertex-color stream.
 Without this restoration, an instanced shadow pass replaced baked irradiance with

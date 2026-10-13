@@ -1497,11 +1497,13 @@ namespace Canis
         }
         struct MaterialSamplerScope
         {
-            GLint previous[5]{};
+            GLint previous[6]{};
             GLint previousShadowSampler = 0;
             explicit MaterialSamplerScope(GLuint sampler)
             {
-                for (GLuint unit = 0; unit < 5; ++unit)
+                // Imported normal maps occupy unit 5 and need the same smooth
+                // filtering as albedo/PBR maps, especially on wet highlights.
+                for (GLuint unit = 0; unit < 6; ++unit)
                 {
                     glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &previous[unit]);
                     glBindSampler(unit, sampler);
@@ -1511,7 +1513,7 @@ namespace Canis
             }
             ~MaterialSamplerScope()
             {
-                for (GLuint unit = 0; unit < 5; ++unit)
+                for (GLuint unit = 0; unit < 6; ++unit)
                     glBindSampler(unit, static_cast<GLuint>(previous[unit]));
                 glBindSampler(6, static_cast<GLuint>(previousShadowSampler));
             }

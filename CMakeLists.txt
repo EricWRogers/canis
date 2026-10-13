@@ -10,6 +10,7 @@ file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/LOD.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/CombineMeshCollider.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Blockout.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/BlockoutEditing.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/PostProcessPipeline.cpp"

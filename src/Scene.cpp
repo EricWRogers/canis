@@ -480,6 +480,11 @@ namespace Canis
                 system->Update(m_registry, 0.0f);
             }
         }
+        if (auto* physics = GetSystem<JoltPhysics3DSystem>())
+        {
+            Profiler::Scope scope("Combined collider editor preview", Profiler::Category::Editor);
+            physics->UpdateCombinedCollidersInEditor(m_registry);
+        }
     }
 
     ScriptableEntity* Scene::InvokeScriptCallback(ScriptableEntity* script, bool ready)

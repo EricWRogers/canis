@@ -3103,6 +3103,8 @@ namespace Canis
         RegisterScript(prefabInstanceConf);
 
         RegisterParticleEmitterComponent(*this);
+        RegisterCombineMeshCollider(*this);
+        RegisterWheeledVehicle(*this);
         RegisterTrailComponents(*this);
         RegisterAudioComponents(*this);
         RegisterBakeLight(*this);
