@@ -68,6 +68,7 @@ namespace
             r.on_destroy<MeshCollider>().connect<&Context::Removed<MeshCollider>>(this);
             r.on_destroy<CombineMeshCollider>().connect<&Context::Removed<CombineMeshCollider>>(this);
             r.on_destroy<WheeledVehicle>().connect<&Context::Removed<WheeledVehicle>>(this);
+            r.on_destroy<Ragdoll>().connect<&Context::Removed<Ragdoll>>(this);
             r.on_destroy<LODGroup>().connect<&Context::Removed<LODGroup>>(this);
             r.on_destroy<Model>().connect<&Context::Removed<Model>>(this);
             r.on_destroy<ModelAnimation>().connect<&Context::Removed<ModelAnimation>>(this);
@@ -110,6 +111,7 @@ namespace
             r.on_destroy<MeshCollider>().disconnect(this);
             r.on_destroy<CombineMeshCollider>().disconnect(this);
             r.on_destroy<WheeledVehicle>().disconnect(this);
+            r.on_destroy<Ragdoll>().disconnect(this);
             r.on_destroy<LODGroup>().disconnect(this);
             r.on_destroy<Model>().disconnect(this);
             r.on_destroy<ModelAnimation>().disconnect(this);

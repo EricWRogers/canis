@@ -3105,6 +3105,7 @@ namespace Canis
         RegisterParticleEmitterComponent(*this);
         RegisterCombineMeshCollider(*this);
         RegisterWheeledVehicle(*this);
+        RegisterRagdoll(*this);
         RegisterTrailComponents(*this);
         RegisterAudioComponents(*this);
         RegisterBakeLight(*this);

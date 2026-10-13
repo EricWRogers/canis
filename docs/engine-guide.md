@@ -323,6 +323,25 @@ body/vehicle constraint; ordinary vehicle translation and rotation reuse the bod
 ground, hot-replaced geometry, transformed/mirrored parents, suspension, forward
 driving, steering and cleanup.
 
+### Animated Ragdolls
+
+`Canis::Ragdoll` requires Transform, Model and ModelAnimation. Its `definitionPath`
+points to JSON/YAML with a `parts` sequence of bone names, preceding parent indices,
+lengths, radii and masses. Set `active` and initial linear/angular velocity to
+instantiate Jolt capsule bodies with swing/twist joints at the current animated
+pose. The component suppresses the ordinary owner body while active. Parent/child
+and initially overlapping limbs do not collide; ECS layer/mask filtering remains
+effective independently of Jolt's limb collision groups. Queries retain the owner
+entity, and body counters include all ragdoll parts.
+
+After stepping, native joint poses drive ModelAnimation's external local matrices,
+so the original skinned model follows the physical limbs. Disabling/removing the
+component, deleting its owner or unloading the scene removes bodies/constraints
+and pose overrides. The Inspector reports body count and simulation status.
+`NativeRagdollLifecycle` checks inherited velocity, ground contact, query ownership
+and cleanup without depending on private test assets. Imported glTF image URIs
+are decoded before resolving external base-colour/normal/emissive files.
+
 ### Trigger-Style Behavior
 
 Jolt sensors are exposed through `Rigidbody::isSensor`.

@@ -1839,7 +1839,8 @@ namespace Canis
             }
 
             const std::filesystem::path modelDirectory = _modelPath.parent_path();
-            std::filesystem::path texturePath = modelDirectory / image.uri;
+            std::string decodedUri;tinygltf::URIDecode(image.uri,&decodedUri,nullptr);
+            std::filesystem::path texturePath = modelDirectory / decodedUri;
             // Match material-file paths so the shared texture cache can reuse
             // assets referenced through a model-relative ../ path.
             return texturePath.lexically_normal().generic_string();
@@ -2366,8 +2367,9 @@ namespace Canis
                         if(index<0||index>=int(gltfModel.textures.size()))return -1;
                         int image=gltfModel.textures[index].source;if(image<0||image>=int(gltfModel.images.size()))return -1;
                         const auto& data=gltfModel.images[image];
+                        std::string decodedUri;tinygltf::URIDecode(data.uri,&decodedUri,nullptr);
                         auto path=data.uri.empty()?ExtractEmbeddedTexture(data,image,std::filesystem::path(_path)):
-                            (std::filesystem::path(_path).parent_path()/data.uri).lexically_normal().string();
+                            (std::filesystem::path(_path).parent_path()/decodedUri).lexically_normal().string();
                         return path.empty()?-1:AssetManager::LoadTexture(path);
                     };
                     outputPrimitive.normalTextureId=loadMap(material.normalTexture.index);

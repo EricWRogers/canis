@@ -3,7 +3,7 @@
 #include <Canis/ConfigHelper.hpp>
 #include <Canis/Editor.hpp>
 namespace Canis {
-static ComponentConf combinedConf, vehicleConf;
+static ComponentConf combinedConf, vehicleConf, ragdollConf;
 void RegisterCombineMeshCollider(App &app) {
   combinedConf = {};
   REGISTER_PROPERTY(combinedConf, CombineMeshCollider, active);
@@ -161,5 +161,19 @@ void RegisterWheeledVehicle(App &app) {
                 static_cast<unsigned long long>(vehicle.rebuildCount));
   };
   app.RegisterComponent(vehicleConf);
+}
+void RegisterRagdoll(App &app) {
+  ragdollConf = {};
+  REGISTER_PROPERTY(ragdollConf, Ragdoll, active);
+  REGISTER_PROPERTY(ragdollConf, Ragdoll, definitionPath);
+  REGISTER_PROPERTY(ragdollConf, Ragdoll, initialVelocity);
+  REGISTER_PROPERTY(ragdollConf, Ragdoll, initialAngularVelocity);
+  DEFAULT_COMPONENT_CONFIG_AND_REQUIRED(ragdollConf, Ragdoll, Transform, Model,
+                                        ModelAnimation);
+  ragdollConf.DEFAULT_DRAW_INSPECTOR(
+      Ragdoll,
+      ImGui::Text("Native bodies: %d / simulated: %s", component->bodyCount,
+                  component->simulated ? "yes" : "no"););
+  app.RegisterComponent(ragdollConf);
 }
 } // namespace Canis

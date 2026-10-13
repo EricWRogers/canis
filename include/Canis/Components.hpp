@@ -1007,6 +1007,20 @@ namespace Canis
         void Create(){}
     };
     void RegisterWheeledVehicle(class App& app);
+    struct Ragdoll
+    {
+        static constexpr const char* ScriptName="Canis::Ragdoll";
+        Ragdoll()=default;
+        explicit Ragdoll(Entity& owner):entity(&owner){}
+        Entity* entity=nullptr;
+        bool active=false;
+        std::string definitionPath;
+        Vector3 initialVelocity{0},initialAngularVelocity{0};
+        int bodyCount=0;
+        bool simulated=false;
+        void Create(){}
+    };
+    void RegisterRagdoll(class App& app);
 
     struct MeshCollider
     {

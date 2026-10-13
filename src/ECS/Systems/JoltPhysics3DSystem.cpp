@@ -13,6 +13,10 @@
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/AllowedDOFs.h>
 #include <Jolt/Physics/Body/BodyLock.h>
+#include <Jolt/Physics/Ragdoll/Ragdoll.h>
+#include <Jolt/Physics/Constraints/SwingTwistConstraint.h>
+#include <Jolt/Skeleton/Skeleton.h>
+#include <yaml-cpp/yaml.h>
 #include <Jolt/Physics/Body/BodyCreationSettings.h>
 #include <Jolt/Physics/Collision/BroadPhase/BroadPhaseLayer.h>
 #include <Jolt/Physics/Collision/CastResult.h>
@@ -792,6 +796,7 @@ namespace Canis
         class ContactListenerImpl final : public JPH::ContactListener
         {
         public:
+            entt::registry* registry=nullptr;
             JPH::ValidateResult OnContactValidate(
                 const JPH::Body &inBody1,
                 const JPH::Body &inBody2,
@@ -804,10 +809,19 @@ namespace Canis
                 const JPH::CollisionGroup &group1 = inBody1.GetCollisionGroup();
                 const JPH::CollisionGroup &group2 = inBody2.GetCollisionGroup();
 
-                const u32 layer1 = static_cast<u32>(group1.GetGroupID());
-                const u32 mask1 = static_cast<u32>(group1.GetSubGroupID());
-                const u32 layer2 = static_cast<u32>(group2.GetGroupID());
-                const u32 mask2 = static_cast<u32>(group2.GetSubGroupID());
+                auto filter=[&](const JPH::Body& body) {
+                    const auto& group=body.GetCollisionGroup();
+                    // Ragdolls use Jolt group/subgroup IDs to suppress limb
+                    // self-collision. ECS layer masks still come from the owner.
+                    if(group.GetGroupFilter()) {
+                        if(registry)if(auto* rb=registry->try_get<Rigidbody>(ToEntity(body.GetUserData())))
+                            return std::pair(u32(rb->layer),u32(rb->mask));
+                        return std::pair(u32(Rigidbody::DefaultLayer),u32(Rigidbody::DefaultMask));
+                    }
+                    return std::pair(u32(group.GetGroupID()),u32(group.GetSubGroupID()));
+                };
+                const auto [layer1,mask1]=filter(inBody1);
+                const auto [layer2,mask2]=filter(inBody2);
 
                 if ((mask1 & layer2) == 0u || (mask2 & layer1) == 0u)
                     return JPH::ValidateResult::RejectAllContactsForThisBodyPair;
@@ -1005,6 +1019,118 @@ namespace Canis
             float throttle=0,steering=0;
         };
         std::unordered_map<entt::entity,VehicleRuntime> vehicles;
+        struct RagdollRuntime
+        {
+            JPH::Ref<JPH::Ragdoll> ragdoll;
+            std::vector<int> nodes;
+            std::vector<Matrix4> locals;
+            std::vector<JPH::Mat44> joints;
+            int model=-1;
+        };
+        std::unordered_map<entt::entity,RagdollRuntime> ragdolls;
+        uint32_t ragdollGroup=1000000;
+        void RemoveRagdoll(entt::registry* registry,entt::entity handle)
+        {
+            auto found=ragdolls.find(handle);if(found==ragdolls.end())return;
+            found->second.ragdoll->RemoveFromPhysicsSystem();ragdolls.erase(found);
+            if(registry&&registry->valid(handle)) {
+                if(auto* animation=registry->try_get<ModelAnimation>(handle))animation->externalLocalNodeMatrices.clear();
+                if(auto* component=registry->try_get<Ragdoll>(handle)){component->simulated=false;component->bodyCount=0;}
+            }
+        }
+        void SyncRagdolls(entt::registry& registry)
+        {
+            std::vector<entt::entity> stale;
+            for(auto& [handle,runtime]:ragdolls)
+                if(!registry.valid(handle)||!registry.all_of<Ragdoll,Model,ModelAnimation,Transform>(handle)||
+                    !registry.get<Ragdoll>(handle).active||!registry.get<Transform>(handle).IsActiveInHierarchy()||
+                    registry.get<Model>(handle).modelId!=runtime.model)stale.push_back(handle);
+            for(auto handle:stale)RemoveRagdoll(&registry,handle);
+            for(auto handle:registry.view<Ragdoll,Model,ModelAnimation,Transform>())
+            {
+                auto& component=registry.get<Ragdoll>(handle);
+                if(!component.active||ragdolls.contains(handle)||!registry.get<Transform>(handle).IsActiveInHierarchy())continue;
+                auto& renderer=registry.get<Model>(handle);auto* model=AssetManager::GetModel(renderer.modelId);
+                if(!model||component.definitionPath.empty())continue;
+                try {
+                    auto definition=YAML::LoadFile(component.definitionPath)["parts"];
+                    if(!definition.IsSequence()||definition.size()==0||definition.size()>64)throw std::runtime_error("Invalid ragdoll part list");
+                    auto& animation=registry.get<ModelAnimation>(handle);
+                    if(animation.pose.globalNodeMatrices.size()!=size_t(model->GetNodeCount()))model->ResetPose(animation.pose);
+                    const auto root=registry.get<Transform>(handle).GetModelMatrix();
+                    const float scale=glm::length(Vector3(root[0]));
+                    auto settings=JPH::Ref<JPH::RagdollSettings>(new JPH::RagdollSettings());
+                    settings->mSkeleton=new JPH::Skeleton();settings->mParts.resize(definition.size());
+                    RagdollRuntime runtime;runtime.model=renderer.modelId;runtime.locals=animation.pose.localNodeMatrices;
+                    for(size_t i=0;i<definition.size();i++) {
+                        auto part=definition[i];const auto name=part["bone"].as<std::string>();const int parent=part["parent"].as<int>(-1);
+                        if(parent>=int(i)||parent< -1||(i>0&&parent<0))throw std::runtime_error("Ragdoll parents must precede children");
+                        int node=-1;for(int n=0;n<model->GetNodeCount();n++)if(model->GetNodeName(n)==name){node=n;break;}
+                        if(node<0)throw std::runtime_error("Ragdoll bone missing: "+name);
+                        runtime.nodes.push_back(node);settings->mSkeleton->AddJoint(name,parent);
+                        Matrix4 matrix=root*animation.pose.globalNodeMatrices[node];
+                        Vector3 position(matrix[3]);glm::mat3 basis(matrix);
+                        for(int c=0;c<3;c++)basis[c]=glm::normalize(basis[c]);
+                        const auto rotation=ToJoltRotation(glm::quat_cast(basis));
+                        const float radius=std::max(.015f,part["radius"].as<float>()*scale);
+                        const float length=std::max(radius*2.01f,part["length"].as<float>()*scale);
+                        auto shape=JPH::CapsuleShapeSettings(std::max(.001f,length*.5f-radius),radius).Create();
+                        if(shape.HasError())throw std::runtime_error(shape.GetError().c_str());
+                        auto offset=ApplyLocalShapeOffset(shape.Get(),{0,length*.5f,0},"ragdoll");
+                        auto& body=settings->mParts[i];body.SetShape(offset);body.mPosition=ToJoltPosition(position);body.mRotation=rotation;
+                        body.mMotionType=JPH::EMotionType::Dynamic;body.mObjectLayer=Layers::MOVING;
+                        body.mFriction=.6f;body.mLinearDamping=.1f;body.mAngularDamping=.5f;
+                        body.mOverrideMassProperties=JPH::EOverrideMassProperties::CalculateInertia;
+                        body.mMassPropertiesOverride.mMass=std::max(.1f,part["mass"].as<float>(2));
+                        if(parent>=0) {
+                            auto* joint=new JPH::SwingTwistConstraintSettings();
+                            joint->mPosition1=joint->mPosition2=ToJoltPosition(position);
+                            joint->mTwistAxis1=joint->mTwistAxis2=rotation*JPH::Vec3::sAxisY();
+                            joint->mPlaneAxis1=joint->mPlaneAxis2=rotation*JPH::Vec3::sAxisX();
+                            joint->mNormalHalfConeAngle=joint->mPlaneHalfConeAngle=.9f;
+                            joint->mTwistMinAngle=-.7f;joint->mTwistMaxAngle=.7f;joint->mMaxFrictionTorque=.5f;
+                            body.mToParent=joint;
+                        }
+                        runtime.joints.push_back(JPH::Mat44::sRotationTranslation(rotation,ToJoltVec3(position)));
+                    }
+                    settings->Stabilize();settings->CalculateConstraintPriorities();
+                    settings->DisableParentChildCollisions(runtime.joints.data(),.01f);
+                    settings->CalculateBodyIndexToConstraintIndex();
+                    runtime.ragdoll=settings->CreateRagdoll(++ragdollGroup,ToBodyUserData(handle),physicsSystem.get());
+                    if(!runtime.ragdoll)throw std::runtime_error("Unable to create ragdoll bodies");
+                    runtime.ragdoll->AddToPhysicsSystem(JPH::EActivation::Activate);
+                    runtime.ragdoll->SetLinearAndAngularVelocity(ToJoltVec3(component.initialVelocity),ToJoltVec3(component.initialAngularVelocity));
+                    component.bodyCount=int(runtime.nodes.size());component.simulated=true;animation.playAnimation=false;
+                    ragdolls.emplace(handle,std::move(runtime));
+                    Debug::Log("RAGDOLL_STARTED bodies=%d",component.bodyCount);
+                } catch(const std::exception& error) {
+                    Debug::Warning("Ragdoll: %s",error.what());component.active=false;
+                }
+            }
+        }
+        void SyncRagdollPoses(entt::registry& registry)
+        {
+            for(auto& [handle,runtime]:ragdolls) {
+                auto* model=AssetManager::GetModel(runtime.model);if(!model)continue;
+                JPH::RVec3 origin;runtime.ragdoll->GetPose(origin,runtime.joints.data());
+                auto& animation=registry.get<ModelAnimation>(handle);
+                auto globals=animation.pose.globalNodeMatrices;
+                const auto inverse=glm::inverse(registry.get<Transform>(handle).GetModelMatrix());
+                for(size_t i=0;i<runtime.nodes.size();i++) {
+                    const auto& joint=runtime.joints[i];const auto p=origin+joint.GetTranslation();
+                    Matrix4 world=glm::mat4_cast(ToCanisRotation(joint.GetQuaternion()));world[3]=Vector4(ToCanisPosition(p),1);
+                    globals[runtime.nodes[i]]=inverse*world;
+                }
+                auto locals=runtime.locals;
+                for(size_t i=0;i<runtime.nodes.size();i++) {
+                    const int node=runtime.nodes[i],parent=model->GetNode(node)->parent;
+                    locals[node]=parent>=0?glm::inverse(globals[parent])*globals[node]:globals[node];
+                }
+                animation.externalLocalNodeMatrices=std::move(locals);
+                model->BlendPoseFromLocalMatrices(animation.pose,animation.externalLocalNodeMatrices,0);
+                animation.poseInitialized=true;
+            }
+        }
         void RemoveVehicle(entt::entity handle)
         {
             auto it=vehicles.find(handle);if(it==vehicles.end())return;
@@ -1271,6 +1397,7 @@ namespace Canis
                 return;
 
             while(!vehicles.empty())RemoveVehicle(vehicles.begin()->first);
+            while(!ragdolls.empty())RemoveRagdoll(nullptr,ragdolls.begin()->first);
 
             for (auto &entry : bodies)
                 RemoveBodyFromWorld(entry.second.bodyID);
@@ -1443,6 +1570,9 @@ namespace Canis
 
         BodyRuntimeData* EnsureBodyForEntity(entt::registry &_registry, entt::entity _entityHandle)
         {
+            if(auto* rag=_registry.try_get<Ragdoll>(_entityHandle);rag&&rag->active) {
+                RemoveBody(_entityHandle);return nullptr;
+            }
             Transform *transform = _registry.try_get<Transform>(_entityHandle);
             Rigidbody *rigidbody = _registry.try_get<Rigidbody>(_entityHandle);
             auto* combined=_registry.try_get<CombineMeshCollider>(_entityHandle);
@@ -1911,7 +2041,9 @@ namespace Canis
             const float physicsDeltaTime = static_cast<float>(stepCount) * kFixedTimeStep;
 
             const auto& activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
+            contactListener->registry=&_registry;
             SyncVehicles(_registry,physicsDeltaTime);
+            SyncRagdolls(_registry);
 
             for (int step = 0; step < stepCount; ++step)
             {
@@ -1926,6 +2058,7 @@ namespace Canis
                 activeBodies,
                 accumulator / kFixedTimeStep);
             SyncVehicleWheels(_registry);
+            SyncRagdollPoses(_registry);
             { Profiler::Scope timing("Physics contact events", Profiler::Category::Physics);
               ApplyContactFrameData(_registry); }
         }
@@ -1971,7 +2104,7 @@ namespace Canis
 
                 const Rigidbody *rigidbody = _registry.try_get<Rigidbody>(entityHandle);
                 const auto* combined=_registry.try_get<CombineMeshCollider>(entityHandle);
-                const u32 layer=rigidbody?u32(rigidbody->layer):combined?u32(Rigidbody::DefaultLayer):0u;
+                const u32 layer=rigidbody?u32(rigidbody->layer):(combined||_registry.all_of<Ragdoll>(entityHandle))?u32(Rigidbody::DefaultLayer):0u;
                 if ((layer & _mask) == 0u)
                     continue;
 
@@ -2016,7 +2149,7 @@ namespace Canis
 
     size_t JoltPhysics3DSystem::GetBodyCount() const
     {
-        return m_impl ? m_impl->bodies.size() : 0;
+        return m_impl && m_impl->physicsSystem ? m_impl->physicsSystem->GetNumBodies() : 0;
     }
 
     void JoltPhysics3DSystem::Create()

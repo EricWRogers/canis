@@ -876,6 +876,44 @@ static void VehicleMassBalance(Window& window) {
     scene.Unload();AssetManager::FreeModel(modelId);
 }
 
+static void NativeRagdollLifecycle(Window& window) {
+    auto directory=std::filesystem::temp_directory_path()/"canis-native-ragdoll";
+    std::filesystem::create_directories(directory);
+    const float vertices[]={0,0,0,0,.2f,0,.1f,0,0};const uint32_t indices[]={0,1,2};
+    std::ofstream buffer(directory/"rig.bin",std::ios::binary);buffer.write(reinterpret_cast<const char*>(vertices),sizeof(vertices));
+    buffer.write(reinterpret_cast<const char*>(indices),sizeof(indices));buffer.close();
+    std::ofstream(directory/"rig.gltf")<<R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+      "nodes":[{"name":"Root","mesh":0,"children":[1]},{"name":"Child","translation":[0,0.6,0]}],
+      "buffers":[{"uri":"rig.bin","byteLength":48}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":12}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[0.1,0.2,0]},{"bufferView":1,"componentType":5125,"count":3,"type":"SCALAR"}],
+      "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]})";
+    std::ofstream(directory/"rig.ragdoll")<<"parts: [{bone: Root, parent: -1, length: 0.6, radius: 0.08, mass: 5}, {bone: Child, parent: 0, length: 0.6, radius: 0.08, mass: 3}]\n";
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    ModelAsset::PrimitiveBuild3D plane;plane.vertices={{{-20,0,-20},{0,1,0},{}},{{20,0,-20},{0,1,0},{}},{{20,0,20},{0,1,0},{}},{{-20,0,20},{0,1,0},{}}};plane.indices={0,2,1,0,3,2};
+    int floorId=AssetManager::CreateModel();AssetManager::GetModel(floorId)->SetRuntimePrimitives({plane});
+    auto floor=scene.CreateEntity("Floor");floor.AddComponent<Transform>();floor.AddComponent<Rigidbody>()->motionType=RigidbodyMotionType::STATIC;
+    floor.AddComponent<Model>()->modelId=floorId;floor.AddComponent<MeshCollider>();
+    auto actor=scene.CreateEntity("Articulated actor");actor.AddComponent<Transform>()->position={0,2,0};
+    actor.AddComponent<Model>()->modelId=AssetManager::LoadModel((directory/"rig.gltf").string());actor.AddComponent<ModelAnimation>();
+    auto& rag=*actor.AddComponent<Ragdoll>();rag.definitionPath=(directory/"rig.ragdoll").string();rag.active=true;rag.initialVelocity={2,1,0};
+    auto* physics=static_cast<JoltPhysics3DSystem*>(scene.CreateSystem(new JoltPhysics3DSystem()));physics->Create();physics->Update(scene.GetRegistry(),1.f/60);
+    Check(rag.simulated&&rag.bodyCount==2&&physics->GetBodyCount()==3,"Native ragdoll failed to create articulated bodies");
+    for(int i=0;i<120;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    auto& animation=actor.GetComponent<ModelAnimation>();
+    auto root=Vector3(actor.GetComponent<Transform>().GetModelMatrix()*animation.pose.globalNodeMatrices[0]*Vector4(0,0,0,1));
+    Check(std::isfinite(root.x)&&std::isfinite(root.y)&&root.x>.5f&&root.y<1.5f&&root.y>-.2f,
+        "Ragdoll failed to inherit impact velocity, fall or collide with ground");
+    RaycastHit hit;Check(physics->Raycast(root+Vector3(0,2,0),{0,-1,0},hit,5)&&hit.entity==actor,
+        "Native ragdoll collision queries lost their owner entity");
+    rag.active=false;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(!rag.simulated&&rag.bodyCount==0&&physics->GetBodyCount()==1&&animation.externalLocalNodeMatrices.empty(),
+        "Disabling ragdoll leaked bodies, constraints or pose overrides");
+    rag.active=true;physics->Update(scene.GetRegistry(),1.f/60);scene.Destroy(actor);physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->GetBodyCount()==1,"Deleting ragdoll owner left native bodies active");
+    scene.Unload();AssetManager::FreeModel(floorId);std::filesystem::remove_all(directory);
+    std::cout<<"Native articulated ragdolls inherit velocity, collide, update poses and clean up correctly\n";
+}
+
 static void ParticleSpawnShapes(Window& window) {
     Scene scene;scene.Init(nullptr,&window,nullptr);
     auto parent=scene.CreateEntity("Emitter parent");auto& parentTransform=*parent.AddComponent<Transform>();
@@ -987,14 +1025,14 @@ static void ShadowTextureIsolation(Window& window) {
     const float vertices[]={-1,-1,0,0,0,1,0,0, 1,-1,0,0,0,1,1,0, 1,1,0,0,0,1,1,1,
                             -1,-1,0,0,0,1,0,0, 1,1,0,0,0,1,1,1, -1,1,0,0,0,1,0,1};
     std::ofstream binary(root/"quad.bin",std::ios::binary);binary.write(reinterpret_cast<const char*>(vertices),sizeof(vertices));binary.close();
-    std::filesystem::copy_file("assets/defaults/textures/square.png",root/"normal.png");
+    std::filesystem::copy_file("assets/defaults/textures/square.png",root/"normal map.png");
     std::ofstream(root/"quad.gltf") << R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
       "nodes":[{"mesh":0}],"meshes":[{"primitives":[{"attributes":{"POSITION":0,"NORMAL":1,"TEXCOORD_0":2},"material":0}]}],
       "buffers":[{"uri":"quad.bin","byteLength":192}],"bufferViews":[{"buffer":0,"byteLength":192,"byteStride":32}],
       "accessors":[{"bufferView":0,"componentType":5126,"count":6,"type":"VEC3","min":[-1,-1,0],"max":[1,1,0]},
                    {"bufferView":0,"byteOffset":12,"componentType":5126,"count":6,"type":"VEC3"},
                    {"bufferView":0,"byteOffset":24,"componentType":5126,"count":6,"type":"VEC2"}],
-      "materials":[{"normalTexture":{"index":0}}],"textures":[{"source":0}],"images":[{"uri":"normal.png"}]})";
+      "materials":[{"normalTexture":{"index":0}}],"textures":[{"source":0}],"images":[{"uri":"normal%20map.png"}]})";
     auto read=[](const char* path){std::ifstream f(path);return std::string(std::istreambuf_iterator<char>(f),{});};
     auto fragment=read("assets/shaders/model3d.fs");
     auto replace=[&](const std::string& before,const std::string& after){auto at=fragment.find(before);Check(at!=std::string::npos,"Shadow comparison fixture changed");fragment.replace(at,before.size(),after);};
@@ -1038,7 +1076,7 @@ static void ShadowTextureIsolation(Window& window) {
     }
     // A magnified normal map must interpolate rather than produce square
     // reflection patches. Shared texture defaults remain suitable for pixel UI.
-    auto normal=AssetManager::GetTexture(AssetManager::LoadTexture((root/"normal.png").string()))->GetGLTexture();
+    auto normal=AssetManager::GetTexture(AssetManager::LoadTexture((root/"normal map.png").string()))->GetGLTexture();
     const unsigned char colors[]={255,0,0,255,0,255,0,255,0,0,255,255,255,255,255,255};
     glBindTexture(GL_TEXTURE_2D,normal.id);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,2,2,0,GL_RGBA,GL_UNSIGNED_BYTE,colors);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);glGenerateMipmap(GL_TEXTURE_2D);
@@ -1395,6 +1433,7 @@ int main(int argc,char** argv) {
         ParticleSpawnShapes(window);
         CombinedColliderAndVehicle(window);
         VehicleMassBalance(window);
+        NativeRagdollLifecycle(window);
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
         MirroredNormalMapping();
