@@ -166,6 +166,7 @@ void RegisterRagdoll(App &app) {
   ragdollConf = {};
   REGISTER_PROPERTY(ragdollConf, Ragdoll, active);
   REGISTER_PROPERTY(ragdollConf, Ragdoll, definitionPath);
+  REGISTER_PROPERTY(ragdollConf, Ragdoll, freezePoseOnDisable);
   REGISTER_PROPERTY(ragdollConf, Ragdoll, initialVelocity);
   REGISTER_PROPERTY(ragdollConf, Ragdoll, initialAngularVelocity);
   DEFAULT_COMPONENT_CONFIG_AND_REQUIRED(ragdollConf, Ragdoll, Transform, Model,

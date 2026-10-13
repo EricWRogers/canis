@@ -1015,6 +1015,8 @@ namespace Canis
         Entity* entity=nullptr;
         bool active=false;
         std::string definitionPath;
+        // Keep the final bone pose when disabling physics, instead of restoring a clip.
+        bool freezePoseOnDisable=false;
         Vector3 initialVelocity{0},initialAngularVelocity{0};
         int bodyCount=0;
         bool simulated=false;

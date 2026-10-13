@@ -944,12 +944,13 @@ static void NativeRagdollLifecycle(Window& window) {
     std::filesystem::create_directories(directory);
     const float vertices[]={0,0,0,0,.2f,0,.1f,0,0};const uint32_t indices[]={0,1,2};
     std::ofstream buffer(directory/"rig.bin",std::ios::binary);buffer.write(reinterpret_cast<const char*>(vertices),sizeof(vertices));
-    buffer.write(reinterpret_cast<const char*>(indices),sizeof(indices));buffer.close();
+    buffer.write(reinterpret_cast<const char*>(indices),sizeof(indices));
+    const float keys[]={0,2, 0,.6f,0, 0,.8f,0};buffer.write(reinterpret_cast<const char*>(keys),sizeof(keys));buffer.close();
     std::ofstream(directory/"rig.gltf")<<R"({"asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
       "nodes":[{"name":"Root","mesh":0,"children":[1]},{"name":"Child","translation":[0,0.6,0]}],
-      "buffers":[{"uri":"rig.bin","byteLength":48}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":12}],
-      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[0.1,0.2,0]},{"bufferView":1,"componentType":5125,"count":3,"type":"SCALAR"}],
-      "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}]})";
+      "buffers":[{"uri":"rig.bin","byteLength":80}],"bufferViews":[{"buffer":0,"byteOffset":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":12},{"buffer":0,"byteOffset":48,"byteLength":8},{"buffer":0,"byteOffset":56,"byteLength":24}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[0,0,0],"max":[0.1,0.2,0]},{"bufferView":1,"componentType":5125,"count":3,"type":"SCALAR"},{"bufferView":2,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[2]},{"bufferView":3,"componentType":5126,"count":2,"type":"VEC3"}],
+      "meshes":[{"primitives":[{"attributes":{"POSITION":0},"indices":1}]}],"animations":[{"samplers":[{"input":2,"output":3}],"channels":[{"sampler":0,"target":{"node":1,"path":"translation"}}]}]})";
     std::ofstream(directory/"rig.ragdoll")<<"parts: [{bone: Root, parent: -1, length: 0.6, radius: 0.08, mass: 5}, {bone: Child, parent: 0, length: 0.6, radius: 0.08, mass: 3}]\n";
     Scene scene;scene.Init(nullptr,&window,nullptr);
     ModelAsset::PrimitiveBuild3D plane;plane.vertices={{{-20,0,-20},{0,1,0},{}},{{20,0,-20},{0,1,0},{}},{{20,0,20},{0,1,0},{}},{{-20,0,20},{0,1,0},{}}};plane.indices={0,2,1,0,3,2};
@@ -971,10 +972,28 @@ static void NativeRagdollLifecycle(Window& window) {
     rag.active=false;physics->Update(scene.GetRegistry(),1.f/60);
     Check(!rag.simulated&&rag.bodyCount==0&&physics->GetBodyCount()==1&&animation.externalLocalNodeMatrices.empty(),
         "Disabling ragdoll leaked bodies, constraints or pose overrides");
-    rag.active=true;physics->Update(scene.GetRegistry(),1.f/60);scene.Destroy(actor);physics->Update(scene.GetRegistry(),1.f/60);
+    rag.active=true;physics->Update(scene.GetRegistry(),1.f/60);
+    for(int i=0;i<120;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    const auto frozenPose=animation.pose.globalNodeMatrices;
+    rag.freezePoseOnDisable=true;rag.active=false;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(!rag.simulated&&rag.bodyCount==0&&physics->GetBodyCount()==1&&!animation.playAnimation&&animation.externalLocalNodeMatrices.empty(),
+        "Frozen ragdoll retained physics bodies or playback");
+    ModelAnimation3DSystem evaluator;
+    for(int i=0;i<120;i++) {
+        evaluator.Update(scene.GetRegistry(),1.f/60);physics->Update(scene.GetRegistry(),1.f/60);
+        for(size_t bone=0;bone<frozenPose.size();bone++)for(int column=0;column<4;column++)
+            Check(glm::length(animation.pose.globalNodeMatrices[bone][column]-frozenPose[bone][column])<.00001f,
+                "Disabled ragdoll lost its frozen bone pose");
+    }
+    const auto frozenRoot=Vector3(actor.GetComponent<Transform>().GetModelMatrix()*frozenPose[0]*Vector4(0,0,0,1));
+    Check(physics->Raycast(frozenRoot+Vector3(0,2,0),{0,-1,0},hit,5)&&hit.entity==floor,
+        "Frozen corpse still blocked collision queries");
+    rag.active=true;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(rag.simulated&&physics->GetBodyCount()==3,"Frozen ragdoll could not reactivate");
+    scene.Destroy(actor);physics->Update(scene.GetRegistry(),1.f/60);
     Check(physics->GetBodyCount()==1,"Deleting ragdoll owner left native bodies active");
     scene.Unload();AssetManager::FreeModel(floorId);std::filesystem::remove_all(directory);
-    std::cout<<"Native articulated ragdolls inherit velocity, collide, update poses and clean up correctly\n";
+    std::cout<<"Native articulated ragdolls inherit velocity, collide, freeze without colliders and clean up correctly\n";
 }
 
 static void ParticleSpawnShapes(Window& window) {

@@ -1034,7 +1034,28 @@ namespace Canis
             auto found=ragdolls.find(handle);if(found==ragdolls.end())return;
             found->second.ragdoll->RemoveFromPhysicsSystem();ragdolls.erase(found);
             if(registry&&registry->valid(handle)) {
-                if(auto* animation=registry->try_get<ModelAnimation>(handle))animation->externalLocalNodeMatrices.clear();
+                if(auto* animation=registry->try_get<ModelAnimation>(handle)) {
+                    const auto* component=registry->try_get<Ragdoll>(handle);
+                    if(component && !component->active && component->freezePoseOnDisable) {
+                        // The pose already contains the latest physics transforms.
+                        // Stop evaluation without discarding that final pose or its skin matrices.
+                        animation->playAnimation=false;
+                        animation->transitionLocalNodeMatrices.clear();
+                        animation->transitionDuration=animation->transitionElapsed=0;
+                        animation->layers.clear();
+                        animation->lastEvaluatedAnimationIndex=animation->animationIndex;
+                        animation->lastEvaluatedAnimationTime=animation->animationTime;
+                        animation->lastEvaluatedRootMotionMask=animation->rootMotionMask;
+                        if(auto* renderer=registry->try_get<Model>(handle)) {
+                            const int modelId=animation->sourceModelId>=0?animation->sourceModelId:renderer->modelId;
+                            if(auto* model=AssetManager::GetModel(modelId)) {
+                                animation->poseModelId=modelId;
+                                animation->poseGeometryRevision=model->GetGeometryRevision();
+                            }
+                        }
+                    }
+                    animation->externalLocalNodeMatrices.clear();
+                }
                 if(auto* component=registry->try_get<Ragdoll>(handle)){component->simulated=false;component->bodyCount=0;}
             }
         }

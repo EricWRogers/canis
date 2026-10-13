@@ -337,9 +337,12 @@ entity, and body counters include all ragdoll parts.
 After stepping, native joint poses drive ModelAnimation's external local matrices,
 so the original skinned model follows the physical limbs. Disabling/removing the
 component, deleting its owner or unloading the scene removes bodies/constraints
-and pose overrides. The Inspector reports body count and simulation status.
+and pose overrides. Set `freezePoseOnDisable` before setting `active = false` to
+retain the final bone/skin matrices and stop clip playback while removing all
+ragdoll collisions and constraints. The Inspector reports body count and
+simulation status.
 `NativeRagdollLifecycle` checks inherited velocity, ground contact, query ownership
-and cleanup without depending on private test assets. Imported glTF image URIs
+and frozen-pose cleanup/reactivation without depending on private test assets. Imported glTF image URIs
 are decoded before resolving external base-colour/normal/emissive files.
 
 ### Trigger-Style Behavior
