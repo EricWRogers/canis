@@ -323,6 +323,21 @@ body/vehicle constraint; ordinary vehicle translation and rotation reuse the bod
 ground, hot-replaced geometry, transformed/mirrored parents, suspension, forward
 driving, steering and cleanup.
 
+### Skinned pose buffers
+
+CPU-skinned models retain GPU vertex buffers for each pose instead of replacing
+one shared model buffer on every shadow/color draw. A skin revision changes only
+when the CPU pose changes; unchanged/frozen poses reuse their buffers across
+frames and passes. Copied poses share their cache until an edit detaches it.
+Deleting a pose releases its buffers; freeing/reloading model geometry invalidates
+all retained pose caches. Identical full external matrices skip redundant skinning,
+and ragdoll matrices are synchronized only when physics actually steps.
+
+Render metrics expose `skin_upload_bytes` and `skin_cache_hits`. Set
+`CANIS_DISABLE_SKIN_CACHE=1` to benchmark the previous per-draw upload path.
+Native GPU tests check separate-character pixel isolation, frozen reuse, copy edits,
+changed-pose uploads and model reload cleanup.
+
 ### Animated Ragdolls
 
 `Canis::Ragdoll` requires Transform, Model and ModelAnimation. Its `definitionPath`

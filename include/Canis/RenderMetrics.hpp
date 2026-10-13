@@ -11,6 +11,7 @@ namespace Canis::RenderMetrics
         uint64_t id=0, gpuFrame=0, draws=0, shadowDraws=0, instances=0, triangles=0, culled=0, shadowCulled=0;
         double cpuSubmitMs=0, presentMs=0, gpuMs=-1;
         uint64_t instanceUploadBytes=0, instanceCacheHits=0, batchBuilds=0;
+        uint64_t skinUploadBytes=0, skinCacheHits=0;
         uint64_t roomCulledInstances=0;
         uint64_t lodInstances[4]{}, lodTriangles[4]{}, lodCulled=0;
     };
@@ -45,6 +46,8 @@ namespace Canis::RenderMetrics
     Profiler::Category ProfileCategory();
     void InstanceUpload(uint64_t bytes);
     void InstanceCacheHit();
+    void SkinUpload(uint64_t bytes);
+    void SkinCacheHit();
     void BatchBuild();
     void RoomCull(uint64_t count);
     void LOD(int level, bool culled);

@@ -39,6 +39,8 @@ namespace Canis::RenderMetrics
     Profiler::Category ProfileCategory() { return editorDepth ? Profiler::Category::Editor : Profiler::Category::Rendering; }
     void InstanceUpload(uint64_t bytes) { if(active)current.instanceUploadBytes+=bytes; }
     void InstanceCacheHit() { if(active)++current.instanceCacheHits; }
+    void SkinUpload(uint64_t bytes) { if(active)current.skinUploadBytes+=bytes; }
+    void SkinCacheHit() { if(active)++current.skinCacheHits; }
     void BatchBuild() { if(active)++current.batchBuilds; }
     void RoomCull(uint64_t count) { if(active)current.roomCulledInstances+=count; }
     const Frame& Latest() { return latest; }
@@ -134,12 +136,12 @@ namespace Canis::RenderMetrics
             outputOpened=true;
             if (const char* path=std::getenv("CANIS_RENDER_METRICS_OUTPUT")) {
                 output.open(path);
-                if (output) output<<"frame,cpu_submit_ms,present_ms,gpu_frame,gpu_ms,model_draws,shadow_draws,instances,triangles,culled,shadow_culled,instance_upload_bytes,instance_cache_hits,batch_builds,room_culled_instances,lod0_triangles,lod1_triangles,lod2_triangles,lod3_triangles,lod_culled\n";
+                if (output) output<<"frame,cpu_submit_ms,present_ms,gpu_frame,gpu_ms,model_draws,shadow_draws,instances,triangles,culled,shadow_culled,instance_upload_bytes,instance_cache_hits,batch_builds,room_culled_instances,lod0_triangles,lod1_triangles,lod2_triangles,lod3_triangles,lod_culled,skin_upload_bytes,skin_cache_hits\n";
             }
         }
         if (output.is_open() && output) output<<current.id<<','<<current.cpuSubmitMs<<','<<current.presentMs<<','<<current.gpuFrame<<','
             <<current.gpuMs<<','<<current.draws<<','<<current.shadowDraws<<','<<current.instances<<','<<current.triangles<<','
-            <<current.culled<<','<<current.shadowCulled<<','<<current.instanceUploadBytes<<','<<current.instanceCacheHits<<','<<current.batchBuilds<<','<<current.roomCulledInstances<<','<<current.lodTriangles[0]<<','<<current.lodTriangles[1]<<','<<current.lodTriangles[2]<<','<<current.lodTriangles[3]<<','<<current.lodCulled<<'\n';
+            <<current.culled<<','<<current.shadowCulled<<','<<current.instanceUploadBytes<<','<<current.instanceCacheHits<<','<<current.batchBuilds<<','<<current.roomCulledInstances<<','<<current.lodTriangles[0]<<','<<current.lodTriangles[1]<<','<<current.lodTriangles[2]<<','<<current.lodTriangles[3]<<','<<current.lodCulled<<','<<current.skinUploadBytes<<','<<current.skinCacheHits<<'\n';
     }
     static int lodLevel=-1;
     void SetLODLevel(int level) { lodLevel=level; }

@@ -2079,7 +2079,7 @@ namespace Canis
                 activeBodies,
                 accumulator / kFixedTimeStep);
             SyncVehicleWheels(_registry);
-            SyncRagdollPoses(_registry);
+            if (stepCount > 0) SyncRagdollPoses(_registry);
             { Profiler::Scope timing("Physics contact events", Profiler::Category::Physics);
               ApplyContactFrameData(_registry); }
         }

@@ -2462,10 +2462,72 @@ namespace Canis
         return true;
     }
 
+    struct ModelAsset::PoseGPUCache
+    {
+        struct Entry { unsigned int vao=0, vbo=0; u64 revision=0; bool uploaded=false; };
+        const ModelAsset* model=nullptr;
+        u64 geometryRevision=0;
+        std::vector<Entry> entries;
+        void Clear()
+        {
+            // Scene poses can outlive a window at shutdown. Context destruction
+            // already releases resources when there is no current GL context.
+            if (SDL_GL_GetCurrentContext())
+                for (auto& entry : entries) {
+                    if (entry.vao) glDeleteVertexArrays(1,&entry.vao);
+                    if (entry.vbo) glDeleteBuffers(1,&entry.vbo);
+                }
+            entries.clear();
+        }
+        ~PoseGPUCache() { Clear(); }
+    };
+
+    unsigned int ModelAsset::PoseVertexArray(const Pose3D& pose, size_t primitiveIndex)
+    {
+        if (!pose.gpuCache || pose.gpuCache->model!=this ||
+            pose.gpuCache->geometryRevision!=m_geometryRevision) {
+            pose.gpuCache=std::make_shared<PoseGPUCache>();
+            pose.gpuCache->model=this;
+            pose.gpuCache->geometryRevision=m_geometryRevision;
+            pose.gpuCache->entries.resize(m_primitives.size());
+            std::erase_if(m_poseGPUCaches,[](const auto& cache){ return cache.expired(); });
+            m_poseGPUCaches.push_back(pose.gpuCache);
+        }
+        auto& cache=*pose.gpuCache;
+        // Asset reload/free clears buffers even when an entity retains its pose.
+        if (cache.entries.size()!=m_primitives.size())
+            cache.entries.resize(m_primitives.size());
+        auto& entry=cache.entries[primitiveIndex];
+        if (!entry.vao) {
+            glGenVertexArrays(1,&entry.vao);glGenBuffers(1,&entry.vbo);
+            glBindVertexArray(entry.vao);glBindBuffer(GL_ARRAY_BUFFER,entry.vbo);
+            glBindBuffer(GL_ELEMENT_ARRAY_BUFFER,m_primitives[primitiveIndex].ebo);
+            glEnableVertexAttribArray(0);
+            glVertexAttribPointer(0,3,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,position)));
+            glEnableVertexAttribArray(1);
+            glVertexAttribPointer(1,3,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,normal)));
+            glEnableVertexAttribArray(2);
+            glVertexAttribPointer(2,2,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,uv)));
+            glEnableVertexAttribArray(7);
+            glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
+        }
+        if (!entry.uploaded || entry.revision!=pose.skinRevision) {
+            const auto& vertices=pose.skinnedVertices[primitiveIndex];
+            glBindBuffer(GL_ARRAY_BUFFER,entry.vbo);
+            // Replace storage to avoid waiting on the previous frame's draw.
+            glBufferData(GL_ARRAY_BUFFER,vertices.size()*sizeof(RenderVertex3D),vertices.data(),GL_DYNAMIC_DRAW);
+            entry.uploaded=true;entry.revision=pose.skinRevision;
+            RenderMetrics::SkinUpload(vertices.size()*sizeof(RenderVertex3D));
+        } else RenderMetrics::SkinCacheHit();
+        return entry.vao;
+    }
+
     void ModelAsset::FreePrimitives()
     {
         ++m_geometryRevision;
         m_boundsCache.clear();
+        for (auto& cached : m_poseGPUCaches) if (auto cache=cached.lock()) cache->Clear();
+        m_poseGPUCaches.clear();
         m_bakedVisibility={};
         for (Primitive3D &primitive : m_primitives)
         {
@@ -2550,6 +2612,7 @@ namespace Canis
         m_bindRotations.clear();
         m_bindScales.clear();
         m_bindLocalMatrices.clear();
+        m_sharedPose.gpuCache.reset();
         m_sharedPose.localNodeMatrices.clear();
         m_sharedPose.globalNodeMatrices.clear();
         m_sharedPose.skinnedVertices.clear();
@@ -2711,6 +2774,13 @@ namespace Canis
         // these as TRS changes bone scale and compounds on subsequent pose updates.
         if (weight == 0.0f)
         {
+            // Tracking/ragdoll poses may be supplied again between physics ticks.
+            // A rendered pose with unchanged matrices and geometry already has
+            // valid CPU skin data; keep its GPU revision instead of reskinning it.
+            if (_pose.gpuCache && _pose.gpuCache->model==this &&
+                _pose.gpuCache->geometryRevision==m_geometryRevision &&
+                _pose.localNodeMatrices==_sourceLocalMatrices)
+                return true;
             _pose.localNodeMatrices = _sourceLocalMatrices;
             UpdateGlobalMatrices(_pose);
             UpdateSkinning(_pose);
@@ -3071,22 +3141,19 @@ namespace Canis
                 glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);lastTexture=textureId;
             }
 
-            if (primitive.hasSkinning && !primitive.bindVertices.empty())
-            {
-                const std::vector<RenderVertex3D> *vertices = &primitive.bindVertices;
-                if (pose != nullptr &&
-                    primitiveIndex < pose->skinnedVertices.size() &&
-                    pose->skinnedVertices[primitiveIndex].size() == primitive.bindVertices.size())
-                {
-                    vertices = &pose->skinnedVertices[primitiveIndex];
+            static const bool skinCacheEnabled=[] {
+                const char* disabled=std::getenv("CANIS_DISABLE_SKIN_CACHE");
+                return !disabled || std::string(disabled)!="1";
+            }();
+            unsigned int vertexArray=primitive.vao;
+            if (hasSkinnedPose) {
+                if (skinCacheEnabled) vertexArray=PoseVertexArray(*pose,primitiveIndex);
+                else {
+                    const auto& vertices=pose->skinnedVertices[primitiveIndex];
+                    glBindBuffer(GL_ARRAY_BUFFER,primitive.vbo);
+                    glBufferSubData(GL_ARRAY_BUFFER,0,vertices.size()*sizeof(RenderVertex3D),vertices.data());
+                    RenderMetrics::SkinUpload(vertices.size()*sizeof(RenderVertex3D));
                 }
-
-                glBindBuffer(GL_ARRAY_BUFFER, primitive.vbo);
-                glBufferSubData(
-                    GL_ARRAY_BUFFER,
-                    0,
-                    vertices->size() * sizeof(RenderVertex3D),
-                    vertices->data());
             }
 
             if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
@@ -3106,7 +3173,7 @@ namespace Canis
             }
             glActiveTexture(GL_TEXTURE0);
             _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
-            glBindVertexArray(primitive.vao);
+            glBindVertexArray(vertexArray);
             glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
             RenderMetrics::Draw(primitive.indices.size()/3);
         }
@@ -3389,6 +3456,10 @@ namespace Canis
 
     void ModelAsset::UpdateSkinning(Pose3D &_pose) const
     {
+        // A copied pose may be rendered independently; editing it must not
+        // replace the buffers still used by the unchanged original.
+        if (_pose.gpuCache && _pose.gpuCache.use_count()>1) _pose.gpuCache.reset();
+        ++_pose.skinRevision;
         EnsurePose(_pose);
 
         for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)

@@ -635,8 +635,12 @@ namespace Canis
             std::vector<AnimationChannel3D> channels = {};
         };
 
+        struct PoseGPUCache;
         struct Pose3D
         {
+            // Each pose owns its GPU vertex data; copied poses share until edited.
+            u64 skinRevision = 0;
+            mutable std::shared_ptr<PoseGPUCache> gpuCache;
             std::vector<Matrix4> localNodeMatrices = {};
             std::vector<Matrix4> globalNodeMatrices = {};
             std::vector<std::vector<RenderVertex3D>> skinnedVertices = {};
@@ -726,6 +730,7 @@ namespace Canis
         std::vector<Vector3> m_bindScales = {};
         std::vector<Matrix4> m_bindLocalMatrices = {};
         Pose3D m_sharedPose = {};
+        std::vector<std::weak_ptr<PoseGPUCache>> m_poseGPUCaches;
         u64 m_geometryRevision = 0u;
         BakedVisibility m_bakedVisibility;
         std::vector<unsigned char> m_bakedRejected;
@@ -737,6 +742,7 @@ namespace Canis
         void UpdateSkinning(Pose3D &_pose) const;
         void FreePrimitives();
         bool UploadPrimitive(Primitive3D &_primitive) const;
+        unsigned int PoseVertexArray(const Pose3D& pose, size_t primitiveIndex);
     };
 
     class TerrainAsset : public Asset

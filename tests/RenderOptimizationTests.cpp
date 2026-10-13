@@ -277,6 +277,72 @@ static void AnimationUpdateCadence() {
     std::cout << "48 Hz animation cadence, playback, crossfades and external pose isolation passed\n";
 }
 
+// Different characters and shadow/color passes must keep their own GPU pose
+// buffers. A frozen pose should cause no uploads after its first draw.
+static void SkinnedPoseBuffers() {
+    const auto root=std::filesystem::temp_directory_path()/("canis-skin-cache-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    const float positions[]={-.2f,-.2f,0, .2f,-.2f,0, 0,.2f,0};
+    const uint16_t joints[12]={};
+    const float weights[]={1,0,0,0, 1,0,0,0, 1,0,0,0};
+    const float keys[]={0,1, -.45f,0,0, .45f,0,0};
+    std::ofstream binary(root/"mesh.bin",std::ios::binary);
+    binary.write(reinterpret_cast<const char*>(positions),sizeof(positions));
+    binary.write(reinterpret_cast<const char*>(joints),sizeof(joints));
+    binary.write(reinterpret_cast<const char*>(weights),sizeof(weights));
+    binary.write(reinterpret_cast<const char*>(keys),sizeof(keys));binary.close();
+    std::ofstream(root/"skin.gltf") << R"({
+      "asset":{"version":"2.0"},"scene":0,"scenes":[{"nodes":[0]}],
+      "nodes":[{"name":"Root","children":[1]},{"mesh":0,"skin":0}],"skins":[{"joints":[0]}],
+      "meshes":[{"primitives":[{"attributes":{"POSITION":0,"JOINTS_0":1,"WEIGHTS_0":2}}]}],
+      "buffers":[{"uri":"mesh.bin","byteLength":140}],
+      "bufferViews":[{"buffer":0,"byteLength":36},{"buffer":0,"byteOffset":36,"byteLength":24},
+        {"buffer":0,"byteOffset":60,"byteLength":48},{"buffer":0,"byteOffset":108,"byteLength":8},{"buffer":0,"byteOffset":116,"byteLength":24}],
+      "accessors":[{"bufferView":0,"componentType":5126,"count":3,"type":"VEC3","min":[-0.2,-0.2,0],"max":[0.2,0.2,0]},
+        {"bufferView":1,"componentType":5123,"count":3,"type":"VEC4"},{"bufferView":2,"componentType":5126,"count":3,"type":"VEC4"},
+        {"bufferView":3,"componentType":5126,"count":2,"type":"SCALAR","min":[0],"max":[1]},
+        {"bufferView":4,"componentType":5126,"count":2,"type":"VEC3"}],
+      "animations":[{"samplers":[{"input":3,"output":4}],"channels":[{"sampler":0,"target":{"node":0,"path":"translation"}}]}]
+    })";
+    ModelAsset model;Check(model.Load((root/"skin.gltf").string()),"Skin cache fixture failed to load");
+    ModelAsset::Pose3D left,right;model.UpdateAnimation(left,0,0);model.UpdateAnimation(right,0,1);
+    Shader shader;shader.CompileSource("[OPENGL VERSION]\nlayout(location=0)in vec3 p;uniform mat4 M;void main(){gl_Position=M*vec4(p,1);}",
+        "[OPENGL VERSION]\nuniform vec4 albedoValue;out vec4 color;void main(){color=albedoValue;}","skin buffer test");shader.Link();shader.Use();
+    glViewport(0,0,320,240);glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glDisable(GL_BLEND);
+    auto frame=[&](bool reverse) {
+        RenderMetrics::BeginFrame();glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);
+        if(reverse) {model.Draw(shader,Matrix4(1),&right,-1,{0,1,0,1});model.Draw(shader,Matrix4(1),&left,-1,{1,0,0,1});}
+        else {model.Draw(shader,Matrix4(1),&left,-1,{1,0,0,1});model.Draw(shader,Matrix4(1),&right,-1,{0,1,0,1});}
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();RenderMetrics::EndPresent();return pixels;
+    };
+    const auto first=frame(false);
+    Check(RenderMetrics::Latest().skinUploadBytes==6*sizeof(ModelAsset::RenderVertex3D),"Initial poses failed to upload their own vertices");
+    Check(first[(120*320+88)*4]>200&&first[(120*320+232)*4+1]>200,"Different skinned poses overlapped or lost their colours");
+    Check(frame(true)==first&&RenderMetrics::Latest().skinUploadBytes==0&&RenderMetrics::Latest().skinCacheHits==2,
+        "Unchanged poses were reuploaded or corrupted across passes");
+    const auto frozenRevision=left.skinRevision;
+    model.BlendPoseFromLocalMatrices(left,left.localNodeMatrices,0);
+    Check(left.skinRevision==frozenRevision,"Unchanged external pose was reskinned between physics ticks");
+    auto copied=left;
+    model.UpdateAnimation(copied,0,.5f);
+    RenderMetrics::BeginFrame();model.Draw(shader,Matrix4(1),&copied);model.Draw(shader,Matrix4(1),&left);
+    RenderMetrics::EndSubmit();RenderMetrics::EndPresent();
+    Check(RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),"Copied pose mutated the original's GPU cache");
+    Check(frame(false)==first&&RenderMetrics::Latest().skinUploadBytes==0,"Editing a copied pose corrupted the frozen original");
+    std::weak_ptr<ModelAsset::PoseGPUCache> released=copied.gpuCache;copied={};
+    Check(released.expired(),"Destroyed pose retained GPU buffers");
+    model.UpdateAnimation(right,0,.75f);frame(false);
+    Check(RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),"Changed pose did not upload exactly once");
+    model.Free();Check(model.Load((root/"skin.gltf").string()),"Skin cache fixture reload failed");
+    model.UpdateAnimation(left,0,0);model.UpdateAnimation(right,0,1);
+    Check(frame(true)==first&&RenderMetrics::Latest().skinUploadBytes==6*sizeof(ModelAsset::RenderVertex3D),
+        "Geometry reload retained stale skin buffers or indices");
+    Check(glGetError()==GL_NO_ERROR,"Skin cache introduced an OpenGL error");
+    model.Free();shader.UnUse();std::filesystem::remove_all(root);
+    std::cout<<"Skinned GPU pose isolation, frozen reuse, copy-on-edit, updates and reload cleanup passed\n";
+}
+
 static void RoomOcclusion(Window& window) {
     Scene scene;
     scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
@@ -1403,6 +1469,7 @@ int main(int argc,char** argv) {
         ImportedTextureLoading();
         ImportedHierarchyGeometry();
         AnimationUpdateCadence();
+        SkinnedPoseBuffers();
         Time::Init(120);
         Time::StartFrame();SDL_Delay(2200);Time::EndFrame();
         const auto resumed=SDL_GetTicks();
