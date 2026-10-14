@@ -21,6 +21,7 @@
 #include <Canis/ScriptWorkspace.hpp>
 #include <Canis/EditorPanelMaximizer.hpp>
 #include <Canis/Asset.hpp>
+#include <Canis/IOManager.hpp>
 #include <Canis/LightingBake.hpp>
 #include <future>
 #include <Canis/AssetHandle.hpp>
@@ -642,6 +643,8 @@ namespace Canis
         bool m_sceneHistoryEditWasActive = false;
         bool m_sceneHistoryRestoring = false;
         std::unordered_map<std::string, std::filesystem::file_time_type> m_assetHotReloadWriteTimes = {};
+        std::shared_ptr<const AssetDirectorySnapshot> m_assetHotReloadSnapshot;
+        std::future<std::shared_ptr<const AssetDirectorySnapshot>> m_assetHotReloadScan;
         std::unordered_map<std::string, PendingHotReloadAsset> m_pendingHotReloadAssets = {};
         ModelMaterialExportDialogState m_modelMaterialExportDialog = {};
         std::string m_consoleSearch = {};

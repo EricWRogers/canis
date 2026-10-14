@@ -5775,6 +5775,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     Editor::~Editor()
     {
+        if(m_assetHotReloadScan.valid())m_assetHotReloadScan.wait();
         m_environmentBakeCancel=true;
         if(m_environmentBakeJob.valid())m_environmentBakeJob.wait();
 #if CANIS_CSHARP
@@ -6340,8 +6341,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
             else if (m_csharp->ReadyToPlay())
             {
-                m_playPending = false;
                 StartPlayModeAt(m_pendingPlayHasPosition ? &m_pendingPlayPosition : nullptr);
+            }
+            else if (!m_csharp->Busy() && !m_csharp->ReloadOnSave())
+            {
+                // A Play-requested scan may discover edits after the button
+                // handler returns. Manual reload still compiles them for Play.
+                m_csharp->RequestBuild();
             }
         }
 #endif
@@ -6874,20 +6880,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::PrimeAssetHotReloadState()
     {
+        if(m_assetHotReloadScan.valid()) { m_assetHotReloadScan.wait();m_assetHotReloadScan={}; }
         m_assetHotReloadWriteTimes.clear();
         m_pendingHotReloadAssets.clear();
         m_assetHotReloadPollTimer = 0.0f;
 
-        m_assetPaths = FindFilesInFolder("assets", "");
+        m_assetHotReloadSnapshot=ReadAssetDirectorySnapshot("assets");
+        m_assetPaths = m_assetHotReloadSnapshot->paths;
         for (const std::string &path : m_assetPaths)
         {
             if (!IsHotReloadEligibleAsset(path))
                 continue;
 
-            std::error_code ec;
-            const auto writeTime = std::filesystem::last_write_time(path, ec);
-            if (!ec)
-                m_assetHotReloadWriteTimes[path] = writeTime;
+            m_assetHotReloadWriteTimes[path] = m_assetHotReloadSnapshot->writeTimes.at(path);
         }
     }
 
@@ -6938,52 +6943,38 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             it = m_pendingHotReloadAssets.erase(it);
         }
 
-        m_assetHotReloadPollTimer -= std::max(0.0f, _deltaTime);
-        if (m_assetHotReloadPollTimer > 0.0f)
-            return;
-
-        m_assetHotReloadPollTimer = 0.5f;
-        m_assetPaths = FindFilesInFolder("assets", "");
-
-        std::unordered_set<std::string> currentPaths = {};
-        currentPaths.reserve(m_assetPaths.size());
-        for (const std::string &path : m_assetPaths)
+        if(m_assetHotReloadScan.valid() &&
+           m_assetHotReloadScan.wait_for(std::chrono::seconds(0))==std::future_status::ready)
         {
-            currentPaths.insert(path);
-            if (!IsHotReloadEligibleAsset(path))
-                continue;
-
-            std::error_code ec;
-            const auto writeTime = std::filesystem::last_write_time(path, ec);
-            if (ec)
-                continue;
-
-            auto knownIt = m_assetHotReloadWriteTimes.find(path);
-            if (knownIt == m_assetHotReloadWriteTimes.end())
+            try
             {
-                m_assetHotReloadWriteTimes[path] = writeTime;
-                continue;
+                auto snapshot=m_assetHotReloadScan.get();
+                if(!snapshot->added.empty() || !snapshot->removed.empty())m_assetPaths=snapshot->paths;
+                // Eligibility/metadata registration and actual asset reloads stay on
+                // the editor thread. Unchanged assets need no main-thread work.
+                for(const auto& path:snapshot->added)
+                    if(IsHotReloadEligibleAsset(path))m_assetHotReloadWriteTimes[path]=snapshot->writeTimes.at(path);
+                for(const auto& path:snapshot->changed)
+                    if(m_assetHotReloadWriteTimes.contains(path))
+                    {
+                        PendingHotReloadAsset pending={};
+                        pending.writeTime=snapshot->writeTimes.at(path);pending.debounceSeconds=.35f;
+                        m_pendingHotReloadAssets[path]=pending;
+                    }
+                for(const auto& path:snapshot->removed)
+                {
+                    m_assetHotReloadWriteTimes.erase(path);m_pendingHotReloadAssets.erase(path);
+                }
+                m_assetHotReloadSnapshot=std::move(snapshot);
             }
-
-            if (knownIt->second != writeTime)
-            {
-                PendingHotReloadAsset pending = {};
-                pending.writeTime = writeTime;
-                pending.debounceSeconds = 0.35f;
-                m_pendingHotReloadAssets[path] = pending;
-            }
+            catch(const std::exception& error) { Debug::Warning("Asset watcher: %s",error.what()); }
         }
-
-        for (auto it = m_assetHotReloadWriteTimes.begin(); it != m_assetHotReloadWriteTimes.end();)
+        m_assetHotReloadPollTimer -= std::max(0.0f, _deltaTime);
+        if(m_assetHotReloadPollTimer<=0 && !m_assetHotReloadScan.valid())
         {
-            if (currentPaths.contains(it->first))
-            {
-                ++it;
-                continue;
-            }
-
-            m_pendingHotReloadAssets.erase(it->first);
-            it = m_assetHotReloadWriteTimes.erase(it);
+            m_assetHotReloadPollTimer=.5f;
+            m_assetHotReloadScan=std::async(std::launch::async,ReadAssetDirectorySnapshot,
+                                          std::string("assets"),m_assetHotReloadSnapshot);
         }
     }
 
@@ -9515,7 +9506,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_csharp)
         {
             // A save followed immediately by Play must not bypass the polling interval.
-            m_csharp->RefreshSources();
+            // A pending Play already requested and awaited this snapshot.
+            // Refreshing again here would endlessly restart an asynchronous scan.
+            if (!m_playPending) m_csharp->RefreshSources();
             m_csharp->Tick(false, false, 0, false);
             if (!m_csharp->ReadyToPlay())
             {

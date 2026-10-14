@@ -82,6 +82,44 @@ static void RuntimeLocks()
     }
 }
 
+static void SubframeMotionAfterTurn()
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;physics.scene=&scene;physics.Create();
+    std::vector<Entity> movers;
+    for(int i=0;i<720;i++)
+    {
+        auto entity=scene.CreateEntity("Turned moving body");
+        auto& transform=*entity.AddComponent<Transform>();
+        transform.position={i*4.f,0,0};
+        transform.rotation=glm::normalize(Quaternion(Vector3((i%3)*.025f,i*.00872664626f,(i%7)*.01f)));
+        auto& body=*entity.AddComponent<Rigidbody>();
+        body.useGravity=false;body.linearDamping=body.angularDamping=0;body.allowSleeping=false;
+        entity.AddComponent<BoxCollider>();body.SetLinearVelocity({0,0,-12});
+        movers.push_back(entity);
+    }
+    std::vector<float> previous(movers.size()),minimum(movers.size(),1),maximum(movers.size());
+    for(int frame=0;frame<240;frame++)
+    {
+        physics.Update(scene.GetRegistry(),1.f/240);
+        for(size_t i=0;i<movers.size();i++)
+        {
+            const float distance=-movers[i].GetComponent<Transform>().position.z;
+            const float step=distance-previous[i];previous[i]=distance;
+            if(frame>10){minimum[i]=std::min(minimum[i],step);maximum[i]=std::max(maximum[i],step);}
+        }
+    }
+    for(size_t i=0;i<movers.size();i++)
+    {
+        if(std::abs(previous[i]-11.8f)>.03f || minimum[i]<.045f || maximum[i]>.055f)
+        {
+            std::cout<<"Subframe body="<<i<<" distance="<<previous[i]<<" step="<<minimum[i]<<".."<<maximum[i]<<'\n';
+            Check(false,"Turned rigidbody rewound or stuttered between fixed physics steps");
+        }
+    }
+    std::cout<<"720 headings preserve constant motion at 240 Hz rendering / 60 Hz physics\n";
+}
+
 static void StaticEdits()
 {
     Scene scene;
@@ -240,6 +278,7 @@ int main()
         for (float dt : {1.f/30.f,1.f/60.f,1.f/144.f}) StepContact(dt);
         RotationRebuilds();
         RuntimeLocks();
+        SubframeMotionAfterTurn();
         StaticEdits();
         UnchangedKinematicCommands();
         std::cout << "Capsule step contact and runtime rotation locks passed\n";

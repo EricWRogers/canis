@@ -14,6 +14,7 @@
 #include <fstream>
 #include <future>
 #include <map>
+#include <optional>
 #include <sstream>
 #include <stdexcept>
 
@@ -60,7 +61,8 @@ namespace
         }
         return result;
     }
-    Sources Scan(const std::filesystem::path& assets, const std::filesystem::path& cache)
+    Sources Scan(const std::filesystem::path& assets, const std::filesystem::path& cache,
+                 const std::string& bindings)
     {
         Sources sources;
         if (!std::filesystem::exists(assets)) return sources;
@@ -79,7 +81,7 @@ namespace
         if (!sources.empty())
         {
             const auto generated = cache / "Canis.Native.generated.cs";
-            const auto content = NativeBindingRegistry::Get().GenerateCSharp();
+            const auto& content = bindings;
             std::filesystem::create_directories(cache);
             if (!std::filesystem::exists(generated) || Read(generated) != content) Write(generated, content);
             sources[generated.string()] = content;
@@ -91,7 +93,9 @@ namespace
             project+="<Analyzer Include=\""+Xml(CANIS_MANAGED_HOST_DIR "/Canis.ScriptMetadata.dll")+"\" />";
             project+="<Reference Include=\"Canis.Core\"><HintPath>"+Xml(CANIS_MANAGED_HOST_DIR "/Canis.Core.dll")+"</HintPath></Reference></ItemGroup></Project>";
             if(!std::filesystem::exists(ide/"Game.Runtime.csproj") || Read(ide/"Game.Runtime.csproj")!=project)Write(ide/"Game.Runtime.csproj",project);
-            Write(ide/"Canis.Game.slnx","<Solution><Project Path=\"Game.Runtime.csproj\" /></Solution>");
+            const std::string solution="<Solution><Project Path=\"Game.Runtime.csproj\" /></Solution>";
+            if(!std::filesystem::exists(ide/"Canis.Game.slnx") || Read(ide/"Canis.Game.slnx")!=solution)
+                Write(ide/"Canis.Game.slnx",solution);
         }
         return sources;
     }
@@ -225,6 +229,9 @@ struct CSharpRuntime::Impl
         }
     }
     std::future<BuildResult> build;
+    std::future<Sources> scan;
+    std::optional<BuildResult> validatingBuild;
+    uint64_t scanRequest=0, activeScanRequest=0, appliedScanRequest=0;
     Dispatch dispatch = nullptr;
     Clock::time_point scanAt{}, changedAt{};
     std::filesystem::path activeAssembly, stagedAssembly;
@@ -238,6 +245,7 @@ struct CSharpRuntime::Impl
     ~Impl() {
         languageStopping=true;
         if(languageJob.valid())languageJob.wait();
+        if(scan.valid())scan.wait();
         StopLanguage();
         if (build.valid()) build.wait(); if (dispatch) Call(6);
     }
@@ -319,12 +327,12 @@ void CSharpRuntime::ExportPlayer(const std::filesystem::path& destination) const
     Write(destination/"Canis.Native.generated.cs",NativeBindingRegistry::Get().GenerateCSharp());
     Write(destination/"player.json","{\"runtime\":\"net10.0\",\"schema\":1}\n");
 }
-void CSharpRuntime::RefreshSources() { impl->scanAt = {}; }
-void CSharpRuntime::RequestBuild() { impl->force = true; impl->dirty = true; impl->scanAt = {}; }
+void CSharpRuntime::RefreshSources() { ++impl->scanRequest; impl->scanAt = {}; }
+void CSharpRuntime::RequestBuild() { impl->force = true; impl->dirty = true; RefreshSources(); }
 bool CSharpRuntime::ReloadOnSave() const { return impl->automatic; }
 void CSharpRuntime::SetReloadOnSave(bool value) { impl->automatic = value; }
-bool CSharpRuntime::ReadyToPlay() const { return !impl->dirty && !impl->failed && !impl->build.valid() && !impl->pending; }
-bool CSharpRuntime::Busy() const { return impl->build.valid(); }
+bool CSharpRuntime::ReadyToPlay() const { return impl->initialized && impl->appliedScanRequest==impl->scanRequest && !impl->dirty && !impl->failed && !impl->build.valid() && !impl->validatingBuild && !impl->pending; }
+bool CSharpRuntime::Busy() const { return impl->build.valid() || impl->validatingBuild || !impl->initialized || impl->appliedScanRequest!=impl->scanRequest; }
 const std::string& CSharpRuntime::Status() const { return impl->status; }
 const std::string& CSharpRuntime::BuildOutput() const { return impl->output; }
 int CSharpRuntime::CollectRetiredContexts() { return impl->Call(7); }
@@ -364,53 +372,69 @@ void CSharpRuntime::Tick(bool playSession, bool paused, float dt, bool executeCa
             return;
         }
         const auto now = Clock::now();
-        if (now - s.scanAt > std::chrono::milliseconds(250))
-        {
-            auto sources = Scan(s.assets, s.cache); s.scanAt = now;
-            if (!s.initialized || sources != s.observed)
-            {
-                s.initialized = true; s.observed = std::move(sources); s.changedAt = now; s.dirty = true;
-                s.status = "C#: saved changes waiting to compile";
-                if (s.observed.empty() && !s.loaded && !s.build.valid()) { s.dirty = false; s.failed = false; s.status = "C#: no runtime scripts"; }
-            }
-        }
-        if (s.playing && !playSession)
-        {
-            StopSession();
-        }
         if (s.build.valid() && s.build.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
         {
-            auto result = s.build.get(); s.output = result.output;
-            // A newer disk snapshot always wins, including file additions/deletions during compilation.
-            auto latest = Scan(s.assets, s.cache);
-            if (latest != result.sources)
+            s.validatingBuild=s.build.get();
+            s.output=s.validatingBuild->output;
+            // Validate against a disk snapshot started after compilation finished.
+            // Never walk the asset tree or wait on filesystem work in Tick.
+            ++s.scanRequest;s.scanAt={};
+        }
+        if (s.scan.valid() && s.scan.wait_for(std::chrono::seconds(0)) == std::future_status::ready)
+        {
+            auto sources=s.scan.get();
+            if(s.activeScanRequest==s.scanRequest)
             {
-                s.observed = std::move(latest); s.changedAt = now; s.dirty = true;
-                s.status = "C#: discarded outdated build; newer save queued";
-            }
-            else if (!result.success)
-            { s.failed = true; s.status = "C#: compile failed; previous assembly retained"; Debug::Warning("%s", s.output.c_str()); }
-            else
-            {
-                if (!s.dispatch) { s.dispatch = LoadHost(); s.Call(0, reinterpret_cast<const void*>(&Log)); s.Call(9, reinterpret_cast<const void*>(&DispatchNative)); }
-                const auto path = result.assembly.string();
-                if (s.Call(1, path.data(), static_cast<int>(path.size())) != 0) throw std::runtime_error("C# assembly validation failed; previous assembly retained.");
-                s.stagedAssembly=result.assembly;
-                s.pending = true; s.failed = false;
-                s.status = playSession ? "C#: compiled; reload pending until Stop" : "C#: compiled";
+                s.appliedScanRequest=s.activeScanRequest;
+                if (!s.initialized || sources != s.observed)
+                {
+                    s.initialized = true; s.observed = std::move(sources); s.changedAt = now; s.dirty = true;
+                    s.status = "C#: saved changes waiting to compile";
+                    if (s.observed.empty() && !s.loaded && !s.build.valid() && !s.validatingBuild)
+                    { s.dirty = false; s.failed = false; s.status = "C#: no runtime scripts"; }
+                }
+                if(s.validatingBuild)
+                {
+                    auto result=std::move(*s.validatingBuild);s.validatingBuild.reset();
+                    if(s.observed!=result.sources)
+                    {
+                        s.changedAt=now;s.dirty=true;
+                        s.status="C#: discarded outdated build; newer save queued";
+                    }
+                    else if(!result.success)
+                    { s.failed=true;s.status="C#: compile failed; previous assembly retained";Debug::Warning("%s",s.output.c_str()); }
+                    else
+                    {
+                        if (!s.dispatch) { s.dispatch = LoadHost(); s.Call(0, reinterpret_cast<const void*>(&Log)); s.Call(9, reinterpret_cast<const void*>(&DispatchNative)); }
+                        const auto path = result.assembly.string();
+                        if (s.Call(1, path.data(), static_cast<int>(path.size())) != 0) throw std::runtime_error("C# assembly validation failed; previous assembly retained.");
+                        s.stagedAssembly=result.assembly;
+                        s.pending=true;s.failed=false;
+                        s.status=playSession?"C#: compiled; reload pending until Stop":"C#: compiled";
+                    }
+                }
             }
         }
-        if(s.pending && s.playing && s.liveReload && !s.dirty && !s.failed && !s.build.valid()) {
+        if(!s.scan.valid() && now-s.scanAt>std::chrono::milliseconds(250))
+        {
+            s.scanAt=now;s.activeScanRequest=s.scanRequest;
+            // Registry access stays on the main thread. The worker owns only
+            // paths and a copy of generated bindings, never scene/game state.
+            s.scan=std::async(std::launch::async,Scan,s.assets,s.cache,NativeBindingRegistry::Get().GenerateCSharp());
+        }
+        if (s.playing && !playSession) StopSession();
+        const bool snapshotCurrent=s.appliedScanRequest==s.scanRequest;
+        if(s.pending && s.playing && s.liveReload && snapshotCurrent && !s.validatingBuild && !s.dirty && !s.failed && !s.build.valid()) {
             if(s.Call(10)==0){s.activeAssembly=s.stagedAssembly;s.pending=false;s.status="C#: stateful reload applied";}
             else {s.liveReload=false;s.status="C#: live reload rejected; current generation retained, replacement waits for Stop";}
         }
-        if (s.pending && !s.playing && !s.dirty && !s.failed && !s.build.valid())
+        if (s.pending && !s.playing && snapshotCurrent && !s.validatingBuild && !s.dirty && !s.failed && !s.build.valid())
         {
             if (s.Call(2) != 0) throw std::runtime_error("C# activation failed.");
             if(!s.stagedAssembly.empty())s.activeAssembly=s.stagedAssembly;
             s.pending = false; s.loaded = true; s.status = "C#: ready (reload on save)";
         }
-        if (s.dirty && !s.build.valid() && (s.automatic || s.force) && now - s.changedAt > std::chrono::milliseconds(400))
+        if (s.initialized && snapshotCurrent && s.dirty && !s.validatingBuild && !s.build.valid() && (s.automatic || s.force) && now - s.changedAt > std::chrono::milliseconds(400))
         {
             s.dirty = false; s.force = false; s.failed = false; s.requested = s.observed;
             s.status = "C#: compiling saved assets...";

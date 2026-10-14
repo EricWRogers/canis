@@ -2,6 +2,9 @@
 #include <vector>
 
 #include <string>
+#include <filesystem>
+#include <memory>
+#include <unordered_map>
 
 #include "Data/GLTexture.hpp"
 //#include "Data/Vertex.hpp"
@@ -9,6 +12,14 @@
 
 namespace Canis
 {
+    struct AssetDirectorySnapshot
+    {
+        std::vector<std::string> paths, added, changed, removed;
+        std::unordered_map<std::string, std::filesystem::file_time_type> writeTimes;
+    };
+    // Filesystem-only: workers never access the asset library or graphics context.
+    std::shared_ptr<const AssetDirectorySnapshot> ReadAssetDirectorySnapshot(
+        const std::string& folder, std::shared_ptr<const AssetDirectorySnapshot> previous = {});
     struct DecodedImage
     {
         int width = 0, height = 0;

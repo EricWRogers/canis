@@ -40,6 +40,19 @@ int main()
     };
     try
     {
+        {
+            fs::create_directories(root/"native-assets");
+            CSharpRuntime nativeOnly(root/"native-assets",root/"native-cache");
+            nativeOnly.Tick(false,false,0);
+            Check(!nativeOnly.ReadyToPlay() && nativeOnly.Busy(),"Initial source scan blocked Tick instead of being queued");
+            Wait(nativeOnly,[&]{return nativeOnly.ReadyToPlay();});
+            nativeOnly.RefreshSources();nativeOnly.Tick(false,false,0);
+            Check(!nativeOnly.ReadyToPlay() && nativeOnly.Busy(),"Play did not await its asynchronous source snapshot");
+            // A second refresh while a scan is in flight must supersede it.
+            nativeOnly.RefreshSources();
+            Wait(nativeOnly,[&]{return nativeOnly.ReadyToPlay();});
+            Check(!nativeOnly.Busy(),"Finished native-only source refresh remained busy");
+        }
         // Editor-only files must not contaminate the runtime compilation.
         Write(root / "assets/Editor/Tool.cs", "invalid runtime source deliberately excluded");
         Write(script, source("v1"));

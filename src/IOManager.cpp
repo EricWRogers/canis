@@ -3,6 +3,7 @@
 #include <cstring>
 #include <fstream>
 #include <filesystem>
+#include <algorithm>
 
 
 #include <Canis/Math.hpp>
@@ -277,6 +278,27 @@ namespace Canis
         }
 
         return files;
+    }
+
+    std::shared_ptr<const AssetDirectorySnapshot> ReadAssetDirectorySnapshot(
+        const std::string& folder, std::shared_ptr<const AssetDirectorySnapshot> previous)
+    {
+        auto snapshot=std::make_shared<AssetDirectorySnapshot>();
+        for (const auto& path : FindFilesInFolder(folder, ""))
+        {
+            std::error_code error;
+            const auto time=std::filesystem::last_write_time(path,error);
+            if(error)continue; // An asset may be renamed while the directory is scanned.
+            snapshot->paths.push_back(path);
+            snapshot->writeTimes.emplace(path,time);
+            if(!previous || !previous->writeTimes.contains(path))snapshot->added.push_back(path);
+            else if(previous->writeTimes.at(path)!=time)snapshot->changed.push_back(path);
+        }
+        if(previous)
+            for(const auto& [path,time]:previous->writeTimes)
+                if(!snapshot->writeTimes.contains(path))snapshot->removed.push_back(path);
+        std::sort(snapshot->paths.begin(),snapshot->paths.end());
+        return snapshot;
     }
 
 	bool FileExists(const char *_path)
