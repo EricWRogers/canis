@@ -888,6 +888,9 @@ static void CombinedColliderAndVehicle(Window& window) {
     vehicle.steeringResponse=1;vehicle.steering=1;
     vehicle.engineMaxRPM=7000;vehicle.brakeTorque=3000;vehicle.handbrakeTorque=6000;
     vehicle.longitudinalGrip=.8f;vehicle.lateralGrip=.9f;vehicle.antiRollStiffness=1000;
+    vehicle.rearLateralGrip=.85f;vehicle.handbrakeLateralGrip=.4f;
+    vehicle.maxSpeedKph=100;vehicle.reverseSpeedKph=35;
+    vehicle.gearSwitchTime=.12f;vehicle.clutchReleaseTime=.15f;
     physics->Update(scene.GetRegistry(),1.f/60);
     Check(vehicle.appliedSteering>0&&vehicle.appliedSteering<.05f,"Vehicle steering response failed to smooth a sudden input");
     Check(vehicle.rebuildCount==vehicleBuilds,"Live vehicle handling edits rebuilt the constraint");
@@ -948,6 +951,9 @@ static void CombinedColliderAndVehicle(Window& window) {
         Check(restored.engineMaxRPM==7000&&restored.brakeTorque==3000&&restored.handbrakeTorque==6000&&
             restored.steeringFadeSpeedKph==1&&restored.wheelWidth==vehicle.wheelWidth&&restored.centerOfMass==marker,
             "Vehicle tuning did not survive the native scene/prefab codec round trip");
+        Check(restored.maxSpeedKph==100&&restored.reverseSpeedKph==35&&restored.rearLateralGrip==.85f&&
+            restored.handbrakeLateralGrip==.4f&&restored.gearSwitchTime==.12f&&restored.clutchReleaseTime==.15f,
+            "Vehicle speed, slide and transmission settings did not survive serialization");
         scene.Destroy(copy);
     }
     scene.Destroy(marker);physics->Update(scene.GetRegistry(),0);

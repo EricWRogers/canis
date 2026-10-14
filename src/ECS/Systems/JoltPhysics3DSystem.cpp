@@ -1015,7 +1015,7 @@ namespace Canis
             JPH::BodyID body;
             std::array<float,6> geometry;
             std::array<JPH::Ref<JPH::WheelSettingsWV>,4> wheels;
-            std::array<float,11> tuning{};
+            std::array<float,14> tuning{};
             float throttle=0,steering=0;
         };
         std::unordered_map<entt::entity,VehicleRuntime> vehicles;
@@ -1209,8 +1209,11 @@ namespace Canis
                 }
                 auto& runtime=vehicles.at(handle);
                 auto* controller=static_cast<JPH::WheeledVehicleController*>(runtime.constraint->GetController());
-                std::array<float,11> tuning{vehicle.springFrequency,vehicle.springDamping,vehicle.steeringDegrees,vehicle.rearSteerRatio,
-                    vehicle.engineTorque,vehicle.engineMaxRPM,vehicle.brakeTorque,vehicle.handbrakeTorque,vehicle.longitudinalGrip,vehicle.lateralGrip,vehicle.antiRollStiffness};
+                const float rearGrip=std::max(0.f,vehicle.rearLateralGrip)*glm::mix(1.f,
+                    std::max(0.f,vehicle.handbrakeLateralGrip),std::clamp(vehicle.handbrake,0.f,1.f));
+                std::array<float,14> tuning{vehicle.springFrequency,vehicle.springDamping,vehicle.steeringDegrees,vehicle.rearSteerRatio,
+                    vehicle.engineTorque,vehicle.engineMaxRPM,vehicle.brakeTorque,vehicle.handbrakeTorque,vehicle.longitudinalGrip,vehicle.lateralGrip,vehicle.antiRollStiffness,
+                    rearGrip,vehicle.gearSwitchTime,vehicle.clutchReleaseTime};
                 if(runtime.tuning!=tuning)
                 {
                     // These wheel settings are owned by this constraint. Updating
@@ -1218,6 +1221,11 @@ namespace Canis
                     controller->GetEngine().mMaxTorque=std::max(0.f,vehicle.engineTorque);
                     controller->GetEngine().mMaxRPM=std::max(1001.f,vehicle.engineMaxRPM);
                     controller->GetEngine().ClampRPM();
+                    auto& transmission=controller->GetTransmission();
+                    transmission.mSwitchTime=std::max(0.f,vehicle.gearSwitchTime);
+                    transmission.mClutchReleaseTime=std::max(.001f,vehicle.clutchReleaseTime);
+                    transmission.mShiftUpRPM=controller->GetEngine().mMaxRPM*(2.f/3.f);
+                    transmission.mShiftDownRPM=controller->GetEngine().mMaxRPM/3.f;
                     for(int i=0;i<4;i++)
                     {
                         auto& wheel=*runtime.wheels[i];
@@ -1226,7 +1234,8 @@ namespace Canis
                         wheel.mMaxSteerAngle=glm::radians(std::clamp(vehicle.steeringDegrees,0.f,80.f))*(i<2?1.f:std::clamp(vehicle.rearSteerRatio,-1.f,1.f));
                         wheel.mMaxBrakeTorque=std::max(0.f,vehicle.brakeTorque);
                         wheel.mMaxHandBrakeTorque=i<2?0:std::max(0.f,vehicle.handbrakeTorque);
-                        const float longitudinal=std::max(0.f,vehicle.longitudinalGrip),lateral=std::max(0.f,vehicle.lateralGrip);
+                        const float longitudinal=std::max(0.f,vehicle.longitudinalGrip);
+                        const float lateral=std::max(0.f,vehicle.lateralGrip)*(i<2?1.f:rearGrip);
                         wheel.mLongitudinalFriction.Clear();wheel.mLongitudinalFriction.AddPoint(0,0);
                         wheel.mLongitudinalFriction.AddPoint(.06f,1.2f*longitudinal);wheel.mLongitudinalFriction.AddPoint(.2f,longitudinal);
                         wheel.mLateralFriction.Clear();wheel.mLateralFriction.AddPoint(0,0);
@@ -1236,16 +1245,30 @@ namespace Canis
                     runtime.tuning=tuning;
                     bodyInterface->ActivateBody(found->second.bodyID);
                 }
-                float speedKph=bodyInterface->GetLinearVelocity(found->second.bodyID).Length()*3.6f;
+                const auto velocity=bodyInterface->GetLinearVelocity(found->second.bodyID);
+                const auto forward=bodyInterface->GetRotation(found->second.bodyID)*JPH::Vec3(0,0,-1);
+                const auto heading=JPH::Vec3(forward.GetX(),0,forward.GetZ()).NormalizedOr(JPH::Vec3(0,0,-1));
+                const float forwardSpeed=velocity.Dot(heading);
+                // Vertical jump/fall speed must not reduce steering or engine power.
+                float speedKph=JPH::Vec3(velocity.GetX(),0,velocity.GetZ()).Length()*3.6f;
                 float steeringRatio=glm::mix(1.f,std::clamp(vehicle.highSpeedSteeringRatio,0.f,1.f),
                     std::clamp(speedKph/std::max(1.f,vehicle.steeringFadeSpeedKph),0.f,1.f));
                 auto respond=[dt](float previous,float target,float rate) {
                     return rate>0?glm::mix(previous,target,1.f-std::exp(-rate*std::max(0.f,dt))):target;
                 };
-                runtime.throttle=vehicle.brake>0?0:respond(runtime.throttle,std::clamp(vehicle.throttle,-1.f,1.f),vehicle.throttleResponse);
+                float brake=std::clamp(vehicle.brake,0.f,1.f);
+                const float pedal=std::clamp(vehicle.throttle,-1.f,1.f);
+                // Brake before changing direction, rather than engaging reverse at speed.
+                if(std::abs(pedal)>.01f && pedal*forwardSpeed<0 && std::abs(forwardSpeed)>.5f)
+                    brake=std::max(brake,.6f);
+                runtime.throttle=brake>0?0:respond(runtime.throttle,pedal,vehicle.throttleResponse);
                 runtime.steering=respond(runtime.steering,std::clamp(vehicle.steering,-1.f,1.f)*steeringRatio,vehicle.steeringResponse);
-                vehicle.appliedThrottle=runtime.throttle;vehicle.appliedSteering=runtime.steering;
-                controller->SetDriverInput(runtime.throttle,runtime.steering,std::clamp(vehicle.brake,0.f,1.f),std::clamp(vehicle.handbrake,0.f,1.f));
+                float drive=runtime.throttle;
+                const float limit=drive<0?vehicle.reverseSpeedKph:vehicle.maxSpeedKph;
+                if(limit>0 && drive*forwardSpeed>0)
+                    drive*=std::clamp((limit-speedKph)/std::max(3.f,limit*.12f),0.f,1.f);
+                vehicle.appliedThrottle=drive;vehicle.appliedSteering=runtime.steering;
+                controller->SetDriverInput(drive,runtime.steering,brake,std::clamp(vehicle.handbrake,0.f,1.f));
                 if(std::abs(vehicle.throttle)>.01f||std::abs(vehicle.steering)>.01f)bodyInterface->ActivateBody(found->second.bodyID);
             }
         }

@@ -994,7 +994,11 @@ namespace Canis
         float engineMaxRPM=6000.f;
         float brakeTorque=1500.f, handbrakeTorque=4000.f;
         float longitudinalGrip=1.f, lateralGrip=1.f;
+        float rearLateralGrip=1.f, handbrakeLateralGrip=1.f;
         float antiRollStiffness=0.f;
+        // Zero speed limits disable the torque governor; collision impulses are never clamped.
+        float maxSpeedKph=0.f, reverseSpeedKph=0.f;
+        float gearSwitchTime=.5f, clutchReleaseTime=.3f;
         // Response rates are per second; zero keeps immediate input.
         float throttleResponse=0.f, steeringResponse=0.f;
         float highSpeedSteeringRatio=1.f, steeringFadeSpeedKph=90.f;

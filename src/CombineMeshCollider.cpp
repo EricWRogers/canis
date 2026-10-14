@@ -49,6 +49,12 @@ void RegisterWheeledVehicle(App &app) {
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, handbrakeTorque);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, longitudinalGrip);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, lateralGrip);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, rearLateralGrip);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, handbrakeLateralGrip);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, maxSpeedKph);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, reverseSpeedKph);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, gearSwitchTime);
+  REGISTER_PROPERTY(vehicleConf, WheeledVehicle, clutchReleaseTime);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, antiRollStiffness);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, throttleResponse);
   REGISTER_PROPERTY(vehicleConf, WheeledVehicle, steeringResponse);
@@ -104,6 +110,10 @@ void RegisterWheeledVehicle(App &app) {
             "Peak torque in Nm. Higher values accelerate harder.");
       field("engineMaxRPM", "Engine RPM limit. The automatic gearbox and wheel "
                             "size also determine top speed.");
+      field("maxSpeedKph", "Forward speed governor in km/h. Eases engine torque near the limit; 0 = unlimited. Does not clamp momentum or jumps.");
+      field("reverseSpeedKph", "Reverse speed governor in km/h. 0 = unlimited.");
+      field("gearSwitchTime", "Automatic gear change duration in seconds.");
+      field("clutchReleaseTime", "Seconds to engage the clutch after a gear change.");
       field("throttleResponse", "Pedal response per second. 0 = instant; lower "
                                 "positive values = gentler acceleration.");
       field("brakeTorque", "Brake torque per wheel in Nm. More torque gives "
@@ -128,6 +138,8 @@ void RegisterWheeledVehicle(App &app) {
                                 "normal tires; lower = slippery.");
       field("lateralGrip", "Cornering grip multiplier. Lower values make "
                            "sideways sliding easier.");
+      field("rearLateralGrip", "Rear cornering grip relative to the front. Lower values let the tail slide out.");
+      field("handbrakeLateralGrip", "Rear cornering grip multiplier with the handbrake held. Blends progressively with analog input.");
     }
     if (ImGui::CollapsingHeader("Suspension")) {
       field("suspensionMin", "Minimum suspension length in metres.");
