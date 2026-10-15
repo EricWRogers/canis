@@ -7,6 +7,10 @@
 #include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Time.hpp>
+#include <Canis/AnimationVisibility.hpp>
+#include <Canis/Frustum.hpp>
+#include <Canis/RenderMetrics.hpp>
+#include <Canis/Window.hpp>
 
 namespace Canis
 {
@@ -18,6 +22,37 @@ namespace Canis
     void ModelAnimation3DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
         const float deltaTime = _deltaTime;
+
+        // Use the live gameplay camera so a turn/teleport refreshes newly visible
+        // poses in this update, rather than one frame after renderer feedback.
+        Matrix4 clip(1);
+        bool hasView = false;
+        if (scene && window && !scene->GetVRCamera().enabled && !scene->HasEditorCamera3DOverride())
+        {
+            Camera *camera = nullptr;
+            Transform *cameraTransform = nullptr;
+            auto cameras = _registry.view<Camera, Transform>();
+            for (auto handle : cameras)
+            {
+                auto &candidate = cameras.get<Camera>(handle);
+                auto &transform = cameras.get<Transform>(handle);
+                if (!transform.IsActiveInHierarchy()) continue;
+                if (!camera || candidate.primary)
+                {
+                    camera = &candidate; cameraTransform = &transform;
+                    if (candidate.primary) break;
+                }
+            }
+            if (camera)
+            {
+                const float aspect = window->GetScreenHeight() > 0 ?
+                    float(window->GetScreenWidth()) / window->GetScreenHeight() : 1.0f;
+                const auto eye = cameraTransform->GetGlobalPosition();
+                clip = glm::perspective(DEG2RAD * camera->fovDegrees, aspect, camera->nearClip, camera->farClip) *
+                    glm::lookAt(eye, eye + cameraTransform->GetForward(), cameraTransform->GetUp());
+                hasView = true;
+            }
+        }
 
         auto animationView = _registry.view<Model, ModelAnimation>();
         for (const entt::entity entityHandle : animationView)
@@ -122,13 +157,29 @@ namespace Canis
             // Advance clocks above every frame, but sample/skin only at the requested
             // cadence. Preserve fractional time and coalesce missed ticks at low FPS.
             // Clip changes, invalidated poses and editor scrubbing refresh immediately.
-            const bool forceEvaluation = !modelAnimation.poseInitialized ||
-                modelAnimation.lastEvaluatedAnimationIndex != modelAnimation.animationIndex ||
-                glm::length(modelAnimation.lastEvaluatedRootMotionMask - modelAnimation.rootMotionMask) > 1e-6f ||
+            bool offscreen = false;
+            // Editor previews and VR keep full-rate evaluation: more than one
+            // camera may consume the pose. External/ragdoll poses bypass above.
+            if (hasView && deltaTime > 0 && RenderMetrics::CullingEnabled() &&
+                modelAnimation.offscreenUpdateRate > 0 && std::isfinite(modelAnimation.offscreenUpdateRate))
+                if (auto *transform = _registry.try_get<Transform>(entityHandle))
+                {
+                    Vector3 minimum, maximum;
+                    if (AnimatedModelBounds(_registry, entityHandle, *model, modelRenderer, minimum, maximum))
+                        offscreen = BoundsOutsideFrustum(clip * transform->GetModelMatrix(), minimum, maximum);
+                }
+            const bool becameVisible = modelAnimation.wasOffscreen && !offscreen;
+            modelAnimation.wasOffscreen = offscreen;
+            const bool forceEvaluation = !modelAnimation.poseInitialized || becameVisible ||
+                (!offscreen && (modelAnimation.lastEvaluatedAnimationIndex != modelAnimation.animationIndex ||
+                    glm::length(modelAnimation.lastEvaluatedRootMotionMask - modelAnimation.rootMotionMask) > 1e-6f)) ||
                 deltaTime <= 0.0f;
-            if (modelAnimation.updateRate > 0.0f && std::isfinite(modelAnimation.updateRate))
+            float rate = modelAnimation.updateRate;
+            if (offscreen)
+                rate = rate > 0 && std::isfinite(rate) ? std::min(rate, modelAnimation.offscreenUpdateRate) : modelAnimation.offscreenUpdateRate;
+            if (rate > 0.0f && std::isfinite(rate))
             {
-                const double interval = 1.0 / modelAnimation.updateRate;
+                const double interval = 1.0 / rate;
                 modelAnimation.poseUpdateAccumulator += std::max(deltaTime, 0.0f);
                 if (!forceEvaluation && modelAnimation.poseUpdateAccumulator + 1e-7 < interval)
                     continue;

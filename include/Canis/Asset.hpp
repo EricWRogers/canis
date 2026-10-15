@@ -651,6 +651,8 @@ namespace Canis
             std::vector<bool> trsChangedScratch = {};
             std::vector<bool> rootMotionRootsScratch = {};
             std::vector<bool> visitedScratch = {};
+            mutable u64 boundsRevision = ~u64(0);
+            mutable std::map<std::pair<i32,bool>,std::pair<Vector3,Vector3>> boundsCache;
         };
 
         bool Load(std::string _path) override;
@@ -714,6 +716,10 @@ namespace Canis
         std::string GetPath() const { return m_path; }
         u64 GetGeometryRevision() const { return m_geometryRevision; }
         bool GetLocalBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
+        // Conservative envelope of every imported clip, including joint rotations.
+        // Unsupported deformation returns false so visibility remains conservative.
+        bool GetAnimationBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
+        bool GetPoseBounds(const Pose3D &_pose, Vector3 &_min, Vector3 &_max, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
         bool HasDeformingGeometry() const;
         bool BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices, i32 _nodeIndex = -1, bool _applyNodeTransform = true) const;
 
@@ -735,6 +741,7 @@ namespace Canis
         BakedVisibility m_bakedVisibility;
         std::vector<unsigned char> m_bakedRejected;
         mutable std::map<std::pair<i32,bool>,std::pair<Vector3,Vector3>> m_boundsCache;
+        mutable std::map<std::pair<i32,bool>,std::pair<Vector3,Vector3>> m_animationBoundsCache;
 
         void EnsurePose(Pose3D &_pose) const;
         void VisitNodeRecursive(i32 _nodeIndex, const Matrix4 &_parentMatrix, Pose3D &_pose, std::vector<bool> &_visited) const;

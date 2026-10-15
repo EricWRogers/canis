@@ -216,7 +216,7 @@ static void ImportedHierarchyGeometry() {
 }
 
 // Pose sampling is capped independently of render FPS, playback and physics.
-static void AnimationUpdateCadence() {
+static void AnimationUpdateCadence(Window &window) {
     const auto root=std::filesystem::temp_directory_path()/("canis-animation-rate-"+std::to_string(SDL_GetTicksNS()));
     std::filesystem::create_directories(root);
     const float data[]={0,0,0, 1,0,0, 0,1,0, 0,10, 0,0,0, 10,0,0};
@@ -274,13 +274,44 @@ static void AnimationUpdateCadence() {
         evaluator.Update(scene.GetRegistry(),1.f/144);
         Check(animation.lastEvaluatedAnimationTime!=previous,"Default per-frame animation changed");
     }
+    auto camera = scene.CreateEntity("Animation visibility camera");
+    camera.AddComponent<Transform>(); camera.AddComponent<Camera>();
+    evaluator.scene = &scene; evaluator.window = &window;
+    auto &transform = actor.GetComponent<Transform>();
+    transform.position = Vector3(0,0,30);
+    animation = ModelAnimation(actor); animation.updateRate = 48; animation.offscreenUpdateRate = 8;
+    evaluator.Update(scene.GetRegistry(),0);
+    int hiddenEvaluations = 0;
+    for (int frame = 0; frame < 120; ++frame) {
+        const auto revision = animation.pose.skinRevision;
+        evaluator.Update(scene.GetRegistry(),1.f/120);
+        hiddenEvaluations += animation.pose.skinRevision != revision;
+    }
+    Check(hiddenEvaluations==8 && animation.wasOffscreen,"Hidden animation did not use the configured eight Hz cadence");
+    Check(std::abs(animation.animationTime-1.f)<.00001f,"Offscreen animation changed playback speed");
+    transform.position.z = -30;
+    auto revision = animation.pose.skinRevision;
+    evaluator.Update(scene.GetRegistry(),1.f/1000);
+    Check(!animation.wasOffscreen && animation.pose.skinRevision>revision &&
+        animation.lastEvaluatedAnimationTime==animation.animationTime,"Newly visible pose did not refresh immediately");
+    transform.position.z = 30;
+    evaluator.Update(scene.GetRegistry(),1.f/1000);
+    camera.GetComponent<Transform>().position.z = 60;
+    revision = animation.pose.skinRevision;
+    evaluator.Update(scene.GetRegistry(),1.f/1000);
+    Check(!animation.wasOffscreen && animation.pose.skinRevision>revision,"Camera teleport used stale visibility");
+    camera.GetComponent<Transform>().position.z = 0;
+    animation.offscreenUpdateRate = 0; animation.updateRate = 0;
+    revision = animation.pose.skinRevision;
+    evaluator.Update(scene.GetRegistry(),1.f/1000);
+    Check(!animation.wasOffscreen && animation.pose.skinRevision>revision,"Visibility throttle could not be disabled");
     std::filesystem::remove_all(root);
-    std::cout << "48 Hz animation cadence, playback, crossfades and external pose isolation passed\n";
+    std::cout << "Animation cadence, hidden sampling, visibility restoration and playback isolation passed\n";
 }
 
 // Different characters and shadow/color passes must keep their own GPU pose
 // buffers. A frozen pose should cause no uploads after its first draw.
-static void SkinnedPoseBuffers() {
+static void SkinnedPoseBuffers(Window &window) {
     const auto root=std::filesystem::temp_directory_path()/("canis-skin-cache-"+std::to_string(SDL_GetTicksNS()));
     std::filesystem::create_directories(root);
     const float positions[]={-.2f,-.2f,0, .2f,-.2f,0, 0,.2f,0};
@@ -340,8 +371,66 @@ static void SkinnedPoseBuffers() {
     Check(frame(true)==first&&RenderMetrics::Latest().skinUploadBytes==6*sizeof(ModelAsset::RenderVertex3D),
         "Geometry reload retained stale skin buffers or indices");
     Check(glGetError()==GL_NO_ERROR,"Skin cache introduced an OpenGL error");
+    Vector3 envelopeLow, envelopeHigh, poseLow, poseHigh;
+    Check(model.GetAnimationBounds(envelopeLow,envelopeHigh),"Animated mesh has no conservative clip bounds");
+    for (int tick=0;tick<=48;++tick) {
+        model.UpdateAnimation(left,0,tick/48.f);
+        Check(model.GetPoseBounds(left,poseLow,poseHigh),"Animated mesh has no current pose bounds");
+        Check(glm::all(glm::greaterThanEqual(poseLow,envelopeLow)) && glm::all(glm::lessThanEqual(poseHigh,envelopeHigh)),
+            "Clip envelope excluded an intermediate animated pose");
+    }
+    auto external = left.localNodeMatrices;
+    external[0][3].x = 20;
+    model.BlendPoseFromLocalMatrices(left,external,0);
+    Check(model.GetPoseBounds(left,poseLow,poseHigh) && poseLow.x>19,"External pose reused stale bounds");
+
+    Scene scene;
+    scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+    const int modelId = AssetManager::LoadModel((root/"skin.gltf").string());
+    auto visible = scene.CreateEntity("Visible animated mesh");
+    visible.AddComponent<Transform>()->position = Vector3(0,0,-3);
+    visible.AddComponent<Model>()->modelId = modelId;
+    visible.AddComponent<ModelAnimation>();
+    auto hidden = scene.CreateEntity("Offscreen animated mesh");
+    hidden.AddComponent<Transform>()->position = Vector3(0,0,3);
+    hidden.AddComponent<Model>()->modelId = modelId;
+    hidden.AddComponent<ModelAnimation>();
+    ModelAnimation3DSystem evaluator;
+    evaluator.Update(scene.GetRegistry(),0);
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto render = [&] {
+        RenderMetrics::BeginFrame(); glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        renderer.Update(scene.GetRegistry(),1.f/60);
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();
+    };
+    render();
+    Check(RenderMetrics::Latest().draws==1 && RenderMetrics::Latest().culled==1,
+        "Offscreen animated model still submitted a draw");
+    Check(RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),
+        "Culled animated model uploaded its vertex data");
+    hidden.GetComponent<Transform>().position.z=-3;
+    render();
+    Check(RenderMetrics::Latest().draws==2 && RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),
+        "Animated model failed to return to view with its own pose buffer");
+    visible.GetComponent<Transform>().position.z=3;
+    hidden.GetComponent<Transform>().position.z=3;
+    render();
+    Check(RenderMetrics::Latest().draws==0 && RenderMetrics::Latest().skinUploadBytes==0,
+        "Hidden animated scene kept drawing/uploading meshes");
+    auto &falling = hidden.GetComponent<ModelAnimation>();
+    falling.externalLocalNodeMatrices = falling.pose.localNodeMatrices;
+    falling.externalLocalNodeMatrices[0][3] = Vector4(0,0,-6,1);
+    evaluator.Update(scene.GetRegistry(),0);
+    render();
+    Check(RenderMetrics::Latest().draws==1,"External pose entering the view was culled using clip/resting bounds");
+    falling.externalLocalNodeMatrices.clear(); falling.playAnimation=false;
+    hidden.AddComponent<Ragdoll>()->freezePoseOnDisable=true;
+    render();
+    Check(RenderMetrics::Latest().draws==1 && RenderMetrics::Latest().skinUploadBytes==0,
+        "Frozen ragdoll lost its posed bounds or reuploaded its mesh");
     model.Free();shader.UnUse();std::filesystem::remove_all(root);
-    std::cout<<"Skinned GPU pose isolation, frozen reuse, copy-on-edit, updates and reload cleanup passed\n";
+    std::cout<<"Skinned pose caching, conservative bounds, offscreen draws/uploads and visibility restoration passed\n";
 }
 
 static void RoomOcclusion(Window& window) {
@@ -1538,8 +1627,8 @@ int main(int argc,char** argv) {
         Window window("Renderer tests",320,240,true);
         ImportedTextureLoading();
         ImportedHierarchyGeometry();
-        AnimationUpdateCadence();
-        SkinnedPoseBuffers();
+        AnimationUpdateCadence(window);
+        SkinnedPoseBuffers(window);
         Time::Init(120);
         Time::StartFrame();SDL_Delay(2200);Time::EndFrame();
         const auto resumed=SDL_GetTicks();
@@ -1588,9 +1677,12 @@ int main(int argc,char** argv) {
         Check(model.SetRuntimePrimitives({triangle}),"Runtime model failed");
         Vector3 minimum,maximum;
         Check(model.GetLocalBounds(minimum,maximum) && maximum.x==.4f,"Bounds failed");
+        Check(model.GetAnimationBounds(minimum,maximum) && maximum.x>.4f,"Conservative bounds failed");
+        const auto originalEnvelope = maximum;
         triangle.vertices[1].position.x=.5f;
         Check(model.SetRuntimePrimitives({triangle}),"Geometry edit failed");
         Check(model.GetLocalBounds(minimum,maximum) && maximum.x==.5f,"Cached bounds not invalidated");
+        Check(model.GetAnimationBounds(minimum,maximum) && maximum.x>originalEnvelope.x,"Animated envelope survived a geometry replacement");
         ShaderGraphDocument graph;
         graph.nodes={CreateShaderGraphNode("Normal",1,{})};graph.outputColor={1,"normal"};
         std::string vertex,fragment;BuildShaderGraphSources(graph,vertex,fragment);

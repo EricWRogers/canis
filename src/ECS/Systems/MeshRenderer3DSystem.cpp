@@ -2,6 +2,7 @@
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/VFX/Trails.hpp>
 #include <Canis/Frustum.hpp>
+#include <Canis/AnimationVisibility.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/RenderVisibility.hpp>
@@ -421,8 +422,7 @@ namespace Canis
         bool CullBounds(entt::registry& registry,entt::entity handle,ModelAsset& asset,
                         Model& model,Shader* defaultShader,Vector3& minimum,Vector3& maximum)
         {
-            if (!RenderMetrics::CullingEnabled() || asset.HasDeformingGeometry() ||
-                registry.try_get<ModelAnimation>(handle) || registry.try_get<Terrain>(handle)) return false;
+            if (!RenderMetrics::CullingEnabled() || registry.try_get<Terrain>(handle)) return false;
             if (auto* material=registry.try_get<Material>(handle)) {
                 auto safeShader = [defaultShader](i32 materialId) {
                     if (materialId < 0) return true; // Empty slots use the base material.
@@ -439,6 +439,8 @@ namespace Canis
                 for (i32 slot : material->materialIds)
                     if (!safeShader(slot)) return false;
             }
+            if (asset.HasDeformingGeometry() || registry.try_get<ModelAnimation>(handle))
+                return AnimatedModelBounds(registry,handle,asset,model,minimum,maximum);
             return asset.GetLocalBounds(minimum,maximum,model.nodeIndex,model.applyNodeTransform);
         }
 
@@ -1572,7 +1574,7 @@ namespace Canis
                 if(cullable)LODBounds(handle,model,minimum,maximum);
                 // Moving rigid models use per-view bounds tests. Keep the spatial
                 // tree static so one moving actor cannot rebuild the city BVH.
-                if(cullable && StaticRenderTransform(_registry, handle, model)) {
+                if(cullable && !asset->HasDeformingGeometry() && !_registry.try_get<ModelAnimation>(handle) && StaticRenderTransform(_registry, handle, model)) {
                     auto& record=cache.frameMatrices.at(handle);
                     if(record.boundsRevision!=record.revision || record.localMinimum!=minimum || record.localMaximum!=maximum) {
                         Vector3 lo(FLT_MAX),hi(-FLT_MAX);

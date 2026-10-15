@@ -1344,6 +1344,9 @@ namespace Canis
         // Clip pose evaluations per second; zero evaluates every frame.
         // Playback time still advances every frame. External poses bypass this limit.
         float updateRate = 0.0f;
+        // Hidden skeleton sampling; playback, AI, physics and events keep ticking.
+        // Zero disables visibility throttling. Visible poses retain updateRate.
+        float offscreenUpdateRate = 8.0f;
         float animationTime = 0.0f;
         i32 animationIndex = 0;
         // Locks selected animated skeleton-root translation axes to their
@@ -1375,6 +1378,7 @@ namespace Canis
         // Runtime caching to skip redundant animation evaluation.
         bool poseInitialized = false;
         double poseUpdateAccumulator = 0.0;
+        bool wasOffscreen = false;
         i32 lastEvaluatedAnimationIndex = -1;
         float lastEvaluatedAnimationTime = 0.0f;
         Vector3 lastEvaluatedRootMotionMask = Vector3(0.0f);

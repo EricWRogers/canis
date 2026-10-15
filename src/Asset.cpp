@@ -2526,6 +2526,7 @@ namespace Canis
     {
         ++m_geometryRevision;
         m_boundsCache.clear();
+        m_animationBoundsCache.clear();
         for (auto& cached : m_poseGPUCaches) if (auto cache=cached.lock()) cache->Clear();
         m_poseGPUCaches.clear();
         m_bakedVisibility={};
@@ -3654,6 +3655,169 @@ namespace Canis
         _min = minBounds;
         _max = maxBounds;
         m_boundsCache[key]={_min,_max};
+        return true;
+    }
+
+    bool ModelAsset::GetAnimationBounds(Vector3 &_min, Vector3 &_max, i32 _nodeIndex, bool _applyNodeTransform) const
+    {
+        const auto key = std::make_pair(_nodeIndex, _applyNodeTransform);
+        if (auto found = m_animationBoundsCache.find(key); found != m_animationBoundsCache.end())
+        {
+            _min = found->second.first;
+            _max = found->second.second;
+            return true;
+        }
+
+        // Bound each node's distance and scale from the model origin. Rotations
+        // preserve radius, so this contains poses between keys as well as keys.
+        // It is intentionally wider than the resting mesh's bounding box.
+        std::vector<float> translations(m_nodes.size()), scales(m_nodes.size());
+        for (size_t index = 0; index < m_nodes.size(); ++index)
+        {
+            const auto &node = m_nodes[index];
+            translations[index] = glm::length(node.translation);
+            scales[index] = std::max({std::abs(node.scale.x), std::abs(node.scale.y), std::abs(node.scale.z)});
+            if (node.hasMatrix)
+            {
+                translations[index] = std::max(translations[index], glm::length(Vector3(node.localMatrix[3])));
+                // sqrt(||A||1 * ||A||inf) bounds the spectral norm, including shear.
+                float columnNorm = 0.0f, rowNorm = 0.0f;
+                for (int axis = 0; axis < 3; ++axis)
+                {
+                    float columnSum = 0.0f, rowSum = 0.0f;
+                    for (int other = 0; other < 3; ++other)
+                    {
+                        columnSum += std::abs(node.localMatrix[axis][other]);
+                        rowSum += std::abs(node.localMatrix[other][axis]);
+                    }
+                    columnNorm = std::max(columnNorm, columnSum);
+                    rowNorm = std::max(rowNorm, rowSum);
+                }
+                scales[index] = std::max(scales[index], std::sqrt(columnNorm * rowNorm));
+            }
+        }
+        for (const auto &clip : m_animations)
+            for (const auto &channel : clip.channels)
+            {
+                if (channel.targetNode < 0 || channel.targetNode >= int(m_nodes.size()) ||
+                    channel.sampler < 0 || channel.sampler >= int(clip.samplers.size()))
+                    continue;
+                const auto &sampler = clip.samplers[channel.sampler];
+                if (channel.path == AnimationPath3D::ROTATION) continue;
+                // Hermite curves can overshoot their keys. Keep the old fail-open
+                // behavior until a conservative tangent envelope is available.
+                if (sampler.cubicSpline) return false;
+                for (const auto &value : sampler.outputs)
+                {
+                    if (channel.path == AnimationPath3D::TRANSLATION)
+                        translations[channel.targetNode] = std::max(translations[channel.targetNode], glm::length(Vector3(value)));
+                    else if (channel.path == AnimationPath3D::SCALE)
+                        scales[channel.targetNode] = std::max({scales[channel.targetNode], std::abs(value.x), std::abs(value.y), std::abs(value.z)});
+                }
+            }
+
+        std::vector<float> globalTranslations(m_nodes.size()), globalScales(m_nodes.size());
+        std::vector<unsigned char> visited(m_nodes.size());
+        auto resolve = [&](auto &&self, int index) -> bool
+        {
+            if (visited[index] == 2) return true;
+            if (visited[index] == 1) return false;
+            visited[index] = 1;
+            const int parent = m_nodes[index].parent;
+            globalTranslations[index] = translations[index];
+            globalScales[index] = scales[index];
+            if (parent >= 0 && parent < int(m_nodes.size()))
+            {
+                if (!self(self, parent)) return false;
+                globalTranslations[index] += globalScales[parent] * translations[index];
+                globalScales[index] *= globalScales[parent];
+            }
+            visited[index] = 2;
+            return true;
+        };
+        for (int index = 0; index < int(m_nodes.size()); ++index)
+            if (!resolve(resolve, index)) return false;
+
+        float radius = 0.0f;
+        bool hasBounds = false;
+        for (const auto &primitive : m_primitives)
+        {
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex)) continue;
+            if (primitive.dynamicVertices && !primitive.hasSkinning) return false;
+            const bool skinned = primitive.hasSkinning && primitive.skinIndex >= 0 &&
+                primitive.skinIndex < int(m_skins.size()) && primitive.skinVertices.size() == primitive.bindVertices.size();
+            for (size_t index = 0; index < primitive.bindVertices.size(); ++index)
+            {
+                const auto position = primitive.bindVertices[index].position;
+                float vertexRadius = glm::length(position);
+                if (skinned)
+                {
+                    const auto &skin = m_skins[primitive.skinIndex];
+                    const auto &vertex = primitive.skinVertices[index];
+                    for (int influence = 0; influence < 4; ++influence)
+                    {
+                        if (vertex.weights[influence] <= 0.0f) continue;
+                        const int joint = int(vertex.joints[influence]);
+                        if (joint < 0 || joint >= int(skin.joints.size()) || joint >= int(skin.inverseBindMatrices.size())) continue;
+                        const int node = skin.joints[joint];
+                        if (node < 0 || node >= int(m_nodes.size())) continue;
+                        const float jointRadius = glm::length(Vector3(skin.inverseBindMatrices[joint] * Vector4(position, 1)));
+                        vertexRadius = std::max(vertexRadius, globalTranslations[node] + globalScales[node] * jointRadius);
+                    }
+                    // Normalized nonnegative skin weights form a convex combination
+                    // of joint-transformed positions, contained by the largest radius.
+                }
+                else if ((_nodeIndex < 0 || _applyNodeTransform) && primitive.nodeIndex >= 0 && primitive.nodeIndex < int(m_nodes.size()))
+                    vertexRadius = globalTranslations[primitive.nodeIndex] + globalScales[primitive.nodeIndex] * vertexRadius;
+                if (!std::isfinite(vertexRadius)) return false;
+                radius = std::max(radius, vertexRadius);
+                hasBounds = true;
+            }
+        }
+        if (!hasBounds) return false;
+        _min = Vector3(-radius - 0.01f);
+        _max = Vector3(radius + 0.01f);
+        m_animationBoundsCache[key] = {_min, _max};
+        return true;
+    }
+
+    bool ModelAsset::GetPoseBounds(const Pose3D &_pose, Vector3 &_min, Vector3 &_max, i32 _nodeIndex, bool _applyNodeTransform) const
+    {
+        if (_pose.boundsRevision != _pose.skinRevision)
+        {
+            _pose.boundsCache.clear();
+            _pose.boundsRevision = _pose.skinRevision;
+        }
+        const auto key = std::make_pair(_nodeIndex, _applyNodeTransform);
+        if (auto found = _pose.boundsCache.find(key); found != _pose.boundsCache.end())
+        {
+            _min = found->second.first; _max = found->second.second;
+            return true;
+        }
+        Vector3 low(std::numeric_limits<float>::max()), high(std::numeric_limits<float>::lowest());
+        bool hasBounds = false;
+        for (size_t index = 0; index < m_primitives.size(); ++index)
+        {
+            const auto &primitive = m_primitives[index];
+            if (!PrimitiveMatchesNodeFilter(primitive, _nodeIndex)) continue;
+            const bool skinned = primitive.hasSkinning && index < _pose.skinnedVertices.size() &&
+                _pose.skinnedVertices[index].size() == primitive.bindVertices.size();
+            Matrix4 matrix(1);
+            if (!skinned && (_nodeIndex < 0 || _applyNodeTransform) && primitive.nodeIndex >= 0)
+            {
+                if (primitive.nodeIndex >= int(_pose.globalNodeMatrices.size())) return false;
+                matrix = _pose.globalNodeMatrices[primitive.nodeIndex];
+            }
+            for (const auto &vertex : skinned ? _pose.skinnedVertices[index] : primitive.bindVertices)
+            {
+                const Vector3 point(matrix * Vector4(vertex.position, 1));
+                if (!std::isfinite(point.x) || !std::isfinite(point.y) || !std::isfinite(point.z)) return false;
+                low = glm::min(low, point); high = glm::max(high, point); hasBounds = true;
+            }
+        }
+        if (!hasBounds) return false;
+        _min = low - Vector3(.01f); _max = high + Vector3(.01f);
+        _pose.boundsCache[key] = {_min, _max};
         return true;
     }
 
