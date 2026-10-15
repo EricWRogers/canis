@@ -98,8 +98,11 @@ public sealed class ConvexMeshCollider : NativeComponent
     public string ModelPath { get => GetField<string>("modelPath"); set => SetField("modelPath", value); }
 }
 
+public enum LightMode { Realtime = 0, Mixed = 1, Baked = 2 }
+
 public sealed class DirectionalLight : NativeComponent
 {
+    public LightMode Mode { get => (LightMode)GetField<int>("mode"); set => SetField("mode", (int)value); }
     public bool Enabled { get => GetField<bool>("enabled"); set => SetField("enabled", value); }
     public Vector4 Color { get => GetField<Vector4>("color"); set => SetField("color", value); }
     public float Intensity { get => GetField<float>("intensity"); set => SetField("intensity", value); }
@@ -154,10 +157,22 @@ public sealed class ParticleEmitter : NativeComponent
 
 public sealed class PointLight : NativeComponent
 {
+    public LightMode Mode { get => (LightMode)GetField<int>("mode"); set => SetField("mode", (int)value); }
     public bool Enabled { get => GetField<bool>("enabled"); set => SetField("enabled", value); }
     public Vector4 Color { get => GetField<Vector4>("color"); set => SetField("color", value); }
     public float Intensity { get => GetField<float>("intensity"); set => SetField("intensity", value); }
     public float Range { get => GetField<float>("range"); set => SetField("range", value); }
+}
+
+public sealed class SpotLight : NativeComponent
+{
+    public LightMode Mode { get => (LightMode)GetField<int>("mode"); set => SetField("mode", (int)value); }
+    public bool Enabled { get => GetField<bool>("enabled"); set => SetField("enabled", value); }
+    public Vector4 Color { get => GetField<Vector4>("color"); set => SetField("color", value); }
+    public float Intensity { get => GetField<float>("intensity"); set => SetField("intensity", value); }
+    public float Range { get => GetField<float>("range"); set => SetField("range", value); }
+    public float SpotAngle { get => GetField<float>("spotAngle"); set => SetField("spotAngle", value); }
+    public float InnerAngle { get => GetField<float>("innerAngle"); set => SetField("innerAngle", value); }
 }
 
 public sealed class PrefabInstance : NativeComponent

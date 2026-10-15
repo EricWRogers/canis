@@ -5343,6 +5343,7 @@ namespace Canis
                 {
                     DirectionalLight& light = _entity.GetComponent<DirectionalLight>();
                     YAML::Node comp;
+                    comp["mode"] = light.mode;
                     comp["enabled"] = light.enabled;
                     comp["color"] = light.color;
                     comp["intensity"] = light.intensity;
@@ -5354,6 +5355,9 @@ namespace Canis
                 if (auto comp = _node["Canis::DirectionalLight"])
                 {
                     auto &light = *_entity.AddComponent<DirectionalLight>();
+                    // Legacy scenes used baked direct lighting with runtime lights
+                    // on dynamic objects: preserve that behavior as Mixed.
+                    light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
                     light.enabled = comp["enabled"].as<bool>(true);
                     light.color = comp["color"].as<Vector4>(Color(1.0f));
                     light.intensity = comp["intensity"].as<float>(1.0f);
@@ -5366,6 +5370,7 @@ namespace Canis
                 DirectionalLight* light = nullptr;
                 if (_entity.HasComponent<DirectionalLight>() && ((light = &_entity.GetComponent<DirectionalLight>()), true))
                 {
+                    DrawInspectorComboField("mode", _conf.name.c_str(), &light->mode, LightMode::Labels, 3);
                     DrawInspectorField(_editor, "enabled", _conf.name.c_str(), light->enabled);
                     DrawInspectorColorField("color", _conf.name.c_str(), light->color);
                     DrawInspectorField(_editor, "intensity", _conf.name.c_str(), light->intensity);
@@ -5393,6 +5398,7 @@ namespace Canis
                 {
                     PointLight& light = _entity.GetComponent<PointLight>();
                     YAML::Node comp;
+                    comp["mode"] = light.mode;
                     comp["enabled"] = light.enabled;
                     comp["color"] = light.color;
                     comp["intensity"] = light.intensity;
@@ -5404,6 +5410,9 @@ namespace Canis
                 if (auto comp = _node["Canis::PointLight"])
                 {
                     auto &light = *_entity.AddComponent<PointLight>();
+                    // Legacy scenes used baked direct lighting with runtime lights
+                    // on dynamic objects: preserve that behavior as Mixed.
+                    light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
                     light.enabled = comp["enabled"].as<bool>(true);
                     light.color = comp["color"].as<Vector4>(Color(1.0f));
                     light.intensity = comp["intensity"].as<float>(1.2f);
@@ -5416,6 +5425,7 @@ namespace Canis
                 PointLight* light = nullptr;
                 if (_entity.HasComponent<PointLight>() && ((light = &_entity.GetComponent<PointLight>()), true))
                 {
+                    DrawInspectorComboField("mode", _conf.name.c_str(), &light->mode, LightMode::Labels, 3);
                     DrawInspectorField(_editor, "enabled", _conf.name.c_str(), light->enabled);
                     DrawInspectorColorField("color", _conf.name.c_str(), light->color);
                     DrawInspectorField(_editor, "intensity", _conf.name.c_str(), light->intensity);
@@ -5425,6 +5435,69 @@ namespace Canis
         };
 
         RegisterScript(pointLightConf);
+
+        ScriptConf spotLightConf = {
+            .name = "Canis::SpotLight",
+            .Construct = nullptr,
+            .Add = [this](Entity& _entity) -> void {
+                if (!_entity.HasComponent<Transform>())
+                    _entity.AddComponent<Transform>();
+
+                _entity.AddComponent<SpotLight>();
+            },
+            .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<SpotLight>(); },
+            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<SpotLight>(); },
+            .Get = [this](Entity& _entity) -> void* { return _entity.HasComponent<SpotLight>() ? (void*)(&_entity.GetComponent<SpotLight>()) : nullptr; },
+            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
+                if (_entity.HasComponent<SpotLight>())
+                {
+                    SpotLight& light = _entity.GetComponent<SpotLight>();
+                    YAML::Node comp;
+                    comp["mode"] = light.mode;
+                    comp["enabled"] = light.enabled;
+                    comp["color"] = light.color;
+                    comp["intensity"] = light.intensity;
+                    comp["range"] = light.range;
+                    comp["spotAngle"] = light.spotAngle;
+                    comp["innerAngle"] = light.innerAngle;
+                    _node["Canis::SpotLight"] = comp;
+                }
+            },
+            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
+                if (auto comp = _node["Canis::SpotLight"])
+                {
+                    auto &light = *_entity.AddComponent<SpotLight>();
+                    // Legacy scenes used baked direct lighting with runtime lights
+                    // on dynamic objects: preserve that behavior as Mixed.
+                    light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
+                    light.enabled = comp["enabled"].as<bool>(true);
+                    light.color = comp["color"].as<Vector4>(Color(1.0f));
+                    light.intensity = comp["intensity"].as<float>(1.2f);
+                    light.range = comp["range"].as<float>(35.0f);
+                    light.spotAngle = std::clamp(comp["spotAngle"].as<float>(55.f), .1f, 179.f);
+                    light.innerAngle = std::clamp(comp["innerAngle"].as<float>(35.f), 0.f, light.spotAngle);
+                    if (_callCreate)
+                        light.Create();
+                }
+            },
+            .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
+                SpotLight* light = nullptr;
+                if (_entity.HasComponent<SpotLight>() && ((light = &_entity.GetComponent<SpotLight>()), true))
+                {
+                    DrawInspectorComboField("mode", _conf.name.c_str(), &light->mode, LightMode::Labels, 3);
+                    DrawInspectorField(_editor, "enabled", _conf.name.c_str(), light->enabled);
+                    DrawInspectorColorField("color", _conf.name.c_str(), light->color);
+                    DrawInspectorField(_editor, "intensity", _conf.name.c_str(), light->intensity);
+                    DrawInspectorField(_editor, "range", _conf.name.c_str(), light->range);
+                    DrawInspectorField(_editor, "spotAngle", _conf.name.c_str(), light->spotAngle);
+                    DrawInspectorField(_editor, "innerAngle", _conf.name.c_str(), light->innerAngle);
+                    light->spotAngle = std::clamp(light->spotAngle, .1f, 179.f);
+                    light->innerAngle = std::clamp(light->innerAngle, 0.f, light->spotAngle);
+                }
+            },
+        };
+
+        RegisterScript(spotLightConf);
 
         ScriptConf materialConf = {
             .name = "Canis::Material",
@@ -6639,6 +6712,16 @@ namespace Canis
         };
 
         RegisterInspectorItem(inspectorCreatePointLight);
+        InspectorItemRightClick inspectorCreateSpotLight = {
+            .name = "Create Spot Light",
+            .Func = [](App& app, Editor& editor, Entity& parent, std::vector<ScriptConf>& confs) {
+                auto light = app.scene.CreateEntity("Spot Light");
+                light->AddComponent<Transform>()->position = Vector3(2, 2.5f, 2);
+                light->AddComponent<SpotLight>();
+            }
+        };
+        RegisterInspectorItem(inspectorCreateSpotLight);
+
 
         InspectorItemRightClick inspectorCreateCube = {
             .name = "Create Cube",

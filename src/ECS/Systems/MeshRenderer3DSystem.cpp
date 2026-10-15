@@ -80,6 +80,7 @@ namespace Canis
         struct DirectionalLightState
         {
             bool enabled = false;
+            int mode = LightMode::Realtime;
             Vector3 direction = Vector3(-0.4f, -1.0f, -0.25f);
             Vector3 color = Vector3(1.0f, 0.98f, 0.95f);
             float intensity = 1.0f;
@@ -91,6 +92,9 @@ namespace Canis
             Vector3 color = Vector3(1.0f);
             float intensity = 1.0f;
             float range = 12.0f;
+            int mode = LightMode::Realtime;
+            Vector3 direction{0, 0, -1};
+            Vector2 cone{-1, -2};
         };
 
         struct TransparentModelEntry
@@ -496,9 +500,11 @@ namespace Canis
             {
                 DirectionalLight &light = directionalLightView.get<DirectionalLight>(entityHandle);
                 Entity *entity = light.entity;
-                if (entity == nullptr || !entity->Active())
+                if (entity == nullptr || !entity->Active() || !light.enabled || light.mode == LightMode::Baked)
                     continue;
-
+                if (auto* t = _registry.try_get<Transform>(entityHandle); t && !t->IsActiveInHierarchy())
+                    continue;
+                state.mode = light.mode;
                 state.enabled = light.enabled;
                 state.direction = light.direction;
                 const float directionLength = glm::length(state.direction);
@@ -531,10 +537,11 @@ namespace Canis
                 if (entity == nullptr)
                     entity = lightTransform.entity;
 
-                if (entity == nullptr || !lightTransform.IsActiveInHierarchy() || !light.enabled)
+                if (entity == nullptr || !lightTransform.IsActiveInHierarchy() || !light.enabled || light.mode == LightMode::Baked)
                     continue;
 
                 PointLightState state = {};
+                state.mode = light.mode;
                 state.position = lightTransform.GetGlobalPosition();
                 state.color = Vector3(light.color.r, light.color.g, light.color.b);
                 state.intensity = light.intensity;
@@ -542,6 +549,24 @@ namespace Canis
                 lights.push_back(state);
             }
 
+            for (auto handle : _registry.view<SpotLight, Transform>())
+            {
+                if (lights.size() >= kMaxPointLights) break;
+                auto& light = _registry.get<SpotLight>(handle);
+                auto& t = _registry.get<Transform>(handle);
+                if (!t.IsActiveInHierarchy() || !light.enabled || light.mode == LightMode::Baked) continue;
+                PointLightState state;
+                state.mode = light.mode;
+                state.position = t.GetGlobalPosition();
+                state.direction = glm::normalize(t.GetGlobalRotation() * Vector3(0, 0, -1));
+                state.color = Vector3(light.color);
+                state.intensity = light.intensity;
+                state.range = light.range;
+                const float outer = std::clamp(light.spotAngle, .1f, 179.f);
+                const float inner = std::clamp(light.innerAngle, 0.f, outer);
+                state.cone = {std::cos(glm::radians(inner * .5f)), std::cos(glm::radians(outer * .5f))};
+                lights.push_back(state);
+            }
             return lights;
         }
     } // namespace
@@ -1812,6 +1837,8 @@ namespace Canis
                 currentShader->SetVec3("ambientLightColor", ambientLight.r, ambientLight.g, ambientLight.b);
                 currentShader->SetFloat("ambientLightIntensity", scene->GetEnvironmentAmbientLightIntensity());
 
+                currentShader->SetBool("canisDirectCapture", m_capturingProbe);
+                currentShader->SetInt("directionalLightMode", directionalLight.mode);
                 currentShader->SetBool("useDirectionalLight", directionalLight.enabled);
                 currentShader->SetVec3("directionalLightDirection", directionalLight.direction);
                 currentShader->SetVec3("directionalLightColor", directionalLight.color);
@@ -1839,6 +1866,9 @@ namespace Canis
                     currentShader->SetVec3("pointLightColors[" + indexString + "]", light.color);
                     currentShader->SetFloat("pointLightIntensities[" + indexString + "]", light.intensity);
                     currentShader->SetFloat("pointLightRanges[" + indexString + "]", light.range);
+                    currentShader->SetInt("pointLightModes[" + indexString + "]", light.mode);
+                    currentShader->SetVec3("pointLightDirections[" + indexString + "]", light.direction);
+                    currentShader->SetVec2("pointLightCones[" + indexString + "]", light.cone);
                 }
             }
 

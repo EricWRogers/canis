@@ -1,4 +1,5 @@
 #include <Canis/ProbeLightingGLSL.hpp>
+#include <Canis/DirectLightingGLSL.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/OpenGL.hpp>
@@ -123,6 +124,9 @@ namespace Canis
         const std::string marker="[CANIS PROBE LIGHTING]";
         if(auto at=expandedFragment.find(marker);at!=std::string::npos)
             expandedFragment.replace(at,marker.size(),ProbeLightingGLSL);
+        const std::string directMarker="[CANIS DIRECT LIGHTING]";
+        if(auto at=expandedFragment.find(directMarker);at!=std::string::npos)
+            expandedFragment.replace(at,directMarker.size(),DirectLightingGLSL);
         m_fragmentSource=expandedFragment;
         CompileShaderSource(expandedFragment, name+":fragment", m_fragmentShaderId);
     }

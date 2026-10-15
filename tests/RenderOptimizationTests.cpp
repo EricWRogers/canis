@@ -1,4 +1,5 @@
 #include <Canis/StaticVisibility.hpp>
+#include <Canis/AssetPipeline.hpp>
 #include <Canis/Asset.hpp>
 #include <Canis/Frustum.hpp>
 #include <Canis/OpenGL.hpp>
@@ -1392,6 +1393,53 @@ static void MirroredNormalMapping() {
     Check(glGetError()==GL_NO_ERROR,"Normal map regression produced an OpenGL error");glDeleteTextures(1,&texture);glDeleteBuffers(1,&vbo);glDeleteVertexArrays(1,&vao);shader.UnUse();glActiveTexture(GL_TEXTURE0);
 }
 
+static void LightModesAndSpotCones(Window& window) {
+    auto root=std::filesystem::temp_directory_path()/("canis-light-modes-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    Pipeline::Mesh mesh;Pipeline::Primitive quad;
+    quad.vertices={{{-3,-3,0},{0,0,1},{},Vector4(0,0,0,1)},{{3,-3,0},{0,0,1},{},Vector4(0,0,0,1)},
+                   {{3,3,0},{0,0,1},{},Vector4(0,0,0,1)},{{-3,3,0},{0,0,1},{},Vector4(0,0,0,1)}};
+    quad.indices={0,1,2,0,2,3};mesh.primitives.push_back(quad);
+    Pipeline::WriteGltf(mesh,root/"receiver.gltf",true);
+    Scene scene;scene.GetBakingSettings().lightmaps=true;scene.SetEnvironmentAmbientLightIntensity(0);
+    auto receiver=scene.CreateEntity("Baked receiver");receiver.AddComponent<Transform>()->position={0,0,-4};
+    receiver.AddComponent<Model>()->modelId=AssetManager::LoadModel((root/"receiver.gltf").string());
+    auto car=scene.CreateEntity("Car");car.AddComponent<Transform>();
+    auto lamp=scene.CreateEntity("Headlight");lamp.AddComponent<Transform>()->SetParent(car.TryGet());
+    auto& spot=*lamp.AddComponent<SpotLight>();spot.intensity=3;spot.range=15;spot.spotAngle=40;spot.innerAngle=20;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&]() {
+        scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        renderer.Update(scene.GetRegistry(),0);
+        std::array<unsigned char,4> pixel;glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());return pixel;
+    };
+    spot.enabled=false;auto dark=draw();spot.enabled=true;
+    auto realtime=draw();Check(realtime[0]>dark[0]+30,"Realtime headlight failed to illuminate a baked surface");
+    spot.mode=LightMode::Baked;Check(draw()==dark,"Baked spotlight still used runtime direct lighting");
+    spot.mode=LightMode::Mixed;Check(draw()==dark,"Mixed spotlight double-lit a baked surface");
+    scene.GetBakingSettings().lightmaps=false;Check(draw()[0]>dark[0]+30,"Mixed light failed on an unbaked receiver");
+    scene.GetBakingSettings().lightmaps=true;spot.mode=LightMode::Realtime;
+    car.GetComponent<Transform>().rotation=glm::angleAxis(glm::pi<float>(),Vector3(0,1,0));
+    Check(draw()==dark,"Spotlight cone did not follow its car parent");
+    car.GetComponent<Transform>().rotation=Quaternion(1,0,0,0);car.GetComponent<Transform>().position={4,0,0};
+    Check(draw()==dark,"Spotlight leaked light outside its cone");
+    car.GetComponent<Transform>().position=Vector3(0);spot.enabled=false;
+    // Baked lights must be filtered before the eight-light runtime budget.
+    for(int i=0;i<12;i++){auto e=scene.CreateEntity("Baked lamp");e.AddComponent<Transform>();e.AddComponent<PointLight>()->mode=LightMode::Baked;}
+    auto point=scene.CreateEntity("Realtime point");point.AddComponent<Transform>();point.AddComponent<PointLight>()->intensity=3;
+    Check(draw()[0]>dark[0]+30,"Baked point lights consumed the runtime light budget");
+    point.GetComponent<PointLight>().mode=LightMode::Mixed;Check(draw()==dark,"Mixed point double-lit a baked surface");
+    auto sun=scene.CreateEntity("Sun");auto& directional=*sun.AddComponent<DirectionalLight>();directional.direction={0,0,-1};directional.mode=LightMode::Realtime;
+    Check(draw()[0]>dark[0]+30,"Realtime directional light failed on a baked surface");
+    directional.mode=LightMode::Mixed;Check(draw()==dark,"Mixed directional light double-lit baked geometry");
+    directional.mode=LightMode::Baked;Check(draw()==dark,"Baked directional light used runtime lighting");
+    Check(glGetError()==GL_NO_ERROR,"Light mode rendering generated an OpenGL error");
+    renderer.OnDestroy();std::filesystem::remove_all(root);
+    std::cout<<"Realtime/Mixed/Baked modes, baked receivers, spot cones, parent motion and light budgets passed\n";
+}
+
 static void LightingProbeRendering(Window& window) {
     // A red wall behind the camera must illuminate/reflect in a dynamic white receiver.
     const auto root=std::filesystem::temp_directory_path()/("canis-probes-"+std::to_string(SDL_GetTicksNS()));
@@ -1610,6 +1658,7 @@ int main(int argc,char** argv) {
         DynamicRigidBatches(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);
+        LightModesAndSpotCones(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;
     } catch(const std::exception& error) {std::cerr<<error.what()<<'\n';return 1;}

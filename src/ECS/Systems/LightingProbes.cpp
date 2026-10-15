@@ -102,6 +102,8 @@ namespace Canis
         for (auto handle : registry.view<DirectionalLight>())
         {
             const auto& light = registry.get<DirectionalLight>(handle);
+            if (light.mode == LightMode::Realtime) continue;
+            bytes(&light.mode, sizeof(light.mode));
             bytes(&light.direction, sizeof(light.direction));
             bytes(&light.color, sizeof(light.color));
             bytes(&light.intensity, sizeof(light.intensity));
@@ -110,11 +112,30 @@ namespace Canis
         for (auto handle : registry.view<PointLight, Transform>())
         {
             auto light = registry.get<PointLight>(handle);
+            if (light.mode == LightMode::Realtime) continue;
+            bytes(&light.mode, sizeof(light.mode));
             auto p = registry.get<Transform>(handle).GetGlobalPosition();
             bytes(&p, sizeof(p));
             bytes(&light.color, sizeof(light.color));
             bytes(&light.intensity, sizeof(light.intensity));
             bytes(&light.range, sizeof(light.range));
+            bytes(&light.enabled, sizeof(light.enabled));
+        }
+        for (auto handle : registry.view<SpotLight, Transform>())
+        {
+            const auto& light = registry.get<SpotLight>(handle);
+            if (light.mode == LightMode::Realtime) continue;
+            const auto& t = registry.get<Transform>(handle);
+            auto position = t.GetGlobalPosition();
+            auto rotation = t.GetGlobalRotation();
+            bytes(&position, sizeof(position));
+            bytes(&rotation, sizeof(rotation));
+            bytes(&light.mode, sizeof(light.mode));
+            bytes(&light.color, sizeof(light.color));
+            bytes(&light.intensity, sizeof(light.intensity));
+            bytes(&light.range, sizeof(light.range));
+            bytes(&light.spotAngle, sizeof(light.spotAngle));
+            bytes(&light.innerAngle, sizeof(light.innerAngle));
             bytes(&light.enabled, sizeof(light.enabled));
         }
         return hash;

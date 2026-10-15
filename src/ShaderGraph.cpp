@@ -883,6 +883,7 @@ namespace Canis
 
             shader
                 << R"GLSL(
+[CANIS DIRECT LIGHTING]
 uniform vec3 cameraPosition;
 uniform bool useDirectionalLight;
 uniform bool useDirectionalShadow;
@@ -911,7 +912,7 @@ float sgBand(float value,float bands) {
 vec3 sgToonLighting(vec3 normal,float bands,float pointSoftness) {
     vec3 n=normalize(normal);
     vec3 light=ambientLightColor*max(ambientLightIntensity,0.0);
-    if(useDirectionalLight) {
+    if(useDirectionalLight && CanisDirectLightVisible(directionalLightMode, false)) {
         vec3 l=normalize(-directionalLightDirection);
         light+=directionalLightColor*directionalLightIntensity*sgBand(max(dot(n,l),0.0),bands)*sgShadow(n,l);
     }
@@ -922,7 +923,7 @@ vec3 sgToonLighting(vec3 normal,float bands,float pointSoftness) {
         float falloff=max(1.0-d/max(pointLightRanges[i],0.001),0.0);
         float lambert=max(dot(n,delta/max(d,0.001)),0.0);
         float diffuse=mix(sgBand(lambert,bands),lambert,clamp(pointSoftness,0.0,1.0));
-        light+=pointLightColors[i]*pointLightIntensities[i]*falloff*falloff*diffuse;
+        light+=pointLightColors[i]*pointLightIntensities[i]*falloff*falloff*diffuse*CanisLightAttenuation(i,delta,false);
     }
     return light;
 }

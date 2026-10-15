@@ -73,6 +73,42 @@ int main()
         app.scene.app = &app;
         RegisterSceneBindings(app);
         struct BindingCleanup { ~BindingCleanup() { UnregisterSceneBindings(); } } bindingCleanup;
+        auto lightNodes = YAML::Load(R"(
+- Entity: 1101
+  Name: Baked point
+  Canis::PointLight: {mode: 2, intensity: 3}
+- Entity: 1102
+  Name: Mixed sun
+  Canis::DirectionalLight: {mode: 1}
+- Entity: 1103
+  Name: Realtime spot
+  Canis::Transform: {position: [0, 1, 0]}
+  Canis::SpotLight: {mode: 0, range: 45, spotAngle: 60, innerAngle: 40}
+- Entity: 1104
+  Name: Legacy light
+  Canis::PointLight: {enabled: true}
+)");
+        auto lights = app.scene.LoadEntityNodes(lightNodes);
+        Check(lights[0]->GetComponent<PointLight>().mode == LightMode::Baked, "Point light mode failed to decode");
+        Check(lights[1]->GetComponent<DirectionalLight>().mode == LightMode::Mixed, "Directional mode failed to decode");
+        Check(lights[2]->GetComponent<SpotLight>().mode == LightMode::Realtime &&
+              lights[2]->GetComponent<SpotLight>().innerAngle == 40, "Spotlight fields failed to decode");
+        Check(lights[3]->GetComponent<PointLight>().mode == LightMode::Mixed, "Legacy light compatibility changed");
+        Check(PointLight{}.mode == LightMode::Realtime && SpotLight{}.mode == LightMode::Realtime,
+              "New lights must default to Realtime");
+        for (auto light : lights)
+        {
+            YAML::Node encoded;
+            for (auto& conf : app.GetComponentRegistry())
+                if ((conf.name == PointLight::ScriptName || conf.name == DirectionalLight::ScriptName || conf.name == SpotLight::ScriptName) && conf.Has(*light))
+                {
+                    conf.Encode(encoded, *light);
+                    auto disk = YAML::Load(YAML::Dump(encoded));
+                    Check(bool(disk[conf.name]["mode"]), "Light mode missing from serialized component");
+                    Check(disk[conf.name]["mode"].as<int>() == encoded[conf.name]["mode"].as<int>(), "Light mode changed in file roundtrip");
+                }
+        }
+        for (auto light : lights) light->Destroy();
         auto entity = app.scene.CreateEntity("BoundEntity");
         entity->AddComponent<Transform>();
         auto name = Encode(std::string("BoundEntity"));

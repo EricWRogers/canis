@@ -4136,6 +4136,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             BlockoutStairs,
             DirectionalLight,
             PointLight,
+            SpotLight,
         };
 
         struct AddComponentEntry
@@ -4148,6 +4149,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             if (_componentName == DirectionalLight::ScriptName)
                 return "3D/Directional Light";
+
+            if (_componentName == SpotLight::ScriptName)
+                return "3D/Spot Light";
 
             if (_componentName == PointLight::ScriptName)
                 return "3D/Point Light";
@@ -4278,6 +4282,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 break;
             case HierarchyCreateType::PointLight:
                 baseName = "Point Light";
+                break;
+            case HierarchyCreateType::SpotLight:
+                baseName = "Spot Light";
                 break;
             case HierarchyCreateType::Empty:
             default:
@@ -4456,6 +4463,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 addRequired(*entity, DirectionalLight::ScriptName);
                 break;
             }
+            case HierarchyCreateType::SpotLight:
+            {
+                addRequired(*entity, SpotLight::ScriptName);
+                break;
+            }
             case HierarchyCreateType::PointLight:
             {
                 addRequired(*entity, PointLight::ScriptName);
@@ -4543,6 +4555,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         create(HierarchyCreateType::DirectionalLight);
                     if (ImGui::MenuItem("Point Light"))
                         create(HierarchyCreateType::PointLight);
+                    if (ImGui::MenuItem("Spot Light"))
+                        create(HierarchyCreateType::SpotLight);
                     ImGui::EndMenu();
                 }
 

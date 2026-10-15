@@ -1214,6 +1214,12 @@ namespace Canis
         float farClip = 1000.0f;
     };
 
+    namespace LightMode
+    {
+        constexpr int Realtime = 0, Mixed = 1, Baked = 2;
+        inline constexpr const char* Labels[] = {"Realtime", "Mixed", "Baked"};
+    }
+
     struct DirectionalLight
     {
     public:
@@ -1227,6 +1233,7 @@ namespace Canis
         void Create() {}
 
 
+        int mode = LightMode::Realtime;
         bool enabled = true;
         Color color = Color(1.0f);
         float intensity = 1.0f;
@@ -1246,10 +1253,34 @@ namespace Canis
         void Create() {}
 
 
+        int mode = LightMode::Realtime;
         bool enabled = true;
         Color color = Color(1.0f);
         float intensity = 1.2f;
         float range = 12.0f;
+    };
+
+    struct SpotLight
+    {
+    public:
+        static constexpr const char* ScriptName = "Canis::SpotLight";
+
+        SpotLight() = default;
+
+
+        explicit SpotLight(Canis::Entity& _entity) : entity(&_entity) {}
+        Entity* entity = nullptr;
+        void Create() {}
+
+
+        int mode = LightMode::Realtime;
+        bool enabled = true;
+        Color color = Color(1.0f);
+        float intensity = 1.2f;
+        float range = 35.0f;
+        // Full cone angles in degrees; forward follows Transform's local -Z.
+        float spotAngle = 55.0f;
+        float innerAngle = 35.0f;
     };
 
     struct Model

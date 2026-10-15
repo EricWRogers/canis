@@ -340,7 +340,8 @@ namespace Canis
             if (active(active, id))
             {
                 auto transform = world(world, id);
-                if (auto l = n["Canis::PointLight"]; l && l["enabled"].as<bool>(true))
+                if (auto l = n["Canis::PointLight"]; l && l["enabled"].as<bool>(true) &&
+                    l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
                 {
                     Light light;
                     light.position = Vector3(transform[3]);
@@ -356,13 +357,30 @@ namespace Canis
                     }
                     lights.push_back(light);
                 }
-                if (auto l = n["Canis::DirectionalLight"]; l && l["enabled"].as<bool>(true))
+                if (auto l = n["Canis::DirectionalLight"]; l && l["enabled"].as<bool>(true) &&
+                    l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
                 {
                     Light light;
                     light.type = 1;
                     light.direction = l["direction"].as<Vector3>();
                     light.color = Color3(l["color"]);
                     light.intensity = l["intensity"].as<float>(1);
+                    lights.push_back(light);
+                }
+                if (auto l = n["Canis::SpotLight"]; l && l["enabled"].as<bool>(true) &&
+                    l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
+                {
+                    Light light;
+                    light.type = 0;
+                    light.position = Vector3(transform[3]);
+                    light.direction = glm::normalize(Vector3(transform * Vector4(0, 0, -1, 0)));
+                    light.color = Color3(l["color"]);
+                    light.intensity = l["intensity"].as<float>(1);
+                    light.range = l["range"].as<float>(35);
+                    float outer = std::clamp(l["spotAngle"].as<float>(55), .1f, 179.f);
+                    float inner = std::clamp(l["innerAngle"].as<float>(35), 0.f, outer);
+                    light.outer = std::cos(glm::radians(outer * .5f));
+                    light.inner = std::cos(glm::radians(inner * .5f));
                     lights.push_back(light);
                 }
                 auto model = n["Canis::Model"];

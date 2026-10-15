@@ -143,6 +143,40 @@ int main()
         auto json = Pipeline::ReadGltf(baked.models[0]).json;
         Check(json["meshes"][0]["primitives"][0]["extras"]["canisBakedLighting"].get<bool>(),
               "Baked geometry lacks shader metadata");
+        // Realtime lamps must never be frozen into the offline result.
+        auto realtime = YAML::Clone(scene);
+        realtime["Entities"][1]["Canis::PointLight"]["mode"] = 0;
+        auto realtimeBake = BakeSceneLighting(realtime, directory / "realtime", options);
+        Check(realtimeBake.lights == 0, "Realtime light leaked into the bake");
+        auto bakedOnly = YAML::Clone(scene);
+        bakedOnly["Entities"][1]["Canis::PointLight"]["mode"] = 2;
+        Check(BakeSceneLighting(bakedOnly, directory / "baked-only", options).lights == 1,
+              "Baked light was omitted from the bake");
+        auto mixed = YAML::Clone(scene);
+        mixed["Entities"][1]["Canis::PointLight"]["mode"] = 1;
+        Check(BakeSceneLighting(mixed, directory / "mixed", options).lights == 1,
+              "Mixed light was omitted from the bake");
+        auto spotScene = YAML::Clone(scene);
+        auto spotNode = spotScene["Entities"][1];
+        spotNode.remove("Canis::PointLight");
+        auto spot = spotNode["Canis::SpotLight"];
+        spot["mode"] = 2; spot["enabled"] = true; spot["color"] = Vector4(1);
+        spot["intensity"] = 4; spot["range"] = 5; spot["spotAngle"] = 50; spot["innerAngle"] = 30;
+        spotNode["Canis::Transform"]["rotation"] = Vector3(-glm::half_pi<float>(),0,0);
+        auto coneBake = BakeSceneLighting(spotScene, directory / "spot", options);
+        Check(coneBake.lights == 1, "Spotlight was omitted from the bake");
+        auto coneMesh = Pipeline::Flatten(Pipeline::ReadGltf(coneBake.models[0]));
+        float litCenter = 0, darkEdge = 0;
+        for (auto vertex : coneMesh.primitives[0].vertices)
+        {
+            auto distance = glm::length(Vector2(vertex.position.x, vertex.position.z));
+            if (distance < .2f) litCenter = std::max(litCenter, vertex.color.x);
+            if (distance > 1.f) darkEdge = std::max(darkEdge, vertex.color.x);
+        }
+        Check(litCenter > darkEdge + .2f, "Baked spotlight did not preserve its cone");
+        spot["mode"] = 0;
+        Check(BakeSceneLighting(spotScene, directory / "realtime-spot", options).lights == 0,
+              "Realtime spotlight leaked into the bake");
         options.cancel = new std::atomic<bool>(true);
         bool canceled = false;
         try
