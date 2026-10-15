@@ -10,6 +10,7 @@
 #include <Jolt/RegisterTypes.h>
 #include <Jolt/Core/Factory.h>
 #include <Jolt/Core/JobSystemThreadPool.h>
+#include <Jolt/Core/JobSystemSingleThreaded.h>
 #include <Jolt/Core/TempAllocator.h>
 #include <Jolt/Physics/Body/AllowedDOFs.h>
 #include <Jolt/Physics/Body/BodyLock.h>
@@ -40,6 +41,8 @@
 
 #include <glm/gtc/quaternion.hpp>
 #include <memory>
+#include <cstdlib>
+#include <charconv>
 #include <mutex>
 #include <type_traits>
 #include <tuple>
@@ -56,6 +59,9 @@ namespace Canis
         constexpr float kDefaultRaycastDistance = 100000.0f;
         constexpr int kMaxSubSteps = 4;
         constexpr int kCollisionSteps = 1;
+        // Small worlds have too little work to amortize waking workers and
+        // waiting at job barriers. Count awake bodies, not static road tiles.
+        constexpr JPH::uint kParallelBodyThreshold = 128;
 
         constexpr JPH::uint kMaxBodies = 65536;
         constexpr JPH::uint kNumBodyMutexes = 0;
@@ -1394,6 +1400,8 @@ namespace Canis
         std::unique_ptr<JPH::PhysicsSystem> physicsSystem = nullptr;
         std::unique_ptr<JPH::TempAllocatorImpl> tempAllocator = nullptr;
         std::unique_ptr<JPH::JobSystemThreadPool> jobSystem = nullptr;
+        std::unique_ptr<JPH::JobSystemSingleThreaded> inlineJobs = nullptr;
+        bool automaticJobSelection = true;
         JPH::BodyInterface *bodyInterface = nullptr;
         std::unordered_map<entt::entity, BodyRuntimeData> bodies = {};
         std::vector<entt::entity> movingBodies, staleBodies;
@@ -1426,10 +1434,24 @@ namespace Canis
 
             tempAllocator = std::make_unique<JPH::TempAllocatorImpl>(10 * 1024 * 1024);
 
-            const JPH::uint workerCount = (std::thread::hardware_concurrency() > 1)
-                ? (std::thread::hardware_concurrency() - 1)
-                : 1;
-            jobSystem = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workerCount);
+            const auto hardwareThreads = std::thread::hardware_concurrency();
+            JPH::uint workerCount = hardwareThreads > 1 ? std::min(hardwareThreads - 1, 4u) : 0;
+            automaticJobSelection = true;
+            if (const char* value = std::getenv("CANIS_PHYSICS_WORKERS"))
+            {
+                unsigned requested = 0;
+                const std::string_view text(value);
+                const auto parsed = std::from_chars(text.data(), text.data() + text.size(), requested);
+                if (parsed.ec == std::errc{} && parsed.ptr == text.data() + text.size()) {
+                    workerCount = std::min(requested, 64u);
+                    automaticJobSelection = false;
+                }
+            }
+            Debug::Log("Jolt physics: %u workers, %s", workerCount,
+                automaticJobSelection ? "inline jobs below 128 awake bodies" : "worker override");
+            inlineJobs = std::make_unique<JPH::JobSystemSingleThreaded>(JPH::cMaxPhysicsJobs);
+            if (workerCount > 0)
+                jobSystem = std::make_unique<JPH::JobSystemThreadPool>(JPH::cMaxPhysicsJobs, JPH::cMaxPhysicsBarriers, workerCount);
             bodyInterface = &physicsSystem->GetBodyInterface();
             accumulator = 0.0f;
             initialized = true;
@@ -1459,6 +1481,7 @@ namespace Canis
             }
             contactListener.reset();
             jobSystem.reset();
+            inlineJobs.reset();
             tempAllocator.reset();
             physicsSystem.reset();
             objectLayerPairFilter.reset();
@@ -2076,7 +2099,8 @@ namespace Canis
             if (physicsSystem == nullptr || bodyInterface == nullptr)
                 return;
 
-            ClearColliderContactVectors(_registry);
+            { Profiler::Scope timing("Physics clear contacts", Profiler::Category::Physics);
+              ClearColliderContactVectors(_registry); }
             accumulator += glm::max(0.0f, _deltaTime);
             accumulator = glm::min(accumulator, kFixedTimeStep * (float)kMaxSubSteps);
             const int stepCount = glm::min(
@@ -2086,23 +2110,34 @@ namespace Canis
 
             const auto& activeBodies = SyncBodiesBeforeStep(_registry, physicsDeltaTime);
             contactListener->registry=&_registry;
-            SyncVehicles(_registry,physicsDeltaTime);
-            SyncRagdolls(_registry);
+            { Profiler::Scope timing("Physics vehicle synchronization", Profiler::Category::Physics);
+              SyncVehicles(_registry,physicsDeltaTime); }
+            { Profiler::Scope timing("Physics ragdoll synchronization", Profiler::Category::Physics);
+              SyncRagdolls(_registry); }
 
             for (int step = 0; step < stepCount; ++step)
             {
-                Profiler::Scope timing("Physics simulation step", Profiler::Category::Physics);
-                physicsSystem->Update(kFixedTimeStep, kCollisionSteps, tempAllocator.get(), jobSystem.get());
+                { Profiler::Scope timing("Physics simulation step", Profiler::Category::Physics);
+                  const bool parallel = jobSystem && (!automaticJobSelection ||
+                      physicsSystem->GetNumActiveBodies(JPH::EBodyType::RigidBody) >= kParallelBodyThreshold);
+                  Profiler::Scope jobs(parallel ? "Jolt worker jobs" : "Jolt inline jobs", Profiler::Category::Physics);
+                  JPH::JobSystem* selectedJobs = parallel ? static_cast<JPH::JobSystem*>(jobSystem.get()) : inlineJobs.get();
+                  physicsSystem->Update(kFixedTimeStep, kCollisionSteps, tempAllocator.get(), selectedJobs); }
                 accumulator -= kFixedTimeStep;
-                CaptureBodyPoses(_registry, activeBodies);
+                { Profiler::Scope timing("Physics pose capture", Profiler::Category::Physics);
+                  CaptureBodyPoses(_registry, activeBodies); }
             }
 
             SyncBodiesAfterStep(
                 _registry,
                 activeBodies,
                 accumulator / kFixedTimeStep);
-            SyncVehicleWheels(_registry);
-            if (stepCount > 0) SyncRagdollPoses(_registry);
+            { Profiler::Scope timing("Physics wheel poses", Profiler::Category::Physics);
+              SyncVehicleWheels(_registry); }
+            if (stepCount > 0) {
+                Profiler::Scope timing("Physics ragdoll poses", Profiler::Category::Physics);
+                SyncRagdollPoses(_registry);
+            }
             { Profiler::Scope timing("Physics contact events", Profiler::Category::Physics);
               ApplyContactFrameData(_registry); }
         }

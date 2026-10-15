@@ -5,6 +5,8 @@
 #include <cmath>
 #include <iostream>
 #include <stdexcept>
+#include <cstdlib>
+#include <thread>
 
 using namespace Canis;
 static void Check(bool condition, const char* message)
@@ -118,6 +120,58 @@ static void SubframeMotionAfterTurn()
         }
     }
     std::cout<<"720 headings preserve constant motion at 240 Hz rendering / 60 Hz physics\n";
+}
+
+static void AdaptivePhysicsJobs()
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;
+    physics.scene = &scene;
+    physics.Create();
+    auto makeBox = [&](int index, bool dynamic) {
+        auto entity = scene.CreateEntity("Job selection test");
+        entity.AddComponent<Transform>()->position = {index * 3.f, 0, 0};
+        auto& body = *entity.AddComponent<Rigidbody>();
+        body.motionType = dynamic ? RigidbodyMotionType::DYNAMIC : RigidbodyMotionType::STATIC;
+        body.useGravity = false;
+        body.allowSleeping = false;
+        body.linearDamping = 0;
+        entity.AddComponent<BoxCollider>();
+        if (dynamic) body.SetLinearVelocity({0, 0, -6});
+        return entity;
+    };
+    // A large static level must still use inline jobs for a small awake set.
+    for (int i = 0; i < 160; ++i) makeBox(i, false);
+    std::vector<Entity> movers;
+    movers.push_back(makeBox(200, true));
+    auto& recorder = Profiler::Get();
+    const bool wasRecording = recorder.IsRecording();
+    recorder.SetRecording(true);
+    auto step = [&](bool expectParallel) {
+        { Profiler::FrameScope frame; physics.Update(scene.GetRegistry(), 1.f/60.f); }
+        int inlineSteps = 0, workerSteps = 0;
+        for (const auto& sample : recorder.Frames().back().samples) {
+            inlineSteps += sample.name == "Jolt inline jobs";
+            workerSteps += sample.name == "Jolt worker jobs";
+        }
+        // An explicit override intentionally bypasses automatic selection.
+        if (!std::getenv("CANIS_PHYSICS_WORKERS"))
+            Check(expectParallel ? workerSteps == 1 && inlineSteps == 0 : inlineSteps == 1 && workerSteps == 0,
+                "Physics jobs did not follow the awake body count");
+    };
+    step(false);
+    const float before = movers[0].GetComponent<Transform>().position.z;
+    for (int i = 1; i < 128; ++i) movers.push_back(makeBox(200 + i, true));
+    for (int i = 0; i < 30; ++i) step(std::thread::hardware_concurrency() > 1);
+    Check(std::abs(movers[0].GetComponent<Transform>().position.z - before + 3) < .001f,
+        "Switching to parallel jobs changed simulated motion");
+    for (size_t i = 1; i < movers.size(); ++i) movers[i].SetActive(false);
+    const float afterParallel = movers[0].GetComponent<Transform>().position.z;
+    for (int i = 0; i < 30; ++i) step(false);
+    Check(std::abs(movers[0].GetComponent<Transform>().position.z - afterParallel + 3) < .001f,
+        "Switching back to inline jobs changed simulated motion");
+    recorder.SetRecording(wasRecording);
+    std::cout << "Awake-body job selection and inline/parallel transitions passed\n";
 }
 
 static void StaticEdits()
@@ -279,6 +333,7 @@ int main()
         RotationRebuilds();
         RuntimeLocks();
         SubframeMotionAfterTurn();
+        AdaptivePhysicsJobs();
         StaticEdits();
         UnchangedKinematicCommands();
         std::cout << "Capsule step contact and runtime rotation locks passed\n";

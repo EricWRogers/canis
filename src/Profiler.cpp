@@ -71,7 +71,7 @@ namespace Canis::Profiler
             outputInitialized=true;
             if(const char* path=std::getenv("CANIS_CPU_FRAME_OUTPUT")) {
                 frameOutput.open(path);
-                if(frameOutput)frameOutput<<"frame,start_ns,total_ms,scene_update_ms,game_update_ms,scripts_ms,physics_sync_ms,animation_ms,render_preparation_ms,xr_wait_ms,vr_eyes_ms,present_ms,limiter_ms,xr_swapchain_wait_ms,xr_submit_ms,body_rebuild_ms,body_rebuild_count\n";
+                if(frameOutput)frameOutput<<"frame,start_ns,total_ms,scene_update_ms,game_update_ms,scripts_ms,physics_sync_ms,animation_ms,render_preparation_ms,xr_wait_ms,vr_eyes_ms,present_ms,limiter_ms,xr_swapchain_wait_ms,xr_submit_ms,body_rebuild_ms,body_rebuild_count,physics_ms,physics_step_ms,physics_vehicle_ms,physics_ragdoll_ms,physics_capture_ms,physics_interpolation_ms,physics_wheels_ms,physics_ragdoll_poses_ms,physics_contacts_ms,physics_steps,physics_inline_steps,physics_worker_steps\n";
             }
         }
         if(frameOutput.is_open() && frameOutput) {
@@ -85,7 +85,21 @@ namespace Canis::Profiler
             for(const auto& sample:current.samples) rebuildCount += sample.name == "Physics body rebuild";
             frameOutput<<current.id<<','<<current.startNs<<','<<current.totalMs;
             for(double total:totals)frameOutput<<','<<total;
-            frameOutput<<','<<rebuildCount<<'\n';
+            frameOutput<<','<<rebuildCount;
+            static constexpr const char* physicsNames[]={"Canis::JoltPhysics3DSystem", "Physics simulation step",
+                "Physics vehicle synchronization", "Physics ragdoll synchronization", "Physics pose capture",
+                "Physics pose interpolation", "Physics wheel poses", "Physics ragdoll poses", "Physics contact events"};
+            std::array<double, std::size(physicsNames)> physicsTotals{};
+            size_t steps = 0, inlineSteps = 0, workerSteps = 0;
+            for (const auto& sample : current.samples) {
+                for (size_t i = 0; i < physicsTotals.size(); ++i)
+                    if (sample.name == physicsNames[i]) physicsTotals[i] += sample.totalMs;
+                steps += sample.name == "Physics simulation step";
+                inlineSteps += sample.name == "Jolt inline jobs";
+                workerSteps += sample.name == "Jolt worker jobs";
+            }
+            for (double total : physicsTotals) frameOutput<<','<<total;
+            frameOutput<<','<<steps<<','<<inlineSteps<<','<<workerSteps<<'\n';
             if(current.id%90==0)frameOutput.flush();
         }
         if (recording) {
