@@ -664,6 +664,7 @@ namespace Canis
 
         m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
         m_environmentAmbientLightIntensity = 1.0f;
+        m_environmentReflectionsEnabled = true;
         m_environmentSkyboxUUID = UUID(0);
         m_environmentPostProcessUUID = UUID(0);
         m_showColliders = false;
@@ -690,6 +691,7 @@ namespace Canis
             );
             m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
+            m_environmentReflectionsEnabled = environment["Reflections"].as<bool>(true);
             if(auto probes=environment["LightingProbes"]; probes && probes.IsSequence()) {
                 for(const auto& node:probes) {
                     if(m_lightingProbes.size()>=MaxLightingProbes)break;
@@ -996,6 +998,7 @@ namespace Canis
         environment["ClearColor"] = m_window->GetClearColor();
         environment["AmbientLight"] = m_environmentAmbientLight;
         environment["AmbientLightIntensity"] = m_environmentAmbientLightIntensity;
+        environment["Reflections"] = m_environmentReflectionsEnabled;
         environment["ShowColliders"] = m_showColliders;
         auto baking = environment["Baking"];
         baking["Lightmaps"] = m_baking.lightmaps;

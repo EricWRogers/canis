@@ -361,7 +361,8 @@ namespace Canis
             shader.SetVec3("canisProbePosition[" + index + "]", p.position);
             shader.SetVec3("canisProbeExtent[" + index + "]", p.halfExtents);
             shader.SetVec3("canisProbeParams[" + index + "]",
-                           Vector3(p.blendDistance, p.diffuseIntensity, p.specularIntensity));
+                           Vector3(p.blendDistance, p.diffuseIntensity,
+                                   scene->GetEnvironmentReflectionsEnabled() ? p.specularIntensity : 0.0f));
             for (int j = 0; j < 9; ++j)
                 shader.SetVec3("canisProbeSH[" + std::to_string(i * 9 + j) + "]", m_probeIrradiance[i][j]);
         }

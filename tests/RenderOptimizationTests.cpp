@@ -1564,6 +1564,9 @@ static void LightingProbeRendering(Window& window) {
     Check(renderer.ReadyLightingProbeCount()==1,"Probe was not captured");
     Check(diffuse[0]>baseline[0]+2 && diffuse[0]>diffuse[1]+2,"Captured red wall did not provide diffuse color bleeding");
     Check(draw()==diffuse,"Cached probe changed between frames");
+    scene.SetEnvironmentReflectionsEnabled(false);
+    Check(draw()==diffuse,"Disabling reflections removed indirect diffuse lighting");
+    scene.SetEnvironmentReflectionsEnabled(true);
     Check(std::filesystem::exists(probe.cachePath),"Reflection probe capture was not persisted");
     const auto savedTime=std::filesystem::last_write_time(probe.cachePath);
     MeshRenderer3DSystem reloaded;reloaded.scene=&scene;reloaded.window=&window;reloaded.Create();
@@ -1573,6 +1576,15 @@ static void LightingProbeRendering(Window& window) {
     reloaded.OnDestroy();activeRenderer=&renderer;
     auto& p=scene.GetLightingProbes()[0];p.diffuseIntensity=0;p.specularIntensity=4;auto reflection=draw();
     Check(reflection[0]>baseline[0]+2,"Probe reflection did not reach dynamic receiver");
+    const auto reflectionCacheTime=std::filesystem::last_write_time(probe.cachePath);
+    scene.SetEnvironmentReflectionsEnabled(false);
+    Check(draw()==baseline,"Scene reflection toggle retained specular probe lighting");
+    Check(p.specularIntensity==4 && renderer.ReadyLightingProbeCount()==1,
+          "Scene reflection toggle changed authored probes or discarded captures");
+    scene.SetEnvironmentReflectionsEnabled(true);
+    Check(draw()==reflection,"Re-enabling reflections did not restore their appearance");
+    Check(std::filesystem::last_write_time(probe.cachePath)==reflectionCacheTime,
+          "Scene reflection toggle unnecessarily recaptured probes");
     p.diffuseIntensity=1;p.specularIntensity=0;p.halfExtents.z=3;auto boundary=draw();
     Check(boundary[0]>baseline[0]+2,"Reflection/GI faded away on a room's projection-box surface");
     p.halfExtents.z=10;p.diffuseIntensity=0;p.specularIntensity=4;
@@ -1581,6 +1593,24 @@ static void LightingProbeRendering(Window& window) {
     p.enabled=false;Check(draw()==baseline && renderer.ReadyLightingProbeCount()==0,"Disabled probe retained lighting");
     scene.GetLightingProbes().clear();draw();renderer.OnDestroy();AssetManager::FreeModel(id);
     std::filesystem::remove_all(root);
+}
+
+static void ReflectionSceneSettings(Window& window) {
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    auto legacy=YAML::Load("Environment: {}\nEntities: []\n");
+    scene.LoadSceneNode(legacy);
+    Check(scene.GetEnvironmentReflectionsEnabled(),"Legacy scenes lost reflections");
+    scene.SetEnvironmentReflectionsEnabled(false);
+    auto saved=scene.EncodeScene();
+    Check(!saved["Environment"]["Reflections"].as<bool>(),"Scene save lost disabled reflections");
+    scene.Unload();scene.LoadSceneNode(saved);
+    Check(!scene.GetEnvironmentReflectionsEnabled(),"Scene load lost disabled reflections");
+    scene.SetEnvironmentReflectionsEnabled(true);
+    saved=scene.EncodeScene();scene.Unload();scene.LoadSceneNode(saved);
+    Check(scene.GetEnvironmentReflectionsEnabled(),"Scene load lost enabled reflections");
+    scene.SetEnvironmentReflectionsEnabled(false);
+    scene.Unload();scene.LoadSceneNode(legacy);
+    Check(scene.GetEnvironmentReflectionsEnabled(),"Loading a legacy scene retained a previous scene's toggle");
 }
 
 int main(int argc,char** argv) {
@@ -1750,6 +1780,7 @@ int main(int argc,char** argv) {
         DynamicRigidBatches(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);
+        ReflectionSceneSettings(window);
         LightModesAndSpotCones(window);
         std::cout<<"Frustum, stereo, bounds invalidation and instanced pixel parity passed\n";
         return 0;

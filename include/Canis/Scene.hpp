@@ -151,6 +151,8 @@ namespace Canis
         void SetEnvironmentAmbientLight(const Color &_ambientLight) { m_environmentAmbientLight = _ambientLight; }
         float GetEnvironmentAmbientLightIntensity() const { return m_environmentAmbientLightIntensity; }
         void SetEnvironmentAmbientLightIntensity(float _intensity) { m_environmentAmbientLightIntensity = std::max(_intensity, 0.0f); }
+        bool GetEnvironmentReflectionsEnabled() const { return m_environmentReflectionsEnabled; }
+        void SetEnvironmentReflectionsEnabled(bool _enabled) { m_environmentReflectionsEnabled = _enabled; }
         UUID GetEnvironmentSkyboxUUID() const { return m_environmentSkyboxUUID; }
         void SetEnvironmentSkyboxUUID(UUID _uuid) { m_environmentSkyboxUUID = _uuid; }
         UUID GetEnvironmentPostProcessUUID() const { return m_environmentPostProcessUUID; }
@@ -281,6 +283,7 @@ namespace Canis
         BakingSettings m_baking;
         std::vector<LightingProbe> m_lightingProbes;
         float m_environmentAmbientLightIntensity = 1.0f;
+        bool m_environmentReflectionsEnabled = true;
         UUID m_environmentSkyboxUUID = UUID(0);
         UUID m_environmentPostProcessUUID = UUID(0);
         bool m_showColliders = false;

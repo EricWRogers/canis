@@ -29,13 +29,16 @@ vec3 CanisProbeLighting(vec3 p,vec3 n,vec3 v,vec3 albedo,float roughness,vec3 f0
         // Reject a neighboring room on the opposite side of a floor or wall.
         if(exitDistance<=.0001)continue;
         vec3 direction=local+r*exitDistance;
-        float lod=clamp(roughness,0.,1.)*6.;vec3 reflected;
-        if(i==0)reflected=textureLod(canisProbeMap0,direction,lod).rgb;
-        else if(i==1)reflected=textureLod(canisProbeMap1,direction,lod).rgb;
-        else if(i==2)reflected=textureLod(canisProbeMap2,direction,lod).rgb;
-        else if(i==3)reflected=textureLod(canisProbeMap3,direction,lod).rgb;
-        else if(i==4)reflected=textureLod(canisProbeMap4,direction,lod).rgb;
-        else reflected=textureLod(canisProbeMap5,direction,lod).rgb;
+        vec3 reflected=vec3(0);
+        if(canisProbeParams[i].z>0.) {
+            float lod=clamp(roughness,0.,1.)*6.;
+            if(i==0)reflected=textureLod(canisProbeMap0,direction,lod).rgb;
+            else if(i==1)reflected=textureLod(canisProbeMap1,direction,lod).rgb;
+            else if(i==2)reflected=textureLod(canisProbeMap2,direction,lod).rgb;
+            else if(i==3)reflected=textureLod(canisProbeMap3,direction,lod).rgb;
+            else if(i==4)reflected=textureLod(canisProbeMap4,direction,lod).rgb;
+            else reflected=textureLod(canisProbeMap5,direction,lod).rgb;
+        }
         vec3 irradiance=vec3(0);
         for(int j=0;j<9;j++)irradiance+=canisProbeSH[i*9+j]*b[j];
         result+=w*(max(irradiance,vec3(0))*albedo*(1.-fresnel)*diffuseWeight*canisProbeParams[i].y

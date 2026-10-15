@@ -15564,6 +15564,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (ImGui::SliderFloat("Ambient Intensity##", &ambientLightIntensity, 0.0f, 8.0f, "%.2f"))
             m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
         ImGui::TextDisabled("Scene-wide fill light for darker areas.");
+        bool reflections = m_scene->GetEnvironmentReflectionsEnabled();
+        if (ImGui::Checkbox("Reflections", &reflections))
+            m_scene->SetEnvironmentReflectionsEnabled(reflections);
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Enable reflection probes' reflective contribution. Indirect lighting remains active.");
 
         ImGui::Separator();
         auto& baking=m_scene->GetBakingSettings();
