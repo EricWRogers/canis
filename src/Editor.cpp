@@ -5,6 +5,7 @@
 #include "EditorHistoryEvent.hpp"
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/EditorSpawnPlacement.hpp>
+#include <Canis/EditorNavigation.hpp>
 #include <Canis/ReloadLibraryBackup.hpp>
 
 #include <Canis/Canis.hpp>
@@ -112,6 +113,40 @@ namespace Canis
             else scene->ClearEditorCameraOverrides();
         }
     };
+    // Sizes are relative to the configured editor font, so accessibility scaling
+    // and a user-selected typeface apply consistently to every text role.
+    struct ScopedEditorFont
+    {
+        explicit ScopedEditorFont(float _size)
+        {
+            const ImFont *font = ImGui::GetIO().FontDefault;
+            const float baseSize = font != nullptr ? font->LegacySize : 16.0f;
+            ImGui::PushFont(nullptr, baseSize * (_size / 16.0f));
+        }
+        ~ScopedEditorFont() { ImGui::PopFont(); }
+        ScopedEditorFont(const ScopedEditorFont&) = delete;
+        ScopedEditorFont& operator=(const ScopedEditorFont&) = delete;
+    };
+
+    static bool EditorSectionHeader(const char *_label, ImGuiTreeNodeFlags _flags = 0)
+    {
+        ScopedEditorFont headingFont(18.0f);
+        return ImGui::CollapsingHeader(_label, _flags);
+    }
+
+    static void DrawEditorAssetHeading(const std::string &_name, const std::string &_path)
+    {
+        {
+            ScopedEditorFont headingFont(20.0f);
+            ImGui::TextWrapped("%s", _name.c_str());
+        }
+        if (!_path.empty())
+        {
+            ScopedEditorFont detailFont(13.0f);
+            ImGui::TextWrapped("Path: %s", _path.c_str());
+        }
+    }
+
     static void PushInspectorFieldID(const char *_label, const char *_idSuffix)
     {
         ImGui::PushID((_label != nullptr) ? _label : "");
@@ -1231,6 +1266,25 @@ namespace Canis
             }
 
             return initialized;
+        }
+
+        void AccumulateSelectionSurfaceDistance(Entity *_entity, const Vector3 &_cameraPosition, float &_distance)
+        {
+            if (_entity == nullptr || !_entity->HasComponent<Transform>())
+                return;
+
+            const Transform &transform = _entity->GetComponent<Transform>();
+            if (!transform.IsActiveInHierarchy())
+                return;
+
+            Vector3 minimum, maximum;
+            if (BuildEntityModelWorldBounds(_entity, transform.GetModelMatrix(), minimum, maximum))
+                _distance = std::min(_distance, EditorCameraBoundsDistance(_cameraPosition, minimum, maximum));
+
+            // A prefab or group often has only a Transform on its root. Measure
+            // its models individually, avoiding empty space between children.
+            for (Entity child : transform.children)
+                AccumulateSelectionSurfaceDistance(child, _cameraPosition, _distance);
         }
 
         bool RangesOverlap(float _minA, float _maxA, float _minB, float _maxB, float _padding)
@@ -6559,22 +6613,36 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (rightClickNavigation)
             {
-                float moveSpeed = m_editorCamera3DMoveSpeed * Time::UnscaledDeltaTime();
+                Vector3 movement(0.0f);
+                if (input.GetKey(Canis::Key::W)) movement += forward;
+                if (input.GetKey(Canis::Key::S)) movement -= forward;
+                if (input.GetKey(Canis::Key::A)) movement -= right;
+                if (input.GetKey(Canis::Key::D)) movement += right;
+                if (input.GetKey(Canis::Key::Q)) movement -= worldUp;
+                if (input.GetKey(Canis::Key::E)) movement += worldUp;
+
+                float selectionSpeedScale = 1.0f;
+                const auto &entities = m_scene->GetEntities();
+                if (glm::dot(movement, movement) > 0.000001f && m_selectedAssetPath.empty() &&
+                    !m_selectedEntityUUIDs.empty() && m_index >= 0 && m_index < static_cast<int>(entities.size()))
+                {
+                    Entity *selected = entities[m_index];
+                    if (selected != nullptr && selected->HasComponent<Transform>())
+                    {
+                        float distance = std::numeric_limits<float>::infinity();
+                        AccumulateSelectionSurfaceDistance(selected, m_editorCamera3DPosition, distance);
+                        if (!std::isfinite(distance))
+                            distance = glm::distance(m_editorCamera3DPosition, selected->GetComponent<Transform>().GetGlobalPosition());
+                        selectionSpeedScale = EditorCameraSelectionSpeedScale(distance);
+                    }
+                }
+
+                float moveSpeed = m_editorCamera3DMoveSpeed * selectionSpeedScale * Time::UnscaledDeltaTime();
                 if (input.GetKey(Canis::Key::LSHIFT) || input.GetKey(Canis::Key::RSHIFT))
                     moveSpeed *= 3.0f;
 
-                if (input.GetKey(Canis::Key::W))
-                    m_editorCamera3DPosition += forward * moveSpeed;
-                if (input.GetKey(Canis::Key::S))
-                    m_editorCamera3DPosition -= forward * moveSpeed;
-                if (input.GetKey(Canis::Key::A))
-                    m_editorCamera3DPosition -= right * moveSpeed;
-                if (input.GetKey(Canis::Key::D))
-                    m_editorCamera3DPosition += right * moveSpeed;
-                if (input.GetKey(Canis::Key::Q))
-                    m_editorCamera3DPosition -= worldUp * moveSpeed;
-                if (input.GetKey(Canis::Key::E))
-                    m_editorCamera3DPosition += worldUp * moveSpeed;
+                if (glm::dot(movement, movement) > 0.000001f)
+                    m_editorCamera3DPosition += glm::normalize(movement) * moveSpeed;
             }
 
             const Matrix4 view = glm::lookAt(m_editorCamera3DPosition, m_editorCamera3DPosition + forward, up);
@@ -11436,6 +11504,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!_entity)
             return;
 
+        ScopedEditorFont treeFont(14.0f);
         std::vector<Canis::Entity>*children = GetHierarchyChildren(_entity);
 
         bool isSelected = IsEntitySelected(_entity) ||
@@ -11667,6 +11736,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (m_scene != nullptr && !m_scene->m_path.empty())
         {
+            ScopedEditorFont detailFont(13.0f);
             const std::string sceneName = Canis::GetFileName(m_scene->m_path);
             ImGui::TextDisabled("Scene: %s", sceneName.c_str());
             ImGui::Separator();
@@ -11991,6 +12061,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Entity &entity = *entities[m_index];
 
             {
+                ScopedEditorFont headingFont(20.0f);
+                ImGui::TextUnformatted(entity.GetName().c_str());
+            }
+            ImGui::Separator();
+
+            {
                 SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
                 ImGui::Text("active:");
                 ImGui::SameLine();
@@ -12022,7 +12098,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 if (conf.Has(entity))
                 {
-                    bool open = ImGui::CollapsingHeader(conf.name.c_str());
+                    bool open = EditorSectionHeader(conf.name.c_str());
 
                     if (ImGui::BeginPopupContextItem(std::string("Menu##" + conf.name).c_str()))
                     {
@@ -12077,8 +12153,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const std::string modelPath = meta->path.empty() ? _modelPath : meta->path;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", modelPath.c_str());
+        DrawEditorAssetHeading(meta->name, modelPath);
         ImGui::Separator();
 
         ModelAsset* model =
@@ -12158,8 +12233,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const std::string materialPath = meta->path.empty() ? _materialPath : meta->path;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", materialPath.c_str());
+        DrawEditorAssetHeading(meta->name, materialPath);
         ImGui::Separator();
 
         if (!FileExists(materialPath.c_str()))
@@ -12634,7 +12708,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (meta == nullptr || meta->type != MetaFileAsset::FileType::SKYBOX)
             return false;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
+        DrawEditorAssetHeading(meta->name, meta->path);
 
         YAML::Node root;
         if (FileExists(_skyboxPath.c_str()))
@@ -12718,8 +12792,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (meta == nullptr || meta->type != MetaFileAsset::FileType::POSTPROCESS)
             return false;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", meta->path.c_str());
+        DrawEditorAssetHeading(meta->name, meta->path);
         ImGui::Separator();
 
         YAML::Node root;
@@ -12985,8 +13058,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_animationClipStatePath = clipPath;
         RememberLastAnimationClipAssetPath(clipPath);
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", clipPath.c_str());
+        DrawEditorAssetHeading(meta->name, clipPath);
         ImGui::Separator();
         ImGui::Text("Length: %.3fs", clip->length);
         ImGui::Text("Tracks: %d", static_cast<int>(clip->tracks.size()));
@@ -13033,8 +13105,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (controller == nullptr)
             return false;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", controllerPath.c_str());
+        DrawEditorAssetHeading(meta->name, controllerPath);
         ImGui::Separator();
 
         if (ImGui::Button("Open In Animator Window"))
@@ -13051,7 +13122,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             dirty = true;
         }
 
-        if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (std::size_t parameterIndex = 0; parameterIndex < controller->parameters.size(); ++parameterIndex)
             {
@@ -13108,7 +13179,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        if (ImGui::CollapsingHeader("Animation Layers", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("Animation Layers", ImGuiTreeNodeFlags_DefaultOpen))
         {
             ImGui::TextDisabled("Masks include each named bone and all descendants.");
             for (std::size_t layerIndex = 0; layerIndex < controller->layers.size(); ++layerIndex)
@@ -13330,7 +13401,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        if (ImGui::CollapsingHeader("States", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("States", ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (std::size_t stateIndex = 0; stateIndex < controller->states.size(); ++stateIndex)
             {
@@ -13440,7 +13511,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         dirty = true;
                     }
 
-                    if (ImGui::CollapsingHeader("Transitions", ImGuiTreeNodeFlags_DefaultOpen))
+                    if (EditorSectionHeader("Transitions", ImGuiTreeNodeFlags_DefaultOpen))
                     {
                         for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
                         {
@@ -13633,8 +13704,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (terrain == nullptr)
             return false;
 
-        ImGui::Text("Asset: %s", meta->name.c_str());
-        ImGui::Text("Path: %s", terrainPath.c_str());
+        DrawEditorAssetHeading(meta->name, terrainPath);
         ImGui::Separator();
         ImGui::Text("Size: %.2f x %.2f", terrain->size.x, terrain->size.y);
         ImGui::Text("Cell Size: %.2f", terrain->cellSize);
@@ -13643,7 +13713,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::TextDisabled("Paint weights are stored in the terrain asset.");
         ImGui::Text("Material: %s", terrain->materialPath.empty() ? "[none]" : terrain->materialPath.c_str());
 
-        if (ImGui::CollapsingHeader("Paint Layers", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("Paint Layers", ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (int i = 0; i < TerrainAsset::MaxLayers; ++i)
                 ImGui::Text("Layer %d: %s", i + 1, terrain->layers[i].texturePath.empty() ? "[none]" : terrain->layers[i].texturePath.c_str());
@@ -14022,7 +14092,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::SameLine();
         ImGui::BeginChild("##animator_sidebar", ImVec2(0.0f, 0.0f), true);
 
-        if (ImGui::CollapsingHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("Parameters", ImGuiTreeNodeFlags_DefaultOpen))
         {
             for (std::size_t parameterIndex = 0; parameterIndex < controller->parameters.size(); ++parameterIndex)
             {
@@ -15136,7 +15206,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
 
             ImGui::Separator();
-            if (ImGui::CollapsingHeader("Events", ImGuiTreeNodeFlags_DefaultOpen))
+            if (EditorSectionHeader("Events", ImGuiTreeNodeFlags_DefaultOpen))
             {
                 for (std::size_t eventIndex = 0; eventIndex < clip->events.size(); ++eventIndex)
                 {
@@ -15498,7 +15568,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::Separator();
         auto& baking=m_scene->GetBakingSettings();
         auto* renderer=m_scene->GetSystem<MeshRenderer3DSystem>();
-        if(ImGui::CollapsingHeader("Reflection probes / Global illumination",ImGuiTreeNodeFlags_DefaultOpen)) {
+        if(EditorSectionHeader("Reflection probes / Global illumination",ImGuiTreeNodeFlags_DefaultOpen)) {
             auto& probes=m_scene->GetLightingProbes();
             ImGui::TextWrapped("Static scene captures provide box-projected reflections and diffuse indirect light. Captured on load; recapture after changing geometry or lighting.");
             ImGui::BeginDisabled(probes.size()>=MaxLightingProbes);
@@ -15532,7 +15602,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::Text("Ready captures: %d / %d",renderer?renderer->ReadyLightingProbeCount():0,static_cast<int>(probes.size()));
             ImGui::TextWrapped("64px HDR captures, up to six probes. Rough reflections use mipmaps; diffuse uses 9 spherical harmonics coefficients. Save the scene to retain placement.");
         }
-        if(ImGui::CollapsingHeader("Native lighting bake",ImGuiTreeNodeFlags_DefaultOpen)) {
+        if(EditorSectionHeader("Native lighting bake",ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Use baked lighting",&baking.lightmaps);
             ImGui::TextWrapped("C++ static vertex irradiance: shadowed direct lighting, ambient occlusion and one indirect bounce. Moving objects are excluded. Original collision geometry is retained.");
             ImGui::BeginDisabled(m_environmentBakeRunning || m_mode!=EditorMode::EDIT || !renderer);
@@ -17434,7 +17504,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::SameLine();
         if (ImGui::Button("Script Editor")) m_showScriptEditor = true;
         ImGui::TextDisabled("Double-click a script to edit its header and source.");
-        ImGui::Text("Path: %s", includeRoot.string().c_str());
+        {
+            ScopedEditorFont detailFont(13.0f);
+            ImGui::TextWrapped("Path: %s", includeRoot.string().c_str());
+        }
         ImGui::Separator();
 
         if (ImGui::BeginPopupContextWindow("scripts_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
@@ -17471,7 +17544,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::EndPopup();
         }
 
-        DrawScriptDirectoryRecursive(includeRoot, includeRoot, sourceRoot);
+        {
+            ScopedEditorFont treeFont(14.0f);
+            DrawScriptDirectoryRecursive(includeRoot, includeRoot, sourceRoot);
+        }
 
         if (m_openScriptCreatePopup)
         {
@@ -17630,11 +17706,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ImGui::Separator();
 
-        ImGui::TextDisabled("Drag a Hierarchy entity onto a folder to create a prefab.");
+        {
+            ScopedEditorFont detailFont(13.0f);
+            ImGui::TextDisabled("Drag a Hierarchy entity onto a folder to create a prefab.");
+        }
         if (!m_prefabDropStatus.empty())
             ImGui::TextWrapped("%s", m_prefabDropStatus.c_str());
 
-        DrawDirectoryRecursive("assets");
+        {
+            ScopedEditorFont treeFont(14.0f);
+            DrawDirectoryRecursive("assets");
+        }
 
         if (ImGui::BeginPopupContextWindow("assets_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
         {
@@ -18054,7 +18136,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_editorFontScale = NormalizeEditorFontScale(m_editorFontScale);
         Canis::GetEditorConfig().fontScale = m_editorFontScale;
 
-        const float editorFontSize = 18.0f * m_editorFontScale;
+        const float editorFontSize = 16.0f * m_editorFontScale;
         ImFont *font = nullptr;
         ImFontConfig defaultFontConfig = {};
         defaultFontConfig.SizePixels = editorFontSize;
@@ -18142,7 +18224,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
                 "Use only letters, numbers, _, ., +, or -.");
 
-        if (ImGui::CollapsingHeader("Tags"))
+        if (EditorSectionHeader("Tags"))
         {
             auto& tags = Canis::GetProjectConfig().tags;
             ImGui::TextWrapped("Add tags here, then rebuild game code to use Tags. "
@@ -18956,25 +19038,28 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::SameLine();
         DrawEditorWindowMenu();
 
-        ImGui::SameLine();
-        ImGui::Text("FPS: %s", std::to_string(m_app->FPS()).c_str());
+        {
+            ScopedEditorFont detailFont(13.0f);
+            ImGui::SameLine();
+            ImGui::Text("FPS: %.1f", m_app->FPS());
 
-        size_t entityCount = 0;
+            size_t entityCount = 0;
 
-        for (Entity *e : m_scene->GetEntities())
-            if (e != nullptr)
-                entityCount++;
+            for (Entity *e : m_scene->GetEntities())
+                if (e != nullptr)
+                    entityCount++;
 
-        ImGui::SameLine();
-        ImGui::Text("Entity Count: %zu", entityCount);
-        ImGui::SameLine();
-        ImGui::Text("Update Time: %.3f ms", m_app->UpdateTimeMs());
-        ImGui::SameLine();
-        ImGui::Text("Draw Time: %.3f ms", m_app->RenderTimeMs());
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("CPU render submission, including editor work. Presentation wait is measured separately; GPU timings are in the Profiler.");
-        ImGui::SameLine();
-        ImGui::Text("Present: %.3f ms", RenderMetrics::Latest().presentMs);
+            ImGui::SameLine();
+            ImGui::Text("Entity Count: %zu", entityCount);
+            ImGui::SameLine();
+            ImGui::Text("Update Time: %.3f ms", m_app->UpdateTimeMs());
+            ImGui::SameLine();
+            ImGui::Text("Draw Time: %.3f ms", m_app->RenderTimeMs());
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("CPU render submission, including editor work. Presentation wait is measured separately; GPU timings are in the Profiler.");
+            ImGui::SameLine();
+            ImGui::Text("Present: %.3f ms", RenderMetrics::Latest().presentMs);
+        }
 
         ImGui::End();
         DrawReloadBuildPopup();

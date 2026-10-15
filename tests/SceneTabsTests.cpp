@@ -2,6 +2,8 @@
 #include <Canis/Editor.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Window.hpp>
+#include <Canis/AssetManager.hpp>
+#include <Canis/Time.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -229,6 +231,8 @@ namespace Canis
                   "UI click updated an index but left hierarchy/inspector/gizmo selection on the old object");
             io.AddMouseButtonEvent(0,false);ImGui::NewFrame();
             ImGui::Begin("Selected UI");editor.DrawHierarchyPanel();editor.DrawInspectorPanel(false);ImGui::End();ImGui::Render();
+            Check(ImGui::GetCurrentContext()->ErrorCountCurrentFrame == 0,
+                  "Hierarchy/inspector font scopes crossed a window boundary");
             Check(editor.IsEntitySelected(label.TryGet()) && editor.GetSelectedEntities()[0]->GetUUID()==label.GetUUID(),
                   "UI selection did not survive hierarchy/inspector refresh after mouse release");
             auto gizmoFrame=[&](float x,bool down) {
@@ -244,6 +248,46 @@ namespace Canis
                   "Dragging the selected UI gizmo did not update its reference-canvas position");
             Check(window.GetScreenWidth()==800 && window.GetScreenHeight()==600 && !app.scene.HasEditorCamera2DOverride(),
                   "Scene UI picking leaked preview dimensions/camera into the Game view");
+
+            // Exercise actual Scene flight input with a selected prefab root.
+            // Its geometry is ten metres from the root, so pivot distance would
+            // incorrectly keep full speed near the surface.
+            app.scene.Unload();
+            const int modelId = AssetManager::CreateModel();
+            ModelAsset::PrimitiveBuild3D quad;
+            quad.vertices = {{{-2,-2,0},{0,0,1},{}}, {{2,-2,0},{0,0,1},{}},
+                             {{2,2,0},{0,0,1},{}}, {{-2,2,0},{0,0,1},{}}};
+            quad.indices = {0,1,2,0,2,3};
+            Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({quad}), "Navigation fixture model failed");
+            auto selection = app.scene.CreateEntity("Group");selection.AddComponent<Transform>();
+            auto child = app.scene.CreateEntity("Offset model");
+            child.AddComponent<Transform>()->SetParent(&selection);
+            child.GetComponent<Transform>().position.z = 10;
+            child.AddComponent<Model>()->modelId = modelId;
+            editor.FocusEntity(selection.TryGet());
+            editor.m_sceneCameraMode = Editor::SCENE_CAMERA_3D;
+            editor.m_editorCamera3DYaw = -90;editor.m_editorCamera3DPitch = 0;
+            editor.m_gameViewHovered = true;
+            SDL_Event mouseDown{};mouseDown.type = SDL_EVENT_MOUSE_BUTTON_DOWN;
+            mouseDown.button.windowID = SDL_GetWindowID(static_cast<SDL_Window*>(window.GetSDLWindow()));
+            mouseDown.button.button = SDL_BUTTON_RIGHT;
+            SDL_PushEvent(&mouseDown);input.Update(&window);input.SetSyntheticFocus(true);
+            input.SetSyntheticKey(SDL_SCANCODE_W, true);
+            Time::Init(60);Time::SetFixedDelta(1.0f / 60.0f);Time::StartFrame();
+            auto flight = [&](float z) {
+                editor.m_editorCamera3DPosition = Vector3(0,0,z);
+                editor.ApplyInternalSceneCamera(1.0f / 60.0f);
+                return z - editor.m_editorCamera3DPosition.z;
+            };
+            const float farStep = flight(30), nearStep = flight(11), insideStep = flight(10);
+            Check(farStep > nearStep * 7.5f && nearStep > insideStep * 4.5f && insideStep > 0,
+                  "Actual camera flight did not slow near selected child geometry or became stuck inside it");
+            input.SetSyntheticKey(SDL_SCANCODE_LSHIFT, true);
+            Check(std::abs(flight(11) - nearStep * 3) < .00001f, "Shift flight boost was lost near selection");
+            input.SetSyntheticKey(SDL_SCANCODE_LSHIFT, false);editor.FocusEntity(nullptr);
+            Check(std::abs(flight(11) - farStep) < .00001f, "Unselected flight unexpectedly slowed down");
+            input.SetSyntheticKey(SDL_SCANCODE_W, false);Time::Quit();
+            app.scene.Unload();AssetManager::FreeModel(modelId);
             editor.m_scene = nullptr;
         }
     };

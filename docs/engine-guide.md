@@ -435,6 +435,20 @@ The editor integration currently provides:
 - a scene-local viewport toolbar below the scene tabs
 - system timing collection for update and render systems
 
+Editor typography uses 20 px entity/asset titles, 18 px section headings,
+16 px controls and panel tabs, 14 px hierarchy/asset/script trees, and 13 px
+paths, scene captions and toolbar statistics at the default scale. Project
+Settings' editor font and font scale apply to all of these roles; DPI scaling
+is retained. The smaller roles use ImGui's native font sizing for sharp text.
+
+Scene-view right-mouse flight (WASD/QE) slows continuously within eight metres
+of the selected model's world bounds. Group selections use the closest child
+model bounds; entities without models use their world position. Speed bottoms
+out at 0.2 m/s so the camera can still leave a selection from inside it. With
+no entity selected, normal 8 m/s flight is retained. Shift multiplies speed by
+three, and diagonal input keeps the same total speed as a single axis. This
+affects the editor's 3D camera only.
+
 Scene tabs reuse the application's single live `Scene`. Before switching, the
 editor captures the active scene YAML, terrain assets, hierarchy and selection
 state, and history stacks in a `SceneTabState`. It restores the destination
