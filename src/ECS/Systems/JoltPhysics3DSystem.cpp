@@ -1323,8 +1323,16 @@ namespace Canis
                 if(auto* body=registry.try_get<Rigidbody>(child);body && body->motionType!=RigidbodyMotionType::STATIC)continue;
                 if(registry.all_of<CombineMeshCollider>(child))continue;
                 if(auto* model=registry.try_get<Model>(child))
-                    if(auto* asset=AssetManager::GetModel(model->modelId);asset && !asset->HasDeformingGeometry() && !registry.all_of<ModelAnimation>(child))
-                        sources.push_back({child,model->modelId,model->nodeIndex,model->applyNodeTransform,asset->GetGeometryRevision(),inverse*WorldTransform(registry,child,*transform).matrix});
+                {
+                    // Baked render meshes can be much denser than collision geometry.
+                    // Honor the child's explicit mesh source just as standalone colliders do.
+                    auto* collider=registry.try_get<MeshCollider>(child);
+                    const int modelId=collider ? ResolveMeshColliderModelId(registry,child,collider) : model->modelId;
+                    const int node=collider ? ResolveMeshColliderNodeIndex(registry,child,collider) : model->nodeIndex;
+                    const bool apply=collider ? ResolveMeshColliderApplyNodeTransform(registry,child,collider) : model->applyNodeTransform;
+                    if(auto* asset=AssetManager::GetModel(modelId);asset && !asset->HasDeformingGeometry() && !registry.all_of<ModelAnimation>(child))
+                        sources.push_back({child,modelId,node,apply,asset->GetGeometryRevision(),inverse*WorldTransform(registry,child,*transform).matrix});
+                }
                 for(auto descendant:transform->children)if(descendant)stack.push_back(descendant.GetHandle());
             }
             std::sort(sources.begin(),sources.end(),[](auto& a,auto& b){return entt::to_integral(a.handle)<entt::to_integral(b.handle);});

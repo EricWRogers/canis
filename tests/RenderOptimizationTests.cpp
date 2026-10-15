@@ -875,6 +875,22 @@ static void CombinedColliderAndVehicle(Window& window) {
     physics->Update(scene.GetRegistry(),1.f/60);
     Check(physics->Raycast({3,7,15},{0,-1,0},hit,10)&&std::abs(hit.point.y-2)<.001f,"Combined ground failed under translated/mirrored parent");
     ground.GetComponent<Transform>().position={0,0,0};ground.GetComponent<Transform>().scale={1,1,1};
+    // A high-detail/baked render replacement must not change authored collision.
+    int renderId=AssetManager::CreateModel();
+    auto raisedPlane=plane;for(auto& vertex:raisedPlane.vertices)vertex.position.y=5;
+    Check(AssetManager::GetModel(renderId)->SetRuntimePrimitives({raisedPlane}),"Render replacement fixture failed");
+    auto& source=*tiles[0].AddComponent<MeshCollider>();source.useAttachedModel=false;source.modelId=modelId;
+    tiles[0].GetComponent<Model>().modelId=renderId;
+    physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->Raycast({0,9,-15},{0,-1,0},hit,15)&&std::abs(hit.point.y)<.001f,
+        "Combined ground used the baked render mesh instead of its explicit collision source");
+    auto sourceBuilds=collider.rebuildCount;
+    for(int i=0;i<10;i++)physics->Update(scene.GetRegistry(),1.f/60);
+    Check(collider.rebuildCount==sourceBuilds,"Combined collision override rebuilt every frame");
+    source.useAttachedModel=true;physics->Update(scene.GetRegistry(),1.f/60);
+    Check(physics->Raycast({0,9,-15},{0,-1,0},hit,15)&&std::abs(hit.point.y-5)<.001f,
+        "Combined collision failed to respond to a source change");
+    tiles[0].GetComponent<Model>().modelId=modelId;tiles[0].RemoveComponent<MeshCollider>();
     auto car=scene.CreateEntity("Rover");car.AddComponent<Transform>()->position={0,1.1f,8};
     auto& body=*car.AddComponent<Rigidbody>();body.motionType=RigidbodyMotionType::DYNAMIC;body.mass=1400;body.useGravity=true;
     auto& chassis=*car.AddComponent<BoxCollider>();chassis.size={2,.5f,3.9f};chassis.offset={0,-.08f,0};
