@@ -174,6 +174,38 @@ static void AdaptivePhysicsJobs()
     std::cout << "Awake-body job selection and inline/parallel transitions passed\n";
 }
 
+static void MovingSpinningBodies()
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;physics.scene=&scene;physics.Create();
+    std::vector<Entity> movers;
+    for (int i = 0; i < 256; ++i) {
+        auto entity=scene.CreateEntity("Moving spinning body");
+        auto& transform=*entity.AddComponent<Transform>();
+        transform.position={i*4.f,0,0};
+        transform.rotation=glm::normalize(Quaternion(Vector3(i*.013f,i*.024f,i*.037f)));
+        auto& body=*entity.AddComponent<Rigidbody>();
+        body.useGravity=false;body.linearDamping=body.angularDamping=0;body.allowSleeping=false;
+        entity.AddComponent<BoxCollider>();
+        body.SetLinearVelocity({0,0,-24});body.SetAngularVelocity({.7f,1.3f,.2f});
+        movers.push_back(entity);
+    }
+    std::vector<float> previous(movers.size());
+    int stalled=0;
+    for (int frame=0;frame<480;++frame) {
+        physics.Update(scene.GetRegistry(),1.f/240);
+        for (size_t i=0;i<movers.size();++i) {
+            const float distance=-movers[i].GetComponent<Transform>().position.z;
+            const float step=distance-previous[i];previous[i]=distance;
+            if (frame>10 && (step<.095f || step>.105f))++stalled;
+        }
+    }
+    std::cout<<"Moving spinning body discontinuities: "<<stalled<<'\n';
+    Check(stalled==0,"Unedited rotating bodies stalled or rewound their translation");
+    for (float distance : previous)
+        Check(std::abs(distance - 47.6f) < .002f, "Rotating body's simulated travel drifted");
+}
+
 static void StaticEdits()
 {
     Scene scene;
@@ -333,6 +365,7 @@ int main()
         RotationRebuilds();
         RuntimeLocks();
         SubframeMotionAfterTurn();
+        MovingSpinningBodies();
         AdaptivePhysicsJobs();
         StaticEdits();
         UnchangedKinematicCommands();

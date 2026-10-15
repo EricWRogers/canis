@@ -218,7 +218,16 @@ namespace Canis
             // rotating a dynamic body a little each frame would consequently
             // have its edit overwritten by the physics pose unless it also
             // moved the body.
-            return 1.0f - std::fabs(glm::dot(glm::normalize(_a), glm::normalize(_b))) <= _epsilon;
+            // Subtract components before squaring: dot(q,q) can round below
+            // 1 even for identical normalized values. That falsely marks an
+            // untouched interpolated pose as an edit and teleports the native
+            // body back to it. Quaternion signs represent the same rotation.
+            const auto a = glm::normalize(_a);
+            const auto b = glm::normalize(_b);
+            const auto difference = a - b;
+            const auto antipodalDifference = a + b;
+            return std::min(glm::dot(difference, difference),
+                            glm::dot(antipodalDifference, antipodalDifference)) <= 2.0f * _epsilon;
         }
 
         bool NearlyZero(const Vector3 &_value, float _epsilon = 0.000001f)
