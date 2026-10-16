@@ -1,5 +1,6 @@
 #include <Canis/Asset.hpp>
 #include <Canis/RenderMetrics.hpp>
+#include <Canis/SkinningGLSL.hpp>
 #include <Canis/Audio.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Debug.hpp>
@@ -2465,24 +2466,30 @@ namespace Canis
     struct ModelAsset::PoseGPUCache
     {
         struct Entry { unsigned int vao=0, vbo=0; u64 revision=0; bool uploaded=false; };
+        struct Palette { unsigned int buffer=0; u64 revision=0; bool uploaded=false; };
         const ModelAsset* model=nullptr;
         u64 geometryRevision=0;
         std::vector<Entry> entries;
+        std::vector<Palette> palettes;
         void Clear()
         {
             // Scene poses can outlive a window at shutdown. Context destruction
             // already releases resources when there is no current GL context.
-            if (SDL_GL_GetCurrentContext())
+            if (SDL_GL_GetCurrentContext()) {
                 for (auto& entry : entries) {
                     if (entry.vao) glDeleteVertexArrays(1,&entry.vao);
                     if (entry.vbo) glDeleteBuffers(1,&entry.vbo);
                 }
+                for (auto& palette : palettes)
+                    if (palette.buffer) glDeleteBuffers(1, &palette.buffer);
+            }
             entries.clear();
+            palettes.clear();
         }
         ~PoseGPUCache() { Clear(); }
     };
 
-    unsigned int ModelAsset::PoseVertexArray(const Pose3D& pose, size_t primitiveIndex)
+    ModelAsset::PoseGPUCache& ModelAsset::GetPoseGpuCache(const Pose3D& pose)
     {
         if (!pose.gpuCache || pose.gpuCache->model!=this ||
             pose.gpuCache->geometryRevision!=m_geometryRevision) {
@@ -2497,7 +2504,46 @@ namespace Canis
         // Asset reload/free clears buffers even when an entity retains its pose.
         if (cache.entries.size()!=m_primitives.size())
             cache.entries.resize(m_primitives.size());
-        auto& entry=cache.entries[primitiveIndex];
+        cache.palettes.resize(m_skins.size());
+        return cache;
+    }
+
+    bool ModelAsset::BindSkinPalette(Shader& shader, const Pose3D& pose, size_t skinIndex)
+    {
+        static const bool enabled = [] {
+            const char* disabled = std::getenv("CANIS_DISABLE_GPU_SKINNING");
+            return !disabled || std::string(disabled) != "1";
+        }();
+        if (!enabled || !shader.SupportsGpuSkinning() || skinIndex >= pose.skinMatricesScratch.size())
+            return false;
+        const auto& matrices = pose.skinMatricesScratch[skinIndex];
+        if (matrices.empty() || matrices.size() > MaxSkinningJoints) return false;
+        auto& palette = GetPoseGpuCache(pose).palettes[skinIndex];
+        if (!palette.buffer) glGenBuffers(1, &palette.buffer);
+        if (!palette.uploaded || palette.revision != pose.skinRevision)
+        {
+            glBindBuffer(GL_UNIFORM_BUFFER, palette.buffer);
+            // Allocate the complete std140 block, upload only this skeleton's bones.
+            glBufferData(GL_UNIFORM_BUFFER, MaxSkinningJoints * sizeof(Matrix4), nullptr, GL_DYNAMIC_DRAW);
+            glBufferSubData(GL_UNIFORM_BUFFER, 0, matrices.size() * sizeof(Matrix4), matrices.data());
+            palette.uploaded = true;
+            palette.revision = pose.skinRevision;
+            RenderMetrics::SkinUpload(matrices.size() * sizeof(Matrix4));
+        }
+        else RenderMetrics::SkinCacheHit();
+        glBindBufferBase(GL_UNIFORM_BUFFER, SkinningBufferBinding, palette.buffer);
+        shader.SetInt("canisSkinJointCount", static_cast<int>(matrices.size()));
+        return true;
+    }
+
+    unsigned int ModelAsset::PoseVertexArray(const Pose3D& pose, size_t primitiveIndex)
+    {
+        static const bool cacheEnabled = [] {
+            const char* disabled = std::getenv("CANIS_DISABLE_SKIN_CACHE");
+            return !disabled || std::string(disabled) != "1";
+        }();
+        EnsureCpuSkinning(pose);
+        auto& entry=GetPoseGpuCache(pose).entries[primitiveIndex];
         if (!entry.vao) {
             glGenVertexArrays(1,&entry.vao);glGenBuffers(1,&entry.vbo);
             glBindVertexArray(entry.vao);glBindBuffer(GL_ARRAY_BUFFER,entry.vbo);
@@ -2511,7 +2557,7 @@ namespace Canis
             glEnableVertexAttribArray(7);
             glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
         }
-        if (!entry.uploaded || entry.revision!=pose.skinRevision) {
+        if (!cacheEnabled || !entry.uploaded || entry.revision!=pose.skinRevision) {
             const auto& vertices=pose.skinnedVertices[primitiveIndex];
             glBindBuffer(GL_ARRAY_BUFFER,entry.vbo);
             // Replace storage to avoid waiting on the previous frame's draw.
@@ -2537,6 +2583,8 @@ namespace Canis
             primitive.instanceCache.clear();
             if (primitive.instanceVbo != 0)
                 glDeleteBuffers(1, &primitive.instanceVbo);
+            if (primitive.skinVbo != 0)
+                glDeleteBuffers(1, &primitive.skinVbo);
             if (primitive.ebo != 0)
                 glDeleteBuffers(1, &primitive.ebo);
             if (primitive.vbo != 0)
@@ -2545,6 +2593,7 @@ namespace Canis
                 glDeleteVertexArrays(1, &primitive.vao);
 
             primitive.instanceVbo = 0;
+            primitive.skinVbo = 0;
             primitive.ebo = 0;
             primitive.vbo = 0;
             primitive.vao = 0;
@@ -2596,6 +2645,20 @@ namespace Canis
         // Locations 3-6 are reserved for the instanced model matrix.
         glEnableVertexAttribArray(7);
         glVertexAttribPointer(7, 4, GL_FLOAT, GL_FALSE, sizeof(RenderVertex3D), (void*)offsetof(RenderVertex3D, color));
+
+        if (_primitive.hasSkinning)
+        {
+            if (!_primitive.skinVbo) glGenBuffers(1, &_primitive.skinVbo);
+            glBindBuffer(GL_ARRAY_BUFFER, _primitive.skinVbo);
+            glBufferData(GL_ARRAY_BUFFER, _primitive.skinVertices.size() * sizeof(SkinVertex3D),
+                         _primitive.skinVertices.data(), GL_STATIC_DRAW);
+            glEnableVertexAttribArray(8);
+            glVertexAttribPointer(8, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex3D),
+                                  reinterpret_cast<void*>(offsetof(SkinVertex3D, joints)));
+            glEnableVertexAttribArray(9);
+            glVertexAttribPointer(9, 4, GL_FLOAT, GL_FALSE, sizeof(SkinVertex3D),
+                                  reinterpret_cast<void*>(offsetof(SkinVertex3D, weights)));
+        }
 
         glBindVertexArray(0);
         return true;
@@ -3018,6 +3081,7 @@ namespace Canis
         bool slotBound=false,matrixBound=false,colorBound=false;
         Matrix4 lastMatrix(1);Color lastColor(1);
         i32 lastTexture=std::numeric_limits<i32>::min();
+        i32 boundSkin = -1;
         _shader.SetBool("useInstanceMatrix",false);_shader.SetBool("useInstanceColor",false);
         _shader.SetInt("albedoMap",0);
 
@@ -3033,9 +3097,8 @@ namespace Canis
             const bool hasSkinnedPose =
                 primitive.hasSkinning &&
                 pose != nullptr &&
-                primitiveIndex < pose->skinnedVertices.size() &&
-                pose->skinnedVertices[primitiveIndex].size() ==
-                    primitive.bindVertices.size();
+                pose->globalNodeMatrices.size() == m_nodes.size() &&
+                pose->skinMatricesScratch.size() == m_skins.size();
             // CPU-skinned vertices are already in the model's global node
             // space. Applying the mesh node transform a second time moves
             // animated characters away from their entity/collider.
@@ -3142,19 +3205,15 @@ namespace Canis
                 glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);lastTexture=textureId;
             }
 
-            static const bool skinCacheEnabled=[] {
-                const char* disabled=std::getenv("CANIS_DISABLE_SKIN_CACHE");
-                return !disabled || std::string(disabled)!="1";
-            }();
             unsigned int vertexArray=primitive.vao;
-            if (hasSkinnedPose) {
-                if (skinCacheEnabled) vertexArray=PoseVertexArray(*pose,primitiveIndex);
-                else {
-                    const auto& vertices=pose->skinnedVertices[primitiveIndex];
-                    glBindBuffer(GL_ARRAY_BUFFER,primitive.vbo);
-                    glBufferSubData(GL_ARRAY_BUFFER,0,vertices.size()*sizeof(RenderVertex3D),vertices.data());
-                    RenderMetrics::SkinUpload(vertices.size()*sizeof(RenderVertex3D));
-                }
+            const bool gpuSkinned = hasSkinnedPose && primitive.skinIndex >= 0 &&
+                (boundSkin == primitive.skinIndex || BindSkinPalette(_shader, *pose, primitive.skinIndex));
+            if (gpuSkinned) boundSkin = primitive.skinIndex;
+            _shader.SetBool("canisUseSkinning", gpuSkinned);
+            if (hasSkinnedPose && !gpuSkinned) {
+                // Custom shaders use private pose buffers too; never overwrite
+                // the bind geometry subsequently consumed by a GPU-skinned pass.
+                vertexArray=PoseVertexArray(*pose,primitiveIndex);
             }
 
             if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
@@ -3194,6 +3253,7 @@ namespace Canis
     {
         if (_modelMatrices.empty())
             return;
+        _shader.SetBool("canisUseSkinning", false);
 
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
         struct Instance { Matrix4 matrix; Color color; };
@@ -3398,23 +3458,8 @@ namespace Canis
         if (_pose.skinnedVertices.size() != m_primitives.size())
             _pose.skinnedVertices.resize(m_primitives.size());
 
-        if (_pose.skinMatricesScratch.size() != m_primitives.size())
-            _pose.skinMatricesScratch.resize(m_primitives.size());
-
-        for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)
-        {
-            const Primitive3D &primitive = m_primitives[primitiveIndex];
-            if (!primitive.hasSkinning)
-            {
-                _pose.skinnedVertices[primitiveIndex].clear();
-                _pose.skinMatricesScratch[primitiveIndex].clear();
-                continue;
-            }
-
-            std::vector<RenderVertex3D> &poseVertices = _pose.skinnedVertices[primitiveIndex];
-            if (poseVertices.size() != primitive.bindVertices.size())
-                poseVertices = primitive.bindVertices;
-        }
+        if (_pose.skinMatricesScratch.size() != m_skins.size())
+            _pose.skinMatricesScratch.resize(m_skins.size());
     }
 
     void ModelAsset::VisitNodeRecursive(i32 _nodeIndex, const Matrix4 &_parentMatrix, Pose3D &_pose, std::vector<bool> &_visited) const
@@ -3457,47 +3502,40 @@ namespace Canis
 
     void ModelAsset::UpdateSkinning(Pose3D &_pose) const
     {
-        // A copied pose may be rendered independently; editing it must not
-        // replace the buffers still used by the unchanged original.
-        if (_pose.gpuCache && _pose.gpuCache.use_count()>1) _pose.gpuCache.reset();
+        if (_pose.gpuCache && _pose.gpuCache.use_count() > 1) _pose.gpuCache.reset();
         ++_pose.skinRevision;
         EnsurePose(_pose);
+        // One palette per skeleton, shared by every material section of the body.
+        for (size_t index = 0; index < m_skins.size(); ++index)
+        {
+            const auto& skin = m_skins[index];
+            auto& matrices = _pose.skinMatricesScratch[index];
+            matrices.assign(skin.joints.size(), Matrix4(1.0f));
+            for (size_t joint = 0; joint < skin.joints.size(); ++joint)
+            {
+                const auto node = skin.joints[joint];
+                if (node >= 0 && node < static_cast<i32>(_pose.globalNodeMatrices.size()) &&
+                    joint < skin.inverseBindMatrices.size())
+                    matrices[joint] = _pose.globalNodeMatrices[node] * skin.inverseBindMatrices[joint];
+            }
+        }
+    }
 
+    void ModelAsset::EnsureCpuSkinning(const Pose3D &_pose) const
+    {
+        if (_pose.cpuSkinRevision == _pose.skinRevision && _pose.skinnedVertices.size() == m_primitives.size())
+            return;
+        _pose.skinnedVertices.resize(m_primitives.size());
         for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)
         {
-            const Primitive3D &primitive = m_primitives[primitiveIndex];
-            if (!primitive.hasSkinning ||
-                primitive.skinVertices.size() != primitive.bindVertices.size() ||
-                primitive.skinIndex < 0 ||
-                primitive.skinIndex >= (i32)m_skins.size())
-                continue;
-
-            const Skin3D &skin = m_skins[primitive.skinIndex];
-            if (skin.joints.empty())
-                continue;
-
-            std::vector<RenderVertex3D> &poseVertices = _pose.skinnedVertices[primitiveIndex];
-            if (poseVertices.size() != primitive.bindVertices.size())
-                poseVertices = primitive.bindVertices;
-
-            std::vector<Matrix4> &skinMatrices = _pose.skinMatricesScratch[primitiveIndex];
-            if (skinMatrices.size() != skin.joints.size())
-                skinMatrices.resize(skin.joints.size(), Matrix4(1.0f));
-            else
-                std::fill(skinMatrices.begin(), skinMatrices.end(), Matrix4(1.0f));
-
-            for (size_t jointIndex = 0; jointIndex < skin.joints.size(); ++jointIndex)
-            {
-                const i32 nodeIndex = skin.joints[jointIndex];
-                if (nodeIndex < 0 || nodeIndex >= (i32)m_nodes.size())
-                    continue;
-
-                if (jointIndex >= skin.inverseBindMatrices.size())
-                    continue;
-
-                skinMatrices[jointIndex] = _pose.globalNodeMatrices[nodeIndex] * skin.inverseBindMatrices[jointIndex];
-            }
-
+            const auto& primitive = m_primitives[primitiveIndex];
+            if (!primitive.hasSkinning) continue;
+            auto& poseVertices = _pose.skinnedVertices[primitiveIndex];
+            if (poseVertices.size() != primitive.bindVertices.size()) poseVertices = primitive.bindVertices;
+            if (primitive.skinVertices.size() != primitive.bindVertices.size() || primitive.skinIndex < 0 ||
+                primitive.skinIndex >= static_cast<i32>(_pose.skinMatricesScratch.size())) continue;
+            const auto& skinMatrices = _pose.skinMatricesScratch[primitive.skinIndex];
+            if (skinMatrices.empty()) continue;
             for (size_t vertexIndex = 0; vertexIndex < primitive.bindVertices.size(); ++vertexIndex)
             {
                 const RenderVertex3D &bindVertex = primitive.bindVertices[vertexIndex];
@@ -3556,6 +3594,7 @@ namespace Canis
                     skinnedVertex.normal = Vector3(0.0f, 1.0f, 0.0f);
             }
         }
+        _pose.cpuSkinRevision = _pose.skinRevision;
     }
 
     bool ModelAsset::BuildTriangleMesh(std::vector<Vector3> &_vertices, std::vector<u32> &_indices, i32 _nodeIndex, bool _applyNodeTransform) const
@@ -3783,6 +3822,7 @@ namespace Canis
 
     bool ModelAsset::GetPoseBounds(const Pose3D &_pose, Vector3 &_min, Vector3 &_max, i32 _nodeIndex, bool _applyNodeTransform) const
     {
+        EnsureCpuSkinning(_pose);
         if (_pose.boundsRevision != _pose.skinRevision)
         {
             _pose.boundsCache.clear();

@@ -407,11 +407,11 @@ static void SkinnedPoseBuffers(Window &window) {
     render();
     Check(RenderMetrics::Latest().draws==1 && RenderMetrics::Latest().culled==1,
         "Offscreen animated model still submitted a draw");
-    Check(RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),
-        "Culled animated model uploaded its vertex data");
+    Check(RenderMetrics::Latest().skinUploadBytes==sizeof(Matrix4),
+        "Visible animated model failed to upload its bone palette, or culled model uploaded data");
     hidden.GetComponent<Transform>().position.z=-3;
     render();
-    Check(RenderMetrics::Latest().draws==2 && RenderMetrics::Latest().skinUploadBytes==3*sizeof(ModelAsset::RenderVertex3D),
+    Check(RenderMetrics::Latest().draws==2 && RenderMetrics::Latest().skinUploadBytes==sizeof(Matrix4),
         "Animated model failed to return to view with its own pose buffer");
     visible.GetComponent<Transform>().position.z=3;
     hidden.GetComponent<Transform>().position.z=3;
@@ -429,6 +429,85 @@ static void SkinnedPoseBuffers(Window &window) {
     render();
     Check(RenderMetrics::Latest().draws==1 && RenderMetrics::Latest().skinUploadBytes==0,
         "Frozen ragdoll lost its posed bounds or reuploaded its mesh");
+    // The GPU path must match the legacy/custom-shader CPU fallback, including
+    // independent actors, copy-on-write, frozen poses and geometry reloads.
+    auto weightedDocument=Pipeline::ReadGltf(root/"skin.gltf").json;
+    weightedDocument["skins"][0]["joints"]={0,1};
+    weightedDocument["nodes"][1]["rotation"]={0,0,std::sin(.3f),std::cos(.3f)};
+    weightedDocument["nodes"][1]["scale"]={1,.8f,1};
+    std::ofstream(root/"weighted.gltf")<<weightedDocument.dump();
+    const uint16_t blendedJoints[]={0,1,0,0, 0,1,0,0, 0,1,127,0};
+    const float blendedWeights[]={2,1,0,0, 0,0,0,0, 1,2,1,0};
+    std::fstream edit(root/"mesh.bin",std::ios::binary|std::ios::in|std::ios::out);
+    edit.seekp(sizeof(positions));edit.write(reinterpret_cast<const char*>(blendedJoints),sizeof(blendedJoints));
+    edit.write(reinterpret_cast<const char*>(blendedWeights),sizeof(blendedWeights));edit.close();
+    model.Free();Check(model.Load((root/"weighted.gltf").string()),"Weighted skin fixture failed");
+    const std::string normalFragment="[OPENGL VERSION]\nin vec3 N;out vec4 color;void main(){color=vec4(N*.5+.5,1);}";
+    shader.CompileSource("[OPENGL VERSION]\nlayout(location=0)in vec3 p;layout(location=1)in vec3 n;"
+        "out vec3 N;uniform mat4 M;void main(){N=n;gl_Position=M*vec4(p,1);}",normalFragment,"CPU normal parity");
+    shader.Link();
+    Shader gpu;
+    gpu.CompileSource("[OPENGL VERSION]\n[CANIS SKINNING]\nlayout(location=0)in vec3 p;layout(location=1)in vec3 normal;"
+        "out vec3 N;uniform mat4 M;void main(){vec3 v=p,n=normal;CanisSkin(v,n);N=n;gl_Position=M*vec4(v,1);}",
+        normalFragment,"GPU skin parity");
+    gpu.Link();Check(gpu.SupportsGpuSkinning(),"Skinning shader interface was not recognized");
+    model.UpdateAnimation(left,0,0);model.UpdateAnimation(right,0,1);
+    shader.Use();glDisable(GL_DEPTH_TEST);
+    const auto reference=frame(false);
+    ModelAsset::Pose3D gpuLeft,gpuRight;
+    model.UpdateAnimation(gpuLeft,0,0);model.UpdateAnimation(gpuRight,0,1);
+    auto gpuFrame=[&](bool reverse) {
+        gpu.Use();RenderMetrics::BeginFrame();glViewport(0,0,320,240);
+        glDisable(GL_DEPTH_TEST);glDisable(GL_CULL_FACE);glClear(GL_COLOR_BUFFER_BIT);
+        if(reverse) {model.Draw(gpu,Matrix4(1),&gpuRight,-1,{0,1,0,1});model.Draw(gpu,Matrix4(1),&gpuLeft,-1,{1,0,0,1});}
+        else {model.Draw(gpu,Matrix4(1),&gpuLeft,-1,{1,0,0,1});model.Draw(gpu,Matrix4(1),&gpuRight,-1,{0,1,0,1});}
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();RenderMetrics::EndPresent();return pixels;
+    };
+    auto equivalent=[](const auto& a,const auto& b) {
+        size_t differences=0;
+        for(size_t i=0;i<a.size();i++) differences+=std::abs(int(a[i])-int(b[i]))>2;
+        return differences<=16; // Roundoff may move a few edge samples.
+    };
+    Check(equivalent(gpuFrame(false),reference) && RenderMetrics::Latest().skinUploadBytes==4*sizeof(Matrix4),
+        "GPU skinning differs from CPU skinning or uploaded full vertices");
+    Check(gpuLeft.skinnedVertices[0].empty(),"GPU pose still evaluated CPU vertices");
+    Check(equivalent(gpuFrame(true),reference) && RenderMetrics::Latest().skinUploadBytes==0,
+        "Frozen GPU poses reuploaded or shared the wrong palette");
+    auto retained=gpuLeft;
+    model.UpdateAnimation(gpuLeft,0,.5f);gpuFrame(false);
+    Check(RenderMetrics::Latest().skinUploadBytes==2*sizeof(Matrix4),"GPU pose edit reuploaded unchanged actors");
+    gpuLeft=retained;Check(equivalent(gpuFrame(false),reference),"Editing copied GPU pose changed the retained original");
+    Check(model.GetPoseBounds(gpuRight,poseLow,poseHigh) && poseHigh.x>.3f,
+        "Lazy CPU geometry query lost the GPU pose");
+    for (const std::string name : {"model3d_shadow", "editor_model_pick"})
+    {
+        auto read=[](const std::string& path) { std::ifstream file(path);return std::string(std::istreambuf_iterator<char>(file),{}); };
+        auto vertex=read("assets/shaders/"+name+".vs");
+        const auto fragment=read("assets/shaders/"+name+".fs");
+        Shader passGpu,passCpu;
+        passGpu.CompileSource(vertex,fragment,name+" GPU parity");passGpu.Link();
+        Check(passGpu.SupportsGpuSkinning(),"Picking/shadow shader did not support bone palettes");
+        const std::string marker="[CANIS SKINNING]";
+        vertex.replace(vertex.find(marker),marker.size(),"void CanisSkin(inout vec3 p,inout vec3 n){}\n");
+        passCpu.CompileSource(vertex,fragment,name+" CPU parity");passCpu.Link();
+        auto drawPass=[&](Shader& program) {
+            program.Use();program.SetMat4("P",Matrix4(1));program.SetMat4("V",Matrix4(1));
+            program.SetMat4("lightSpaceMatrix",Matrix4(1));program.SetVec4("entityIdColor",{.2f,.5f,.8f,1});
+            glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+            model.Draw(program,glm::scale(Matrix4(1),Vector3(-.9f,1.1f,.8f)),&gpuRight);
+            std::vector<float> pixels(320*240*4);
+            if(name=="model3d_shadow") glReadPixels(0,0,320,240,GL_DEPTH_COMPONENT,GL_FLOAT,pixels.data());
+            else glReadPixels(0,0,320,240,GL_RGBA,GL_FLOAT,pixels.data());
+            return pixels;
+        };
+        const auto cpuPixels=drawPass(passCpu),gpuPixels=drawPass(passGpu);
+        size_t differences=0;
+        for(size_t i=0;i<cpuPixels.size();++i)differences+=std::abs(cpuPixels[i]-gpuPixels[i])>.00001f;
+        Check(differences<=16,"GPU skinning changed shadow coverage or editor selection IDs");
+        passGpu.UnUse();
+    }
+    Check(glGetError()==GL_NO_ERROR,"GPU skinning introduced an OpenGL error");
     model.Free();shader.UnUse();std::filesystem::remove_all(root);
     std::cout<<"Skinned pose caching, conservative bounds, offscreen draws/uploads and visibility restoration passed\n";
 }

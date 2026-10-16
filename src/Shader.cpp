@@ -1,4 +1,5 @@
 #include <Canis/ProbeLightingGLSL.hpp>
+#include <Canis/SkinningGLSL.hpp>
 #include <Canis/DirectLightingGLSL.hpp>
 #include <Canis/Shader.hpp>
 #include <Canis/Debug.hpp>
@@ -54,6 +55,7 @@ namespace Canis
 
     Shader::~Shader()
     {
+        if (m_defaultSkinPalette) glDeleteBuffers(1, &m_defaultSkinPalette);
         if (m_programId != 0)
             glDeleteProgram(m_programId);
         if (m_fragmentShaderId != 0)
@@ -97,6 +99,7 @@ namespace Canis
         }
 
         m_isLinked = false;
+        m_gpuSkinning = false;
         m_locationsCashe.clear();
         m_lastValueCashe.clear();
         m_uniformTypes.clear();
@@ -119,7 +122,12 @@ namespace Canis
         for (size_t i = 0; i < m_attributes.size(); ++i)
             glBindAttribLocation(m_programId, static_cast<GLuint>(i), m_attributes[i].c_str());
 
-        CompileShaderSource(vertex, name+":vertex", m_vertexShaderId);
+        const std::string skinMarker = "[CANIS SKINNING]";
+        std::string expandedVertex = vertex;
+        if (auto at = expandedVertex.find(skinMarker); at != std::string::npos)
+            expandedVertex.replace(at, skinMarker.size(), SkinningGLSL);
+        m_vertexSource = expandedVertex;
+        CompileShaderSource(expandedVertex, name+":vertex", m_vertexShaderId);
         std::string expandedFragment=fragment;
         const std::string marker="[CANIS PROBE LIGHTING]";
         if(auto at=expandedFragment.find(marker);at!=std::string::npos)
@@ -217,11 +225,26 @@ namespace Canis
             for(auto shader:shaders)glDetachShader(variant->m_programId,shader);
         }
         for(auto shader:shaders)glDeleteShader(shader);
-        if(valid){variant->m_isLinked=true;variant->m_path=m_path+":stereo";m_stereoVariant=std::move(variant);}
+        if(valid){variant->m_isLinked=true;variant->InitializeSkinning();variant->m_path=m_path+":stereo";m_stereoVariant=std::move(variant);}
         return m_stereoVariant.get();
 #else
         return nullptr;
 #endif
+    }
+
+    void Shader::InitializeSkinning()
+    {
+        const auto block = glGetUniformBlockIndex(m_programId, "CanisSkinPalette");
+        m_gpuSkinning = block != GL_INVALID_INDEX &&
+            glGetUniformLocation(m_programId, "canisUseSkinning") >= 0;
+        if (m_gpuSkinning)
+        {
+            glUniformBlockBinding(m_programId, block, SkinningBufferBinding);
+            if (!m_defaultSkinPalette) glGenBuffers(1, &m_defaultSkinPalette);
+            glBindBuffer(GL_UNIFORM_BUFFER, m_defaultSkinPalette);
+            glBufferData(GL_UNIFORM_BUFFER, MaxSkinningJoints * sizeof(Matrix4), nullptr, GL_STATIC_DRAW);
+            glBindBuffer(GL_UNIFORM_BUFFER, 0);
+        }
     }
 
     void Shader::Link()
@@ -252,6 +275,7 @@ namespace Canis
             m_isLinked = true;
         }
 
+        InitializeSkinning();
         m_uniformTypes.clear();
         GLint uniformCount = 0, maximumNameLength = 0;
         glGetProgramiv(m_programId, GL_ACTIVE_UNIFORMS, &uniformCount);
@@ -335,6 +359,11 @@ namespace Canis
     void Shader::Use()
     {
         glUseProgram(m_programId);
+        if (m_gpuSkinning)
+        {
+            glBindBufferBase(GL_UNIFORM_BUFFER, SkinningBufferBinding, m_defaultSkinPalette);
+            SetBool("canisUseSkinning", false);
+        }
         for (int i = 0; i < m_numberOfAttributes; i++)
         {
             glEnableVertexAttribArray(i);

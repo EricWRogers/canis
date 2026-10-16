@@ -40,6 +40,7 @@ namespace Canis
         bool IsLinked() { return m_isLinked; }
         int GetUniformLocation(const std::string &uniformName, const size_t _valueHash) const;
         unsigned int GetUniformType(const std::string &uniformName) const;
+        bool SupportsGpuSkinning() const { return m_gpuSkinning; }
         int GetProgramID() { return m_programId; }
 
     private:
@@ -59,9 +60,12 @@ namespace Canis
         std::string m_path = "";
         std::string m_vertexSource, m_fragmentSource;
         bool m_stereoAttempted = false;
+        bool m_gpuSkinning = false;
+        unsigned int m_defaultSkinPalette = 0;
         std::unique_ptr<Shader> m_stereoVariant;
 
         void CompileShaderSource(std::string source, const std::string &name, unsigned int &id);
+        void InitializeSkinning();
     };
 
 } // end of Canis namespace

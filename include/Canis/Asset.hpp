@@ -568,6 +568,7 @@ namespace Canis
             unsigned int vbo = 0;
             unsigned int ebo = 0;
             unsigned int instanceVbo = 0;
+            unsigned int skinVbo = 0;
             std::vector<RenderVertex3D> bindVertices = {};
             std::vector<RenderVertex3D> skinnedVertices = {};
             std::vector<SkinVertex3D> skinVertices = {};
@@ -638,12 +639,14 @@ namespace Canis
         struct PoseGPUCache;
         struct Pose3D
         {
-            // Each pose owns its GPU vertex data; copied poses share until edited.
+            // Copied poses share GPU resources until edited. CPU vertices are lazy
+            // for legacy shaders and exact geometry queries (e.g. ragdoll bounds).
             u64 skinRevision = 0;
             mutable std::shared_ptr<PoseGPUCache> gpuCache;
             std::vector<Matrix4> localNodeMatrices = {};
             std::vector<Matrix4> globalNodeMatrices = {};
-            std::vector<std::vector<RenderVertex3D>> skinnedVertices = {};
+            mutable std::vector<std::vector<RenderVertex3D>> skinnedVertices = {};
+            mutable u64 cpuSkinRevision = ~u64(0);
             std::vector<std::vector<Matrix4>> skinMatricesScratch = {};
             std::vector<Vector3> translationsScratch = {};
             std::vector<Vector4> rotationsScratch = {};
@@ -747,9 +750,12 @@ namespace Canis
         void VisitNodeRecursive(i32 _nodeIndex, const Matrix4 &_parentMatrix, Pose3D &_pose, std::vector<bool> &_visited) const;
         void UpdateGlobalMatrices(Pose3D &_pose) const;
         void UpdateSkinning(Pose3D &_pose) const;
+        void EnsureCpuSkinning(const Pose3D &_pose) const;
         void FreePrimitives();
         bool UploadPrimitive(Primitive3D &_primitive) const;
         unsigned int PoseVertexArray(const Pose3D& pose, size_t primitiveIndex);
+        PoseGPUCache& GetPoseGpuCache(const Pose3D& pose);
+        bool BindSkinPalette(Shader& shader, const Pose3D& pose, size_t skinIndex);
     };
 
     class TerrainAsset : public Asset
