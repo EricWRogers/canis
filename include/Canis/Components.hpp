@@ -1300,6 +1300,8 @@ namespace Canis
         i32 nodeIndex = -1;
         bool applyNodeTransform = true;
         bool staticModel = false;
+        // Shared scene wetness affects only explicitly exposed surfaces.
+        bool weatherSurface = false;
         // Opt-in contract: baked mesh remains opaque, rigid and undeformed.
         bool bakedVisibility = false;
         bool castShadow = true;

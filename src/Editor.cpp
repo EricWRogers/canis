@@ -14506,6 +14506,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         state.scene = m_scene;
         state.path = m_scene->GetPath();
         state.captured = true;
+        state.wetnessAmount = m_scene->GetSurfaceWetnessSettings().amount;
         state.active = m_scene->HasLightingScenarioPreview();
         if (state.active)
         {
@@ -14525,6 +14526,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_animationLightingPreview = {};
         if (!state.captured || !m_scene || state.scene != m_scene || state.path != m_scene->GetPath())
             return;
+        m_scene->GetSurfaceWetnessSettings().amount = state.wetnessAmount;
         m_scene->ClearLightingScenarioPreview();
         if (state.active)
             m_scene->SetLightingScenarioPreview(state.from, state.to, state.blend);
@@ -15593,6 +15595,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
         SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
         DrawCloudVolume();
+        DrawSurfaceWetness();
         DrawLightingScenarios();
         if (!m_scene->GetLightingScenarios().empty()) {
             ImGui::SeparatorText("Scene base lighting");

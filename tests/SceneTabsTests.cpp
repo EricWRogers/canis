@@ -30,6 +30,9 @@ namespace Canis
             night.id = "preview-night"; night.name = "Night";
             app.scene.GetLightingScenarios() = {dusk, night};
             Check(app.scene.SetInitialLightingScenario(night.id), "Preview fixture startup was rejected");
+            auto& wetness = app.scene.GetSurfaceWetnessSettings();
+            wetness.enabled = true;
+            wetness.amount = .15f;
             auto root = app.scene.CreateEntity("Animation lighting fixture");
             float animatedWeight = 0;
             ScriptConf conf;
@@ -41,6 +44,7 @@ namespace Canis
             conf.registry.animationSetters["weight"] = [&](void* ptr, const AnimationValue& value) {
                 *static_cast<float*>(ptr) = value.AsFloat();
                 app.scene.SetLightingScenarioPreview(dusk.id, night.id, value.AsFloat());
+                app.scene.GetSurfaceWetnessSettings().amount = value.AsFloat();
             };
             app.RegisterScript(conf);
             auto capture = [&] {
@@ -68,16 +72,19 @@ namespace Canis
             const auto runtime = app.scene.GetLightingScenarioBlend();
             Check(animatedWeight == 0 && !app.scene.HasLightingScenarioPreview() &&
                   runtime.from->id == night.id && runtime.to->id == night.id &&
-                  app.scene.GetInitialLightingScenario() == night.id,
-                  "Ending animation preview changed the saved startup or runtime lighting endpoint");
+                  app.scene.GetInitialLightingScenario() == night.id &&
+                  std::abs(app.scene.GetSurfaceWetnessSettings().amount - .15f) < .0001f,
+                  "Ending animation preview changed the startup lighting or authored surface wetness");
             app.scene.SetLightingScenarioPreview(night.id, dusk.id, .23f);
+            app.scene.GetSurfaceWetnessSettings().amount = .37f;
             capture(); sample(.8f);
             editor.RestoreAnimationPreviewState();
             const auto restored = app.scene.GetLightingScenarioBlend();
             Check(app.scene.HasLightingScenarioPreview() && restored.from->id == night.id &&
                   restored.to->id == dusk.id && std::abs(restored.blend - .23f) < .0001f &&
-                  animatedWeight == 0 && !editor.m_animationLightingPreview.captured,
-                  "Ending animation preview did not restore an existing Environment lighting preview");
+                  animatedWeight == 0 && !editor.m_animationLightingPreview.captured &&
+                  std::abs(app.scene.GetSurfaceWetnessSettings().amount - .37f) < .0001f,
+                  "Ending animation preview did not restore prior Environment lighting and wetness");
             // Repeated restore calls after panel closure must be harmless.
             editor.RestoreAnimationPreviewState();
             Check(app.scene.HasLightingScenarioPreview() &&
@@ -104,13 +111,15 @@ namespace Canis
             editor.m_animationPreviewEnabled = false;
             ImGui::NewFrame(); editor.DrawAnimationWindow(1.f / 60); ImGui::Render();
             Check(animatedWeight == 0 && !app.scene.HasLightingScenarioPreview() &&
-                  app.scene.GetLightingScenarioBlend().from->id == night.id,
-                  "Disabling actual Animation window preview failed to restore its custom lighting binding");
+                  app.scene.GetLightingScenarioBlend().from->id == night.id &&
+                  std::abs(app.scene.GetSurfaceWetnessSettings().amount - .37f) < .0001f,
+                  "Disabling actual Animation window preview failed to restore lighting and wetness");
             editor.m_animationPreviewEnabled = true;
             editor.m_animationClipStatePath.clear();
             editor.m_animationTargetUUID = UUID(0);
             app.scene.GetLightingScenarios().clear();
             app.scene.SetInitialLightingScenario("");
+            app.scene.GetSurfaceWetnessSettings() = {};
             root.Destroy();
             app.UnregisterScript(conf);
         }
@@ -129,6 +138,8 @@ namespace Canis
             auto setup = [&] {
                 seed("first.scene"); seed("second.scene");
                 app.scene.Unload(); app.scene.Load("first.scene");
+                Check(app.scene.GetSurfaceWetnessSettings() == SurfaceWetnessSettings{},
+                      "A legacy scene inherited surface wetness from the previously loaded scene");
                 editor.ResetSceneHistory(); editor.InitializeSceneTabs();
                 editor.OpenSceneTab("second.scene");
             };
@@ -276,8 +287,17 @@ namespace Canis
             LightingProbe probe;probe.position=Vector3(3,4,5);probe.halfExtents=Vector3(8,9,10);
             probe.diffuseIntensity=.4f;probe.specularIntensity=.8f;
             for(int i=0;i<MaxLightingProbes;i++)app.scene.GetLightingProbes().push_back(probe);
+            auto& wetness = app.scene.GetSurfaceWetnessSettings();
+            wetness.enabled = true; wetness.amount = .6f;
+            wetness.dryRoughness = .73f; wetness.wetRoughness = .16f; wetness.darkening = .32f;
+            const auto authoredWetness = wetness;
             Check(app.scene.Save(),"Baking settings save failed");
-            app.scene.Unload();app.scene.Load("first.scene");
+            app.scene.Unload();
+            Check(app.scene.GetSurfaceWetnessSettings() == SurfaceWetnessSettings{},
+                  "Scene unload retained the previous scene's surface wetness");
+            app.scene.Load("first.scene");
+            Check(app.scene.GetSurfaceWetnessSettings() == authoredWetness,
+                  "Surface wetness controls did not survive a real scene save and reload");
             Check(app.scene.GetLightingProbes().size()==MaxLightingProbes && app.scene.GetLightingProbes()[0]==probe,
                 "Lighting probe settings did not survive scene reload");
             const auto& loaded=app.scene.GetBakingSettings();

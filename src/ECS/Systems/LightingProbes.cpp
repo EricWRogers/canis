@@ -55,10 +55,15 @@ namespace Canis
         };
         // Capture filtering changes radiance even when all source assets stay
         // unchanged. Rebuild caches captured with nearest-sampled normal maps.
-        constexpr uint32_t captureRevision = 3;
+        constexpr uint32_t captureRevision = 4;
         bytes(&captureRevision, sizeof(captureRevision));
         const auto cloudConfig=YAML::Dump(SerializeCloudVolumeSettings(scene.GetCloudVolumeSettings()));
         bytes(cloudConfig.data(),cloudConfig.size());
+        auto wetness=scene.GetSurfaceWetnessSettings();wetness.Sanitize();
+        bytes(&wetness.enabled,sizeof(wetness.enabled));
+        // Captures always use the dry baseline. Animating amount or tuning the
+        // wet response must never invalidate/rebuild resident reflection data.
+        if(wetness.enabled)bytes(&wetness.dryRoughness,sizeof(wetness.dryRoughness));
         const auto ambient = scene.GetEnvironmentAmbientLight();
         bytes(&ambient, sizeof(ambient));
         const float ambientIntensity = scene.GetEnvironmentAmbientLightIntensity();
@@ -75,7 +80,8 @@ namespace Canis
             {
                 auto extension = entry.path().extension().string();
                 if (entry.is_regular_file() && (extension == ".material" || extension == ".png" ||
-                                                extension == ".jpg" || extension == ".shader"))
+                                                extension == ".jpg" || extension == ".shader" ||
+                                                extension == ".fs" || extension == ".vs"))
                     fileStamp(entry.path().string());
             }
         for (auto handle : registry.view<Transform, Model>())
@@ -104,6 +110,7 @@ namespace Canis
                 bytes(&time, sizeof(time));
             }
             bytes(&m.color, sizeof(m.color));
+            bytes(&m.weatherSurface, sizeof(m.weatherSurface));
             if (const auto* material = registry.try_get<Material>(handle))
             {
                 bytes(&material->color, sizeof(material->color));
@@ -170,6 +177,9 @@ namespace Canis
         bytes(&clouds.halfExtents,sizeof(clouds.halfExtents));bytes(&clouds.noiseScale,sizeof(clouds.noiseScale));
         bytes(&clouds.windVelocity,sizeof(clouds.windVelocity));bytes(&clouds.steps,sizeof(clouds.steps));
         bytes(&clouds.extinction,sizeof(clouds.extinction));
+        auto wetness=scene.GetSurfaceWetnessSettings();wetness.Sanitize();
+        bytes(&wetness.enabled,sizeof(wetness.enabled));
+        if(wetness.enabled)bytes(&wetness.dryRoughness,sizeof(wetness.dryRoughness));
         for(const auto& scenario : scene.GetLightingScenarios()) {
             string(scenario.id);string(scenario.skyboxPath);string(scenario.manifestPath);
             string(scenario.sourceFingerprint);string(scenario.settingsFingerprint);
@@ -197,6 +207,8 @@ namespace Canis
         };
         add(clouds.enabled);add(clouds.baseHeight);add(clouds.thickness);add(clouds.center);add(clouds.halfExtents);
         add(clouds.noiseScale);add(clouds.windVelocity);add(clouds.steps);add(clouds.extinction);
+        auto wetness=scene.GetSurfaceWetnessSettings();wetness.Sanitize();
+        add(wetness.enabled);if(wetness.enabled)add(wetness.dryRoughness);
         result+=std::to_string(hash);
         return result;
     }

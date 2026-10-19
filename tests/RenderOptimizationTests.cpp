@@ -1663,6 +1663,72 @@ static void DynamicRigidBatches(Window& window)
     renderer.OnDestroy();AssetManager::FreeModel(id);
 }
 
+// Weather opt-in belongs to the batch key, while the animated scene value must
+// update pixels without rebuilding static or dynamic instance geometry.
+static void WeatherSurfaceBatches(Window& window)
+{
+    Scene scene;
+    scene.SetEnvironmentAmbientLight(Color(.7f,.7f,.7f,1));
+    scene.SetEnvironmentAmbientLightIntensity(1.f);
+    auto& wetness=scene.GetSurfaceWetnessSettings();wetness.enabled=true;
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.2f,-.2f,0},{0,0,1},{}},{{.2f,-.2f,0},{0,0,1},{}},
+                   {{.2f,.2f,0},{0,0,1},{}},{{-.2f,.2f,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};
+    std::vector<int> ids;
+    auto makeModel=[&] {
+        const int id=AssetManager::CreateModel();ids.push_back(id);
+        Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Weather surface fixture failed");return id;
+    };
+    const int repeated=makeModel();
+    std::vector<Entity> objects;
+    for(int row=0;row<3;++row)for(int i=0;i<4;++i) {
+        auto e=scene.CreateEntity("Weather surface batching");
+        e.AddComponent<Transform>()->position={2.f+(i-1.5f)*.55f,float(1-row)*.7f,-3};
+        auto& model=*e.AddComponent<Model>();model.modelId=row==2?makeModel():repeated;
+        model.staticModel=row!=1;model.castShadow=false;model.weatherSurface=i%2==0;
+        objects.push_back(e);
+    }
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    const auto projection=glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f);
+    const auto view=glm::translate(Matrix4(1),Vector3(-2,0,0));
+    auto draw=[&] {
+        scene.SetVRCamera(view,projection,.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    const auto dry=draw();draw();
+    Check(RenderMetrics::Latest().draws==6,"Weather opt-in mixed incompatible static, dynamic or merged batches");
+    wetness.amount=1.f;const auto wet=draw();
+    Check(wet!=dry,"Animated surface wetness did not update shaded pixels");
+    Check(RenderMetrics::Latest().batchBuilds==0 && RenderMetrics::Latest().instanceUploadBytes==0,
+          "Animated surface wetness rebuilt/uploaded unchanged instance geometry");
+    for(auto e:objects) {
+        const auto clip=projection*view*Vector4(e.GetComponent<Transform>().position,1);
+        const int x=int((clip.x/clip.w*.5f+.5f)*320),y=int((clip.y/clip.w*.5f+.5f)*240);
+        const int pixel=(y*320+x)*4;
+        if(e.GetComponent<Model>().weatherSurface)
+            Check(wet[pixel]<dry[pixel],"Opted-in concrete did not darken when wet");
+        else
+            Check(wet[pixel]==dry[pixel],"Weather shading leaked into an unmarked renderer");
+        e.AddComponent<Material>()->materialFields.SetFloat("weatherBatchParitySentinel",0.f);
+    }
+    Check(draw()==wet,"Weather batches differ from individual model draws");
+    for(auto e:objects)e.RemoveComponent<Material>();
+    wetness.amount=0.f;Check(draw()==dry,"Drying did not restore the original surface pixels");
+    // Changing opt-in itself invalidates batch membership without a scene reload.
+    objects[1].GetComponent<Model>().weatherSurface=true;
+    wetness.amount=1.f;const auto edited=draw();
+    for(auto e:objects)e.AddComponent<Material>()->materialFields.SetFloat("weatherBatchParitySentinel",0.f);
+    Check(draw()==edited,"Changing weather opt-in retained a stale batch key");
+    Check(glGetError()==GL_NO_ERROR,"GL error in weather surface batching");
+    renderer.OnDestroy();for(int id:ids)AssetManager::FreeModel(id);
+    std::cout<<"Weather surface isolation, static/dynamic/merged parity and animation cache stability passed\n";
+}
+
 // Combined buffers must preserve per-object culling, edits and normal transforms.
 static void StaticGeometryRanges(Window& window)
 {
@@ -2144,6 +2210,7 @@ int main(int argc,char** argv) {
         NativeRagdollLifecycle(window);
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
+        WeatherSurfaceBatches(window);
         StaticGeometryRanges(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);

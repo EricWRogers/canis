@@ -513,6 +513,7 @@ namespace Canis
             Scene* scene = nullptr;
             std::string path, from, to;
             float blend = 0;
+            float wetnessAmount = 0;
             bool captured = false, active = false;
         } m_animationLightingPreview;
         std::string m_animationAddPropertySearch = {};
@@ -566,6 +567,7 @@ namespace Canis
         double m_lightingScenarioNextCheck = 0;
         void DrawLightingScenarios();
         void DrawCloudVolume();
+        void DrawSurfaceWetness();
         void StartLightingScenarioBake(bool all);
         void UpdateLightingScenarioBake();
         void StartEnvironmentBake();

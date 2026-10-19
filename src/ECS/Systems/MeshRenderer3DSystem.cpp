@@ -358,6 +358,7 @@ namespace Canis
             i32 materialId = -1;
             i32 nodeIndex = -1;
             bool applyNodeTransform = true;
+            bool weatherSurface = false;
             float modelColorR = 1.0f;
             float modelColorG = 1.0f;
             float modelColorB = 1.0f;
@@ -376,6 +377,7 @@ namespace Canis
                     materialId,
                     nodeIndex,
                     applyNodeTransform,
+                    weatherSurface,
                     modelColorR,
                     modelColorG,
                     modelColorB,
@@ -391,6 +393,7 @@ namespace Canis
                         _other.materialId,
                         _other.nodeIndex,
                         _other.applyNodeTransform,
+                        _other.weatherSurface,
                         _other.modelColorR,
                         _other.modelColorG,
                         _other.modelColorB,
@@ -1961,6 +1964,11 @@ namespace Canis
                 return _a.distanceSquared > _b.distanceSquared;
             });
 
+        auto wetness = scene->GetSurfaceWetnessSettings();
+        wetness.Sanitize();
+        // Reflection captures describe the stable dry environment. Surface
+        // wetting remains a cheap shading change while those captures blend.
+        if (m_capturingProbe) wetness.amount = 0.f;
         auto useShaderForMaterial = [&](MaterialAsset *_materialAsset) -> Shader*
         {
             Shader *activeShader = m_shader;
@@ -1998,6 +2006,11 @@ namespace Canis
                 }
                 currentShader->SetVec3("cameraPosition", cameraPosition);
                 currentShader->SetFloat("softTime", m_effectTime);
+                currentShader->SetBool("weatherWetnessEnabled", wetness.enabled);
+                currentShader->SetFloat("weatherWetness", wetness.amount);
+                currentShader->SetFloat("weatherDryRoughness", wetness.dryRoughness);
+                currentShader->SetFloat("weatherWetRoughness", wetness.wetRoughness);
+                currentShader->SetFloat("weatherDarkening", wetness.darkening);
                 if(currentShader->GetUniformLocation("softSceneDepth",0)>=0) {
                     currentShader->SetBool("softDepthAvailable",softDepthReady);
                     currentShader->SetInt("softSceneDepth",15);
@@ -2149,6 +2162,7 @@ namespace Canis
             key.materialId = materialId;
             key.nodeIndex = modelRenderer.nodeIndex;
             key.applyNodeTransform = modelRenderer.applyNodeTransform;
+            key.weatherSurface = modelRenderer.weatherSurface;
             key.modelColorR = modelColor.r;
             key.modelColorG = modelColor.g;
             key.modelColorB = modelColor.b;
@@ -2472,6 +2486,7 @@ namespace Canis
             currentShader->SetFloat("specularValue", specularValue);
             currentShader->SetFloat("roughnessValue", roughnessValue);
             currentShader->SetFloat("metallicValue", metallicValue);
+            currentShader->SetBool("weatherSurface", modelRenderer.weatherSurface);
             currentShader->SetVec4("emissionColor", emissionColor);
             currentShader->SetFloat("emissionIntensity", emissionIntensity);
 
@@ -2616,6 +2631,7 @@ namespace Canis
             currentShader->SetFloat("specularValue", specularValue);
             currentShader->SetFloat("roughnessValue", roughnessValue);
             currentShader->SetFloat("metallicValue", metallicValue);
+            currentShader->SetBool("weatherSurface", _batch.key.weatherSurface);
             currentShader->SetVec4("emissionColor", emissionColor);
             currentShader->SetFloat("emissionIntensity", emissionIntensity);
 

@@ -7,6 +7,7 @@
 #include <Canis/LightingProbe.hpp>
 #include <Canis/LightingScenario.hpp>
 #include <Canis/CloudVolume.hpp>
+#include <Canis/SurfaceWetness.hpp>
 #include <Canis/Tweening/TweenWorld.hpp>
 #include <Canis/External/entt.hpp>
 
@@ -161,6 +162,8 @@ namespace Canis
         void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
         CloudVolumeSettings& GetCloudVolumeSettings() { return m_cloudVolume; }
         const CloudVolumeSettings& GetCloudVolumeSettings() const { return m_cloudVolume; }
+        SurfaceWetnessSettings& GetSurfaceWetnessSettings() { return m_surfaceWetness; }
+        const SurfaceWetnessSettings& GetSurfaceWetnessSettings() const { return m_surfaceWetness; }
         double GetCloudSimulationTime() const { return m_cloudSimulationTime; }
         std::vector<LightingProbe>& GetLightingProbes() { return m_lightingProbes; }
         const std::vector<LightingProbe>& GetLightingProbes() const { return m_lightingProbes; }
@@ -313,6 +316,7 @@ namespace Canis
         std::vector<LightingProbe> m_lightingProbes;
         std::vector<LightingScenario> m_lightingScenarios;
         CloudVolumeSettings m_cloudVolume;
+        SurfaceWetnessSettings m_surfaceWetness;
         double m_cloudSimulationTime = 0;
         YAML::Node m_lightingScenarioSources;
         std::string m_initialLightingScenario;

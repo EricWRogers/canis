@@ -569,6 +569,7 @@ namespace Canis
         m_showColliders = false;
         m_baking = {};
         m_lightingProbes.clear();
+        m_surfaceWetness = {};
         ClearDebugGizmoLines();
         ClearLastRenderCamera();
         ClearEditorCameraOverrides();
@@ -676,6 +677,7 @@ namespace Canis
         m_lightingProbes.clear();
         m_lightingScenarios.clear();
         m_cloudVolume = {};
+        m_surfaceWetness = {};
         m_cloudSimulationTime = 0;
         m_lightingScenarioSources = YAML::Node(YAML::NodeType::Sequence);
         m_initialLightingScenario.clear();
@@ -703,6 +705,7 @@ namespace Canis
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
             m_environmentReflectionsEnabled = environment["Reflections"].as<bool>(true);
             m_cloudVolume = DeserializeCloudVolumeSettings(environment["CloudVolume"]);
+            m_surfaceWetness = DeserializeSurfaceWetnessSettings(environment["SurfaceWetness"]);
             if(auto probes=environment["LightingProbes"]; probes && probes.IsSequence()) {
                 for(const auto& node:probes) {
                     if(m_lightingProbes.size()>=MaxLightingProbes)break;
@@ -1059,6 +1062,7 @@ namespace Canis
         }
         environment["LightingProbes"]=probes;
         environment["CloudVolume"] = SerializeCloudVolumeSettings(m_cloudVolume);
+        environment["SurfaceWetness"] = SerializeSurfaceWetnessSettings(m_surfaceWetness);
         if (!m_lightingScenarios.empty()) {
             YAML::Node scenarios(YAML::NodeType::Sequence);
             for (const auto& scenario : m_lightingScenarios) scenarios.push_back(SerializeLightingScenario(scenario));

@@ -40,6 +40,38 @@ std::string UniqueScenarioName(const Scene &scene, const std::string &base) {
     return name;
 }
 } // namespace
+void Editor::DrawSurfaceWetness() {
+    ImGui::PushFont(nullptr, 18.f);
+    const bool open = ImGui::CollapsingHeader("Surface wetness", ImGuiTreeNodeFlags_DefaultOpen);
+    ImGui::PopFont();
+    if (!open)
+        return;
+    auto &wetness = m_scene->GetSurfaceWetnessSettings();
+    const bool animationOwnsAmount = m_animationLightingPreview.captured;
+    ImGui::BeginDisabled(m_mode != EditorMode::EDIT || m_lightingScenarioBakeRunning);
+    ImGui::PushItemWidth(std::max(100.f, ImGui::GetContentRegionAvail().x - 160.f));
+    bool changed = ImGui::Checkbox("Enable surface wetness", &wetness.enabled);
+    ImGui::BeginDisabled(!wetness.enabled);
+    ImGui::BeginDisabled(animationOwnsAmount);
+    changed |= ImGui::SliderFloat("Wetness amount", &wetness.amount, 0, 1, "%.2f");
+    ImGui::EndDisabled();
+    changed |= ImGui::SliderFloat("Dry roughness", &wetness.dryRoughness, .04f, 1, "%.2f");
+    changed |= ImGui::SliderFloat("Wet roughness", &wetness.wetRoughness, .04f, 1, "%.2f");
+    changed |= ImGui::SliderFloat("Wet darkening", &wetness.darkening, 0, 1, "%.2f");
+    ImGui::EndDisabled();
+    if (changed) {
+        wetness.Sanitize();
+        NotifySceneChanged();
+    }
+    ImGui::PopItemWidth();
+    ImGui::EndDisabled();
+    DisabledWrapped("Only models marked Weather surface respond. Amount 0 is dry; 1 uses the wet roughness and full darkening.");
+    if (animationOwnsAmount)
+        DisabledWrapped("The Animation window controls wetness amount. Disable its Preview or close the window to restore the authored value.");
+    else if (m_mode != EditorMode::EDIT)
+        DisabledWrapped("Wetness amount follows the running weather animation. Return to Edit to change its starting value.");
+    ImGui::Separator();
+}
 void Editor::DrawCloudVolume() {
     ImGui::PushFont(nullptr, 18.f);
     bool open = ImGui::CollapsingHeader("3D clouds");

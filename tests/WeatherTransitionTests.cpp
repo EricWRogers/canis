@@ -26,6 +26,42 @@ namespace
 
     bool Near(float a, float b) { return std::abs(a - b) < 0.0001f; }
 
+    void SurfaceWetnessValidation()
+    {
+        const SurfaceWetnessSettings defaults;
+        Check(!defaults.enabled && Near(defaults.amount, 0) && Near(defaults.dryRoughness, .85f) &&
+                  Near(defaults.wetRoughness, .22f) && Near(defaults.darkening, .22f),
+              "Surface wetness changed the appearance of legacy scenes by default");
+        Check(DeserializeSurfaceWetnessSettings(YAML::Node()) == defaults &&
+                  DeserializeSurfaceWetnessSettings(YAML::Load("[]")) == defaults,
+              "Missing or incompatible wetness settings did not retain safe defaults");
+        SurfaceWetnessSettings settings;
+        settings.enabled = true;
+        settings.amount = -2;
+        settings.dryRoughness = -3;
+        settings.wetRoughness = 2;
+        settings.darkening = 4;
+        settings.Sanitize();
+        Check(settings.enabled && Near(settings.amount, 0) && Near(settings.dryRoughness, .04f) &&
+                  Near(settings.wetRoughness, 1) && Near(settings.darkening, 1),
+              "Out-of-range wetness controls reached the renderer");
+        settings.amount = std::numeric_limits<float>::quiet_NaN();
+        settings.dryRoughness = std::numeric_limits<float>::infinity();
+        settings.wetRoughness = -std::numeric_limits<float>::infinity();
+        settings.darkening = std::numeric_limits<float>::quiet_NaN();
+        settings.Sanitize();
+        Check(Near(settings.amount, defaults.amount) && Near(settings.dryRoughness, defaults.dryRoughness) &&
+                  Near(settings.wetRoughness, defaults.wetRoughness) && Near(settings.darkening, defaults.darkening),
+              "Nonfinite wetness controls did not recover to finite defaults");
+        auto decoded = DeserializeSurfaceWetnessSettings(YAML::Load(
+            "{Enabled: true, Amount: 0.65, DryRoughness: 0.74, WetRoughness: 0.18, Darkening: 0.31}"));
+        auto restored = DeserializeSurfaceWetnessSettings(YAML::Load(YAML::Dump(SerializeSurfaceWetnessSettings(decoded))));
+        Check(decoded == restored && restored.enabled && Near(restored.amount, .65f) &&
+                  Near(restored.dryRoughness, .74f) && Near(restored.wetRoughness, .18f) &&
+                  Near(restored.darkening, .31f),
+              "Surface wetness controls did not survive asset serialization");
+    }
+
     void RainEnvelopeTiming()
     {
         WeatherRainEnvelope envelope;
@@ -418,6 +454,7 @@ namespace
 
 int main()
 {
+    SurfaceWetnessValidation();
     RainEnvelopeTiming();
     EmitterIntegration();
     RegistrationRoundTrip();
