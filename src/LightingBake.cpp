@@ -773,7 +773,9 @@ namespace Canis
             if (!finiteColor(scenario.ambientLight) || !finiteColor(scenario.sunColor) ||
                 !std::isfinite(scenario.ambientIntensity) || scenario.ambientIntensity < 0 ||
                 !std::isfinite(scenario.sunIntensity) || scenario.sunIntensity < 0 ||
-                !std::isfinite(scenario.skyboxIntensity) || scenario.skyboxIntensity < 0)
+                !std::isfinite(scenario.skyboxIntensity) || scenario.skyboxIntensity < 0 ||
+                !std::isfinite(scenario.cloudCoverage) || scenario.cloudCoverage < 0 || scenario.cloudCoverage > 1 ||
+                !std::isfinite(scenario.cloudDensity) || scenario.cloudDensity < 0)
                 throw std::runtime_error("Lighting values must be finite and nonnegative: " + scenario.name);
         }
         const auto fingerprint = LightingScenarioSourceFingerprint(input);

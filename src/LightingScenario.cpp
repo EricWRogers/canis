@@ -1,5 +1,6 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/AssetPipeline.hpp>
+#include <Canis/CloudVolume.hpp>
 #include <Canis/LightingProbe.hpp>
 #include <Canis/LightingScenario.hpp>
 #include <Canis/Yaml.hpp>
@@ -28,6 +29,8 @@ namespace Canis
         n["SkyboxUUID"] = s.skyboxUUID;
         n["SkyboxPath"] = s.skyboxPath;
         n["SkyboxIntensity"] = s.skyboxIntensity;
+        n["CloudCoverage"] = s.cloudCoverage;
+        n["CloudDensity"] = s.cloudDensity;
         n["ManifestPath"] = s.manifestPath;
         n["SourceFingerprint"] = s.sourceFingerprint;
         n["SettingsFingerprint"] = s.settingsFingerprint;
@@ -50,6 +53,12 @@ namespace Canis
         s.skyboxUUID = n["SkyboxUUID"].as<uint64_t>(0);
         s.skyboxPath = n["SkyboxPath"].as<std::string>("");
         s.skyboxIntensity = std::max(0.f, n["SkyboxIntensity"].as<float>(1));
+        s.cloudCoverage = n["CloudCoverage"].as<float>(0);
+        if (!std::isfinite(s.cloudCoverage)) s.cloudCoverage = 0;
+        s.cloudCoverage = std::clamp(s.cloudCoverage, 0.f, 1.f);
+        s.cloudDensity = n["CloudDensity"].as<float>(1);
+        if (!std::isfinite(s.cloudDensity)) s.cloudDensity = 1;
+        s.cloudDensity = std::max(0.f, s.cloudDensity);
         s.manifestPath = n["ManifestPath"].as<std::string>("");
         s.sourceFingerprint = n["SourceFingerprint"].as<std::string>("");
         s.settingsFingerprint = n["SettingsFingerprint"].as<std::string>("");
@@ -301,6 +310,9 @@ namespace Canis
             for (const char* key :
                  {"Name", "ManifestPath", "SourceFingerprint", "SettingsFingerprint", "ProbeCachePaths"})
                 n.remove(key);
+            // Preserve the fingerprint of existing cloud-free bakes.
+            if (scenario.cloudCoverage == 0) n.remove("CloudCoverage");
+            if (scenario.cloudDensity == 1) n.remove("CloudDensity");
             return n;
         }
     } // namespace
@@ -329,6 +341,11 @@ namespace Canis
         const auto restored = RestoreLightingScenarioSources(input);
         Fingerprint fingerprint;
         fingerprint.Add("Canis lighting scenarios geometry v1");
+        const auto clouds = DeserializeCloudVolumeSettings(input["Environment"]["CloudVolume"]);
+        if (clouds.enabled) {
+            fingerprint.Add("CloudVolume:v1");
+            fingerprint.Add(CanonicalYaml(SerializeCloudVolumeSettings(clouds)));
+        }
         std::map<uint64_t, YAML::Node> nodes;
         for (const auto& n : restored["Entities"])
             nodes[n["Entity"].as<uint64_t>()] = static_cast<const YAML::Node&>(n);

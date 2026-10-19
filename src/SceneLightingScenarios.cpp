@@ -24,6 +24,7 @@ LightingScenario Scene::CaptureLightingScenario(const std::string &name) const {
     LightingScenario scenario;
     scenario.id = std::to_string(uint64_t(UUID()));
     scenario.name = name;
+    scenario.cloudCoverage = m_cloudVolume.enabled ? .4f : 0.f;
     scenario.ambientLight = m_environmentAmbientLight;
     scenario.ambientIntensity = m_environmentAmbientLightIntensity;
     scenario.skyboxUUID = uint64_t(m_environmentSkyboxUUID);

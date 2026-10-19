@@ -95,6 +95,7 @@ namespace Canis
         Shader *m_colliderDebugShader = nullptr;
         unsigned int m_skyboxVao = 0;
         unsigned int m_skyboxVbo = 0;
+        unsigned int m_cloudNoiseTexture = 0;
         unsigned int m_colliderDebugVao = 0;
         unsigned int m_colliderDebugVbo = 0;
         unsigned int m_debugGizmoVao = 0;
@@ -122,6 +123,7 @@ namespace Canis
 
 
         void CreateSkyboxGeometry();
+        void CreateCloudNoiseTexture();
         void DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view);
         void CreateColliderDebugGeometry();
         void DrawColliderDebugLines(entt::registry &_registry, const Matrix4 &_projection, const Matrix4 &_view);

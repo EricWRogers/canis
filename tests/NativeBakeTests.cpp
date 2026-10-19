@@ -1,6 +1,7 @@
 #include <Canis/App.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AssetPipeline.hpp>
+#include <Canis/CloudVolume.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/Editor.hpp>
 #include <Canis/LightingBake.hpp>
@@ -9,6 +10,7 @@
 #include <Canis/Yaml.hpp>
 #include <fstream>
 #include <iostream>
+#include <limits>
 #include <stb_image.h>
 using namespace Canis;
 static void Check(bool value, const char* message)
@@ -200,6 +202,8 @@ int main()
         dusk.sunColor = Vector4(1, .7f, .4f, 1);
         dusk.sunIntensity = 3.5f;
         dusk.skyboxIntensity = .8f;
+        dusk.cloudCoverage = .3f;
+        dusk.cloudDensity = .7f;
         LightingScenario night = dusk;
         night.id = "night-stable-id";
         night.name = "Night";
@@ -207,10 +211,28 @@ int main()
         night.ambientIntensity = .2f;
         night.sunEnabled = false;
         night.skyboxIntensity = .1f;
+        night.cloudCoverage = .9f;
+        night.cloudDensity = 1.4f;
         auto roundtrip = DeserializeLightingScenario(SerializeLightingScenario(dusk));
         Check(roundtrip.id == dusk.id && roundtrip.name == dusk.name &&
-                  roundtrip.sunIntensity == dusk.sunIntensity && roundtrip.skyboxIntensity == .8f,
+                  roundtrip.sunIntensity == dusk.sunIntensity && roundtrip.skyboxIntensity == .8f &&
+                  roundtrip.cloudCoverage == .3f && roundtrip.cloudDensity == .7f,
               "Lighting scenario roundtrip lost authoring settings");
+        auto legacyScenario = SerializeLightingScenario(dusk);
+        legacyScenario.remove("CloudCoverage");
+        legacyScenario.remove("CloudDensity");
+        const auto legacyClouds = DeserializeLightingScenario(legacyScenario);
+        Check(legacyClouds.cloudCoverage == 0 && legacyClouds.cloudDensity == 1,
+              "Old lighting scenarios unexpectedly enabled cloud cover");
+        auto changedClouds = dusk;
+        changedClouds.cloudCoverage = .8f;
+        Check(LightingScenarioSettingsFingerprint(changedClouds) != LightingScenarioSettingsFingerprint(dusk) &&
+                  LightingScenarioAuthoringFingerprint(changedClouds) != LightingScenarioAuthoringFingerprint(dusk),
+              "Changing cloud coverage did not invalidate captured lighting and runtime readiness");
+        changedClouds = dusk;
+        changedClouds.cloudDensity = 1.2f;
+        Check(LightingScenarioSettingsFingerprint(changedClouds) != LightingScenarioSettingsFingerprint(dusk),
+              "Changing cloud density did not invalidate captured lighting");
         auto renamed = dusk;
         renamed.name = "Evening";
         Check(LightingScenarioSettingsFingerprint(renamed) == LightingScenarioSettingsFingerprint(dusk),
@@ -272,6 +294,24 @@ int main()
                 Check(*std::max_element(rgb.begin(), rgb.end()) > 1, "Scenario irradiance lost HDR range");
         }
         const auto sourceFingerprint = LightingScenarioSourceFingerprint(scene);
+        auto cloudScene = YAML::Clone(scene);
+        CloudVolumeSettings cloudSettings;
+        cloudScene["Environment"]["CloudVolume"] = SerializeCloudVolumeSettings(cloudSettings);
+        Check(sourceFingerprint == LightingScenarioSourceFingerprint(cloudScene),
+              "Serializing default disabled clouds invalidated an old scene's lighting");
+        cloudSettings.enabled = true;
+        cloudScene["Environment"]["CloudVolume"] = SerializeCloudVolumeSettings(cloudSettings);
+        const auto cloudFingerprint = LightingScenarioSourceFingerprint(cloudScene);
+        Check(sourceFingerprint != cloudFingerprint,
+              "Enabling volumetric clouds did not invalidate reflection captures");
+        cloudScene["Environment"]["CloudVolume"] = SerializeCloudVolumeSettings(
+            DeserializeCloudVolumeSettings(cloudScene["Environment"]["CloudVolume"]));
+        Check(cloudFingerprint == LightingScenarioSourceFingerprint(cloudScene),
+              "Cloud settings save/reopen changed identical bake source data");
+        cloudSettings.baseHeight += 10;
+        cloudScene["Environment"]["CloudVolume"] = SerializeCloudVolumeSettings(cloudSettings);
+        Check(cloudFingerprint != LightingScenarioSourceFingerprint(cloudScene),
+              "Moving the cloud layer did not invalidate captured lighting");
         Check(sourceFingerprint == LightingScenarioSourceFingerprint(scenarios.scene),
               "Saving baked scenario references invalidated unchanged source "
               "geometry");
@@ -445,6 +485,24 @@ int main()
         }
         Check(scenarioFailed && manifestBytes(selected.manifestPath) == lastGoodManifest,
               "Failed scenario bake replaced the last good manifest");
+        for (int invalidCloud = 0; invalidCloud < 3; ++invalidCloud)
+        {
+            auto definitions = selected.scenarios;
+            if (invalidCloud == 0) definitions[1].cloudCoverage = 1.2f;
+            else if (invalidCloud == 1) definitions[1].cloudDensity = -1;
+            else definitions[1].cloudDensity = std::numeric_limits<float>::quiet_NaN();
+            bool rejected = false;
+            try
+            {
+                BakeLightingScenarios(selected.scene, directory / "scenarios", definitions, options);
+            }
+            catch (const std::exception&)
+            {
+                rejected = true;
+            }
+            Check(rejected && manifestBytes(selected.manifestPath) == lastGoodManifest,
+                  "Invalid cloud parameters published a corrupt scenario bake");
+        }
         options.vertexSpacing = .75f;
         auto changedLayout =
             BakeLightingScenarios(selected.scene, directory / "changed-layout", selected.scenarios, options);

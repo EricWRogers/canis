@@ -771,6 +771,84 @@ static void LightingScenarioPixels()
     model.Free();legacy.Free();merged.Free();shader.UnUse();glEnable(GL_DEPTH_TEST);
 }
 
+static void SkyboxCloudPixels(Window& window)
+{
+    // Exercise the production fragment shader with two distinct sky cubes. Its
+    // midpoint must be linear radiance, rather than a gamma-space image fade.
+    std::ifstream source("assets/shaders/skybox.fs");
+    const std::string fragment((std::istreambuf_iterator<char>(source)),{});
+    Shader shader;
+    shader.CompileSource("[OPENGL VERSION]\nout vec3 TexCoords;void main(){vec2 p=vec2((gl_VertexID<<1)&2,gl_VertexID&2);TexCoords=vec3(p*2.-1.,1.);gl_Position=vec4(p*2.-1.,0,1);}",fragment,"sky cubes linear blend and volume");
+    shader.Link();shader.Use();
+    GLuint vao=0,cubes[2]{};glGenVertexArrays(1,&vao);glBindVertexArray(vao);glGenTextures(2,cubes);
+    const unsigned char colors[2][4]={{180,80,30,255},{20,70,150,255}};
+    for(int index=0;index<2;++index) {
+        glActiveTexture(GL_TEXTURE0+index);glBindTexture(GL_TEXTURE_CUBE_MAP,cubes[index]);
+        for(int face=0;face<6;++face)glTexImage2D(GL_TEXTURE_CUBE_MAP_POSITIVE_X+face,0,GL_RGBA8,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,colors[index]);
+        glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MIN_FILTER,GL_LINEAR);glTexParameteri(GL_TEXTURE_CUBE_MAP,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+        glBindSampler(index,0);
+    }
+    shader.SetInt("skybox",0);shader.SetInt("skyboxTarget",1);shader.SetInt("cloudNoise",2);
+    shader.SetBool("skyboxAvailable",true);shader.SetBool("skyboxTargetAvailable",true);
+    shader.SetFloat("skyboxIntensity",1);shader.SetFloat("skyboxTargetIntensity",1);
+    shader.SetBool("cloudsEnabled",false);shader.SetBool("canisProbeCapture",false);
+    glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_DEPTH_TEST);glDisable(GL_FRAMEBUFFER_SRGB);
+    for(float blend:{0.f,.5f,1.f}) {
+        shader.SetFloat("skyboxBlend",blend);glDrawArrays(GL_TRIANGLES,0,3);
+        std::array<unsigned char,4> pixel{};glReadPixels(160,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());
+        for(int channel=0;channel<3;++channel) {
+            const float a=std::pow(float(colors[0][channel])/255,2.2f),b=std::pow(float(colors[1][channel])/255,2.2f);
+            const int expected=int(std::round(std::pow(glm::mix(a,b,blend),1.f/2.2f)*255));
+            Check(std::abs(int(pixel[channel])-expected)<=2,"Distinct sky cubes did not blend in linear radiance");
+        }
+    }
+    shader.UnUse();glDeleteTextures(2,cubes);glDeleteVertexArrays(1,&vao);glActiveTexture(GL_TEXTURE0);
+
+    // Render a genuine density layer through the engine path. Its volume must
+    // show camera parallax, wind, pause stability and correct opaque occlusion.
+    Scene scene;scene.Init(nullptr,&window,nullptr);
+    LightingScenario clear;clear.id="clear";clear.name="Clear";clear.ambientLight=Color(.6f,.7f,1,1);
+    clear.ambientIntensity=.45f;clear.sunEnabled=false;clear.cloudCoverage=0;
+    LightingScenario storm=clear;storm.id="storm";storm.name="Storm";storm.cloudCoverage=.75f;storm.cloudDensity=1.3f;
+    scene.GetLightingScenarios()={clear,storm};
+    auto& settings=scene.GetCloudVolumeSettings();settings.enabled=true;settings.baseHeight=12;settings.thickness=10;
+    settings.halfExtents=Vector2(100);settings.noiseScale=.025f;settings.windVelocity=Vector2(7,3);
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    const auto projection=glm::perspective(glm::radians(65.f),320.f/240.f,.1f,500.f);
+    const Vector3 direction=glm::normalize(Vector3(0,.75f,-1));
+    auto draw=[&](float blend,Vector3 eye=Vector3(0)) {
+        scene.SetLightingScenarioPreview("clear","storm",blend);
+        scene.SetVRCamera(glm::lookAt(eye,eye+direction,Vector3(0,1,0)),projection,.1f,500);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);glEnable(GL_DEPTH_TEST);
+        renderer.Update(scene.GetRegistry(),0);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());return pixels;
+    };
+    const auto clearPixels=draw(0),middlePixels=draw(.5f),stormPixels=draw(1);
+    auto differences=[](const auto& a,const auto& b) {size_t count=0;for(size_t i=0;i<a.size();i+=4)if(a[i]!=b[i]||a[i+1]!=b[i+1]||a[i+2]!=b[i+2])++count;return count;};
+    Check(differences(clearPixels,stormPixels)>1000,"Cloud volume rendered no measurable density");
+    Check(differences(clearPixels,middlePixels)>100 && differences(middlePixels,stormPixels)>100,"Scenario blend failed to change 3D cloud coverage");
+    Check(draw(1)==stormPixels,"Unchanged cloud volume shimmered between renders");
+    Check(differences(stormPixels,draw(1,Vector3(8,0,0)))>100,"Camera translation produced no world-space cloud parallax");
+    scene.Update(1);const auto drifted=draw(1);
+    Check(differences(stormPixels,drifted)>100,"Scene simulation time failed to advect the cloud volume");
+    scene.SetPaused(true);scene.Update(3);Check(draw(1)==drifted,"Paused cloud drift continued advancing");
+    // An opaque quad fills the view in front of the layer. Sky/cloud pixels must
+    // respect depth even though the volume renders later than opaque geometry.
+    const int modelId=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
+    const Vector3 right=glm::normalize(glm::cross(direction,Vector3(0,1,0))),up=glm::cross(right,direction);
+    for(Vector2 corner:{Vector2(-2,-2),Vector2(2,-2),Vector2(2,2),Vector2(-2,2)})
+        quad.vertices.push_back({direction*2.f+right*corner.x+up*corner.y,-direction,{},Color(.3f,.1f,.05f,1)});
+    quad.indices={0,1,2,0,2,3};quad.bakedLighting=true;
+    Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({quad}),"Cloud foreground fixture failed");
+    auto foreground=scene.CreateEntity("Foreground");foreground.AddComponent<Transform>();foreground.AddComponent<Model>()->modelId=modelId;
+    const auto foregroundClear=draw(0),foregroundCloud=draw(1);
+    for(int channel=0;channel<3;++channel)Check(foregroundClear[(120*320+160)*4+channel]==foregroundCloud[(120*320+160)*4+channel],"Cloud volume overwrote foreground opaque geometry");
+    Check(glGetError()==GL_NO_ERROR,"Cloud volume or sky blend generated an OpenGL error");
+    renderer.OnDestroy();AssetManager::FreeModel(modelId);
+    std::cout<<"Distinct skies blend in linear radiance; 3D clouds preserve coverage, parallax, wind, pause and opaque depth\n";
+}
+
 static void VertexColorsSurviveInstancing() {
     ModelAsset model;ModelAsset::PrimitiveBuild3D tri;
     tri.vertices={{{-.8f,-.8f,0},{0,0,1},{},Color(1,0,0,1)},{{.8f,-.8f,0},{0,0,1},{},Color(0,1,0,1)},{{0,.8f,0},{0,0,1},{},Color(0,0,1,1)}};
@@ -2052,6 +2130,7 @@ int main(int argc,char** argv) {
         SoftDepthIntersections(window);
         VertexColorsSurviveInstancing();
         LightingScenarioPixels();
+        SkyboxCloudPixels(window);
         PickingIdsIgnoreMaterialTint();
         BakedVisibilitySafety();
         MaterialSlotCulling(window);

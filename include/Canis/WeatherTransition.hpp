@@ -27,9 +27,8 @@ namespace Canis
         void Evaluate();
     };
 
-    // Coordinates baked lighting and existing continuous rain emitters.
-    // Clouds, fog and wetness remain material/postprocess concerns until the
-    // renderer exposes per-scene overrides; this script does not mutate shared assets.
+    // Coordinates lighting scenarios (including sky and cloud coverage) and
+    // continuous rain emitters without mutating shared assets.
     class WeatherTransition : public ScriptableEntity
     {
       public:

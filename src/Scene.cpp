@@ -28,6 +28,7 @@
 #include <Canis/ECS/Systems/NavMeshSystem.hpp>
 #include <Canis/ECS/Systems/CloudNavSystem.hpp>
 #include <algorithm>
+#include <cmath>
 #include <cctype>
 #include <filesystem>
 #include <unordered_set>
@@ -328,6 +329,8 @@ namespace Canis
     {
         Profiler::Scope frameScope("Scene.Update", Profiler::Category::Other);
         ClearDebugGizmoLines();
+        if (!m_paused && std::isfinite(_deltaTime) && _deltaTime > 0)
+            m_cloudSimulationTime += _deltaTime;
         UpdateLightingScenarioTransition(_deltaTime);
         m_isUpdating = true;
 
@@ -672,6 +675,8 @@ namespace Canis
         m_baking = {};
         m_lightingProbes.clear();
         m_lightingScenarios.clear();
+        m_cloudVolume = {};
+        m_cloudSimulationTime = 0;
         m_lightingScenarioSources = YAML::Node(YAML::NodeType::Sequence);
         m_initialLightingScenario.clear();
         ResetLightingScenarioRuntime();
@@ -697,6 +702,7 @@ namespace Canis
             m_environmentAmbientLight = environment["AmbientLight"].as<Vector4>(Vector4(0.24f, 0.26f, 0.32f, 1.0f));
             m_environmentAmbientLightIntensity = std::max(environment["AmbientLightIntensity"].as<float>(1.0f), 0.0f);
             m_environmentReflectionsEnabled = environment["Reflections"].as<bool>(true);
+            m_cloudVolume = DeserializeCloudVolumeSettings(environment["CloudVolume"]);
             if(auto probes=environment["LightingProbes"]; probes && probes.IsSequence()) {
                 for(const auto& node:probes) {
                     if(m_lightingProbes.size()>=MaxLightingProbes)break;
@@ -1052,6 +1058,7 @@ namespace Canis
             probes.push_back(p);
         }
         environment["LightingProbes"]=probes;
+        environment["CloudVolume"] = SerializeCloudVolumeSettings(m_cloudVolume);
         if (!m_lightingScenarios.empty()) {
             YAML::Node scenarios(YAML::NodeType::Sequence);
             for (const auto& scenario : m_lightingScenarios) scenarios.push_back(SerializeLightingScenario(scenario));

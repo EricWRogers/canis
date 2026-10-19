@@ -55,8 +55,10 @@ namespace Canis
         };
         // Capture filtering changes radiance even when all source assets stay
         // unchanged. Rebuild caches captured with nearest-sampled normal maps.
-        constexpr uint32_t captureRevision = 2;
+        constexpr uint32_t captureRevision = 3;
         bytes(&captureRevision, sizeof(captureRevision));
+        const auto cloudConfig=YAML::Dump(SerializeCloudVolumeSettings(scene.GetCloudVolumeSettings()));
+        bytes(cloudConfig.data(),cloudConfig.size());
         const auto ambient = scene.GetEnvironmentAmbientLight();
         bytes(&ambient, sizeof(ambient));
         const float ambientIntensity = scene.GetEnvironmentAmbientLightIntensity();
@@ -65,6 +67,7 @@ namespace Canis
         fileStamp(skyPath);
         fileStamp("assets/shaders/model3d.vs");
         fileStamp("assets/shaders/model3d.fs");
+        fileStamp("assets/shaders/skybox.fs");
         // Texture/material edits also change captured radiance. This scan occurs
         // only when loading or recapturing probes, never during ordinary frames.
         if (std::filesystem::exists("assets"))
@@ -161,6 +164,12 @@ namespace Canis
         uint64_t hash=1469598103934665603ULL;
         auto bytes=[&](const void* data,size_t size) {for(size_t i=0;i<size;++i){hash^=static_cast<const unsigned char*>(data)[i];hash*=1099511628211ULL;}};
         auto string=[&](const std::string& value){bytes(value.data(),value.size());};
+        const auto& clouds=scene.GetCloudVolumeSettings();
+        bytes(&clouds.enabled,sizeof(clouds.enabled));bytes(&clouds.baseHeight,sizeof(clouds.baseHeight));
+        bytes(&clouds.thickness,sizeof(clouds.thickness));bytes(&clouds.center,sizeof(clouds.center));
+        bytes(&clouds.halfExtents,sizeof(clouds.halfExtents));bytes(&clouds.noiseScale,sizeof(clouds.noiseScale));
+        bytes(&clouds.windVelocity,sizeof(clouds.windVelocity));bytes(&clouds.steps,sizeof(clouds.steps));
+        bytes(&clouds.extinction,sizeof(clouds.extinction));
         for(const auto& scenario : scene.GetLightingScenarios()) {
             string(scenario.id);string(scenario.skyboxPath);string(scenario.manifestPath);
             string(scenario.sourceFingerprint);string(scenario.settingsFingerprint);
@@ -168,16 +177,27 @@ namespace Canis
             bytes(&scenario.sunEnabled,sizeof(scenario.sunEnabled));bytes(&scenario.sunDirection,sizeof(scenario.sunDirection));
             bytes(&scenario.sunColor,sizeof(scenario.sunColor));bytes(&scenario.sunIntensity,sizeof(scenario.sunIntensity));
             bytes(&scenario.skyboxUUID,sizeof(scenario.skyboxUUID));bytes(&scenario.skyboxIntensity,sizeof(scenario.skyboxIntensity));
+            bytes(&scenario.cloudCoverage,sizeof(scenario.cloudCoverage));bytes(&scenario.cloudDensity,sizeof(scenario.cloudDensity));
             for(const auto& path:scenario.probeCachePaths)string(path);
         }
         return std::to_string(hash);
     }
 
-    static std::string ScenarioReadySignature(const LightingScenario& scenario)
+    static std::string ScenarioReadySignature(const LightingScenario& scenario, const Scene& scene)
     {
         std::string result=LightingScenarioAuthoringFingerprint(scenario)+";"+scenario.sourceFingerprint+";"+
             scenario.settingsFingerprint+";"+scenario.manifestPath+";";
         for(const auto& path:scenario.probeCachePaths)result+=path+";";
+        // Compare shared cloud authoring metadata, too: changing the layer must
+        // not leave endpoint reflections marked prepared for the old volume.
+        const auto& clouds=scene.GetCloudVolumeSettings();
+        uint64_t hash=1469598103934665603ULL;
+        auto add=[&](const auto& value) {
+            for(size_t i=0;i<sizeof(value);++i) { hash^=reinterpret_cast<const unsigned char*>(&value)[i];hash*=1099511628211ULL; }
+        };
+        add(clouds.enabled);add(clouds.baseHeight);add(clouds.thickness);add(clouds.center);add(clouds.halfExtents);
+        add(clouds.noiseScale);add(clouds.windVelocity);add(clouds.steps);add(clouds.extinction);
+        result+=std::to_string(hash);
         return result;
     }
 
@@ -186,13 +206,17 @@ namespace Canis
         if(!scene)return false;
         const auto* scenario=scene->FindLightingScenario(id);
         const auto signature=m_scenarioReadySignatures.find(id);
-        if(!scenario || signature==m_scenarioReadySignatures.end() || signature->second!=ScenarioReadySignature(*scenario))return false;
+        if(!scenario || signature==m_scenarioReadySignatures.end() || signature->second!=ScenarioReadySignature(*scenario,*scene))return false;
         return m_probeSettings.empty() || (m_scenarioProbeArray && std::find(m_scenarioProbeIds.begin(),m_scenarioProbeIds.end(),id)!=m_scenarioProbeIds.end());
     }
 
     bool MeshRenderer3DSystem::PrepareLightingScenarios(bool captureMissing, std::string& error)
     {
         error.clear();
+        // Warm the resident density texture before a clear-to-storm fade starts,
+        // so its first nonzero coverage never generates/uploads noise in play.
+        if(scene->GetCloudVolumeSettings().enabled && std::any_of(scene->GetLightingScenarios().begin(),scene->GetLightingScenarios().end(),
+            [](const auto& scenario){return scenario.cloudCoverage>0 && scenario.cloudDensity>0;}))CreateCloudNoiseTexture();
         if(!ProbeArraysAvailable()) { error="Lighting scenario probe blending requires desktop OpenGL 4.0 or cube-map arrays.";m_scenarioError=error;return false; }
 #if !defined(__EMSCRIPTEN__)
         DestroyLightingProbes();
@@ -225,10 +249,24 @@ namespace Canis
                     continue;
                 }
             }
+            // Distinct endpoint skies must be GPU resident before gameplay can
+            // request a fade, including load-only preparation of valid caches.
+            std::string skyPath=scenario.skyboxPath;
+            if(skyPath.empty() && scenario.skyboxUUID)skyPath=AssetManager::GetPath(UUID(scenario.skyboxUUID));
+            if(!skyPath.empty() && skyPath!="Path was not found in AssetLibrary") {
+                GLint active=0,binding=0;glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
+                glActiveTexture(GL_TEXTURE0);glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP,&binding);
+                auto* sky=AssetManager::GetSkybox(skyPath);
+                glBindTexture(GL_TEXTURE_CUBE_MAP,binding);glActiveTexture(active);
+                if(!sky || !sky->IsLoaded()) {
+                    if(incompleteError.empty())incompleteError="Could not load skybox for '"+scenario.name+"'.";
+                    continue;
+                }
+            }
             surfaceReady.push_back(&scenario);
         }
         if(m_probeSettings.empty()) {
-            for(const auto* scenario:surfaceReady)m_scenarioReadySignatures[scenario->id]=ScenarioReadySignature(*scenario);
+            for(const auto* scenario:surfaceReady)m_scenarioReadySignatures[scenario->id]=ScenarioReadySignature(*scenario,*scene);
             m_scenariosReady=incompleteError.empty();m_scenarioError=incompleteError;error=incompleteError;return m_scenariosReady;
         }
         constexpr int size=64;
@@ -267,7 +305,7 @@ namespace Canis
             }
             if(complete) {
                 m_scenarioProbeIds.push_back(scenario.id);
-                m_scenarioReadySignatures[scenario.id]=ScenarioReadySignature(scenario);
+                m_scenarioReadySignatures[scenario.id]=ScenarioReadySignature(scenario,*scene);
                 for(auto& capture:scenarioCaptures)captures.push_back(std::move(capture));
             }
         }

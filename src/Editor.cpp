@@ -15555,6 +15555,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
         SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
+        DrawCloudVolume();
         DrawLightingScenarios();
         if (!m_scene->GetLightingScenarios().empty()) {
             ImGui::SeparatorText("Scene base lighting");

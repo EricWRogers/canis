@@ -555,6 +555,7 @@ namespace Canis
         bool m_lightingScenarioPreviewEnabled = false;
         double m_lightingScenarioNextCheck = 0;
         void DrawLightingScenarios();
+        void DrawCloudVolume();
         void StartLightingScenarioBake(bool all);
         void UpdateLightingScenarioBake();
         void StartEnvironmentBake();

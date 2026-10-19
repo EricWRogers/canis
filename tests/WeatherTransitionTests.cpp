@@ -166,10 +166,18 @@ namespace
         std::ofstream(geometry) << "Shared geometry fixture";
         auto sharedGeometryPath = geometry;
         Scene scene;
+        auto& clouds = scene.GetCloudVolumeSettings();
+        clouds.enabled = true;
+        clouds.baseHeight = 95;
+        clouds.windVelocity = Vector2(3, -.5f);
+        const auto authoredCloudVolume = clouds;
         LightingScenario dusk, night, storm;
         dusk.id = "stable-dusk"; dusk.name = "Dusk";
         night.id = "stable-night"; night.name = "Night";
         storm.id = "stable-storm"; storm.name = "Storm";
+        dusk.cloudCoverage = .2f; dusk.cloudDensity = .6f;
+        night.cloudCoverage = .7f; night.cloudDensity = 1.2f;
+        storm.cloudCoverage = 1; storm.cloudDensity = 2;
         for (auto* scenario : {&dusk, &night, &storm})
         {
             scenario->manifestPath = manifest.string();
@@ -211,7 +219,11 @@ namespace
         auto blend = scene.GetLightingScenarioBlend();
         Check(blend.from->id == dusk.id && blend.to->id == night.id && Near(blend.blend, .75f),
               "Lighting preview did not expose its selected endpoints and value");
-        Check(definitions() == before && scene.GetInitialLightingScenario() == dusk.id,
+        Check(Near(blend.from->cloudCoverage, .2f) && Near(blend.to->cloudCoverage, .7f) &&
+                  Near(blend.from->cloudDensity, .6f) && Near(blend.to->cloudDensity, 1.2f),
+              "Lighting preview changed the authored cloud endpoints before rendering");
+        Check(definitions() == before && scene.GetInitialLightingScenario() == dusk.id &&
+                  scene.GetCloudVolumeSettings() == authoredCloudVolume,
               "Lighting preview changed saved scenario definitions or startup selection");
         Check(!scene.SetLightingScenarioPreview(dusk.id, "missing", .5f) &&
               !scene.SetLightingScenarioPreview(dusk.id, night.id, std::numeric_limits<float>::quiet_NaN()),
@@ -314,7 +326,8 @@ namespace
         scene.UpdateLightingScenarioTransition(4);
         Check(scene.GetLightingScenarioBlend().from->id == storm.id &&
               !scene.IsLightingScenarioTransitioning(), "Queued lighting did not reach its target");
-        Check(definitions() == before && scene.GetInitialLightingScenario() == dusk.id,
+        Check(definitions() == before && scene.GetInitialLightingScenario() == dusk.id &&
+                  scene.GetCloudVolumeSettings() == authoredCloudVolume,
               "Runtime lighting transition changed serialized authoring definitions");
         std::filesystem::remove_all(directory);
     }

@@ -1,6 +1,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/AssetPipeline.hpp>
 #include <Canis/LightingBake.hpp>
+#include <Canis/ProceduralSky.hpp>
 #include <Canis/UnityImport.hpp>
 #include <Canis/VisibilityBake.hpp>
 #include <fstream>
@@ -9,6 +10,14 @@ int main(int argc, char** argv)
 {
     try
     {
+        if ((argc == 3 || argc == 4) && std::string(argv[1]) == "create-level-one-skies")
+        {
+            const int resolution = argc == 4 ? std::stoi(argv[3]) : 512;
+            Canis::GenerateLevelOneSkies(argv[2], resolution);
+            std::cout << "CANIS_LEVEL_ONE_SKIES_PASS scenarios=2 faces=12 resolution=" << resolution
+                      << " directory=" << argv[2] << '\n';
+            return 0;
+        }
         if (argc == 5 && std::string(argv[1]) == "import-unity")
         {
             auto r = Canis::ImportUnityScene(argv[2], argv[3], argv[4],
@@ -88,6 +97,7 @@ int main(int argc, char** argv)
                      "[spacing] [samples]\n";
         std::cerr << "       canis-asset-tool bake-lighting-scenarios <scene> "
                      "<directory> [spacing] [samples] [scenario-id ...]\n";
+        std::cerr << "       canis-asset-tool create-level-one-skies <directory> [resolution]\n";
         return 2;
     }
     catch (const std::exception& e)

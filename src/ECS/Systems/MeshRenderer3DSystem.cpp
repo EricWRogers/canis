@@ -15,6 +15,7 @@
 #include <Canis/Shader.hpp>
 #include <Canis/Time.hpp>
 #include <Canis/Window.hpp>
+#include <Canis/CloudVolume.hpp>
 #include <Jolt/Jolt.h>
 #include <Jolt/Physics/Collision/Shape/ConvexHullShape.h>
 #include <algorithm>
@@ -895,6 +896,8 @@ namespace Canis
         m_softDepthTexture=0; m_softDepthWidth=m_softDepthHeight=0;
         m_skyboxVbo = 0;
         m_skyboxVao = 0;
+        if (m_cloudNoiseTexture) glDeleteTextures(1, &m_cloudNoiseTexture);
+        m_cloudNoiseTexture = 0;
         m_colliderDebugVbo = 0;
         m_colliderDebugVao = 0;
         m_debugGizmoVbo = 0;
@@ -1455,6 +1458,56 @@ namespace Canis
         return scene->GetLightingScenarioBlend();
     }
 
+    void MeshRenderer3DSystem::CreateCloudNoiseTexture()
+    {
+        if (m_cloudNoiseTexture) return;
+        // A deterministic, seamless density/detail volume is shared on the CPU
+        // and uploaded once per renderer. No procedural hash work in ray steps.
+        constexpr int side = 64;
+        static const auto pixels = [] {
+            std::vector<unsigned char> data(side * side * side * 2);
+            auto random = [](int x, int y, int z) {
+                uint32_t value = uint32_t(x) * 1597334677u ^ uint32_t(y) * 3812015801u ^ uint32_t(z) * 2798796415u;
+                value = (value ^ (value >> 16)) * 2246822519u;
+                value = (value ^ (value >> 13)) * 3266489917u;
+                return float(value ^ (value >> 16)) / 4294967295.f;
+            };
+            auto noise = [&](int x, int y, int z, int period) {
+                const Vector3 p = (Vector3(x, y, z) + Vector3(.5f)) * (float(period) / side);
+                const auto base = glm::ivec3(glm::floor(p));
+                const Vector3 fraction = glm::fract(p);
+                const Vector3 weight = fraction * fraction * (Vector3(3) - 2.f * fraction);
+                float value = 0;
+                for (int corner = 0; corner < 8; ++corner)
+                {
+                    const int a = corner & 1, b = (corner >> 1) & 1, c = (corner >> 2) & 1;
+                    value += random((base.x + a) % period, (base.y + b) % period, (base.z + c) % period) *
+                        (a ? weight.x : 1 - weight.x) * (b ? weight.y : 1 - weight.y) * (c ? weight.z : 1 - weight.z);
+                }
+                return value;
+            };
+            for (int z = 0; z < side; ++z) for (int y = 0; y < side; ++y) for (int x = 0; x < side; ++x)
+            {
+                const size_t offset = size_t((z * side + y) * side + x) * 2;
+                const float shape = .55f * noise(x, y, z, 4) + .3f * noise(x, y, z, 8) + .15f * noise(x, y, z, 16);
+                data[offset] = static_cast<unsigned char>(glm::clamp(shape * 255.f, 0.f, 255.f));
+                data[offset + 1] = static_cast<unsigned char>(glm::clamp(noise(x, y, z, 32) * 255.f, 0.f, 255.f));
+            }
+            return data;
+        }();
+        GLint previousTexture = 0;
+        glGetIntegerv(GL_TEXTURE_BINDING_3D, &previousTexture);
+        glGenTextures(1, &m_cloudNoiseTexture);
+        glBindTexture(GL_TEXTURE_3D, m_cloudNoiseTexture);
+        glTexImage3D(GL_TEXTURE_3D, 0, GL_RG8, side, side, side, 0, GL_RG, GL_UNSIGNED_BYTE, pixels.data());
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_S, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_T, GL_REPEAT);
+        glTexParameteri(GL_TEXTURE_3D, GL_TEXTURE_WRAP_R, GL_REPEAT);
+        glBindTexture(GL_TEXTURE_3D, previousTexture);
+    }
+
     void MeshRenderer3DSystem::DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view)
     {
         RenderMetrics::Scope timing("Skybox");
@@ -1478,9 +1531,28 @@ namespace Canis
         };
         SkyboxAsset* skybox=skyAsset(lighting.from);
         SkyboxAsset* target=lighting.to ? skyAsset(lighting.to) : skybox;
-        if (!lighting.from && !skybox && !target) return;
+        auto clouds = scene->GetCloudVolumeSettings();
+        clouds.Sanitize();
+        const float t = lighting.from && lighting.to ? glm::clamp(lighting.blend, 0.f, 1.f) : 0;
+        const float coverage = lighting.from ? glm::mix(lighting.from->cloudCoverage,
+            lighting.to ? lighting.to->cloudCoverage : lighting.from->cloudCoverage, t) : .4f;
+        const float density = lighting.from ? glm::mix(lighting.from->cloudDensity,
+            lighting.to ? lighting.to->cloudDensity : lighting.from->cloudDensity, t) : 1;
+        const bool drawClouds = clouds.enabled && coverage > .0001f && density > .0001f;
+        if (!lighting.from && !skybox && !target && !drawClouds) return;
 
         const Matrix4 skyboxView = Matrix4(glm::mat3(_view));
+
+        // The sky runs after opaque depth and before transparent rain. Preserve
+        // material samplers/program state when called between those passes.
+        GLint samplers[3]{}, previousNoise = 0;
+        for (int unit = 0; unit < 3; ++unit) { glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &samplers[unit]); glBindSampler(unit, 0); }
+        glActiveTexture(GL_TEXTURE2);
+        glGetIntegerv(GL_TEXTURE_BINDING_3D, &previousNoise);
+        if (drawClouds) CreateCloudNoiseTexture();
+        glBindTexture(GL_TEXTURE_3D, drawClouds ? m_cloudNoiseTexture : 0);
+        const bool culling = glIsEnabled(GL_CULL_FACE);
+        glDisable(GL_CULL_FACE);
 
         glDepthMask(GL_FALSE);
         glDepthFunc(GL_LEQUAL);
@@ -1496,6 +1568,38 @@ namespace Canis
         m_skyboxShader->SetFloat("skyboxIntensity",lighting.from ? lighting.from->skyboxIntensity : 1);
         m_skyboxShader->SetFloat("skyboxTargetIntensity",lighting.to ? lighting.to->skyboxIntensity : 1);
         m_skyboxShader->SetBool("canisProbeCapture",m_capturingProbe);
+        m_skyboxShader->SetBool("cloudsEnabled", drawClouds);
+        m_skyboxShader->SetInt("cloudNoise", 2);
+        m_skyboxShader->SetVec3("cloudCameraPosition", Vector3(glm::inverse(_view)[3]));
+        m_skyboxShader->SetVec3("cloudBoundsMin", Vector3(clouds.center.x - clouds.halfExtents.x,
+            clouds.baseHeight, clouds.center.y - clouds.halfExtents.y));
+        m_skyboxShader->SetVec3("cloudBoundsMax", Vector3(clouds.center.x + clouds.halfExtents.x,
+            clouds.baseHeight + clouds.thickness, clouds.center.y + clouds.halfExtents.y));
+        m_skyboxShader->SetFloat("cloudNoiseScale", clouds.noiseScale);
+        const double cloudTime = m_capturingProbe ? 0 : scene->GetCloudSimulationTime();
+        // Keep drift bounded without a discontinuity: the volume repeats exactly
+        // every noise period. Double precision keeps long-running sessions stable.
+        const double period = 1.0 / double(clouds.noiseScale);
+        m_skyboxShader->SetVec2("cloudWindOffset", Vector2(std::fmod(cloudTime * clouds.windVelocity.x, period),
+            std::fmod(cloudTime * clouds.windVelocity.y, period)));
+        m_skyboxShader->SetInt("cloudSteps", clouds.steps);
+        m_skyboxShader->SetFloat("cloudCoverage", glm::clamp(coverage, 0.f, 1.f));
+        m_skyboxShader->SetFloat("cloudDensity", glm::clamp(density, 0.f, 8.f));
+        m_skyboxShader->SetFloat("cloudExtinction", clouds.extinction);
+        auto sunlight = GatherDirectionalLight(scene->GetRegistry());
+        Vector3 ambient = Vector3(scene->GetEnvironmentAmbientLight()) * scene->GetEnvironmentAmbientLightIntensity();
+        if (lighting.from) {
+            const auto& a = *lighting.from;
+            const auto& b = lighting.to ? *lighting.to : a;
+            sunlight.direction = glm::mix(a.sunDirection, b.sunDirection, t);
+            sunlight.color = glm::mix(Vector3(a.sunColor), Vector3(b.sunColor), t);
+            sunlight.intensity = glm::mix(a.sunEnabled ? a.sunIntensity : 0.f, b.sunEnabled ? b.sunIntensity : 0.f, t);
+            ambient = glm::mix(Vector3(a.ambientLight) * a.ambientIntensity, Vector3(b.ambientLight) * b.ambientIntensity, t);
+        }
+        if (glm::length(sunlight.direction) < .0001f) sunlight.direction = Vector3(0, -1, 0);
+        m_skyboxShader->SetVec3("cloudLightDirection", -glm::normalize(sunlight.direction));
+        m_skyboxShader->SetVec3("cloudLightColor", sunlight.color * (sunlight.enabled || lighting.from ? sunlight.intensity : 0.f));
+        m_skyboxShader->SetVec3("cloudAmbientColor", glm::max(ambient, Vector3(.008f, .012f, .02f)));
 
         glBindVertexArray(m_skyboxVao);
         glActiveTexture(GL_TEXTURE0);
@@ -1507,6 +1611,11 @@ namespace Canis
         glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         glBindVertexArray(0);
         m_skyboxShader->UnUse();
+
+        glActiveTexture(GL_TEXTURE2); glBindTexture(GL_TEXTURE_3D, previousNoise);
+        for (int unit = 0; unit < 3; ++unit) glBindSampler(unit, samplers[unit]);
+        glActiveTexture(GL_TEXTURE0);
+        if (culling) glEnable(GL_CULL_FACE);
 
         glDepthMask(GL_TRUE);
         glDepthFunc(GL_LESS);
@@ -1788,7 +1897,6 @@ namespace Canis
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
 
-        if (m_stereoPass != 1) DrawSkybox(projection, view);
         MaterialSamplerScope materialSamplers(m_materialSampler);
 
         Shader *currentShader = nullptr;
@@ -2586,6 +2694,11 @@ namespace Canis
 #endif
         for (const TransparentModelEntry &entry : remainingOpaqueEntities)
             drawEntity(entry.entityHandle);
+        }
+
+        if (m_stereoPass != 1) {
+            if (currentShader) { currentShader->UnUse(); currentShader = nullptr; }
+            DrawSkybox(projection, view);
         }
 
         {

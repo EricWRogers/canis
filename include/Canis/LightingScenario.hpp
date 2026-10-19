@@ -21,6 +21,8 @@ namespace Canis
         uint64_t skyboxUUID = 0;
         std::string skyboxPath;
         float skyboxIntensity = 1;
+        float cloudCoverage = 0;
+        float cloudDensity = 1;
         std::string manifestPath, sourceFingerprint, settingsFingerprint;
         std::vector<std::string> probeCachePaths;
     };

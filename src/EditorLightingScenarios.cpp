@@ -40,6 +40,41 @@ std::string UniqueScenarioName(const Scene &scene, const std::string &base) {
     return name;
 }
 } // namespace
+void Editor::DrawCloudVolume() {
+    ImGui::PushFont(nullptr, 18.f);
+    bool open = ImGui::CollapsingHeader("3D clouds");
+    ImGui::PopFont();
+    if (!open)
+        return;
+    auto &clouds = m_scene->GetCloudVolumeSettings();
+    ImGui::BeginDisabled(m_mode != EditorMode::EDIT || m_lightingScenarioBakeRunning);
+    ImGui::PushItemWidth(std::max(100.f, ImGui::GetContentRegionAvail().x - 160.f));
+    bool changed = ImGui::Checkbox("Enable 3D clouds", &clouds.enabled);
+    ImGui::BeginDisabled(!clouds.enabled);
+    changed |= ImGui::DragFloat("Base height (m)", &clouds.baseHeight, 1.f, -1000, 10000);
+    changed |= ImGui::DragFloat("Thickness (m)", &clouds.thickness, 1.f, 1, 1000);
+    changed |= ImGui::DragFloat2("Center X/Z", &clouds.center.x, 1.f);
+    changed |= ImGui::DragFloat2("Half size X/Z", &clouds.halfExtents.x, 5.f, 1, 20000);
+    changed |= ImGui::DragFloat("Noise scale", &clouds.noiseScale, .0001f, .0001f, .1f, "%.4f");
+    changed |= ImGui::DragFloat2("Wind X/Z (m/s)", &clouds.windVelocity.x, .1f, -100, 100);
+    changed |= ImGui::DragFloat("Extinction", &clouds.extinction, .001f, .001f, 1, "%.3f");
+    changed |= ImGui::SliderInt("Ray steps", &clouds.steps, 8, 64);
+    ImGui::EndDisabled();
+    DisabledWrapped("Cloud coverage and density are stored with each lighting scenario below. Wind pauses "
+                    "with the scene.");
+    DisabledWrapped("More ray steps give smoother cloud edges and cost more GPU time. Rebake scenarios after "
+                    "changing the cloud layer so reflections match.");
+    if (changed) {
+        clouds.Sanitize();
+        if (auto *renderer = m_scene->GetSystem<MeshRenderer3DSystem>())
+            renderer->InvalidateLightingProbes();
+        m_lightingScenarioNextCheck = 0;
+        NotifySceneChanged();
+    }
+    ImGui::PopItemWidth();
+    ImGui::EndDisabled();
+    ImGui::Separator();
+}
 void Editor::StartLightingScenarioBake(bool all) {
     if (m_lightingScenarioBakeRunning || m_environmentBakeRunning || m_mode != EditorMode::EDIT || !m_scene)
         return;
@@ -255,6 +290,10 @@ void Editor::DrawLightingScenarios() {
             changed = true;
         }
         changed |= ImGui::DragFloat("Sky intensity", &selected->skyboxIntensity, .01f, 0, 8);
+        changed |= ImGui::SliderFloat("Cloud coverage", &selected->cloudCoverage, 0, 1, "%.2f");
+        changed |= ImGui::DragFloat("Cloud density", &selected->cloudDensity, .01f, 0, 4, "%.2f");
+        if (!m_scene->GetCloudVolumeSettings().enabled)
+            DisabledWrapped("Enable the 3D clouds layer above to show this scenario's clouds.");
         std::string skyLabel = selected->skyboxPath.empty()
                                    ? "Drop skybox asset"
                                    : std::filesystem::path(selected->skyboxPath).stem().string();
