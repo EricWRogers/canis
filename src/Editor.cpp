@@ -175,6 +175,7 @@ namespace Canis
         return std::filesystem::path("cache") /
             "editor" /
             "material_previews" /
+            "v2" /
             (std::to_string(cacheId) + ".png");
     }
 
@@ -209,6 +210,7 @@ namespace Canis
         return std::filesystem::path("cache") /
             "editor" /
             "model_previews" /
+            "v2" /
             (std::to_string(cacheId) + ".png");
     }
 
@@ -242,6 +244,9 @@ namespace Canis
                 continue;
             newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(AssetManager::GetPath(textureId)));
         }
+        for (const auto& texture : _material.materialFields.GetTextureUniforms())
+            if (texture.textureId >= 0)
+                newestWriteTime = std::max(newestWriteTime, GetAssetWriteTime(AssetManager::GetPath(texture.textureId)));
 
         if (_material.shaderId >= 0)
         {
@@ -12263,6 +12268,23 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         root=ResolveShaderGraphMaterial(root);
 
+        if (ImGui::CollapsingHeader("Studio preview", ImGuiTreeNodeFlags_DefaultOpen))
+        {
+            unsigned int previewTexture = 0;
+            if (GetMaterialPreviewTexture(materialPath, previewTexture) && previewTexture != 0)
+            {
+                const float size = std::max(1.0f, std::min(256.0f, ImGui::GetContentRegionAvail().x));
+                ImGui::Image((ImTextureID)(intptr_t)previewTexture, ImVec2(size, size),
+                    ImVec2(0, 1), ImVec2(1, 0));
+            }
+            else
+            {
+                ImGui::TextDisabled("Preview unavailable.");
+            }
+            ImGui::TextWrapped("Material under studio lighting. Scene lighting and weather are shown in the Scene and Game views.");
+        }
+        ImGui::Separator();
+
         bool dirty = false;
         constexpr float kMaterialNumberFieldMaxWidth = 240.0f;
         auto setMaterialNumberFieldWidth = []() -> void
@@ -12272,14 +12294,45 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         auto drawAssetField = [&](const char *_label, const char *_key, bool _shaderField) -> void
         {
-            std::string refPath = ResolveAssetRefPath(root[_key]);
+            const std::string refPath = ResolveAssetRefPath(root[_key]);
             std::string display = "None";
+            std::string shaderBase;
+            bool hasVertex = false, hasFragment = false;
             if (!refPath.empty())
             {
-                if (MetaFileAsset *assetMeta = AssetManager::GetMetaFile(refPath))
-                    display = assetMeta->name;
-                else
+                std::string metadataPath = refPath;
+                if (_shaderField && std::filesystem::path(refPath).extension() != ".shadergraph")
+                {
+                    shaderBase = NormalizeShaderAssetPath(refPath);
+                    hasVertex = FileExists((shaderBase + ".vs").c_str());
+                    hasFragment = FileExists((shaderBase + ".fs").c_str());
+                    if (hasVertex)
+                        metadataPath = shaderBase + ".vs";
+                    else if (hasFragment)
+                        metadataPath = shaderBase + ".fs";
+                }
+                display = std::filesystem::path(shaderBase.empty() ? refPath : shaderBase).filename().string();
+                if (display.empty())
                     display = refPath;
+                // Shader program basenames are valid references, but are not
+                // files and cannot have meaningful file metadata of their own.
+                if (FileExists(metadataPath.c_str()))
+                {
+                    if (MetaFileAsset *assetMeta = AssetManager::GetMetaFile(metadataPath);
+                        assetMeta && !assetMeta->name.empty())
+                        display = assetMeta->name;
+                }
+                if (!shaderBase.empty())
+                {
+                    if (hasVertex && hasFragment)
+                        display += " (.vs + .fs)";
+                    else if (hasVertex)
+                        display += " (missing .fs)";
+                    else if (hasFragment)
+                        display += " (missing .vs)";
+                    else
+                        display += " (missing shader)";
+                }
             }
 
             ImGui::PushID(_key);
@@ -12288,22 +12341,44 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::SameLine();
             const std::string buttonLabel = display + "##asset_ref";
             ImGui::Button(buttonLabel.c_str(), ImVec2(220, 0));
+            if (ImGui::IsItemHovered() && !refPath.empty())
+            {
+                ImGui::BeginTooltip();
+                ImGui::TextUnformatted(refPath.c_str());
+                if (!shaderBase.empty())
+                {
+                    ImGui::Text("Vertex: %s.vs%s", shaderBase.c_str(), hasVertex ? "" : " (missing)");
+                    ImGui::Text("Fragment: %s.fs%s", shaderBase.c_str(), hasFragment ? "" : " (missing)");
+                }
+                ImGui::EndTooltip();
+            }
 
             if (ImGui::BeginDragDropTarget())
             {
                 if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
                 {
                     const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
-                    std::string path = AssetManager::GetPath(dropped.uuid);
+                    std::string path = dropped.path;
+                    if (path.empty())
+                        path = AssetManager::GetPath(dropped.uuid);
 
                     bool valid = false;
+                    bool shaderPair = false;
                     if (_shaderField)
                     {
-                        if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(path))
+                        const std::string base = NormalizeShaderAssetPath(path);
+                        shaderPair = FileExists((base + ".vs").c_str()) && FileExists((base + ".fs").c_str());
+                        valid = shaderPair;
+                        if (!valid && FileExists(path.c_str()))
                         {
-                            valid = droppedMeta->type == MetaFileAsset::FileType::VERTEX ||
-                                    droppedMeta->type == MetaFileAsset::FileType::FRAGMENT ||
-                                    droppedMeta->type == MetaFileAsset::FileType::SHADERGRAPH;
+                            if (MetaFileAsset *droppedMeta = AssetManager::GetMetaFile(path))
+                                valid = droppedMeta->type == MetaFileAsset::FileType::SHADERGRAPH;
+                        }
+                        if (shaderPair)
+                        {
+                            // A program references both stage files; retaining
+                            // the basename avoids a UUID bound to only one stage.
+                            path = base;
                         }
                     }
                     else
@@ -12314,7 +12389,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (valid)
                     {
-                        SetAssetRefUUID(root, _key, path);
+                        if (shaderPair)
+                        {
+                            YAML::Node reference(YAML::NodeType::Map);
+                            reference["path"] = path;
+                            root[_key] = reference;
+                        }
+                        else
+                            SetAssetRefUUID(root, _key, path);
                         dirty = true;
                     }
                 }
@@ -12349,6 +12431,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         drawAssetField("roughness", "roughness", false);
         drawAssetField("metallic", "metallic", false);
         drawAssetField("emission", "emission", false);
+        ImGui::TextWrapped("Unassigned textures can come from the model. The studio preview shows this material's own assignments.");
 
         Color color = root["color"].as<Color>(Color(1.0f));
         if (ImGui::ColorEdit4("color", &color.r))
@@ -16382,9 +16465,137 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::EndMenu();
     }
 
+    namespace
+    {
+        // Asset previews also load assets/allocate render targets. Guard those
+        // operations, not only the final draw, so thumbnail work cannot change
+        // the editor viewport or inherit its scissor, sampler or lighting state.
+        struct AssetPreviewGLState
+        {
+            GLint program=0, drawFramebuffer=0, readFramebuffer=0, viewport[4]{}, activeTexture=GL_TEXTURE0;
+            GLint depthFunction=GL_LESS, cullMode=GL_BACK, frontFace=GL_CCW;
+            GLint vertexArray=0, arrayBuffer=0, renderbuffer=0, uniformBuffer=0, skinningBuffer=0;
+            GLuint setupVertexArray=0;
+            GLint64 skinningStart=0, skinningSize=0;
+#ifndef __EMSCRIPTEN__
+            GLint polygonMode[2]{GL_FILL,GL_FILL};
+#endif
+            GLfloat clearColor[4]{}, clearDepth=1.f, depthRange[2]{0,1};
+            GLboolean depthMask=GL_TRUE, colorMask[4]{GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE};
+            GLboolean depth=false, blend=false, cull=false, scissor=false, stencil=false;
+            struct TextureState { GLint texture2D=0, cube=0, sampler=0; };
+            std::vector<TextureState> textures;
+
+            AssetPreviewGLState()
+            {
+                glGetIntegerv(GL_CURRENT_PROGRAM,&program);
+                glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&drawFramebuffer);
+                glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&readFramebuffer);
+                glGetIntegerv(GL_VIEWPORT,viewport);glGetIntegerv(GL_ACTIVE_TEXTURE,&activeTexture);
+                glGetIntegerv(GL_DEPTH_FUNC,&depthFunction);glGetIntegerv(GL_CULL_FACE_MODE,&cullMode);
+                glGetIntegerv(GL_FRONT_FACE,&frontFace);glGetIntegerv(GL_VERTEX_ARRAY_BINDING,&vertexArray);
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&arrayBuffer);glGetIntegerv(GL_RENDERBUFFER_BINDING,&renderbuffer);
+                glGetIntegerv(GL_UNIFORM_BUFFER_BINDING,&uniformBuffer);
+                glGetIntegeri_v(GL_UNIFORM_BUFFER_BINDING,4,&skinningBuffer);
+                glGetInteger64i_v(GL_UNIFORM_BUFFER_START,4,&skinningStart);
+                glGetInteger64i_v(GL_UNIFORM_BUFFER_SIZE,4,&skinningSize);
+#ifndef __EMSCRIPTEN__
+                glGetIntegerv(GL_POLYGON_MODE,polygonMode);
+#endif
+                glGetFloatv(GL_COLOR_CLEAR_VALUE,clearColor);glGetFloatv(GL_DEPTH_CLEAR_VALUE,&clearDepth);
+                glGetFloatv(GL_DEPTH_RANGE,depthRange);glGetBooleanv(GL_DEPTH_WRITEMASK,&depthMask);
+                glGetBooleanv(GL_COLOR_WRITEMASK,colorMask);
+                depth=glIsEnabled(GL_DEPTH_TEST);blend=glIsEnabled(GL_BLEND);cull=glIsEnabled(GL_CULL_FACE);
+                scissor=glIsEnabled(GL_SCISSOR_TEST);stencil=glIsEnabled(GL_STENCIL_TEST);
+                GLint textureUnits=8;glGetIntegerv(GL_MAX_TEXTURE_IMAGE_UNITS,&textureUnits);
+                textures.resize(static_cast<size_t>(std::max(textureUnits,8)));
+                for(size_t i=0;i<textures.size();++i) {
+                    glActiveTexture(GL_TEXTURE0+static_cast<GLenum>(i));
+                    glGetIntegerv(GL_TEXTURE_BINDING_2D,&textures[i].texture2D);
+                    glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP,&textures[i].cube);
+                    glGetIntegeri_v(GL_SAMPLER_BINDING,static_cast<GLuint>(i),&textures[i].sampler);
+                    // A scene shadow/comparison sampler must not filter a
+                    // thumbnail's color/normal textures on the same unit.
+                    glBindSampler(static_cast<GLuint>(i),0);
+                }
+                glActiveTexture(GL_TEXTURE0);
+            }
+            void BindSetupVertexArray()
+            {
+                if(!setupVertexArray)glGenVertexArrays(1,&setupVertexArray);
+                glBindVertexArray(setupVertexArray);
+            }
+            ~AssetPreviewGLState()
+            {
+                for(size_t i=0;i<textures.size();++i) {
+                    glActiveTexture(GL_TEXTURE0+static_cast<GLenum>(i));
+                    glBindTexture(GL_TEXTURE_2D,static_cast<GLuint>(textures[i].texture2D));
+                    glBindTexture(GL_TEXTURE_CUBE_MAP,static_cast<GLuint>(textures[i].cube));
+                    glBindSampler(static_cast<GLuint>(i),static_cast<GLuint>(textures[i].sampler));
+                }
+                glActiveTexture(activeTexture);glUseProgram(program);
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER,drawFramebuffer);glBindFramebuffer(GL_READ_FRAMEBUFFER,readFramebuffer);
+                glViewport(viewport[0],viewport[1],viewport[2],viewport[3]);
+                glClearColor(clearColor[0],clearColor[1],clearColor[2],clearColor[3]);glClearDepthf(clearDepth);
+                glDepthRangef(depthRange[0],depthRange[1]);glDepthMask(depthMask);glDepthFunc(depthFunction);
+                glColorMask(colorMask[0],colorMask[1],colorMask[2],colorMask[3]);
+                glCullFace(cullMode);glFrontFace(frontFace);
+#ifndef __EMSCRIPTEN__
+                glPolygonMode(GL_FRONT_AND_BACK,polygonMode[0]);
+#endif
+                depth?glEnable(GL_DEPTH_TEST):glDisable(GL_DEPTH_TEST);
+                blend?glEnable(GL_BLEND):glDisable(GL_BLEND);
+                cull?glEnable(GL_CULL_FACE):glDisable(GL_CULL_FACE);
+                scissor?glEnable(GL_SCISSOR_TEST):glDisable(GL_SCISSOR_TEST);
+                stencil?glEnable(GL_STENCIL_TEST):glDisable(GL_STENCIL_TEST);
+                glBindVertexArray(vertexArray);glBindBuffer(GL_ARRAY_BUFFER,arrayBuffer);
+                if(setupVertexArray)glDeleteVertexArrays(1,&setupVertexArray);
+                glBindRenderbuffer(GL_RENDERBUFFER,renderbuffer);
+                if(skinningBuffer && skinningSize>0)
+                    glBindBufferRange(GL_UNIFORM_BUFFER,4,skinningBuffer,skinningStart,skinningSize);
+                else glBindBufferBase(GL_UNIFORM_BUFFER,4,skinningBuffer);
+                glBindBuffer(GL_UNIFORM_BUFFER,uniformBuffer);
+            }
+        };
+
+        void SetAssetPreviewStudioState(Shader& shader)
+        {
+            shader.SetBool("canisDirectCapture",false);
+            shader.SetInt("directionalLightMode",LightMode::Realtime);
+            shader.SetInt("canisProbeCount",0);shader.SetBool("canisProbeCapture",false);
+            shader.SetBool("disableBakedLighting",true);shader.SetBool("useBakedVertexLighting",false);
+            shader.SetBool("weatherSurface",false);shader.SetBool("weatherWetnessEnabled",false);
+            shader.SetFloat("weatherWetness",0.f);
+            shader.SetBool("softDepthAvailable",false);shader.SetFloat("softTime",0.f);
+            shader.SetBool("useNormalMap",false);shader.SetBool("useEmbeddedEmissionMap",false);
+            shader.SetVec3("embeddedEmissionFactor",Vector3(0.f));
+        }
+
+        void BeginAssetPreviewTarget(const RenderTarget& target)
+        {
+            glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);
+            glViewport(0,0,target.width,target.height);
+            glEnable(GL_DEPTH_TEST);glDepthMask(GL_TRUE);glDepthFunc(GL_LESS);glDepthRangef(0.f,1.f);
+            glDisable(GL_BLEND);glDisable(GL_SCISSOR_TEST);glDisable(GL_STENCIL_TEST);
+            glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);glFrontFace(GL_CCW);
+#ifndef __EMSCRIPTEN__
+            glPolygonMode(GL_FRONT_AND_BACK,GL_FILL);
+#endif
+            glClearDepthf(1.f);glClearColor(.055f,.067f,.086f,1.f);
+            glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        }
+    }
+
     bool Editor::GetMaterialPreviewTexture(const std::string &_materialPath, unsigned int &_textureId)
     {
         _textureId = 0;
+        MaterialPreviewCacheEntry &cache = m_materialPreviewCache[_materialPath];
+        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        if(cache.renderTarget.colorTexture && cache.diskCacheChecked && cache.lastRenderSeconds>=0 &&
+           cache.lastSourceCheckSeconds>=0 && nowSeconds-cache.lastSourceCheckSeconds<1.0) {
+            _textureId=cache.renderTarget.colorTexture;return true;
+        }
+        AssetPreviewGLState previewState;
 
         MaterialAsset *material = AssetManager::GetMaterial(_materialPath);
         ModelAsset *sphere = AssetManager::GetModel("assets/defaults/models/sphere.glb");
@@ -16401,8 +16612,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!shader->IsLinked())
             return false;
 
-        MaterialPreviewCacheEntry &cache = m_materialPreviewCache[_materialPath];
-        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
         std::filesystem::file_time_type sourceWriteTime = cache.writeTime;
         if (!cache.diskCacheChecked ||
             cache.lastSourceCheckSeconds < 0.0 ||
@@ -16413,7 +16622,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
         const std::filesystem::path cachePath = GetMaterialPreviewCachePath(_materialPath);
 
-        constexpr int previewSize = 128;
+        constexpr int previewSize = 256;
         EnsureRenderTarget(cache.renderTarget, previewSize, previewSize);
         if (cache.renderTarget.framebuffer == 0)
             return false;
@@ -16452,28 +16661,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return true;
         }
 
-        GLint previousFramebuffer = 0;
-        GLint previousViewport[4] = { 0, 0, 0, 0 };
-        GLint previousActiveTexture = GL_TEXTURE0;
-        GLfloat previousClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        GLboolean previousDepthMask = GL_TRUE;
-        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
-        glGetIntegerv(GL_VIEWPORT, previousViewport);
-        glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
-        glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
-        glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, cache.renderTarget.framebuffer);
-        glViewport(0, 0, cache.renderTarget.width, cache.renderTarget.height);
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
-        glDisable(GL_BLEND);
-        glClearColor(0.055f, 0.067f, 0.086f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        BeginAssetPreviewTarget(cache.renderTarget);
 
         if ((material->info & MATERIAL_BACK_FACE_CULLING) != 0u)
         {
@@ -16496,7 +16684,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const Vector3 center = (minBounds + maxBounds) * 0.5f;
         const Vector3 size = glm::max(maxBounds - minBounds, Vector3(0.001f));
         const float maxDimension = std::max(size.x, std::max(size.y, size.z));
-        const float fitScale = (maxDimension > 0.0001f) ? (1.65f / maxDimension) : 1.0f;
+        const float fitScale = (maxDimension > 0.0001f) ? (1.50f / maxDimension) : 1.0f;
 
         Matrix4 modelMatrix(1.0f);
         modelMatrix = glm::rotate(modelMatrix, DEG2RAD * -12.0f, Vector3(1.0f, 0.0f, 0.0f));
@@ -16508,7 +16696,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const Matrix4 projection = glm::perspective(DEG2RAD * 35.0f, 1.0f, 0.05f, 32.0f);
         const Matrix4 view = glm::lookAt(cameraPosition, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f));
 
+        previewState.BindSetupVertexArray();
         shader->Use();
+        SetAssetPreviewStudioState(*shader);
+        shader->SetVec2("uvScale",Vector2(1.f));
         shader->SetMat4("P", projection);
         shader->SetMat4("V", view);
         shader->SetVec3("cameraPosition", cameraPosition);
@@ -16521,7 +16712,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetFloat("directionalLightIntensity", 2.0f);
         shader->SetBool("useDirectionalShadow", false);
         shader->SetInt("pointLightCount", 0);
-        shader->SetFloat("TIME", static_cast<float>(nowSeconds));
+        shader->SetFloat("TIME", 0.f);
         shader->SetFloat("specularValue", material->specularValue);
         shader->SetFloat("roughnessValue", material->roughnessValue);
         shader->SetFloat("metallicValue", material->metallicValue);
@@ -16535,7 +16726,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetInt("roughnessMap", 2);
         shader->SetInt("metallicMap", 3);
         shader->SetInt("emissionMap", 4);
-        (void)material->materialFields.Use(*shader, 5);
+        (void)material->materialFields.Use(*shader, 8);
+        SetAssetPreviewStudioState(*shader);
 
         auto bindMaterialTexture = [](const GLenum _textureUnit, const int _assetId)
         {
@@ -16566,15 +16758,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 cachePath.string().c_str());
         }
 
-        glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
-        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-        glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
-        glDepthMask(previousDepthMask);
-        depthWasEnabled ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
-        blendWasEnabled ? glEnable(GL_BLEND) : glDisable(GL_BLEND);
-        cullWasEnabled ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
-        glActiveTexture(previousActiveTexture);
-
         cache.writeTime = sourceWriteTime;
         cache.lastRenderSeconds = nowSeconds;
         _textureId = cache.renderTarget.colorTexture;
@@ -16584,6 +16767,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     bool Editor::GetModelPreviewTexture(const std::string &_modelPath, unsigned int &_textureId)
     {
         _textureId = 0;
+        MaterialPreviewCacheEntry &cache = m_modelPreviewCache[_modelPath];
+        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        if(cache.renderTarget.colorTexture && cache.diskCacheChecked && cache.lastRenderSeconds>=0 &&
+           cache.lastSourceCheckSeconds>=0 && nowSeconds-cache.lastSourceCheckSeconds<1.0) {
+            _textureId=cache.renderTarget.colorTexture;return true;
+        }
+        AssetPreviewGLState previewState;
 
         ModelAsset *model = AssetManager::GetModel(_modelPath);
         MaterialAsset *material = AssetManager::GetMaterial("assets/defaults/materials/default.material");
@@ -16600,9 +16790,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!shader->IsLinked())
             return false;
 
-        MaterialPreviewCacheEntry &cache = m_modelPreviewCache[_modelPath];
-        const double nowSeconds = static_cast<double>(Time::TimeSinceLaunch()) / 1000.0;
+        cache.lastSourceCheckSeconds=nowSeconds;
         std::filesystem::file_time_type sourceWriteTime = GetAssetWriteTime(_modelPath);
+        auto binaryPath=std::filesystem::path(_modelPath);binaryPath.replace_extension(".bin");
+        sourceWriteTime=std::max(sourceWriteTime,GetAssetWriteTime(binaryPath.string()));
         sourceWriteTime = std::max(
             sourceWriteTime,
             GetMaterialPreviewSourceWriteTime("assets/defaults/materials/default.material", *material));
@@ -16647,29 +16838,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!model->GetLocalBounds(minBounds, maxBounds))
             return false;
 
-        GLint previousFramebuffer = 0;
-        GLint previousViewport[4] = { 0, 0, 0, 0 };
-        GLint previousActiveTexture = GL_TEXTURE0;
-        GLfloat previousClearColor[4] = { 0.0f, 0.0f, 0.0f, 0.0f };
-        GLboolean previousDepthMask = GL_TRUE;
-        const GLboolean depthWasEnabled = glIsEnabled(GL_DEPTH_TEST);
-        const GLboolean blendWasEnabled = glIsEnabled(GL_BLEND);
-        const GLboolean cullWasEnabled = glIsEnabled(GL_CULL_FACE);
-        glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
-        glGetIntegerv(GL_VIEWPORT, previousViewport);
-        glGetIntegerv(GL_ACTIVE_TEXTURE, &previousActiveTexture);
-        glGetFloatv(GL_COLOR_CLEAR_VALUE, previousClearColor);
-        glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
-
-        glBindFramebuffer(GL_FRAMEBUFFER, cache.renderTarget.framebuffer);
-        glViewport(0, 0, cache.renderTarget.width, cache.renderTarget.height);
-        glEnable(GL_DEPTH_TEST);
-        glDepthMask(GL_TRUE);
-        glDepthFunc(GL_LESS);
-        glDisable(GL_BLEND);
+        BeginAssetPreviewTarget(cache.renderTarget);
         glDisable(GL_CULL_FACE);
-        glClearColor(0.055f, 0.067f, 0.086f, 1.0f);
-        glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
 
         const Vector3 center = (minBounds + maxBounds) * 0.5f;
         const Vector3 boundsSize = glm::max(maxBounds - minBounds, Vector3(0.001f));
@@ -16686,7 +16856,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const Matrix4 projection = glm::perspective(DEG2RAD * 35.0f, 1.0f, 0.05f, 64.0f);
         const Matrix4 view = glm::lookAt(cameraPosition, Vector3(0.0f), Vector3(0.0f, 1.0f, 0.0f));
 
+        previewState.BindSetupVertexArray();
         shader->Use();
+        SetAssetPreviewStudioState(*shader);
+        shader->SetVec2("uvScale",Vector2(1.f));
         shader->SetMat4("P", projection);
         shader->SetMat4("V", view);
         shader->SetVec3("cameraPosition", cameraPosition);
@@ -16706,6 +16879,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetBool("useSpecularMap", false);
         shader->SetBool("useRoughnessMap", false);
         shader->SetBool("useMetallicMap", false);
+        shader->SetBool("useEmissionMap", false);
+        shader->SetVec4("emissionColor",Color(1.f));
+        shader->SetFloat("emissionIntensity",0.f);
         shader->SetInt("specularMap", 1);
         shader->SetInt("roughnessMap", 2);
         shader->SetInt("metallicMap", 3);
@@ -16723,15 +16899,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         {
             Debug::Warning("Failed to cache model preview '%s'.", cachePath.string().c_str());
         }
-
-        glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
-        glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
-        glClearColor(previousClearColor[0], previousClearColor[1], previousClearColor[2], previousClearColor[3]);
-        glDepthMask(previousDepthMask);
-        depthWasEnabled ? glEnable(GL_DEPTH_TEST) : glDisable(GL_DEPTH_TEST);
-        blendWasEnabled ? glEnable(GL_BLEND) : glDisable(GL_BLEND);
-        cullWasEnabled ? glEnable(GL_CULL_FACE) : glDisable(GL_CULL_FACE);
-        glActiveTexture(previousActiveTexture);
 
         cache.writeTime = sourceWriteTime;
         cache.lastRenderSeconds = nowSeconds;

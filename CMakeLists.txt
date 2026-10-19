@@ -338,7 +338,7 @@ include(cmake/OpenXR.cmake)
 
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB AND CANIS_XVFB_RUN)
     add_executable(CanisSceneTabsTests tests/SceneTabsTests.cpp)
-    target_link_libraries(CanisSceneTabsTests PRIVATE CanisEngine imgui imguizmo)
+    target_link_libraries(CanisSceneTabsTests PRIVATE CanisEngine imgui imguizmo libglew_static)
     add_test(NAME CanisSceneTabsTests COMMAND "${CANIS_XVFB_RUN}" -a $<TARGET_FILE:CanisSceneTabsTests>
         "${PROJECT_SOURCE_DIR}/project/assets/shaders")
 endif()

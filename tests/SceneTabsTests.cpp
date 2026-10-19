@@ -4,6 +4,8 @@
 #include <Canis/Window.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/Time.hpp>
+#include <Canis/OpenGL.hpp>
+#include <Canis/Shader.hpp>
 #include <imgui.h>
 #include <imgui_internal.h>
 #include <ImGuizmo.h>
@@ -14,6 +16,11 @@
 #include <fstream>
 #include <iostream>
 #include <stdexcept>
+#include <algorithm>
+#include <array>
+#include <vector>
+#include <cmath>
+#include <cstdlib>
 
 namespace fs = std::filesystem;
 static void Check(bool value, const char* message)
@@ -23,6 +30,181 @@ namespace Canis
 {
     struct EditorSceneTabsTestAccess
     {
+        struct PreviewGLState
+        {
+            GLint program=0, draw=0, read=0, active=0, depthFunc=0, cullMode=0, frontFace=0;
+            GLint vao=0, buffer=0, renderbuffer=0;
+            std::array<GLint,4> viewport{};
+            std::array<GLfloat,4> clear{};
+            std::array<GLfloat,2> depthRange{};
+            GLfloat clearDepth=0;
+            std::array<GLboolean,4> colorMask{};
+            GLboolean depthMask=0, depth=0, blend=0, cull=0, scissor=0, stencil=0;
+            std::array<std::array<GLint,3>,8> textures{};
+            static PreviewGLState Read()
+            {
+                PreviewGLState s;
+                glGetIntegerv(GL_CURRENT_PROGRAM,&s.program);
+                glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&s.draw);
+                glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&s.read);
+                glGetIntegerv(GL_ACTIVE_TEXTURE,&s.active);
+                glGetIntegerv(GL_DEPTH_FUNC,&s.depthFunc);
+                glGetIntegerv(GL_CULL_FACE_MODE,&s.cullMode);
+                glGetIntegerv(GL_FRONT_FACE,&s.frontFace);
+                glGetIntegerv(GL_VERTEX_ARRAY_BINDING,&s.vao);
+                glGetIntegerv(GL_ARRAY_BUFFER_BINDING,&s.buffer);
+                glGetIntegerv(GL_RENDERBUFFER_BINDING,&s.renderbuffer);
+                glGetIntegerv(GL_VIEWPORT,s.viewport.data());
+                glGetFloatv(GL_COLOR_CLEAR_VALUE,s.clear.data());
+                glGetFloatv(GL_DEPTH_RANGE,s.depthRange.data());
+                glGetFloatv(GL_DEPTH_CLEAR_VALUE,&s.clearDepth);
+                glGetBooleanv(GL_COLOR_WRITEMASK,s.colorMask.data());
+                glGetBooleanv(GL_DEPTH_WRITEMASK,&s.depthMask);
+                s.depth=glIsEnabled(GL_DEPTH_TEST);s.blend=glIsEnabled(GL_BLEND);
+                s.cull=glIsEnabled(GL_CULL_FACE);s.scissor=glIsEnabled(GL_SCISSOR_TEST);
+                s.stencil=glIsEnabled(GL_STENCIL_TEST);
+                for(size_t i=0;i<s.textures.size();++i) {
+                    glActiveTexture(GL_TEXTURE0+i);
+                    glGetIntegerv(GL_TEXTURE_BINDING_2D,&s.textures[i][0]);
+                    glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP,&s.textures[i][1]);
+                    glGetIntegerv(GL_SAMPLER_BINDING,&s.textures[i][2]);
+                }
+                glActiveTexture(s.active);
+                return s;
+            }
+            bool operator==(const PreviewGLState&) const = default;
+        };
+
+        static void MaterialAndModelPreviews(Editor& editor)
+        {
+            const std::string materialPath="assets/brutal-city/materials/SideWalk.material";
+            const std::string modelPath="assets/defaults/models/sphere.glb";
+            auto contents=[](const std::string& path) {
+                std::ifstream in(path);return std::string(std::istreambuf_iterator<char>(in),{});
+            };
+            const std::string originalMaterial=contents(materialPath);
+            auto* material=AssetManager::GetMaterial(materialPath);
+            auto* modelMaterial=AssetManager::GetMaterial("assets/defaults/materials/default.material");
+            Check(material && modelMaterial,"Material preview fixtures could not load");
+
+            Shader sentinel;
+            sentinel.CompileSource("[OPENGL VERSION]\nlayout(location=0)in vec3 p;void main(){gl_Position=vec4(p,1);}",
+                                   "[OPENGL VERSION]\nout vec4 c;void main(){c=vec4(1);}","Preview GL state sentinel");
+            sentinel.Link();Check(sentinel.IsLinked(),"Preview sentinel shader failed");
+            GLuint framebuffers[2]{},textures[2]{},sampler=0,vao=0,buffer=0,renderbuffer=0;
+            glGenFramebuffers(2,framebuffers);glGenTextures(2,textures);glGenSamplers(1,&sampler);
+            glGenVertexArrays(1,&vao);glGenBuffers(1,&buffer);glGenRenderbuffers(1,&renderbuffer);
+            auto seedGL=[&] {
+                sentinel.Use();
+                glBindFramebuffer(GL_DRAW_FRAMEBUFFER,framebuffers[0]);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,framebuffers[1]);
+                glViewport(7,11,73,61);glClearColor(.13f,.29f,.41f,.57f);
+                glEnable(GL_DEPTH_TEST);glDepthFunc(GL_GEQUAL);glDepthMask(GL_FALSE);
+                glDepthRange(.2,.8);glClearDepth(.4);glColorMask(GL_FALSE,GL_TRUE,GL_FALSE,GL_TRUE);
+                glEnable(GL_BLEND);glEnable(GL_CULL_FACE);glCullFace(GL_FRONT);glFrontFace(GL_CW);
+                glEnable(GL_SCISSOR_TEST);glScissor(0,0,1,1);
+                glEnable(GL_STENCIL_TEST);glStencilFunc(GL_NEVER,1,0xff);
+                glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,buffer);
+                glBindRenderbuffer(GL_RENDERBUFFER,renderbuffer);
+                for(int i=0;i<8;++i) {
+                    glActiveTexture(GL_TEXTURE0+i);glBindTexture(GL_TEXTURE_2D,textures[0]);
+                    glBindTexture(GL_TEXTURE_CUBE_MAP,textures[1]);glBindSampler(i,sampler);
+                }
+                glActiveTexture(GL_TEXTURE6);
+            };
+            auto image=[&](bool model, bool fromDisk=false) {
+                if(fromDisk)editor.DestroyAssetPreviewCache();
+                auto& cache=model?editor.m_modelPreviewCache[modelPath]:editor.m_materialPreviewCache[materialPath];
+                cache.lastRenderSeconds=-1;
+                cache.lastSourceCheckSeconds=-1;
+                cache.diskCacheChecked=!fromDisk;
+                seedGL();const auto before=PreviewGLState::Read();
+                unsigned int texture=0;
+                const bool rendered=model?editor.GetModelPreviewTexture(modelPath,texture)
+                                         :editor.GetMaterialPreviewTexture(materialPath,texture);
+                Check(rendered && texture,"Actual editor preview failed to render");
+                Check(PreviewGLState::Read()==before,"Editor thumbnail leaked GL state into the caller");
+                GLint oldRead=0;glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&oldRead);
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,cache.renderTarget.framebuffer);
+                std::vector<unsigned char> pixels(size_t(cache.renderTarget.width)*cache.renderTarget.height*4);
+                glReadPixels(0,0,cache.renderTarget.width,cache.renderTarget.height,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,oldRead);
+                Check(glGetError()==GL_NO_ERROR,"Editor thumbnail rendering generated an OpenGL error");
+                return pixels;
+            };
+            auto shaded=[](const std::vector<unsigned char>& pixels) {
+                const int size=int(std::sqrt(pixels.size()/4));
+                int low=255,high=0;
+                // Stay inside the sphere silhouette; background contrast alone
+                // must not make an unlit, uniformly gray preview pass.
+                for(int y=size*3/8;y<size*5/8;++y)for(int x=size*3/8;x<size*5/8;++x) {
+                    const size_t offset=(size_t(y)*size+x)*4;
+                    int luma=(int(pixels[offset])+pixels[offset+1]+pixels[offset+2])/3;
+                    low=std::min(low,luma);high=std::max(high,luma);
+                }
+                Check(high-low>12,"Editor preview sphere is flat gray instead of visibly lit");
+                for(int i=0;i<size;++i)
+                    Check(pixels[size_t(i)*4]==pixels[0] &&
+                          pixels[(size_t(size-1)*size+i)*4]==pixels[0],
+                          "Editor preview sphere is cropped at the image border");
+            };
+            auto poison=[](MaterialAsset* asset) {
+                auto* shader=AssetManager::Get<ShaderAsset>(asset->shaderId)->GetShader();shader->Use();
+                shader->SetInt("directionalLightMode",2);shader->SetBool("canisDirectCapture",true);
+                shader->SetBool("canisProbeCapture",true);shader->SetInt("canisProbeCount",1);
+                shader->SetVec3("canisProbeExtent[0]",100,100,100);
+                shader->SetVec3("canisProbeParams[0]",1,100,0);
+                shader->SetVec3("canisProbeSH[0]",10,10,10);
+                shader->SetBool("disableBakedLighting",false);shader->SetBool("useBakedVertexLighting",true);
+                shader->SetBool("weatherSurface",true);
+                shader->SetBool("weatherWetnessEnabled",true);shader->SetFloat("weatherWetness",1);
+                shader->SetFloat("weatherDryRoughness",.01f);shader->SetFloat("weatherWetRoughness",.001f);
+                shader->SetFloat("weatherDarkening",1);shader->SetFloat("softTime",913);
+                shader->UnUse();
+            };
+            while(glGetError()!=GL_NO_ERROR){}
+            const auto cleanMaterial=image(false);shaded(cleanMaterial);
+            poison(material);
+            Check(image(false)==cleanMaterial,"SideWalk preview inherited baked-light, probe-capture, or wet weather uniforms");
+            const auto cleanModel=image(true);shaded(cleanModel);
+            poison(modelMaterial);
+            Check(image(true)==cleanModel,"Model preview inherited baked-light, probe-capture, or weather uniforms");
+            Check(image(false,true)==cleanMaterial,"Cached material preview changed pixels or vertical orientation");
+            Check(image(true,true)==cleanModel,"Cached model preview changed pixels or vertical orientation");
+            // Switching assets must neither rewrite the material's extensionless
+            // shader reference nor turn an idle Inspector draw into an edit.
+            ImGui::NewFrame();ImGui::Begin("Material preview inspector test");
+            Check(editor.DrawMaterialAssetInspector(materialPath),"SideWalk Inspector did not recognize its material");
+            ImGui::End();ImGui::Render();
+            Check(contents(materialPath)==originalMaterial,"Opening the material Inspector rewrote its shader reference");
+            if(const auto* destination=std::getenv("CANIS_PREVIEW_TEST_ARTIFACTS")) {
+                fs::create_directories(destination);
+                for(const auto& fixture:std::array<std::pair<const char*,const char*>,2>{{
+                        {"cache/editor/material_previews","sidewalk.png"},
+                        {"cache/editor/model_previews","sphere.png"}}}) {
+                    for(const auto& entry:fs::recursive_directory_iterator(fixture.first))
+                        if(entry.path().extension()==".png") {
+                            fs::copy_file(entry.path(),fs::path(destination)/fixture.second,
+                                          fs::copy_options::overwrite_existing);
+                            break;
+                        }
+                }
+            }
+
+            glUseProgram(0);glBindFramebuffer(GL_FRAMEBUFFER,0);glBindVertexArray(0);
+            glBindBuffer(GL_ARRAY_BUFFER,0);glBindRenderbuffer(GL_RENDERBUFFER,0);
+            for(int i=0;i<8;++i) {glActiveTexture(GL_TEXTURE0+i);glBindTexture(GL_TEXTURE_2D,0);
+                glBindTexture(GL_TEXTURE_CUBE_MAP,0);glBindSampler(i,0);}
+            glActiveTexture(GL_TEXTURE0);glViewport(0,0,800,600);glClearColor(0,0,0,1);
+            glDepthRange(0,1);glClearDepth(1);glDepthFunc(GL_LESS);glDepthMask(GL_TRUE);
+            glColorMask(GL_TRUE,GL_TRUE,GL_TRUE,GL_TRUE);glCullFace(GL_BACK);glFrontFace(GL_CCW);
+            glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);
+            glDisable(GL_SCISSOR_TEST);glDisable(GL_STENCIL_TEST);
+            glDeleteFramebuffers(2,framebuffers);glDeleteTextures(2,textures);glDeleteSamplers(1,&sampler);
+            glDeleteVertexArrays(1,&vao);glDeleteBuffers(1,&buffer);glDeleteRenderbuffers(1,&renderbuffer);
+            std::cout << "Material/model thumbnails have studio shading, scene-uniform isolation and GL-state restoration\n";
+        }
+
         static void LightingAnimationPreview(App& app, Editor& editor)
         {
             LightingScenario dusk, night;
@@ -131,6 +313,7 @@ namespace Canis
             editor.m_scene = &app.scene;
             editor.m_app = &app;
             editor.m_window = &window;
+            MaterialAndModelPreviews(editor);
             LightingAnimationPreview(app, editor);
             auto seed = [&](const char* path) {
                 std::ofstream(path) << "Entities:\n- Entity: 101\n  Name: Original\n";
@@ -419,12 +602,24 @@ int main(int argc, char** argv)
     if (argc != 2) return 1;
     const auto executable=fs::absolute(argv[0]);
     const auto original=fs::current_path();
+    const auto sourceAssets=fs::absolute(argv[1]).parent_path();
     auto temp=fs::temp_directory_path()/("canis-scene-tabs-"+
         std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(temp); fs::current_path(temp);
     try {
         fs::create_directories("assets");
         fs::copy(argv[1], "assets/shaders", fs::copy_options::recursive);
+        fs::create_directories("assets/defaults/models");
+        fs::create_directories("assets/defaults/materials");
+        fs::create_directories("assets/brutal-city/shaders");
+        fs::create_directories("assets/brutal-city/materials");
+        fs::copy_file(sourceAssets/"defaults/models/sphere.glb","assets/defaults/models/sphere.glb");
+        fs::copy_file(sourceAssets/"brutal-city/materials/SideWalk.material","assets/brutal-city/materials/SideWalk.material");
+        for(const auto* extension:{".vs",".fs"})
+            fs::copy_file(sourceAssets/(std::string("brutal-city/shaders/wet")+extension),
+                          std::string("assets/brutal-city/shaders/wet")+extension);
+        std::ofstream("assets/defaults/materials/default.material")
+            << "shader: {path: assets/shaders/model3d}\ncolor: [1, 1, 1, 1]\nroughnessValue: 0.5\nspecularValue: 0.5\n";
         Canis::Window window("Scene tab test",800,600,true);
         ImGui::CreateContext();
         auto& io=ImGui::GetIO(); io.IniFilename=nullptr; io.DisplaySize=ImVec2(800,600); io.DeltaTime=1.f/60;
