@@ -16,6 +16,8 @@
 #include <fstream>
 #include <sstream>
 #include <regex>
+#include <cstring>
+#include <cstdlib>
 
 namespace Canis
 {
@@ -77,6 +79,9 @@ namespace Canis
     void Shader::CompileSource(const std::string &vertex, const std::string &fragment, const std::string &name)
     {
         m_path = name;
+        const char* disabledStatic = std::getenv("CANIS_DISABLE_STATIC_SHADER_CAPABILITIES");
+        m_staticBatching = vertex.find("CANIS_STATIC_BATCHING") != std::string::npos &&
+            (!disabledStatic || std::string(disabledStatic) != "1");
         m_vertexSource = vertex; m_fragmentSource = fragment;
         m_stereoVariant.reset(); m_stereoAttempted = false;
 
@@ -101,7 +106,7 @@ namespace Canis
         m_isLinked = false;
         m_gpuSkinning = false;
         m_locationsCashe.clear();
-        m_lastValueCashe.clear();
+        m_uniformValues.clear();
         m_uniformTypes.clear();
         m_numberOfAttributes = static_cast<int>(m_attributes.size());
 
@@ -325,34 +330,12 @@ namespace Canis
         return found == m_uniformTypes.end() ? 0 : found->second;
     }
 
-    GLint Shader::GetUniformLocation(const std::string &_uniformName, const size_t _valueHash) const
+    GLint Shader::GetUniformLocation(const std::string &name, const size_t) const
     {
-        if (m_locationsCashe.find(_uniformName) != m_locationsCashe.end())
-        {
-            //Canis::Log("Cashe: " + _uniformName + " location: " + std::to_string(m_locationsCashe[_uniformName]));
-            return m_locationsCashe[_uniformName];
-        }
-        
-        GLint location = glGetUniformLocation(m_programId, _uniformName.c_str());
-
-        //Canis::Log(_uniformName + " location: " + std::to_string(location));
-
-        if (location == GL_INVALID_INDEX)
-        {
-            //Debug::FatalError("Uniform " + _uniformName + " not found in shader " + m_path + " isValid: " + std::to_string(m_isLinked));
-        }
-        
-        if (m_lastValueCashe.find(_uniformName) != m_lastValueCashe.end())
-        {
-            if (m_lastValueCashe[_uniformName] == _valueHash)
-            {
-                return -1;
-            }
-        }
-
-        m_locationsCashe[_uniformName] = location;
-
-        
+        if (auto found = m_locationsCashe.find(name); found != m_locationsCashe.end())
+            return found->second;
+        const GLint location = glGetUniformLocation(m_programId, name.c_str());
+        m_locationsCashe.emplace(name, location);
         return location;
     }
 
@@ -375,95 +358,76 @@ namespace Canis
         glUseProgram(0);
     }
 
-    void Shader::SetBool(const std::string &_name, bool _value) const
+    bool Shader::UpdateUniformValue(int location, unsigned int type, const void* data, std::size_t size) const
     {
-        size_t valueHash = std::hash<bool>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform1i(location, (int)_value); 
-    }
-    
-    void Shader::SetInt(const std::string &_name, int _value) const
-    {
-        size_t valueHash = std::hash<int>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform1i( location, _value); 
-    }
-    
-    void Shader::SetFloat(const std::string &_name, float _value) const
-    {
-        size_t valueHash = std::hash<float>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform1f( location, _value); 
-    }
-    
-    void Shader::SetVec2(const std::string &_name, const Vector2 &_value) const
-    {
-        size_t valueHash = std::hash<Vector2>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform2fv( location, 1, &_value.x); 
+        if (location < 0) return false;
+        static const bool enabled = [] {
+            const char* disabled = std::getenv("CANIS_DISABLE_UNIFORM_CACHE");
+            return !disabled || std::string(disabled) != "1";
+        }();
+        if (!enabled) return true;
+        auto& previous = m_uniformValues[location];
+        if (previous.type == type && previous.size == size &&
+            std::memcmp(previous.bytes.data(), data, size) == 0)
+            return false;
+        previous.type = type;
+        previous.size = size;
+        std::memcpy(previous.bytes.data(), data, size);
+        return true;
     }
 
-    void Shader::SetVec2(const std::string &_name, float _x, float _y) const
+    void Shader::SetBool(const std::string &name, bool value) const
     {
-        SetVec2(_name, Vector2(_x, _y));
+        SetInt(name, value ? 1 : 0);
     }
 
-    void Shader::SetVec3(const std::string &_name, const Vector3 &_value) const
+    void Shader::SetInt(const std::string &name, int value) const
     {
-        size_t valueHash = std::hash<Vector3>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform3f(location, _value.x, _value.y, _value.z);
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_INT, &value, sizeof(value)))
+            glUniform1i(location, value);
     }
 
-    void Shader::SetVec3(const std::string &_name, float _x, float _y, float _z) const
+    void Shader::SetFloat(const std::string &name, float value) const
     {
-        SetVec3(_name, Vector3(_x, _y, _z));
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_FLOAT, &value, sizeof(value)))
+            glUniform1f(location, value);
     }
 
-    void Shader::SetVec4(const std::string &_name, const Vector4 &_value) const
+    void Shader::SetVec2(const std::string &name, const Vector2 &value) const
     {
-        size_t valueHash = std::hash<Vector4>{}(_value);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniform4f(location, _value.x, _value.y, _value.z, _value.w);
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_FLOAT_VEC2, &value.x, 2 * sizeof(float)))
+            glUniform2fv(location, 1, &value.x);
     }
 
-    void Shader::SetVec4(const std::string &_name, float _x, float _y, float _z, float _w)
+    void Shader::SetVec2(const std::string &name, float x, float y) const { SetVec2(name, Vector2(x, y)); }
+
+    void Shader::SetVec3(const std::string &name, const Vector3 &value) const
     {
-        SetVec4(_name, Vector4(_x, _y, _z, _w));
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_FLOAT_VEC3, &value.x, 3 * sizeof(float)))
+            glUniform3fv(location, 1, &value.x);
     }
 
-    /*
-    
-    void Shader::SetMat2(const std::string &_name, const glm::mat2 &_mat) const
+    void Shader::SetVec3(const std::string &name, float x, float y, float z) const { SetVec3(name, Vector3(x, y, z)); }
+
+    void Shader::SetVec4(const std::string &name, const Vector4 &value) const
     {
-        size_t valueHash = std::hash<glm::mat2>{}(_mat);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniformMatrix2fv( location, 1, GL_FALSE, &_mat[0][0]);
-    }
-    
-    void Shader::SetMat3(const std::string &_name, const glm::mat3 &_mat) const
-    {
-        size_t valueHash = std::hash<glm::mat3>{}(_mat);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniformMatrix3fv( location, 1, GL_FALSE, &_mat[0][0]);
-    }*/
-    
-    void Shader::SetMat4(const std::string &_name, const Matrix4 &_mat) const
-    {
-        size_t valueHash = HashMatrix(_mat);
-        int location = GetUniformLocation(_name, valueHash);
-        if (location > -1)
-            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(_mat));
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_FLOAT_VEC4, &value.x, 4 * sizeof(float)))
+            glUniform4fv(location, 1, &value.x);
     }
 
+    void Shader::SetVec4(const std::string &name, float x, float y, float z, float w) { SetVec4(name, Vector4(x, y, z, w)); }
+
+    void Shader::SetMat4(const std::string &name, const Matrix4 &value) const
+    {
+        const int location = GetUniformLocation(name, 0);
+        if (UpdateUniformValue(location, GL_FLOAT_MAT4, glm::value_ptr(value), 16 * sizeof(float)))
+            glUniformMatrix4fv(location, 1, GL_FALSE, glm::value_ptr(value));
+    }
 
     void Shader::CompileShaderSource(std::string shaderFileCode, const std::string &_filePath, unsigned int &_id)
     {

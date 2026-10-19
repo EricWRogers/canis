@@ -431,6 +431,7 @@ namespace Canis
                     if (source->shaderId < 0) return true;
                     auto* shader = AssetManager::Get<ShaderAsset>(source->shaderId);
                     return shader && (shader->GetShader() == defaultShader ||
+                        shader->GetShader()->SupportsStaticBatching() ||
                         (shader->SupportsGraphInstancing() && !shader->HasVertexDeformation()));
                 };
                 if (!safeShader(material->materialId)) return false;
@@ -629,6 +630,20 @@ namespace Canis
             std::vector<TransparentModelEntry> singles;
         };
         std::deque<View> views;
+        using MergeKey = std::tuple<int, int, int, StaticModelBatchKey>;
+        struct MergedChunk
+        {
+            std::vector<Input> inputs;
+            ModelAsset geometry;
+            std::vector<ModelAsset::DrawRanges3D> sourceRanges;
+            ModelAsset::DrawRanges3D visibleRanges;
+            bool valid = false;
+            entt::entity representative = entt::null;
+            ~MergedChunk() { geometry.Free(); }
+        };
+        using MergedChunks = std::map<MergeKey, std::unique_ptr<MergedChunk>>;
+        std::map<uint64_t, MergedChunks> mergedViews;
+
         struct Room {
             Vector3 minimum,maximum;
             unsigned query=0;
@@ -1904,8 +1919,32 @@ namespace Canis
             return groupId;
         };
 
-        for (const TransparentModelEntry &entry : opaqueEntities)
+        const char* disableMerge = std::getenv("CANIS_DISABLE_STATIC_MERGING");
+        const bool mergeEnabled = !m_capturingProbe && m_stereoPass != 1 && RenderMetrics::BatchCacheEnabled() &&
+            (!disableMerge || std::string(disableMerge) != "1");
+        std::unordered_set<entt::entity> visibleOpaque;
+        for (const auto& entry : opaqueEntities) visibleOpaque.insert(entry.entityHandle);
+        std::vector<TransparentModelEntry> batchEntities;
+        if (mergeEnabled)
         {
+            // Include hidden stationary sources when preparing shared buffers.
+            // Turning the camera then changes index ranges, never vertex uploads.
+            for (const auto& candidate : m_batchCache->candidates)
+            {
+                if (candidate.transparent) continue;
+                const auto handle = candidate.handle;
+                const auto& model = modelView.get<Model>(handle);
+                if (!visibleOpaque.contains(handle) && !StaticRenderTransform(_registry, handle, model)) continue;
+                if (RenderModelId(handle, model) < 0) continue;
+                const auto offset = Vector3(RenderMatrix(handle, modelView.get<Transform>(handle))[3]) - cameraPosition;
+                batchEntities.push_back({handle, glm::dot(offset, offset)});
+            }
+        }
+        else batchEntities = opaqueEntities;
+        std::vector<MeshRendererCache::Input> mergeInputs;
+        for (const TransparentModelEntry &entry : batchEntities)
+        {
+            const bool visible = visibleOpaque.contains(entry.entityHandle);
             Transform &transform = modelView.get<Transform>(entry.entityHandle);
             Model &modelRenderer = modelView.get<Model>(entry.entityHandle);
             Material *material = _registry.try_get<Material>(entry.entityHandle);
@@ -1916,14 +1955,17 @@ namespace Canis
 
             bool usesInstancedModelShader = true;
             bool graph=false;
+            bool mergeSafe=true;
             int program=m_shader->GetProgramID();
             if (materialAsset != nullptr && materialAsset->shaderId >= 0)
             {
                 usesInstancedModelShader = false;
                 if (ShaderAsset *shaderAsset = AssetManager::Get<ShaderAsset>(materialAsset->shaderId)) {
                     program=shaderAsset->GetShader()->GetProgramID();
+                    mergeSafe=shaderAsset->GetShader()==m_shader || shaderAsset->GetShader()->SupportsStaticBatching();
                     graph=shaderAsset->SupportsGraphInstancing();
-                    usesInstancedModelShader = graph || shaderAsset->GetShader() == m_shader;
+                    usesInstancedModelShader = graph || shaderAsset->GetShader() == m_shader ||
+                        shaderAsset->GetShader()->SupportsStaticBatching();
                 }
             }
 
@@ -1938,7 +1980,7 @@ namespace Canis
 
             if (!canBatch)
             {
-                remainingOpaqueEntities.push_back(entry);
+                if (visible) remainingOpaqueEntities.push_back(entry);
                 continue;
             }
 
@@ -1959,7 +2001,7 @@ namespace Canis
             key.materialColorB = materialColor.b;
             key.materialColorA = materialColor.a;
             const bool stationary = StaticRenderTransform(_registry, entry.entityHandle, modelRenderer);
-            if(roomQueries && stationary)key.group=findGroup(findGroup,entry.entityHandle);
+            if ((roomQueries || mergeEnabled) && stationary) key.group=findGroup(findGroup,entry.entityHandle);
 
             if (!stationary)
             {
@@ -1973,7 +2015,10 @@ namespace Canis
                 continue;
             }
 
-            batchInputs.push_back({key,RenderMatrix(entry.entityHandle,transform),
+            auto& destination = mergeEnabled && !graph && mergeSafe
+                ? mergeInputs : batchInputs;
+            if (&destination == &batchInputs && !visible) continue;
+            destination.push_back({key,RenderMatrix(entry.entityHandle,transform),
                 LODColor(entry.entityHandle,modelRenderer.color) * (material ? material->color : Color(1.f)),entry.entityHandle,graph,
                 AssetManager::GetModel(key.modelId)->GetGeometryRevision(),program,
                 materialAsset ? uint64_t(materialAsset->info) : 0,
@@ -1981,15 +2026,84 @@ namespace Canis
                 materialAsset ? materialAsset->color.a : 1.f});
         }
 
+        // Repeated assets retain instancing. Unique baked meshes share buffers
+        // by material and 32 m cell; their individual culling results select ranges.
+        std::unordered_map<int, size_t> modelUses;
+        for (const auto& input : mergeInputs) ++modelUses[input.key.modelId];
+        std::map<MeshRendererCache::MergeKey, std::vector<MeshRendererCache::Input>> chunkInputs;
+        for (const auto& input : mergeInputs)
+        {
+            if (modelUses[input.key.modelId] > 1)
+            {
+                if (visibleOpaque.contains(input.entity)) batchInputs.push_back(input);
+                continue;
+            }
+            auto key = input.key;
+            key.modelId = -1;
+            key.nodeIndex = -1;
+            key.applyNodeTransform = true;
+            const auto& transformRecord = m_batchCache->frameMatrices.at(input.entity);
+            const Vector3 center = transformRecord.finiteBounds
+                ? (transformRecord.worldMinimum + transformRecord.worldMaximum) * .5f : Vector3(input.matrix[3]);
+            chunkInputs[{int(std::floor(center.x / 32)), int(std::floor(center.y / 32)),
+                         int(std::floor(center.z / 32)), key}].push_back(input);
+        }
+        auto& mergedViews = m_batchCache->mergedViews;
+        if (!mergedViews.contains(lodViewKey) && mergedViews.size() >= 4)
+            mergedViews.erase(mergedViews.begin());
+        auto& chunks = mergedViews[lodViewKey];
+        for (auto it = chunks.begin(); it != chunks.end();)
+            if (!chunkInputs.contains(it->first)) it = chunks.erase(it);
+            else ++it;
+        for (auto& [key, inputs] : chunkInputs)
+        {
+            auto& chunkPointer = chunks[key];
+            if (!chunkPointer) chunkPointer = std::make_unique<MeshRendererCache::MergedChunk>();
+            auto& chunk = *chunkPointer;
+            if (chunk.inputs != inputs)
+            {
+                chunk.geometry.Free();
+                chunk.inputs = inputs;
+                std::vector<ModelAsset::StaticSource3D> sources;
+                for (const auto& input : inputs)
+                    sources.push_back({AssetManager::GetModel(input.key.modelId), input.matrix,
+                                       input.key.nodeIndex, input.key.applyNodeTransform});
+                chunk.valid = inputs.size() > 1 && chunk.geometry.BuildStaticBatch(sources, chunk.sourceRanges);
+                chunk.visibleRanges.clear();
+                if (chunk.valid) chunk.visibleRanges.resize(chunk.sourceRanges.front().size());
+            }
+            for (auto& ranges : chunk.visibleRanges) ranges.clear();
+            chunk.representative = entt::null;
+            for (size_t i = 0; i < inputs.size(); ++i)
+            {
+                if (!visibleOpaque.contains(inputs[i].entity)) continue;
+                if (!chunk.valid) { batchInputs.push_back(inputs[i]); continue; }
+                chunk.representative = inputs[i].entity;
+                for (size_t group = 0; group < chunk.visibleRanges.size(); ++group)
+                {
+                    auto& ranges = chunk.visibleRanges[group];
+                    for (const auto& range : chunk.sourceRanges[i][group])
+                    {
+                        if (!ranges.empty() && ranges.back().first + ranges.back().count == range.first)
+                            ranges.back().count += range.count;
+                        else ranges.push_back(range);
+                    }
+                }
+            }
+        }
+
         if(!m_batchCache)m_batchCache=std::make_shared<MeshRendererCache>();
         for(const auto& input:batchInputs) {
             auto* material=input.key.materialId>=0 ? AssetManager::GetMaterial(input.key.materialId) : nullptr;
             auto* shader=material && material->shaderId>=0 ? AssetManager::Get<ShaderAsset>(material->shaderId) : nullptr;
-            if(shader && shader->GetShader()!=m_shader && shader->HasVertexDeformation())roomQueries=false;
+            if(shader && shader->GetShader()!=m_shader && !shader->GetShader()->SupportsStaticBatching() && shader->HasVertexDeformation())roomQueries=false;
         }
         std::vector<uint64_t> hiddenRooms;
         if(roomQueries) {
-            m_batchCache->UpdateRooms(batchInputs,projection*view);
+            auto roomInputs = batchInputs;
+            for (const auto& [key, chunk] : chunks)
+                if (chunk->valid) roomInputs.insert(roomInputs.end(), chunk->inputs.begin(), chunk->inputs.end());
+            m_batchCache->UpdateRooms(roomInputs,projection*view);
             for(const auto& [id,room]:m_batchCache->rooms)if(!room.visible)hiddenRooms.push_back(id);
         }
         for(const auto& input:batchInputs)
@@ -2061,7 +2175,23 @@ namespace Canis
 
         Profiler::Get().End(batchTiming,Profiler::Now());
 
-        auto drawEntity = [&](const entt::entity entityHandle) -> void
+        std::array<unsigned int, 4> boundSurfaceTextures;
+        boundSurfaceTextures.fill(~0u);
+        const char* disableSurfaceCache = std::getenv("CANIS_DISABLE_SURFACE_CACHE");
+        const bool surfaceCacheEnabled = !disableSurfaceCache || std::string(disableSurfaceCache) != "1";
+        auto bindSurfaceTexture = [&](unsigned int unit, i32 assetId)
+        {
+            auto* texture = assetId >= 0 ? AssetManager::GetTexture(assetId) : nullptr;
+            const unsigned int id = texture ? texture->GetGLTexture().id : 0;
+            auto& bound = boundSurfaceTextures[unit - 1];
+            if (surfaceCacheEnabled && bound == id) return;
+            glActiveTexture(GL_TEXTURE0 + unit);
+            glBindTexture(GL_TEXTURE_2D, id);
+            bound = id;
+        };
+
+        auto drawEntity = [&](const entt::entity entityHandle, ModelAsset* merged = nullptr,
+                              const ModelAsset::DrawRanges3D* ranges = nullptr) -> void
         {
             Transform &transform = modelView.get<Transform>(entityHandle);
             Model &modelRenderer = modelView.get<Model>(entityHandle);
@@ -2074,7 +2204,7 @@ namespace Canis
                 modelRenderer.modelId < 0)
                 return;
 
-            ModelAsset *model = AssetManager::GetModel(RenderModelId(entityHandle,modelRenderer));
+            ModelAsset *model = merged ? merged : AssetManager::GetModel(RenderModelId(entityHandle,modelRenderer));
             if (model == nullptr)
                 return;
 
@@ -2196,57 +2326,10 @@ namespace Canis
             currentShader->SetInt("metallicMap", 3);
             currentShader->SetInt("emissionMap", 4);
 
-            glActiveTexture(GL_TEXTURE1);
-            if (specularTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(specularTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE2);
-            if (roughnessTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(roughnessTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE3);
-            if (metallicTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(metallicTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE4);
-            if (emissionTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(emissionTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
+            bindSurfaceTexture(1, specularTextureId);
+            bindSurfaceTexture(2, roughnessTextureId);
+            bindSurfaceTexture(3, metallicTextureId);
+            bindSurfaceTexture(4, emissionTextureId);
 
             glActiveTexture(GL_TEXTURE0);
 
@@ -2281,15 +2364,18 @@ namespace Canis
             RenderMetrics::SetLODLevel(level==m_batchCache->levels.end()?0:level->second);
             model->Draw(
                 *currentShader,
-                RenderMatrix(entityHandle,transform),
+                merged ? Matrix4(1) : RenderMatrix(entityHandle,transform),
                 pose,
                 overrideTextureId,
                 baseColor,
                 slotMaterialOverrides.empty() ? nullptr : &slotMaterialOverrides,
-                modelRenderer.nodeIndex,
-                modelRenderer.applyNodeTransform,
+                merged ? -1 : modelRenderer.nodeIndex,
+                merged ? true : modelRenderer.applyNodeTransform,
                 materialAsset,
-                useVisibility?&visibility:nullptr);
+                useVisibility?&visibility:nullptr,
+                ranges);
+            // Model material-slot overrides can bind these units themselves.
+            if (!slotMaterialOverrides.empty()) boundSurfaceTextures.fill(~0u);
             RenderMetrics::SetLODLevel(-1);
         };
 
@@ -2383,57 +2469,10 @@ namespace Canis
             currentShader->SetInt("metallicMap", 3);
             currentShader->SetInt("emissionMap", 4);
 
-            glActiveTexture(GL_TEXTURE1);
-            if (specularTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(specularTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE2);
-            if (roughnessTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(roughnessTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE3);
-            if (metallicTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(metallicTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
-
-            glActiveTexture(GL_TEXTURE4);
-            if (emissionTextureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(emissionTextureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
+            bindSurfaceTexture(1, specularTextureId);
+            bindSurfaceTexture(2, roughnessTextureId);
+            bindSurfaceTexture(3, metallicTextureId);
+            bindSurfaceTexture(4, emissionTextureId);
 
             glActiveTexture(GL_TEXTURE0);
 
@@ -2450,6 +2489,13 @@ namespace Canis
         glDepthMask(GL_TRUE);
         {
         RenderMetrics::Scope timing("Opaque geometry");
+        for (const auto& [key, chunk] : chunks)
+            if (chunk->valid && chunk->representative != entt::null)
+            {
+                if (std::binary_search(hiddenRooms.begin(), hiddenRooms.end(), chunk->inputs.front().key.group))
+                    RenderMetrics::RoomCull(1);
+                else drawEntity(chunk->representative, &chunk->geometry, &chunk->visibleRanges);
+            }
         for (const StaticModelBatch &batch : staticBatches)
         {
             drawStaticBatch(batch);

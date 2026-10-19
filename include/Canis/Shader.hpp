@@ -2,6 +2,8 @@
 #include <string>
 #include <vector>
 #include <memory>
+#include <array>
+#include <cstddef>
 //#include <glm/glm.hpp>
 #include <Canis/Math.hpp>
 #include <unordered_map>
@@ -41,6 +43,9 @@ namespace Canis
         int GetUniformLocation(const std::string &uniformName, const size_t _valueHash) const;
         unsigned int GetUniformType(const std::string &uniformName) const;
         bool SupportsGpuSkinning() const { return m_gpuSkinning; }
+        // Opt-in contract: ordinary P/V/M transforms, no vertex displacement or
+        // object-space shading dependencies; instanceM is available at location 3.
+        bool SupportsStaticBatching() const { return m_staticBatching; }
         int GetProgramID() { return m_programId; }
 
     private:
@@ -54,13 +59,21 @@ namespace Canis
         std::vector<std::string> m_attributes = {};
 
         mutable std::unordered_map<std::string, int> m_locationsCashe = {};
-        mutable std::unordered_map<std::string, size_t> m_lastValueCashe = {};
+        struct UniformValue
+        {
+            std::array<unsigned char, sizeof(Matrix4)> bytes{};
+            std::size_t size = 0;
+            unsigned int type = 0;
+        };
+        mutable std::unordered_map<int, UniformValue> m_uniformValues;
+        bool UpdateUniformValue(int location, unsigned int type, const void* data, std::size_t size) const;
         std::unordered_map<std::string, unsigned int> m_uniformTypes;
 
         std::string m_path = "";
         std::string m_vertexSource, m_fragmentSource;
         bool m_stereoAttempted = false;
         bool m_gpuSkinning = false;
+        bool m_staticBatching = false;
         unsigned int m_defaultSkinPalette = 0;
         std::unique_ptr<Shader> m_stereoVariant;
 

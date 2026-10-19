@@ -2449,6 +2449,10 @@ namespace Canis
             primitive.hasSkinning = !primitive.skinVertices.empty() &&
                 primitive.skinVertices.size() == primitive.bindVertices.size();
             primitive.dynamicVertices = buildPrimitive.dynamicVertices || primitive.hasSkinning;
+            primitive.bakedLighting = buildPrimitive.bakedLighting;
+            primitive.normalTextureId = buildPrimitive.normalTextureId;
+            primitive.emissionTextureId = buildPrimitive.emissionTextureId;
+            primitive.emissionFactor = buildPrimitive.emissionFactor;
 
             if (!UploadPrimitive(primitive))
             {
@@ -2461,6 +2465,66 @@ namespace Canis
 
         ++m_geometryRevision;
         return true;
+    }
+
+    bool ModelAsset::BuildStaticBatch(const std::vector<StaticSource3D>& sources,
+                                      std::vector<DrawRanges3D>& sourceRanges)
+    {
+        std::vector<PrimitiveBuild3D> groups;
+        sourceRanges.assign(sources.size(), {});
+        for (size_t sourceIndex = 0; sourceIndex < sources.size(); ++sourceIndex)
+        {
+            const auto& source = sources[sourceIndex];
+            if (!source.model || source.model->HasDeformingGeometry()) return false;
+            for (const auto& primitive : source.model->m_primitives)
+            {
+                if (!PrimitiveMatchesNodeFilter(primitive, source.nodeIndex)) continue;
+                if (primitive.dynamicVertices || primitive.baseColor.a < .999f) return false;
+                auto found = std::find_if(groups.begin(), groups.end(), [&](const auto& group) {
+                    return group.textureId == primitive.textureId && group.baseColor == primitive.baseColor &&
+                        group.bakedLighting == primitive.bakedLighting &&
+                        group.normalTextureId == primitive.normalTextureId &&
+                        group.emissionTextureId == primitive.emissionTextureId &&
+                        group.emissionFactor == primitive.emissionFactor;
+                });
+                if (found == groups.end())
+                {
+                    groups.emplace_back();
+                    found = std::prev(groups.end());
+                    found->textureId = primitive.textureId;
+                    found->baseColor = primitive.baseColor;
+                    found->bakedLighting = primitive.bakedLighting;
+                    found->normalTextureId = primitive.normalTextureId;
+                    found->emissionTextureId = primitive.emissionTextureId;
+                    found->emissionFactor = primitive.emissionFactor;
+                }
+                auto& group = *found;
+                const auto groupIndex = static_cast<size_t>(found - groups.begin());
+                Matrix4 matrix = source.matrix;
+                if ((source.nodeIndex < 0 || source.applyNodeTransform) && primitive.nodeIndex >= 0 &&
+                    primitive.nodeIndex < static_cast<i32>(source.model->m_nodes.size()))
+                    matrix *= source.model->m_nodes[primitive.nodeIndex].globalMatrix;
+                if (matrix[0][3] != 0 || matrix[1][3] != 0 || matrix[2][3] != 0 || matrix[3][3] != 1)
+                    return false;
+                const float determinant = glm::determinant(glm::mat3(matrix));
+                if (!std::isfinite(determinant) || std::abs(determinant) < 1e-8f) return false;
+                const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3(matrix)));
+                const auto firstVertex = static_cast<unsigned int>(group.vertices.size());
+                const auto firstIndex = static_cast<unsigned int>(group.indices.size());
+                for (auto vertex : primitive.bindVertices)
+                {
+                    vertex.position = Vector3(matrix * Vector4(vertex.position, 1));
+                    vertex.normal = normalMatrix * vertex.normal;
+                    group.vertices.push_back(vertex);
+                }
+                for (auto index : primitive.indices) group.indices.push_back(firstVertex + index);
+                auto& ranges = sourceRanges[sourceIndex];
+                ranges.resize(groups.size());
+                ranges[groupIndex].push_back({firstIndex, static_cast<unsigned int>(primitive.indices.size())});
+            }
+        }
+        for (auto& ranges : sourceRanges) ranges.resize(groups.size());
+        return !groups.empty() && SetRuntimePrimitives(groups);
     }
 
     struct ModelAsset::PoseGPUCache
@@ -3071,7 +3135,8 @@ namespace Canis
         i32 _nodeIndex,
         bool _applyNodeTransform,
         const MaterialAsset *_baseMaterial,
-        const VisibilityView *_visibility)
+        const VisibilityView *_visibility,
+        const DrawRanges3D* ranges)
     {
         const Pose3D *pose = (_pose == nullptr) ? &m_sharedPose : _pose;
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
@@ -3088,6 +3153,7 @@ namespace Canis
         for (size_t primitiveIndex = 0; primitiveIndex < m_primitives.size(); ++primitiveIndex)
         {
             Primitive3D &primitive = m_primitives[primitiveIndex];
+            if (ranges && (primitiveIndex >= ranges->size() || (*ranges)[primitiveIndex].empty())) continue;
             if (applyBake && primitiveIndex<m_bakedRejected.size() && m_bakedRejected[primitiveIndex]) {
                 RenderMetrics::Cull(false);continue;
             }
@@ -3234,8 +3300,32 @@ namespace Canis
             glActiveTexture(GL_TEXTURE0);
             _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
             glBindVertexArray(vertexArray);
-            glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
-            RenderMetrics::Draw(primitive.indices.size()/3);
+            if (ranges)
+            {
+                std::vector<GLsizei> counts;
+                std::vector<const void*> offsets;
+                size_t triangles = 0;
+                for (const auto& range : (*ranges)[primitiveIndex])
+                {
+                    counts.push_back(static_cast<GLsizei>(range.count));
+                    offsets.push_back(reinterpret_cast<const void*>(size_t(range.first) * sizeof(unsigned int)));
+                    triangles += range.count / 3;
+                }
+#ifndef __EMSCRIPTEN__
+                glMultiDrawElements(GL_TRIANGLES, counts.data(), GL_UNSIGNED_INT, offsets.data(), static_cast<GLsizei>(counts.size()));
+                RenderMetrics::Draw(triangles);
+#else
+                for (size_t i = 0; i < counts.size(); ++i) {
+                    glDrawElements(GL_TRIANGLES, counts[i], GL_UNSIGNED_INT, offsets[i]);
+                    RenderMetrics::Draw(counts[i] / 3);
+                }
+#endif
+            }
+            else
+            {
+                glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(primitive.indices.size()), GL_UNSIGNED_INT, nullptr);
+                RenderMetrics::Draw(primitive.indices.size()/3);
+            }
         }
 
         glBindBuffer(GL_ARRAY_BUFFER, 0);

@@ -551,7 +551,23 @@ namespace Canis
             i32 textureId = -1;
             Color baseColor = Color(1.0f);
             bool dynamicVertices = false;
+            bool bakedLighting = false;
+            i32 normalTextureId = -1, emissionTextureId = -1;
+            Vector3 emissionFactor{0};
         };
+
+        // A source keeps its own visibility range inside a shared static buffer.
+        struct IndexRange3D { unsigned int first = 0, count = 0; };
+        using DrawRanges3D = std::vector<std::vector<IndexRange3D>>;
+        struct StaticSource3D
+        {
+            const ModelAsset* model = nullptr;
+            Matrix4 matrix{1};
+            i32 nodeIndex = -1;
+            bool applyNodeTransform = true;
+        };
+        bool BuildStaticBatch(const std::vector<StaticSource3D>& sources,
+                              std::vector<DrawRanges3D>& sourceRanges);
 
         struct Primitive3D
         {
@@ -694,7 +710,8 @@ namespace Canis
             i32 _nodeIndex = -1,
             bool _applyNodeTransform = true,
             const MaterialAsset *_baseMaterial = nullptr,
-            const VisibilityView *_visibility = nullptr);
+            const VisibilityView *_visibility = nullptr,
+            const DrawRanges3D* ranges = nullptr);
         bool HasBakedVisibility() const { return !m_bakedVisibility.bounds.empty(); }
         void DrawInstanced(
             Shader &_shader,

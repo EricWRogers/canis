@@ -1536,6 +1536,96 @@ static void DynamicRigidBatches(Window& window)
     renderer.OnDestroy();AssetManager::FreeModel(id);
 }
 
+// Combined buffers must preserve per-object culling, edits and normal transforms.
+static void StaticGeometryRanges(Window& window)
+{
+    Scene scene;
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.2f,-.2f,0},{0,0,1},{}},{{.2f,-.2f,0},{0,0,1},{}},
+                   {{.2f,.2f,0},{0,0,1},{}},{{-.2f,.2f,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};
+    std::vector<Entity> objects;
+    std::vector<int> ids;
+    for (int i=0;i<4;++i)
+    {
+        int id=AssetManager::CreateModel();ids.push_back(id);
+        Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Static range fixture failed");
+        auto entity=scene.CreateEntity("Unique static mesh");
+        auto& t=*entity.AddComponent<Transform>();t.position=Vector3(.3f+i*.55f,.3f,-3);
+        if (i==1) t.scale=Vector3(-.8f,1.3f,.7f);
+        auto& m=*entity.AddComponent<Model>();m.modelId=id;m.staticModel=true;m.castShadow=false;
+        objects.push_back(entity);
+    }
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    auto draw=[&](float cameraX=1.1f) {
+        scene.SetVRCamera(glm::translate(Matrix4(1),Vector3(-cameraX,0,0)),
+            glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    int materialId=-1;
+    auto parity=[&](float cameraX=1.1f) {
+        auto merged=draw(cameraX);
+        const auto mergedDraws=RenderMetrics::Latest().draws;
+        const auto mergedTriangles=RenderMetrics::Latest().triangles;
+        for(auto e:objects) {
+            auto* material=e.TryGetComponent<Material>();
+            if(!material)material=e.AddComponent<Material>();
+            material->materialFields.SetFloat("mergeParitySentinel",0);
+        }
+        auto original=draw(cameraX);
+        Check(merged==original,"Static merged geometry changed pixels or retained culled ranges");
+        Check(mergedTriangles==RenderMetrics::Latest().triangles,"Static merging changed visible triangles");
+        Check(mergedDraws<RenderMetrics::Latest().draws,"Unique static meshes did not share a draw");
+        for(auto e:objects) {
+            e.RemoveComponent<Material>();
+            if(materialId>=0)e.AddComponent<Material>()->materialId=materialId;
+        }
+        return merged;
+    };
+    const auto initial=parity();
+    objects[0].GetComponent<Transform>().position.y+=.25f;
+    Check(parity()!=initial,"Static transform edit retained stale combined vertices");
+    quad.vertices[0].position.x-=.1f;
+    Check(AssetManager::GetModel(ids[1])->SetRuntimePrimitives({quad}),"Static geometry edit failed");
+    parity();
+    parity(-2.f); // Only a subset of the objects is in the frustum.
+    objects.back().Active()=false;
+    parity();
+    for (const char* path : {"assets/brutal-city/materials/Asphalt.material", "assets/brutal-city/materials/warm.material"}) {
+        materialId=AssetManager::LoadMaterial(path);
+        for(auto e:objects) {
+            auto* material=e.TryGetComponent<Material>();
+            if(!material)material=e.AddComponent<Material>();
+            material->materialId=materialId;
+        }
+        parity();parity(-2.f);
+    }
+    // Uniform reads/existence checks cannot poison the uploaded-value cache.
+    Shader shader;
+    shader.CompileSource("[OPENGL VERSION]\nuniform mat4 testMatrix;void main(){gl_Position=testMatrix*vec4(0,0,0,1);}",
+                         "[OPENGL VERSION]\nuniform vec4 testColor;out vec4 color;void main(){color=testColor;}","uniform cache");
+    shader.Link();shader.Use();
+    for (int i=0;i<3;++i) {
+        Vector4 value(i*.2f,.3f,.4f,1);
+        const auto location=shader.GetUniformLocation("testColor",0);
+        shader.SetVec4("testColor",value);shader.SetVec4("testColor",value);
+        Vector4 actual;glGetUniformfv(shader.GetProgramID(),location,&actual.x);
+        Check(actual==value,"Uniform cache retained a stale vector");
+        Matrix4 matrix=glm::translate(Matrix4(1),Vector3(i,2,3));
+        shader.SetMat4("testMatrix",matrix);shader.SetMat4("testMatrix",matrix);
+        Matrix4 readback;glGetUniformfv(shader.GetProgramID(),shader.GetUniformLocation("testMatrix",0),&readback[0][0]);
+        Check(matrix==readback,"Uniform cache retained a stale matrix");
+    }
+    Check(glGetError()==GL_NO_ERROR,"GL error during static range or uniform cache checks");
+    shader.UnUse();renderer.OnDestroy();
+    for(int id:ids)AssetManager::FreeModel(id);
+    std::cout<<"Static combined ranges preserve edited meshes, mirrored normals, visibility and uniform changes\n";
+}
+
 static void MirroredNormalMapping() {
     auto read=[](const char* path){std::ifstream file(path);return std::string(std::istreambuf_iterator<char>(file),{});};
     Shader shader;shader.CompileSource(read("assets/shaders/model3d.vs"),read("assets/shaders/model3d.fs"),"mirrored normal mapping");shader.Link();shader.Use();
@@ -1857,6 +1947,7 @@ int main(int argc,char** argv) {
         NativeRagdollLifecycle(window);
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
+        StaticGeometryRanges(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);
         ReflectionSceneSettings(window);
