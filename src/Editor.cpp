@@ -232,6 +232,7 @@ namespace Canis
         const int textureIds[] =
         {
             _material.albedoId,
+            _material.normalId,
             _material.specularId,
             _material.roughnessId,
             _material.metallicId,
@@ -4848,8 +4849,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     static bool IsReservedMaterialKey(const std::string &_key)
     {
-        return _key == "shader" || _key == "albedo" || _key == "specular" || _key == "roughness" || _key == "metallic" ||
-               _key == "emission" || _key == "color" || _key == "specularValue" || _key == "roughnessValue" || _key == "metallicValue" ||
+        return _key == "shader" || _key == "albedo" || _key == "normal" || _key == "normalScale" || _key == "specular" || _key == "roughness" || _key == "metallic" ||
+               _key == "emission" || _key == "color" || _key == "specularValue" || _key == "roughnessValue" || _key == "roughnessChannel" || _key == "metallicValue" ||
                _key == "backFaceCulling" || _key == "frontFaceCulling" || _key == "uniforms";
     }
 
@@ -5570,6 +5571,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (ExportGltfTextureToFolder(gltfModel, pbr.metallicRoughnessTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
             {
                 root["roughness"] = MakeAssetRefNode(texturePath);
+                root["roughnessChannel"] = 1; // glTF metallic-roughness packs roughness into green.
                 root["metallic"] = MakeAssetRefNode(texturePath);
             }
             else if (!textureError.empty())
@@ -5593,7 +5595,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             textureError.clear();
             if (ExportGltfTextureToFolder(gltfModel, gltfMaterial.normalTexture.index, modelPath, targetFolder, exportedImagePaths, texturePath, result.textureCount, textureError))
-                setTextureUniform("normalTexture", texturePath);
+            {
+                root["normal"] = MakeAssetRefNode(texturePath);
+                const float strength = static_cast<float>(gltfMaterial.normalTexture.scale);
+                root["normalScale"] = std::isfinite(strength) ? std::clamp(strength, 0.0f, 4.0f) : 1.0f;
+            }
             else if (!textureError.empty())
                 Debug::Warning("%s", textureError.c_str());
 
@@ -5634,6 +5640,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _material->info = 0u;
         _material->shaderId = -1;
         _material->albedoId = -1;
+        _material->normalId = -1;
         _material->specularId = -1;
         _material->roughnessId = -1;
         _material->metallicId = -1;
@@ -5643,7 +5650,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _material->emissionIntensity = 0.0f;
         _material->specularValue = 0.5f;
         _material->roughnessValue = 0.5f;
+        _material->roughnessChannel = 0;
         _material->metallicValue = 0.0f;
+        _material->normalScale = 1.0f;
         _material->materialFields = MaterialFields();
 
         if (YAML::Node shaderNode = _root["shader"])
@@ -5681,6 +5690,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 _material->specularId = AssetManager::LoadTexture(path);
                 if (_material->specularId >= 0)
                     _material->info |= MATERIAL_HAS_SPECULAR;
+            }
+        }
+
+        if (YAML::Node normalNode = _root["normal"])
+        {
+            const std::string path = ResolveAssetRefPath(normalNode);
+            if (!path.empty())
+            {
+                _material->normalId = AssetManager::LoadTexture(path);
+                if (_material->normalId >= 0)
+                    _material->info |= MATERIAL_HAS_NORMAL;
             }
         }
 
@@ -5727,7 +5747,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _material->emissionIntensity = std::max(0.0f, _root["emissionIntensity"].as<float>(0.0f));
         _material->specularValue = _root["specularValue"].as<float>(0.5f);
         _material->roughnessValue = _root["roughnessValue"].as<float>(0.5f);
+        _material->roughnessChannel = std::clamp(_root["roughnessChannel"].as<int>(0), 0, 3);
         _material->metallicValue = _root["metallicValue"].as<float>(0.0f);
+        const float normalScale = _root["normalScale"].as<float>(1.0f);
+        _material->normalScale = std::isfinite(normalScale) ? std::clamp(normalScale, 0.0f, 4.0f) : 1.0f;
 
         if (YAML::Node cullNode = _root["backFaceCulling"]; cullNode.as<bool>(false))
             _material->info |= MATERIAL_BACK_FACE_CULLING;
@@ -12427,6 +12450,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         drawAssetField("shader", "shader", true);
         drawAssetField("albedo", "albedo", false);
+        drawAssetField("normal", "normal", false);
         drawAssetField("specular", "specular", false);
         drawAssetField("roughness", "roughness", false);
         drawAssetField("metallic", "metallic", false);
@@ -12473,6 +12497,27 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             root["roughnessValue"] = roughnessValue;
             dirty = true;
         }
+        int roughnessChannel = std::clamp(root["roughnessChannel"].as<int>(0), 0, 3);
+        const char* roughnessChannels[] = {"R (red)", "G (green)", "B (blue)", "A (alpha)"};
+        setMaterialNumberFieldWidth();
+        if (ImGui::Combo("Roughness channel", &roughnessChannel, roughnessChannels, IM_ARRAYSIZE(roughnessChannels)))
+        {
+            root["roughnessChannel"] = roughnessChannel;
+            dirty = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("Choose the channel containing roughness. Separate maps usually use R; glTF metallic-roughness maps use G.");
+
+        float normalScale = root["normalScale"].as<float>(1.0f);
+        normalScale = std::isfinite(normalScale) ? std::clamp(normalScale, 0.0f, 4.0f) : 1.0f;
+        setMaterialNumberFieldWidth();
+        if (ImGui::DragFloat("Normal strength##normalScale", &normalScale, 0.01f, 0.0f, 4.0f))
+        {
+            root["normalScale"] = normalScale;
+            dirty = true;
+        }
+        if (ImGui::IsItemHovered())
+            ImGui::SetTooltip("0 flattens normal detail; 1 uses the normal map's full strength. An unassigned map uses the model's normal texture when available.");
 
         float metallicValue = root["metallicValue"].as<float>(0.0f);
         setMaterialNumberFieldWidth();
@@ -16743,7 +16788,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const Color baseColor =
             ((material->info & MATERIAL_HAS_COLOR) != 0u) ? material->color : Color(1.0f);
-        sphere->Draw(*shader, modelMatrix, nullptr, material->albedoId, baseColor, nullptr);
+        sphere->Draw(*shader, modelMatrix, nullptr, material->albedoId, baseColor, nullptr, -1, true, material);
         shader->UnUse();
 
         if (shouldPersistRenderedPreview &&
@@ -16887,7 +16932,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         shader->SetInt("metallicMap", 3);
 
         const Color previewColor(0.88f, 0.9f, 0.94f, 1.0f);
-        model->Draw(*shader, modelMatrix, nullptr, material->albedoId, previewColor, nullptr);
+        model->Draw(*shader, modelMatrix, nullptr, material->albedoId, previewColor, nullptr, -1, true, material);
         shader->UnUse();
 
         if (shouldPersistRenderedPreview &&

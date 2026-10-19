@@ -6,6 +6,7 @@
 #include <filesystem>
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <future>
 #include <thread>
 #include <memory>
@@ -152,9 +153,9 @@ namespace Canis
 
             bool IsReservedMaterialKey(const std::string &key)
             {
-                return key == "shader" || key == "albedo" || key == "specular" || key == "roughness" || key == "metallic" ||
+                return key == "shader" || key == "albedo" || key == "normal" || key == "normalScale" || key == "specular" || key == "roughness" || key == "metallic" ||
                        key == "emission" || key == "color" || key == "emissionColor" || key == "emissionIntensity" ||
-                       key == "specularValue" || key == "roughnessValue" || key == "metallicValue" ||
+                       key == "specularValue" || key == "roughnessValue" || key == "roughnessChannel" || key == "metallicValue" ||
                        key == "backFaceCulling" || key == "frontFaceCulling" || key == "uniforms";
             }
 
@@ -390,6 +391,17 @@ namespace Canis
                     }
                 }
 
+                if (YAML::Node normalNode = _root["normal"])
+                {
+                    const std::string normalPath = ResolveAssetPath(normalNode);
+                    if (!normalPath.empty())
+                    {
+                        _material.normalId = LoadTexture(normalPath);
+                        if (_material.normalId >= 0)
+                            _material.info |= MATERIAL_HAS_NORMAL;
+                    }
+                }
+
                 if (YAML::Node roughnessNode = _root["roughness"])
                 {
                     std::string roughnessPath = ResolveAssetPath(roughnessNode);
@@ -433,7 +445,10 @@ namespace Canis
                 _material.emissionIntensity = std::max(0.0f, _root["emissionIntensity"].as<float>(0.0f));
                 _material.specularValue = _root["specularValue"].as<float>(0.5f);
                 _material.roughnessValue = _root["roughnessValue"].as<float>(0.5f);
+                _material.roughnessChannel = std::clamp(_root["roughnessChannel"].as<int>(0), 0, 3);
                 _material.metallicValue = _root["metallicValue"].as<float>(0.0f);
+                const float normalScale = _root["normalScale"].as<float>(1.0f);
+                _material.normalScale = std::isfinite(normalScale) ? std::clamp(normalScale, 0.0f, 4.0f) : 1.0f;
 
                 if (YAML::Node cullNode = _root["backFaceCulling"])
                 {

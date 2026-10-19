@@ -3215,6 +3215,21 @@ namespace Canis
         UpdateSkinning(_pose);
     }
 
+    static void BindSurfaceDetails(Shader& shader, i32 embeddedNormalId, const MaterialAsset* material)
+    {
+        shader.SetInt("roughnessChannel",material?std::clamp(material->roughnessChannel,0,3):0);
+        if(shader.GetUniformLocation("useNormalMap",0)<0)return;
+        const bool materialNormal=material && material->normalId>=0;
+        const i32 normalId=materialNormal?material->normalId:embeddedNormalId;
+        auto* texture=normalId>=0?AssetManager::GetTexture(normalId):nullptr;
+        const float scale=materialNormal && std::isfinite(material->normalScale)
+            ? std::clamp(material->normalScale,0.f,4.f) : 1.f;
+        shader.SetBool("useNormalMap",texture!=nullptr);
+        shader.SetFloat("normalScale",scale);shader.SetInt("normalMap",5);
+        glActiveTexture(GL_TEXTURE5);
+        glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);
+    }
+
     void ModelAsset::Draw(
         Shader &_shader,
         const Matrix4 &_modelMatrix,
@@ -3372,13 +3387,7 @@ namespace Canis
                 vertexArray=PoseVertexArray(*pose,primitiveIndex);
             }
 
-            if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
-                _shader.SetBool("useNormalMap",primitive.normalTextureId>=0);
-                if(primitive.normalTextureId>=0) {
-                    _shader.SetInt("normalMap",5);glActiveTexture(GL_TEXTURE5);
-                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.normalTextureId)->GetGLTexture().id);
-                }
-            }
+            BindSurfaceDetails(_shader,primitive.normalTextureId,primitiveMaterial);
             if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
                 _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
                 if(primitive.emissionTextureId>=0) {
@@ -3430,7 +3439,8 @@ namespace Canis
         const Color &_baseColor,
         i32 _nodeIndex,
         bool _applyNodeTransform,
-        const std::vector<Color>* _instanceColors)
+        const std::vector<Color>* _instanceColors,
+        const MaterialAsset* _baseMaterial)
     {
         if (_modelMatrices.empty())
             return;
@@ -3533,13 +3543,7 @@ namespace Canis
                 glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
                 glVertexAttribDivisor(7,0);
             }
-            if(_shader.GetUniformLocation("useNormalMap",0)>=0) {
-                _shader.SetBool("useNormalMap",primitive.normalTextureId>=0);
-                if(primitive.normalTextureId>=0) {
-                    _shader.SetInt("normalMap",5);glActiveTexture(GL_TEXTURE5);
-                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.normalTextureId)->GetGLTexture().id);
-                }
-            }
+            BindSurfaceDetails(_shader,primitive.normalTextureId,_baseMaterial);
             if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
                 _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
                 if(primitive.emissionTextureId>=0) {

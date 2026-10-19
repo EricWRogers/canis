@@ -86,6 +86,18 @@ namespace Canis
             auto* material=AssetManager::GetMaterial(materialPath);
             auto* modelMaterial=AssetManager::GetMaterial("assets/defaults/materials/default.material");
             Check(material && modelMaterial,"Material preview fixtures could not load");
+            Check(material->albedoId>=0 && material->roughnessId>=0 && material->normalId>=0 &&
+                  std::abs(material->normalScale-.45f)<.0001f && material->roughnessChannel==1,
+                  "SideWalk material did not load its own concrete color, roughness and normal maps");
+            Check(modelMaterial->normalId<0 && modelMaterial->normalScale==1 &&
+                  modelMaterial->roughnessChannel==0,
+                  "Legacy materials did not retain default normal strength and red roughness sampling");
+            for(const auto& uniform:material->materialFields.GetFloatUniforms())
+                Check(uniform.name!="normalScale" && uniform.name!="roughnessChannel",
+                      "First-class normal/roughness settings leaked into custom material uniforms");
+            for(const auto& uniform:material->materialFields.GetIntUniforms())
+                Check(uniform.name!="normalScale" && uniform.name!="roughnessChannel",
+                      "First-class normal/roughness settings were reclassified as custom integer uniforms");
 
             Shader sentinel;
             sentinel.CompileSource("[OPENGL VERSION]\nlayout(location=0)in vec3 p;void main(){gl_Position=vec4(p,1);}",
@@ -166,6 +178,41 @@ namespace Canis
             const auto cleanMaterial=image(false);shaded(cleanMaterial);
             poison(material);
             Check(image(false)==cleanMaterial,"SideWalk preview inherited baked-light, probe-capture, or wet weather uniforms");
+            auto visiblyDifferent=[](const std::vector<unsigned char>& a,const std::vector<unsigned char>& b) {
+                Check(a.size()==b.size(),"Preview comparison dimensions changed");
+                size_t changed=0,total=0;
+                for(size_t i=0;i<a.size();i+=4)for(size_t channel=0;channel<3;++channel) {
+                    const int delta=std::abs(int(a[i+channel])-int(b[i+channel]));
+                    total+=delta;changed+=delta>=2;
+                }
+                return changed>32 && total>256;
+            };
+            const int albedoId=material->albedoId;
+            material->albedoId=-1;
+            Check(visiblyDifferent(image(false),cleanMaterial),
+                  "Standalone material thumbnail ignored SideWalk's concrete albedo texture");
+            material->albedoId=albedoId;
+            const float normalScale=material->normalScale;
+            material->normalScale=0;
+            const auto flatNormal=image(false);
+            material->normalScale=1;
+            Check(visiblyDifferent(image(false),flatNormal),
+                  "Standalone material normal map/strength did not change the sphere's shading");
+            material->normalScale=normalScale;
+            Check(image(false)==cleanMaterial,
+                  "Changing normal strength or albedo left texture state on another material preview");
+            const int roughnessChannel=material->roughnessChannel;
+            material->roughnessChannel=0;
+            const auto redRoughness=image(false);
+            size_t roughnessChanges=0;
+            for(size_t i=0;i<redRoughness.size();i+=4)
+                for(size_t channel=0;channel<3;++channel)
+                    roughnessChanges+=std::abs(int(redRoughness[i+channel])-int(cleanMaterial[i+channel]))>=1;
+            Check(roughnessChanges>32,
+                  "Concrete roughness ignored its packed green channel and sampled constant red instead");
+            material->roughnessChannel=roughnessChannel;
+            Check(image(false)==cleanMaterial,
+                  "Restoring the material's packed roughness channel did not restore its preview");
             const auto cleanModel=image(true);shaded(cleanModel);
             poison(modelMaterial);
             Check(image(true)==cleanModel,"Model preview inherited baked-light, probe-capture, or weather uniforms");
@@ -202,7 +249,8 @@ namespace Canis
             glDisable(GL_SCISSOR_TEST);glDisable(GL_STENCIL_TEST);
             glDeleteFramebuffers(2,framebuffers);glDeleteTextures(2,textures);glDeleteSamplers(1,&sampler);
             glDeleteVertexArrays(1,&vao);glDeleteBuffers(1,&buffer);glDeleteRenderbuffers(1,&renderbuffer);
-            std::cout << "Material/model thumbnails have studio shading, scene-uniform isolation and GL-state restoration\n";
+            std::cout << "Material/model thumbnails have concrete textures, material-owned normal strength, "
+                         "studio shading, scene-uniform isolation and GL-state restoration\n";
         }
 
         static void LightingAnimationPreview(App& app, Editor& editor)
@@ -613,8 +661,16 @@ int main(int argc, char** argv)
         fs::create_directories("assets/defaults/materials");
         fs::create_directories("assets/brutal-city/shaders");
         fs::create_directories("assets/brutal-city/materials");
+        fs::create_directories("assets/brutal-city/source");
         fs::copy_file(sourceAssets/"defaults/models/sphere.glb","assets/defaults/models/sphere.glb");
         fs::copy_file(sourceAssets/"brutal-city/materials/SideWalk.material","assets/brutal-city/materials/SideWalk.material");
+        for(const auto* filename:{"Concrete046_2K-JPG_Color.jpg","Concrete046_2K-JPG_NormalGL.jpg",
+                                 "Concrete046_2K-JPG_Roughness.png"}) {
+            const auto relative=fs::path("brutal-city/source")/filename;
+            fs::copy_file(sourceAssets/relative,fs::path("assets")/relative);
+            fs::copy_file(fs::path((sourceAssets/relative).string()+".meta"),
+                          fs::path((fs::path("assets")/relative).string()+".meta"));
+        }
         for(const auto* extension:{".vs",".fs"})
             fs::copy_file(sourceAssets/(std::string("brutal-city/shaders/wet")+extension),
                           std::string("assets/brutal-city/shaders/wet")+extension);

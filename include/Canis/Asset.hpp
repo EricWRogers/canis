@@ -407,6 +407,7 @@ namespace Canis
         MATERIAL_FRONT_FACE_CULLING = 1u << 6u,
         MATERIAL_HAS_ROUGHNESS = 1u << 7u,
         MATERIAL_HAS_METALLIC = 1u << 8u,
+        MATERIAL_HAS_NORMAL = 1u << 9u,
     };
 
     class MaterialFields
@@ -510,6 +511,7 @@ namespace Canis
         u32 info = 0u;
         i32 shaderId = -1;
         i32 albedoId = -1;
+        i32 normalId = -1;
         i32 specularId = -1;
         i32 roughnessId = -1;
         i32 metallicId = -1;
@@ -519,7 +521,9 @@ namespace Canis
         float emissionIntensity = 0.0f;
         float specularValue = 0.5f;
         float roughnessValue = 0.5f;
+        int roughnessChannel = 0;
         float metallicValue = 0.0f;
+        float normalScale = 1.0f;
         MaterialFields materialFields = {};
     };
 
@@ -726,7 +730,8 @@ namespace Canis
             const Color &_baseColor = Color(1.0f),
             i32 _nodeIndex = -1,
             bool _applyNodeTransform = true,
-            const std::vector<Color>* _instanceColors = nullptr);
+            const std::vector<Color>* _instanceColors = nullptr,
+            const MaterialAsset* _baseMaterial = nullptr);
 
         i32 GetAnimationCount() const { return (i32)m_animations.size(); }
         std::string GetAnimationName(i32 _index) const;

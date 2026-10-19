@@ -2658,7 +2658,8 @@ namespace Canis
                 baseColor,
                 _batch.key.nodeIndex,
                 _batch.key.applyNodeTransform,
-                _batch.graph ? &_batch.colors : nullptr);
+                _batch.graph ? &_batch.colors : nullptr,
+                materialAsset);
         };
 
         glDepthMask(GL_TRUE);

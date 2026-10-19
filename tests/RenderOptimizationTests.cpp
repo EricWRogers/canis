@@ -1729,6 +1729,89 @@ static void WeatherSurfaceBatches(Window& window)
     std::cout<<"Weather surface isolation, static/dynamic/merged parity and animation cache stability passed\n";
 }
 
+// A diagnostic shader verifies texture selection/scale/channel independently of
+// lighting, then compares native instancing/merging with per-model and slot draws.
+static void MaterialSurfaceDetails(Window& window)
+{
+    const auto root=std::filesystem::temp_directory_path()/("canis-surface-details-"+std::to_string(SDL_GetTicksNS()));
+    std::filesystem::create_directories(root);
+    auto read=[](const char* path){std::ifstream file(path);return std::string(std::istreambuf_iterator<char>(file),{});};
+    std::ofstream(root/"details.vs")<<read("assets/shaders/model3d.vs")<<"\n// CANIS_STATIC_BATCHING\n";
+    std::ofstream(root/"details.fs")<<R"([OPENGL VERSION]
+in vec2 fragmentUV;
+uniform sampler2D normalMap,roughnessMap;
+uniform bool useNormalMap,useRoughnessMap;
+uniform float normalScale;
+uniform int roughnessChannel;
+out vec4 color;
+void main(){vec3 n=useNormalMap?texture(normalMap,fragmentUV).rgb:vec3(0);
+float r=useRoughnessMap?texture(roughnessMap,fragmentUV)[clamp(roughnessChannel,0,3)]:0.;
+color=vec4(n.r*normalScale,r,n.b,1);}
+)";
+    auto texture=[&](const char* name,std::array<unsigned char,4> pixel) {
+        const auto path=root/name;std::filesystem::copy_file("assets/defaults/textures/square.png",path);
+        const int id=AssetManager::LoadTexture(path.string());const auto gl=AssetManager::GetTexture(id)->GetGLTexture();
+        glBindTexture(GL_TEXTURE_2D,gl.id);glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,pixel.data());glGenerateMipmap(GL_TEXTURE_2D);return id;
+    };
+    const int embedded=texture("embedded.png",{50,128,255,255});
+    const int explicitNormal=texture("explicit.png",{200,128,255,255});
+    const int roughness=texture("roughness.png",{64,192,255,255});
+    int materials[2];
+    for(int i=0;i<2;++i) {
+        const auto path=root/(std::to_string(i)+".material");
+        std::ofstream(path)<<"shader: {path: '"<<(root/"details").string()<<"'}\ncolor: [1,1,1,1]\n";
+        materials[i]=AssetManager::LoadMaterial(path.string());auto* m=AssetManager::GetMaterial(materials[i]);
+        m->normalId=i==0?explicitNormal:-1;m->normalScale=i==0?.5f:3.f;
+        m->roughnessId=roughness;m->roughnessChannel=i==0?1:0;
+    }
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.2f,-.2f,0},{0,0,1},{0,0}},{{.2f,-.2f,0},{0,0,1},{1,0}},
+                   {{.2f,.2f,0},{0,0,1},{1,1}},{{-.2f,.2f,0},{0,0,1},{0,1}}};
+    quad.indices={0,1,2,0,2,3};quad.normalTextureId=embedded;quad.materialSlot=0;
+    std::vector<int> ids;auto makeModel=[&] {
+        int id=AssetManager::CreateModel();ids.push_back(id);
+        Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad},{"surface"}),"Surface detail fixture failed");return id;
+    };
+    const int repeated=makeModel();Scene scene;std::vector<Entity> objects;
+    for(int row=0;row<3;++row)for(int i=0;i<4;++i) {
+        auto e=scene.CreateEntity("Material surface detail");e.AddComponent<Transform>()->position={2.f+(i-1.5f)*.55f,float(1-row)*.7f,-3};
+        auto& m=*e.AddComponent<Model>();m.modelId=row==2?makeModel():repeated;m.staticModel=row!=1;m.castShadow=false;
+        e.AddComponent<Material>()->materialId=materials[i%2];objects.push_back(e);
+    }
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    const auto projection=glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f);
+    const auto view=glm::translate(Matrix4(1),Vector3(-2,0,0));
+    auto draw=[&] {
+        scene.SetVRCamera(view,projection,.1f,100.f);glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);
+        glDepthMask(GL_TRUE);glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);
+        std::vector<unsigned char> pixels(320*240*4);glReadPixels(0,0,320,240,GL_RGBA,GL_UNSIGNED_BYTE,pixels.data());
+        RenderMetrics::EndSubmit();glFinish();RenderMetrics::EndPresent();return pixels;
+    };
+    const auto baseline=draw();
+    Check(RenderMetrics::Latest().draws==6,"First-class normal maps prevented native static/dynamic batching");
+    for(size_t i=0;i<objects.size();++i) {
+        auto e=objects[i];const auto clip=projection*view*Vector4(e.GetComponent<Transform>().position,1);
+        const int pixel=(int((clip.y/clip.w*.5f+.5f)*240)*320+int((clip.x/clip.w*.5f+.5f)*320))*4;
+        Check(std::abs(int(baseline[pixel])-(i%2==0?100:50))<=2,"Material normal override/embedded fallback or normal scale was wrong");
+        Check(std::abs(int(baseline[pixel+1])-(i%2==0?192:64))<=2,"Packed roughness channel was ignored");
+        e.GetComponent<Material>().materialFields.SetFloat("surfaceDetailParitySentinel",0);
+    }
+    Check(draw()==baseline,"Material normal/roughness details changed between batches and individual draws");
+    for(size_t i=0;i<objects.size();++i) {
+        auto& material=objects[i].GetComponent<Material>();material.materialFields.Clear();material.materialIds={materials[i%2]};
+    }
+    Check(draw()==baseline,"Material-slot normal/roughness overrides differ from base material draws");
+    for(auto e:objects)e.GetComponent<Material>().materialIds.clear();draw();draw();
+    auto* edited=AssetManager::GetMaterial(materials[0]);edited->normalScale=0;edited->roughnessChannel=2;
+    Check(draw()!=baseline,"Editing material normal strength/roughness channel did not update native batches");
+    Check(RenderMetrics::Latest().batchBuilds==0 && RenderMetrics::Latest().instanceUploadBytes==0,
+          "Editing surface details rebuilt unchanged geometry");
+    Check(glGetError()==GL_NO_ERROR,"GL error in material surface detail regression");
+    renderer.OnDestroy();for(int id:ids)AssetManager::FreeModel(id);std::filesystem::remove_all(root);
+    std::cout<<"Material normal override/scale/fallback and packed roughness preserve slots, native batches and geometry caches\n";
+}
+
 // Combined buffers must preserve per-object culling, edits and normal transforms.
 static void StaticGeometryRanges(Window& window)
 {
@@ -1828,7 +1911,7 @@ static void MirroredNormalMapping() {
     glBindVertexArray(vao);glBindBuffer(GL_ARRAY_BUFFER,vbo);glBufferData(GL_ARRAY_BUFFER,sizeof(vertices),vertices,GL_DYNAMIC_DRAW);
     for(int attribute=0;attribute<3;attribute++){glEnableVertexAttribArray(attribute);glVertexAttribPointer(attribute,attribute==2?2:3,GL_FLOAT,GL_FALSE,8*sizeof(float),reinterpret_cast<void*>(size_t(attribute==0?0:attribute==1?3:6)*sizeof(float)));}
     shader.SetMat4("P",Matrix4(1));shader.SetMat4("V",Matrix4(1));shader.SetMat4("M",Matrix4(1));shader.SetBool("useInstanceMatrix",false);
-    shader.SetBool("useNormalMap",true);shader.SetInt("normalMap",5);shader.SetBool("useAlbedoMap",false);shader.SetVec4("albedoValue",Color(.6f,.6f,.6f,1));
+    shader.SetBool("useNormalMap",true);shader.SetInt("normalMap",5);shader.SetFloat("normalScale",1.f);shader.SetBool("useAlbedoMap",false);shader.SetVec4("albedoValue",Color(.6f,.6f,.6f,1));
     shader.SetVec3("cameraPosition",{0,0,3});shader.SetVec3("ambientLightColor",Vector3(0));shader.SetFloat("ambientLightIntensity",0);
     shader.SetBool("useDirectionalLight",true);shader.SetBool("useDirectionalShadow",false);shader.SetVec3("directionalLightDirection",{-1,0,-1});shader.SetVec3("directionalLightColor",Vector3(1));shader.SetFloat("directionalLightIntensity",1);
     shader.SetInt("pointLightCount",0);shader.SetFloat("specularValue",0);shader.SetFloat("roughnessValue",.5f);shader.SetFloat("metallicValue",0);
@@ -2211,6 +2294,7 @@ int main(int argc,char** argv) {
         ParticleBudgetsTimingAndCollisions(window);
         DynamicRigidBatches(window);
         WeatherSurfaceBatches(window);
+        MaterialSurfaceDetails(window);
         StaticGeometryRanges(window);
         MirroredNormalMapping();
         LightingProbeRendering(window);
