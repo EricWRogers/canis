@@ -6173,6 +6173,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Debug::Log("new scene");
             m_hierarchyRootOrder.clear();
             m_animationRestoreBindings.clear();
+            m_animationLightingPreview = {};
             m_animationPreviewTargetUUID = UUID(0);
             m_animationPreviewClipPath.clear();
         }
@@ -6378,6 +6379,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             refresh = DrawHierarchyPanel();
         if (m_showAnimationPanel)
             DrawAnimationWindow(_deltaTime);
+        else
+            RestoreAnimationPreviewState();
         if (m_showAnimatorPanel)
             DrawAnimatorWindow();
         if (m_showInspectorPanel)
@@ -7773,6 +7776,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::StoreActiveSceneTab()
     {
+        RestoreAnimationPreviewState();
         FinishMeshOperation(false);
         if (m_scene == nullptr || m_activeSceneTab < 0 ||
             m_activeSceneTab >= static_cast<int>(m_sceneTabs.size()))
@@ -7835,6 +7839,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_meshSelection = tab.meshSelection;
 
         m_animationRestoreBindings.clear();
+        m_animationLightingPreview = {};
         m_animationPreviewTargetUUID = UUID(0);
         m_animationPreviewClipPath.clear();
         m_blockoutDrawType = -1;
@@ -7889,6 +7894,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         m_sceneTabSelectionRequest = m_activeSceneTab;
 
         m_animationRestoreBindings.clear();
+        m_animationLightingPreview = {};
         m_animationPreviewTargetUUID = UUID(0);
         m_animationPreviewClipPath.clear();
         m_blockoutDrawType = -1;
@@ -7933,6 +7939,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     bool Editor::SaveActiveSceneTab()
     {
+        RestoreAnimationPreviewState();
         FinishMeshOperation(false);
         if (m_scene == nullptr)
             return false;
@@ -9626,6 +9633,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Debug::Warning("Headset unavailable; starting desktop Play: %s", m_vrPlayError.c_str());
         }
 
+        RestoreAnimationPreviewState();
         FlushSceneHistoryPendingChange();
         m_window->SetSync(m_app->GetVR() ? Window::IMMEDIATE : static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
         Time::SetTargetFPS(!m_app->GetVR() && Canis::GetProjectConfig().useFrameLimit
@@ -14489,6 +14497,71 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             (void)controller->Save();
     }
 
+    void Editor::CaptureAnimationLightingPreview()
+    {
+        m_animationLightingPreview = {};
+        if (!m_scene)
+            return;
+        auto& state = m_animationLightingPreview;
+        state.scene = m_scene;
+        state.path = m_scene->GetPath();
+        state.captured = true;
+        state.active = m_scene->HasLightingScenarioPreview();
+        if (state.active)
+        {
+            const auto blend = m_scene->GetLightingScenarioBlend();
+            if (blend.from && blend.to)
+            {
+                state.from = blend.from->id;
+                state.to = blend.to->id;
+                state.blend = blend.blend;
+            }
+        }
+    }
+
+    void Editor::RestoreAnimationLightingPreview()
+    {
+        const auto state = std::move(m_animationLightingPreview);
+        m_animationLightingPreview = {};
+        if (!state.captured || !m_scene || state.scene != m_scene || state.path != m_scene->GetPath())
+            return;
+        m_scene->ClearLightingScenarioPreview();
+        if (state.active)
+            m_scene->SetLightingScenarioPreview(state.from, state.to, state.blend);
+    }
+
+    void Editor::RestoreAnimationPreviewState()
+    {
+        const bool matchingScene = m_scene &&
+            (!m_animationLightingPreview.captured ||
+             (m_animationLightingPreview.scene == m_scene && m_animationLightingPreview.path == m_scene->GetPath()));
+        Entity* restoreRoot = matchingScene && m_animationPreviewTargetUUID != UUID(0)
+            ? m_scene->GetEntityWithUUID(m_animationPreviewTargetUUID) : nullptr;
+        if (m_app && restoreRoot)
+        {
+            for (const AnimationRestoreBinding& binding : m_animationRestoreBindings)
+            {
+                AnimationTrack track = {};
+                track.path = binding.path;
+                track.component = binding.component;
+                track.property = binding.property;
+                track.type = binding.value.type;
+                AnimationBindingTarget target = {};
+                if (!ResolveAnimationTrackTarget(*m_app, *restoreRoot, track, target))
+                    continue;
+                auto setter = target.conf->registry.animationSetters.find(binding.property);
+                if (setter != target.conf->registry.animationSetters.end())
+                    setter->second(target.component, binding.value);
+            }
+        }
+        // Custom setters may themselves create a temporary lighting preview.
+        // Restore it last, without changing runtime blend or startup lighting.
+        RestoreAnimationLightingPreview();
+        m_animationRestoreBindings.clear();
+        m_animationPreviewTargetUUID = UUID(0);
+        m_animationPreviewClipPath.clear();
+    }
+
     void Editor::DrawAnimationWindow(float _deltaTime)
     {
         namespace fs = std::filesystem;
@@ -14554,47 +14627,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 clip = AssetManager::GetAnimationClip(clipMeta->path.empty() ? m_animationClipStatePath : clipMeta->path);
         }
 
-        auto restorePreviewState = [&]() -> void
-        {
-            if (m_scene == nullptr || m_app == nullptr || m_animationRestoreBindings.empty())
-            {
-                m_animationRestoreBindings.clear();
-                m_animationPreviewTargetUUID = UUID(0);
-                m_animationPreviewClipPath.clear();
-                return;
-            }
-
-            Entity *restoreRoot = (m_animationPreviewTargetUUID != UUID(0)) ? m_scene->GetEntityWithUUID(m_animationPreviewTargetUUID) : nullptr;
-            if (restoreRoot != nullptr)
-            {
-                for (const AnimationRestoreBinding &binding : m_animationRestoreBindings)
-                {
-                    AnimationTrack bindingTrack = {};
-                    bindingTrack.path = binding.path;
-                    bindingTrack.component = binding.component;
-                    bindingTrack.property = binding.property;
-                    bindingTrack.type = binding.value.type;
-
-                    AnimationBindingTarget target = {};
-                    if (!ResolveAnimationTrackTarget(*m_app, *restoreRoot, bindingTrack, target))
-                        continue;
-
-                    auto setterIt = target.conf->registry.animationSetters.find(binding.property);
-                    if (setterIt == target.conf->registry.animationSetters.end())
-                        continue;
-
-                    setterIt->second(target.component, binding.value);
-                }
-            }
-
-            m_animationRestoreBindings.clear();
-            m_animationPreviewTargetUUID = UUID(0);
-            m_animationPreviewClipPath.clear();
-        };
-
         auto capturePreviewState = [&](AnimationClipAsset &_clip, Entity &_root) -> void
         {
-            restorePreviewState();
+            RestoreAnimationPreviewState();
+            CaptureAnimationLightingPreview();
 
             std::unordered_set<std::string> seenBindings = {};
             for (const AnimationTrack &track : _clip.tracks)
@@ -14735,7 +14771,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (m_animationPlaying)
                 m_animationTime += _deltaTime;
 
-            const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, true);
+            const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
             if (clip->length > 0.0f)
                 m_animationTime = sampleTime;
             else
@@ -15320,6 +15356,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_animationTargetUUID = rootEntity->GetUUID();
 
         const bool previewActive =
+            m_showAnimationPanel &&
             (m_mode == EditorMode::EDIT) &&
             (clip != nullptr) &&
             (rootEntity != nullptr) &&
@@ -15331,14 +15368,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (!previewActive)
         {
-            restorePreviewState();
+            RestoreAnimationPreviewState();
             return;
         }
 
         if (previewTargetChanged || m_animationRestoreBindings.empty())
             capturePreviewState(*clip, *rootEntity);
 
-        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, true);
+        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
         (void)ApplyAnimationClip(*m_app, *rootEntity, *clip, sampleTime);
     }
 

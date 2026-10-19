@@ -49,6 +49,7 @@ void Scene::ResetLightingScenarioRuntime() {
     m_lightingScenarioQueued.clear();
     m_lightingScenarioBlend = m_lightingScenarioElapsed = 0;
     m_lightingScenarioTransitioning = false;
+    m_lightingScenarioManual = false;
     ClearLightingScenarioPreview();
 }
 bool Scene::SetInitialLightingScenario(const std::string &idOrName) {
@@ -89,6 +90,49 @@ void Scene::ClearLightingScenarioPreview() {
     m_lightingScenarioPreviewTo.clear();
     m_lightingScenarioPreviewBlend = 0;
 }
+bool Scene::BeginLightingScenarioBlend(const std::string &fromId, const std::string &toId) {
+    auto *from = FindLightingScenario(fromId);
+    auto *to = FindLightingScenario(toId);
+    if (m_paused || !from || !to)
+        return false;
+    // Preparation happens at load, never at an animation keyframe. Renderless
+    // tools/tests validate the files once here because they have no GPU cache.
+    if (auto *renderer = GetSystem<MeshRenderer3DSystem>()) {
+        if (!renderer->LightingScenarioProbesReady(from->id) ||
+            !renderer->LightingScenarioProbesReady(to->id))
+            return false;
+    } else {
+        std::string error;
+        if (!LightingScenarioDataAvailable(*from, error) ||
+            (from != to && !LightingScenarioDataAvailable(*to, error)))
+            return false;
+    }
+    ClearLightingScenarioPreview();
+    m_lightingScenarioFrom = from->id;
+    m_lightingScenarioTo = to->id;
+    m_lightingScenarioBlend = m_lightingScenarioElapsed = 0;
+    m_lightingScenarioQueued.clear();
+    m_lightingScenarioTransitioning = false;
+    m_lightingScenarioManual = true;
+    return true;
+}
+bool Scene::SetLightingScenarioBlend(float blend) {
+    if (!m_lightingScenarioManual || m_paused || !std::isfinite(blend))
+        return false;
+    m_lightingScenarioBlend = std::clamp(blend, 0.f, 1.f);
+    return true;
+}
+void Scene::EndLightingScenarioBlend() {
+    m_lightingScenarioManual = false;
+    // Interior values stay visible when an animation is stopped. Endpoints can
+    // collapse to one input, which also permits subsequent timed transitions.
+    if (m_lightingScenarioBlend <= 0)
+        m_lightingScenarioTo = m_lightingScenarioFrom;
+    else if (m_lightingScenarioBlend >= 1) {
+        m_lightingScenarioFrom = m_lightingScenarioTo;
+        m_lightingScenarioBlend = 0;
+    }
+}
 bool Scene::TransitionLightingScenario(const std::string &idOrName, float seconds) {
     auto *target = FindLightingScenario(idOrName);
     if (!target || !std::isfinite(seconds) || seconds < 0)
@@ -107,10 +151,22 @@ bool Scene::TransitionLightingScenario(const std::string &idOrName, float second
     auto current = GetLightingScenarioBlend();
     if (!current.from)
         return false;
-    if (m_lightingScenarioTransitioning && target->id != current.from->id && target->id != current.to->id) {
+    // A timed request can take over an animator's interior weight without a
+    // jump. A third target completes the existing pair before being queued.
+    const bool activePair = m_lightingScenarioTransitioning ||
+                            (current.from != current.to && current.blend > 0 && current.blend < 1);
+    m_lightingScenarioManual = false;
+    if (seconds && activePair && target->id != current.from->id && target->id != current.to->id) {
         // Two resident inputs per draw: finish the current blend before a third state.
         m_lightingScenarioQueued = target->id;
         m_lightingScenarioQueuedDuration = seconds;
+        if (!m_lightingScenarioTransitioning) {
+            m_lightingScenarioStart = m_lightingScenarioBlend;
+            m_lightingScenarioEnd = 1;
+            m_lightingScenarioElapsed = 0;
+            m_lightingScenarioDuration = seconds;
+            m_lightingScenarioTransitioning = true;
+        }
         return true;
     }
     m_lightingScenarioQueued.clear();
@@ -120,7 +176,7 @@ bool Scene::TransitionLightingScenario(const std::string &idOrName, float second
         m_lightingScenarioTransitioning = false;
         return true;
     }
-    if (!m_lightingScenarioTransitioning) {
+    if (!activePair) {
         const auto *endpoint = current.blend >= 1 ? current.to : current.from;
         m_lightingScenarioFrom = endpoint->id;
         m_lightingScenarioTo = target->id;

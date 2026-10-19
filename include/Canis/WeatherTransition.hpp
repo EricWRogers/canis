@@ -52,6 +52,12 @@ namespace Canis
         ScriptUpdatePhase UpdatePhase() const override { return ScriptUpdatePhase::Presentation; }
 
         bool Start();
+        // An Animator or game script owns the curves in this mode. Begin
+        // validates once; Apply is allocation-free and performs no asset IO.
+        bool BeginManual(const std::string& fromScenario);
+        bool ApplyManual(float lightingBlend, float rainIntensity);
+        void EndManual();
+        bool IsManual() const { return m_manual; }
         bool IsRunning() const { return m_running; }
         float Elapsed() const { return m_elapsed; }
         float RainIntensity() const;
@@ -69,10 +75,11 @@ namespace Canis
         };
         std::vector<RainState> m_rain;
         float m_elapsed = 0.0f;
-        bool m_running = false, m_controlsLighting = false;
+        bool m_running = false, m_controlsLighting = false, m_manual = false;
         std::string m_lastError;
 
         void ApplyRain();
+        void CaptureRain(bool manual);
     };
 
     void RegisterWeatherTransition(App& app);

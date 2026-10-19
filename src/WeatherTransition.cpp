@@ -123,7 +123,66 @@ namespace Canis
             m_lastError = "Lighting transition could not start. Check the scenario bake status.";
             return false;
         }
+        if (m_manual && targetScenario.empty() && m_controlsLighting)
+            entity.scene.EndLightingScenarioBlend();
+        CaptureRain(false);
+        m_elapsed = 0.0f;
+        m_controlsLighting = !targetScenario.empty();
+        m_manual = false;
+        m_running = true;
+        ApplyRain();
+        return true;
+    }
 
+    bool WeatherTransition::BeginManual(const std::string& fromScenario)
+    {
+        m_lastError = Validate();
+        if (!m_lastError.empty())
+            return false;
+        if (!targetScenario.empty() &&
+            !entity.scene.BeginLightingScenarioBlend(fromScenario, targetScenario))
+        {
+            m_lastError = "Lighting blend could not start. Check both scenario bake states.";
+            return false;
+        }
+        if (m_manual && targetScenario.empty() && m_controlsLighting)
+            entity.scene.EndLightingScenarioBlend();
+        CaptureRain(true);
+        m_elapsed = 0.0f;
+        m_controlsLighting = !targetScenario.empty();
+        m_manual = true;
+        m_running = true;
+        ApplyRain();
+        return true;
+    }
+
+    bool WeatherTransition::ApplyManual(float lightingBlend, float rainIntensity)
+    {
+        // Check the entire frame before touching either channel. In particular,
+        // invalid animation data must not leave lighting and rain out of sync.
+        if (!m_manual || !m_running || entity.scene.IsPaused() ||
+            !std::isfinite(lightingBlend) || !std::isfinite(rainIntensity))
+            return false;
+        if (m_controlsLighting && !entity.scene.SetLightingScenarioBlend(lightingBlend))
+            return false;
+        for (RainState& state : m_rain)
+            state.envelope.Begin(rainIntensity, rainIntensity, 0, 0);
+        ApplyRain();
+        return true;
+    }
+
+    void WeatherTransition::EndManual()
+    {
+        if (!m_manual)
+            return;
+        if (m_controlsLighting)
+            entity.scene.EndLightingScenarioBlend();
+        m_manual = false;
+        m_running = false;
+    }
+
+    void WeatherTransition::CaptureRain(bool manual)
+    {
         std::vector<RainState> next;
         next.reserve(rainEmitters.size());
         for (Entity target : rainEmitters)
@@ -146,7 +205,10 @@ namespace Canis
                 state.authoredInitialized = emitter.initialized;
                 from = (emitter.initialized ? emitter.playing : emitter.playOnStart) ? 1.0f : 0.0f;
             }
-            state.envelope.Begin(from, targetRainIntensity, rainDelay, rainBuildDuration);
+            if (manual)
+                state.envelope.Begin(from, from, 0, 0);
+            else
+                state.envelope.Begin(from, targetRainIntensity, rainDelay, rainBuildDuration);
             next.push_back(state);
             if (!emitter.playing)
                 emitter.spawnAccumulator = 0.0f;
@@ -168,11 +230,6 @@ namespace Canis
             }
         }
         m_rain = std::move(next);
-        m_elapsed = 0.0f;
-        m_controlsLighting = !targetScenario.empty();
-        m_running = true;
-        ApplyRain();
-        return true;
     }
 
     void WeatherTransition::ApplyRain()
@@ -200,6 +257,8 @@ namespace Canis
             return;
         m_elapsed = float(std::min(double(std::numeric_limits<float>::max()),
                                    double(m_elapsed) + deltaTime));
+        if (m_manual)
+            return; // Animator/game script owns both curves; no second timer.
         bool rainFinished = true;
         for (RainState& state : m_rain)
         {
@@ -224,6 +283,7 @@ namespace Canis
 
     void WeatherTransition::Destroy()
     {
+        EndManual();
         for (RainState& state : m_rain)
             if (state.emitter && state.emitter.HasComponent<ParticleEmitter>())
             {
@@ -313,7 +373,7 @@ namespace Canis
             if (!issue.empty())
                 ImGui::TextWrapped("%s", issue.c_str());
             const bool inPlay = editor.GetMode() != EDIT;
-            ImGui::BeginDisabled(!inPlay || !issue.empty());
+            ImGui::BeginDisabled(!inPlay || !issue.empty() || weather->IsManual());
             if (ImGui::Button(weather->IsRunning() ? "Restart from current values" : "Start transition"))
                 weather->Start();
             ImGui::EndDisabled();
@@ -321,6 +381,8 @@ namespace Canis
                 ImGui::TextWrapped("Enter Play to test. Scene pause freezes the transition.");
             if (weather->IsRunning())
                 ImGui::Text("Elapsed %.1f s | Rain %.0f%%", weather->Elapsed(), weather->RainIntensity() * 100.0f);
+            if (weather->IsManual())
+                ImGui::TextWrapped("Animation controls lighting and rain. The clip owns timing; the duration fields above apply to Start transition.");
             if (weather->IsRunning() && owner.scene.HasQueuedLightingScenarioTransition())
                 ImGui::TextWrapped("Lighting target queued; rain timing runs from Start.");
             if (!weather->LastError().empty())

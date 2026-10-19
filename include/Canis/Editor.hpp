@@ -341,6 +341,9 @@ namespace Canis
         bool TryCreateAdjacentTerrainTile(Canis::Entity &_sourceEntity, Canis::TerrainAsset &_sourceAsset, const std::string &_sourceTerrainPath, int _direction);
         void RebuildTerrainEntity(Canis::Entity &_entity);
         void DrawAnimationWindow(float _deltaTime);
+        void RestoreAnimationPreviewState();
+        void CaptureAnimationLightingPreview();
+        void RestoreAnimationLightingPreview();
         void DrawAnimatorWindow();
         std::string ResolveRememberedAnimationClipPath() const;
         void RememberLastAnimationClipAssetPath(const std::string &_path);
@@ -505,6 +508,13 @@ namespace Canis
         UUID m_animationPreviewTargetUUID = UUID(0);
         std::string m_animationPreviewClipPath = {};
         std::vector<AnimationRestoreBinding> m_animationRestoreBindings = {};
+        struct AnimationLightingPreviewState
+        {
+            Scene* scene = nullptr;
+            std::string path, from, to;
+            float blend = 0;
+            bool captured = false, active = false;
+        } m_animationLightingPreview;
         std::string m_animationAddPropertySearch = {};
         std::string m_shaderGraphStatePath = {};
         int m_shaderGraphSelectedNodeId = -1;

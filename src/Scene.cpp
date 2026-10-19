@@ -1066,7 +1066,14 @@ namespace Canis
             environment["InitialLightingScenario"] = m_initialLightingScenario;
         }
         if (m_lightingScenarioSources && m_lightingScenarioSources.IsSequence())
-            environment["LightingScenarioSources"] = YAML::Clone(m_lightingScenarioSources);
+        {
+            auto sources = YAML::Clone(m_lightingScenarioSources);
+            // An empty sequence has no block representation. Set its style
+            // explicitly so load/re-encode does not change editor history text.
+            if (sources.size() == 0)
+                sources.SetStyle(YAML::EmitterStyle::Flow);
+            environment["LightingScenarioSources"] = sources;
+        }
         node["Environment"] = environment;
 
         YAML::Node entities = YAML::Node(YAML::NodeType::Sequence);

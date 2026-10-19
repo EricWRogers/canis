@@ -177,6 +177,12 @@ namespace Canis
         bool SetLightingScenarioPreview(const std::string& fromId, const std::string& toId, float blend);
         void ClearLightingScenarioPreview();
         bool HasLightingScenarioPreview() const { return m_lightingScenarioPreview; }
+        // Animation-driven control validates both endpoints once. Subsequent
+        // weights only change transient runtime state and never scan assets.
+        bool BeginLightingScenarioBlend(const std::string& fromId, const std::string& toId);
+        bool SetLightingScenarioBlend(float blend);
+        void EndLightingScenarioBlend();
+        bool IsLightingScenarioBlendManual() const { return m_lightingScenarioManual; }
         bool TransitionLightingScenario(const std::string& idOrName, float seconds);
         bool IsLightingScenarioTransitioning() const { return m_lightingScenarioTransitioning; }
         bool HasQueuedLightingScenarioTransition() const { return !m_lightingScenarioQueued.empty(); }
@@ -316,6 +322,7 @@ namespace Canis
         float m_lightingScenarioElapsed = 0, m_lightingScenarioDuration = 0, m_lightingScenarioQueuedDuration = 0;
         float m_lightingScenarioPreviewBlend = 0;
         bool m_lightingScenarioTransitioning = false, m_lightingScenarioPreview = false;
+        bool m_lightingScenarioManual = false;
         float m_environmentAmbientLightIntensity = 1.0f;
         bool m_environmentReflectionsEnabled = true;
         UUID m_environmentSkyboxUUID = UUID(0);

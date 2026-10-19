@@ -402,7 +402,8 @@ void Editor::DrawLightingScenarios() {
         if (!m_scene->FindLightingScenario(m_lightingScenarioPreviewTo))
             m_lightingScenarioPreviewTo = definitions[1].id;
         ImGui::SeparatorText("Temporary preview");
-        ImGui::BeginDisabled(!editing);
+        const bool animationOwnsPreview = m_animationLightingPreview.captured;
+        ImGui::BeginDisabled(!editing || animationOwnsPreview);
         bool previewChanged = ScenarioCombo("From", *m_scene, m_lightingScenarioPreviewFrom);
         previewChanged |= ScenarioCombo("To", *m_scene, m_lightingScenarioPreviewTo);
         ImGui::EndDisabled();
@@ -420,24 +421,27 @@ void Editor::DrawLightingScenarios() {
         bool previewReady = readyForPreview(previewA) && readyForPreview(previewB) && previewRenderer &&
                             previewRenderer->LightingScenarioProbesReady(previewA->id) &&
                             previewRenderer->LightingScenarioProbesReady(previewB->id);
-        if (!previewReady && m_lightingScenarioPreviewEnabled) {
+        if (!animationOwnsPreview && !previewReady && m_lightingScenarioPreviewEnabled) {
             m_lightingScenarioPreviewEnabled = false;
             m_scene->ClearLightingScenarioPreview();
         }
-        if (m_mode != EditorMode::EDIT) {
+        if (!animationOwnsPreview && m_mode != EditorMode::EDIT) {
             m_lightingScenarioPreviewEnabled = false;
             m_scene->ClearLightingScenarioPreview();
         }
-        ImGui::BeginDisabled(!editing || !previewReady);
+        ImGui::BeginDisabled(!editing || !previewReady || animationOwnsPreview);
         previewChanged |= ImGui::SliderFloat("Blend", &m_lightingScenarioPreviewAmount, 0, 1, "%.2f");
         if (ImGui::Checkbox("Preview in viewport", &m_lightingScenarioPreviewEnabled))
             previewChanged = true;
-        if (m_lightingScenarioPreviewEnabled && (previewChanged || !m_scene->HasLightingScenarioPreview()))
+        if (!animationOwnsPreview && m_lightingScenarioPreviewEnabled &&
+            (previewChanged || !m_scene->HasLightingScenarioPreview()))
             m_scene->SetLightingScenarioPreview(m_lightingScenarioPreviewFrom, m_lightingScenarioPreviewTo,
                                                 m_lightingScenarioPreviewAmount);
-        if (!m_lightingScenarioPreviewEnabled)
+        if (!animationOwnsPreview && previewChanged && !m_lightingScenarioPreviewEnabled)
             m_scene->ClearLightingScenarioPreview();
         ImGui::EndDisabled();
+        if (animationOwnsPreview)
+            DisabledWrapped("The Animation window controls the temporary lighting preview. Disable its Preview or close the window to restore these controls.");
         if (!previewReady)
             DisabledWrapped("Bake both scenarios to enable the viewport blend preview.");
         DisabledWrapped("Preview is temporary; Startup scenario controls saved gameplay lighting.");

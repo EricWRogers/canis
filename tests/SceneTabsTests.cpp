@@ -9,6 +9,7 @@
 #include <ImGuizmo.h>
 #include "../src/EditorHistoryEvent.hpp"
 #include <SDL3/SDL.h>
+#include <chrono>
 #include <filesystem>
 #include <fstream>
 #include <iostream>
@@ -22,12 +23,106 @@ namespace Canis
 {
     struct EditorSceneTabsTestAccess
     {
+        static void LightingAnimationPreview(App& app, Editor& editor)
+        {
+            LightingScenario dusk, night;
+            dusk.id = "preview-dusk"; dusk.name = "Dusk";
+            night.id = "preview-night"; night.name = "Night";
+            app.scene.GetLightingScenarios() = {dusk, night};
+            Check(app.scene.SetInitialLightingScenario(night.id), "Preview fixture startup was rejected");
+            auto root = app.scene.CreateEntity("Animation lighting fixture");
+            float animatedWeight = 0;
+            ScriptConf conf;
+            conf.name = "AnimationLightingPreviewFixture";
+            conf.Get = [&](Entity&) -> void* { return &animatedWeight; };
+            conf.registry.animationGetters["weight"] = [](void* ptr) {
+                return AnimationValue::Float(*static_cast<float*>(ptr));
+            };
+            conf.registry.animationSetters["weight"] = [&](void* ptr, const AnimationValue& value) {
+                *static_cast<float*>(ptr) = value.AsFloat();
+                app.scene.SetLightingScenarioPreview(dusk.id, night.id, value.AsFloat());
+            };
+            app.RegisterScript(conf);
+            auto capture = [&] {
+                editor.CaptureAnimationLightingPreview();
+                editor.m_animationPreviewTargetUUID = root.GetUUID();
+                Editor::AnimationRestoreBinding binding;
+                binding.component = conf.name;
+                binding.property = "weight";
+                binding.value = AnimationValue::Float(animatedWeight);
+                editor.m_animationRestoreBindings = {binding};
+            };
+            auto sample = [&](float value) {
+                conf.registry.animationSetters.at("weight")(&animatedWeight, AnimationValue::Float(value));
+            };
+            capture(); sample(.65f);
+            // The Environment window must not erase a lighting preview owned by
+            // the Animation window merely because its own checkbox is off.
+            ImGui::NewFrame(); ImGui::Begin("Animation lighting preview test");
+            editor.DrawLightingScenarios(); ImGui::End(); ImGui::Render();
+            Check(app.scene.HasLightingScenarioPreview() &&
+                  std::abs(app.scene.GetLightingScenarioBlend().blend - .65f) < .0001f &&
+                  !app.scene.IsLightingScenarioBlendManual(),
+                  "Environment erased animation lighting or Edit scrubbing changed runtime ownership");
+            editor.RestoreAnimationPreviewState();
+            const auto runtime = app.scene.GetLightingScenarioBlend();
+            Check(animatedWeight == 0 && !app.scene.HasLightingScenarioPreview() &&
+                  runtime.from->id == night.id && runtime.to->id == night.id &&
+                  app.scene.GetInitialLightingScenario() == night.id,
+                  "Ending animation preview changed the saved startup or runtime lighting endpoint");
+            app.scene.SetLightingScenarioPreview(night.id, dusk.id, .23f);
+            capture(); sample(.8f);
+            editor.RestoreAnimationPreviewState();
+            const auto restored = app.scene.GetLightingScenarioBlend();
+            Check(app.scene.HasLightingScenarioPreview() && restored.from->id == night.id &&
+                  restored.to->id == dusk.id && std::abs(restored.blend - .23f) < .0001f &&
+                  animatedWeight == 0 && !editor.m_animationLightingPreview.captured,
+                  "Ending animation preview did not restore an existing Environment lighting preview");
+            // Repeated restore calls after panel closure must be harmless.
+            editor.RestoreAnimationPreviewState();
+            Check(app.scene.HasLightingScenarioPreview() &&
+                  std::abs(app.scene.GetLightingScenarioBlend().blend - .23f) < .0001f,
+                  "An idle hidden Animation panel erased the restored Environment preview");
+            app.scene.ClearLightingScenarioPreview();
+            AnimationClipAsset clip;
+            clip.length = 40;
+            AnimationTrack track;
+            track.component = conf.name; track.property = "weight";
+            track.type = AnimationValueType::FLOAT;
+            track.keys = {{0, AnimationValue::Float(0)}, {40, AnimationValue::Float(1)}};
+            clip.tracks = {track};
+            Check(clip.Save("assets/weather-preview.animclip"), "Preview clip could not save");
+            editor.m_animationClipStatePath = "assets/weather-preview.animclip";
+            editor.m_animationTargetUUID = root.GetUUID();
+            editor.m_animationTime = 40;
+            editor.m_animationPlaying = false;
+            editor.m_animationPreviewEnabled = true;
+            ImGui::NewFrame(); editor.DrawAnimationWindow(1.f / 60); ImGui::Render();
+            Check(animatedWeight == 1 && editor.m_animationTime == 40 &&
+                  app.scene.GetLightingScenarioBlend().blend == 1,
+                  "Stopped animation scrubbing wrapped the exact 40-second endpoint to the first key");
+            editor.m_animationPreviewEnabled = false;
+            ImGui::NewFrame(); editor.DrawAnimationWindow(1.f / 60); ImGui::Render();
+            Check(animatedWeight == 0 && !app.scene.HasLightingScenarioPreview() &&
+                  app.scene.GetLightingScenarioBlend().from->id == night.id,
+                  "Disabling actual Animation window preview failed to restore its custom lighting binding");
+            editor.m_animationPreviewEnabled = true;
+            editor.m_animationClipStatePath.clear();
+            editor.m_animationTargetUUID = UUID(0);
+            app.scene.GetLightingScenarios().clear();
+            app.scene.SetInitialLightingScenario("");
+            root.Destroy();
+            app.UnregisterScript(conf);
+        }
+
         static void Run(App& app, Editor& editor, Window& window, const fs::path& executable)
         {
             InputManager input;
             app.scene.Init(&app, &window, &input);
             editor.m_scene = &app.scene;
+            editor.m_app = &app;
             editor.m_window = &window;
+            LightingAnimationPreview(app, editor);
             auto seed = [&](const char* path) {
                 std::ofstream(path) << "Entities:\n- Entity: 101\n  Name: Original\n";
             };
@@ -56,6 +151,10 @@ namespace Canis
             };
 
             setup();
+            const auto cleanRoundTrip = editor.CaptureSceneHistoryState();
+            editor.RestoreSceneHistoryState(cleanRoundTrip);
+            Check(editor.CaptureSceneHistoryState().sceneYaml == cleanRoundTrip.sceneYaml,
+                  "An unedited scene changed its serialized history after load (including empty lighting sources)");
             // A changed sentinel distinguishes "no capture" from taking an
             // expensive snapshot and then discarding it as identical.
             app.scene.GetEntities()[0]->SetName("Scene edit sentinel");
@@ -300,7 +399,8 @@ int main(int argc, char** argv)
     if (argc != 2) return 1;
     const auto executable=fs::absolute(argv[0]);
     const auto original=fs::current_path();
-    auto temp=fs::temp_directory_path()/("canis-scene-tabs-"+std::to_string(SDL_GetTicksNS()));
+    auto temp=fs::temp_directory_path()/("canis-scene-tabs-"+
+        std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()));
     fs::create_directories(temp); fs::current_path(temp);
     try {
         fs::create_directories("assets");

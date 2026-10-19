@@ -326,6 +326,89 @@ namespace
         scene.UpdateLightingScenarioTransition(4);
         Check(scene.GetLightingScenarioBlend().from->id == storm.id &&
               !scene.IsLightingScenarioTransitioning(), "Queued lighting did not reach its target");
+
+        auto owner = scene.CreateEntity("Animated weather");
+        auto rain = scene.CreateEntity("Animated rain");
+        auto& emitter = *rain.AddComponent<ParticleEmitter>();
+        emitter.playOnStart = false;
+        emitter.looping = true;
+        emitter.burstMode = false;
+        emitter.destroyEntityWhenDone = false;
+        emitter.spawnCount = 4;
+        emitter.spawnInterval = .02f;
+        const auto existingDrop = scene.GetRegistry().create();
+        emitter.particles.push_back(existingDrop);
+        auto* weather = owner.AddScript<WeatherTransition>();
+        weather->rainEmitters = {rain};
+        weather->targetScenario = night.id;
+        Check(!scene.SetLightingScenarioBlend(.5f), "Manual weight was accepted before Begin");
+        const auto originalFrom = scene.GetLightingScenarioBlend().from->id;
+        Check(!weather->BeginManual("missing") && !weather->IsRunning() && !emitter.initialized &&
+              scene.GetLightingScenarioBlend().from->id == originalFrom,
+              "Invalid manual endpoint partly started the weather");
+        scene.FindLightingScenario(dusk.id)->manifestPath = (directory / "missing.lighting").string();
+        Check(!weather->BeginManual(dusk.id) && !emitter.initialized,
+              "Manual lighting validated only the target instead of both endpoints");
+        scene.FindLightingScenario(dusk.id)->manifestPath = manifest.string();
+        Check(scene.SetLightingScenarioPreview(storm.id, dusk.id, .2f), "Manual preview setup failed");
+        Check(weather->BeginManual(dusk.id) && weather->IsManual() &&
+                  scene.IsLightingScenarioBlendManual() && !scene.HasLightingScenarioPreview() &&
+                  !scene.IsLightingScenarioTransitioning() && !scene.HasQueuedLightingScenarioTransition(),
+              "Animation-driven weather did not take sole ownership of transient lighting");
+        Check(weather->ApplyManual(.5f, .25f) && Near(scene.GetLightingScenarioBlend().blend, .5f) &&
+                  Near(weather->RainIntensity(), .25f) && Near(emitter.spawnInterval, .08f) &&
+                  emitter.spawnCount == 4,
+              "Animator values did not reach baked lighting and authored rain emission");
+        weather->Update(100);
+        scene.UpdateLightingScenarioTransition(100);
+        Check(weather->IsRunning() && Near(weather->RainIntensity(), .25f) &&
+                  Near(scene.GetLightingScenarioBlend().blend, .5f),
+              "Manual weather was advanced by an independent duration timer");
+        scene.SetPaused(true);
+        Check(!weather->ApplyManual(.8f, .8f) && Near(weather->RainIntensity(), .25f) &&
+                  Near(scene.GetLightingScenarioBlend().blend, .5f),
+              "Paused animation application changed weather");
+        scene.SetPaused(false);
+        Check(!weather->ApplyManual(.8f, std::numeric_limits<float>::quiet_NaN()) &&
+                  !weather->ApplyManual(std::numeric_limits<float>::infinity(), .8f) &&
+                  Near(weather->RainIntensity(), .25f) && Near(scene.GetLightingScenarioBlend().blend, .5f),
+              "Nonfinite animation channel partly mutated weather");
+        // Once prepared, applying an animation key never reads the bake again.
+        std::filesystem::remove(manifest);
+        Check(weather->ApplyManual(2, 2) && Near(weather->RainIntensity(), 1) &&
+                  Near(scene.GetLightingScenarioBlend().blend, 1) && Near(emitter.spawnInterval, .02f),
+              "Manual application rescanned disk assets or failed to clamp an animation weight");
+        writeManifest();
+        weather->EndManual();
+        Check(!weather->IsRunning() && !weather->IsManual() && !scene.IsLightingScenarioBlendManual() &&
+                  scene.GetLightingScenarioBlend().from->id == night.id && emitter.playing,
+              "Finishing animation did not preserve the night and rain endpoint");
+        Check(!weather->ApplyManual(0, 0) && emitter.playing,
+              "Stopped animation continued mutating weather");
+        weather->targetScenario = dusk.id;
+        Check(weather->BeginManual(night.id) && weather->ApplyManual(.4f, 0) &&
+                  !emitter.playing && scene.GetRegistry().valid(existingDrop) && emitter.particles.size() == 1,
+              "Reversed manual weather lost rain tails or failed to select the reverse pair");
+        weather->EndManual();
+        Check(Near(scene.GetLightingScenarioBlend().blend, .4f),
+              "Stopping animation at an interior key jumped the lighting");
+        weather->lightingDuration = 2;
+        weather->rainDelay = 0;
+        weather->rainBuildDuration = 2;
+        Check(weather->Start() && !weather->IsManual() &&
+                  Near(scene.GetLightingScenarioBlend().blend, .4f),
+              "Timed Start could not take over a stopped animation without jumping");
+        scene.UpdateLightingScenarioTransition(2);
+        weather->Update(2);
+        Check(scene.GetLightingScenarioBlend().from->id == dusk.id && Near(weather->RainIntensity(), 1) &&
+                  !weather->IsRunning(), "Timed transition stopped working after manual control");
+        Check(weather->BeginManual(night.id) && weather->ApplyManual(.6f, .5f), "Manual reset setup failed");
+        scene.ResetLightingScenarioRuntime();
+        Check(!scene.IsLightingScenarioBlendManual() && !weather->ApplyManual(.9f, .9f) &&
+                  Near(weather->RainIntensity(), .5f), "Reset left manual lighting controls active");
+        owner.RemoveScript<WeatherTransition>();
+        Check(Near(emitter.spawnInterval, .02f) && !emitter.playing && !emitter.initialized,
+              "Removing animated weather did not restore its authored rain settings");
         Check(definitions() == before && scene.GetInitialLightingScenario() == dusk.id &&
                   scene.GetCloudVolumeSettings() == authoredCloudVolume,
               "Runtime lighting transition changed serialized authoring definitions");
