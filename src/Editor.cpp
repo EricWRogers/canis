@@ -5844,6 +5844,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     Editor::~Editor()
     {
         if(m_assetHotReloadScan.valid())m_assetHotReloadScan.wait();
+        m_lightingScenarioBakeCancel=true;
+        if(m_lightingScenarioBakeJob.valid())m_lightingScenarioBakeJob.wait();
+        if(m_lightingScenarioCheckJob.valid())m_lightingScenarioCheckJob.wait();
         m_environmentBakeCancel=true;
         if(m_environmentBakeJob.valid())m_environmentBakeJob.wait();
 #if CANIS_CSHARP
@@ -15507,6 +15510,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::StartEnvironmentBake()
     {
         if(m_environmentBakeRunning || m_mode!=EditorMode::EDIT || !m_scene)return;
+        if(!m_scene->GetLightingScenarios().empty()) {
+            m_environmentBakeStatus="Use Bake selected or Bake all scenarios in Lighting scenarios above.";return;
+        }
         auto snapshot=CaptureLightingBakeScene(*m_scene);
         snapshot["BakeSourceScenePath"]=m_scene->GetPath();
         m_environmentBakeCancel=false;
@@ -15521,6 +15527,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     }
     void Editor::UpdateEnvironmentBake()
     {
+        UpdateLightingScenarioBake();
         if(!m_environmentBakeRunning || !m_environmentBakeJob.valid())return;
         if(m_environmentBakeJob.wait_for(std::chrono::seconds(0))!=std::future_status::ready)return;
         if(m_mode!=EditorMode::EDIT){m_environmentBakeStatus="Bake finished. Return to Edit mode to apply it.";return;}
@@ -15548,6 +15555,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
         SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
+        DrawLightingScenarios();
+        if (!m_scene->GetLightingScenarios().empty()) {
+            ImGui::SeparatorText("Scene base lighting");
+            ImGui::TextWrapped("Edit the scenario controls above to change the visible lighting. "
+                               "These base values are used by Add from current lighting.");
+        }
         Color background = m_window->GetClearColor();
         ImGui::ColorEdit4("Background##", &background.r);
 
@@ -15610,9 +15623,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if(EditorSectionHeader("Native lighting bake",ImGuiTreeNodeFlags_DefaultOpen)) {
             ImGui::Checkbox("Use baked lighting",&baking.lightmaps);
             ImGui::TextWrapped("C++ static vertex irradiance: shadowed direct lighting, ambient occlusion and one indirect bounce. Moving objects are excluded. Original collision geometry is retained.");
-            ImGui::BeginDisabled(m_environmentBakeRunning || m_mode!=EditorMode::EDIT || !renderer);
+            ImGui::BeginDisabled(m_environmentBakeRunning || m_lightingScenarioBakeRunning || !m_scene->GetLightingScenarios().empty() || m_mode!=EditorMode::EDIT || !renderer);
             if(ImGui::Button("Bake / rebake lighting"))StartEnvironmentBake();
             ImGui::EndDisabled();
+            if(!m_scene->GetLightingScenarios().empty())ImGui::TextDisabled("Use the scenario bake controls above for this scene.");
             if(m_environmentBakeRunning && ImGui::Button("Cancel bake"))m_environmentBakeCancel=true;
             if(!m_environmentBakeStatus.empty())ImGui::TextWrapped("%s",m_environmentBakeStatus.c_str());
             ImGui::Checkbox("Cache static shadows",&baking.staticShadows);

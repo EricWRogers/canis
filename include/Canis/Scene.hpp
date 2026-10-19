@@ -5,6 +5,7 @@
 #include <Canis/Entity.hpp>
 #include <Canis/Math.hpp>
 #include <Canis/LightingProbe.hpp>
+#include <Canis/LightingScenario.hpp>
 #include <Canis/Tweening/TweenWorld.hpp>
 #include <Canis/External/entt.hpp>
 
@@ -159,6 +160,24 @@ namespace Canis
         void SetEnvironmentPostProcessUUID(UUID _uuid) { m_environmentPostProcessUUID = _uuid; }
         std::vector<LightingProbe>& GetLightingProbes() { return m_lightingProbes; }
         const std::vector<LightingProbe>& GetLightingProbes() const { return m_lightingProbes; }
+        const YAML::Node& GetLightingScenarioSources() const { return m_lightingScenarioSources; }
+        void SetLightingScenarioSources(const YAML::Node& sources) { m_lightingScenarioSources = YAML::Clone(sources); }
+        std::vector<LightingScenario>& GetLightingScenarios() { return m_lightingScenarios; }
+        const std::vector<LightingScenario>& GetLightingScenarios() const { return m_lightingScenarios; }
+        LightingScenario* FindLightingScenario(const std::string& idOrName);
+        const LightingScenario* FindLightingScenario(const std::string& idOrName) const;
+        LightingScenario CaptureLightingScenario(const std::string& name) const;
+        const std::string& GetInitialLightingScenario() const { return m_initialLightingScenario; }
+        bool SetInitialLightingScenario(const std::string& idOrName);
+        LightingScenarioBlend GetLightingScenarioBlend() const;
+        bool SetLightingScenarioPreview(const std::string& fromId, const std::string& toId, float blend);
+        void ClearLightingScenarioPreview();
+        bool HasLightingScenarioPreview() const { return m_lightingScenarioPreview; }
+        bool TransitionLightingScenario(const std::string& idOrName, float seconds);
+        bool IsLightingScenarioTransitioning() const { return m_lightingScenarioTransitioning; }
+        bool HasQueuedLightingScenarioTransition() const { return !m_lightingScenarioQueued.empty(); }
+        void UpdateLightingScenarioTransition(float dt);
+        void ResetLightingScenarioRuntime();
         struct BakingSettings {
             bool lightmaps = true;
             bool staticShadows = true;
@@ -282,6 +301,15 @@ namespace Canis
         Color m_environmentAmbientLight = Color(0.24f, 0.26f, 0.32f, 1.0f);
         BakingSettings m_baking;
         std::vector<LightingProbe> m_lightingProbes;
+        std::vector<LightingScenario> m_lightingScenarios;
+        YAML::Node m_lightingScenarioSources;
+        std::string m_initialLightingScenario;
+        std::string m_lightingScenarioFrom, m_lightingScenarioTo, m_lightingScenarioQueued;
+        std::string m_lightingScenarioPreviewFrom, m_lightingScenarioPreviewTo;
+        float m_lightingScenarioBlend = 0, m_lightingScenarioStart = 0, m_lightingScenarioEnd = 1;
+        float m_lightingScenarioElapsed = 0, m_lightingScenarioDuration = 0, m_lightingScenarioQueuedDuration = 0;
+        float m_lightingScenarioPreviewBlend = 0;
+        bool m_lightingScenarioTransitioning = false, m_lightingScenarioPreview = false;
         float m_environmentAmbientLightIntensity = 1.0f;
         bool m_environmentReflectionsEnabled = true;
         UUID m_environmentSkyboxUUID = UUID(0);

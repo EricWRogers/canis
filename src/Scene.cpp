@@ -328,6 +328,7 @@ namespace Canis
     {
         Profiler::Scope frameScope("Scene.Update", Profiler::Category::Other);
         ClearDebugGizmoLines();
+        UpdateLightingScenarioTransition(_deltaTime);
         m_isUpdating = true;
 
         const auto updateSystem = [&](System* _system)
@@ -670,6 +671,10 @@ namespace Canis
         m_showColliders = false;
         m_baking = {};
         m_lightingProbes.clear();
+        m_lightingScenarios.clear();
+        m_lightingScenarioSources = YAML::Node(YAML::NodeType::Sequence);
+        m_initialLightingScenario.clear();
+        ResetLightingScenarioRuntime();
         m_paused = false;
         
         for (System* system : m_systems)
@@ -708,6 +713,17 @@ namespace Canis
                     probe.Sanitize();m_lightingProbes.push_back(probe);
                 }
             }
+            m_lightingScenarioSources = YAML::Clone(environment["LightingScenarioSources"]);
+            if (auto scenarios = environment["LightingScenarios"]; scenarios && scenarios.IsSequence())
+                for (const auto& node : scenarios) {
+                    auto scenario = DeserializeLightingScenario(node);
+                    if (!scenario.id.empty() && !FindLightingScenario(scenario.id))
+                        m_lightingScenarios.push_back(std::move(scenario));
+                }
+            m_initialLightingScenario = environment["InitialLightingScenario"].as<std::string>("");
+            if (!FindLightingScenario(m_initialLightingScenario) && !m_lightingScenarios.empty())
+                m_initialLightingScenario = m_lightingScenarios.front().id;
+            ResetLightingScenarioRuntime();
             m_showColliders = environment["ShowColliders"].as<bool>(false);
             if (auto baking = environment["Baking"]) {
                 m_baking.lightmaps = baking["Lightmaps"].as<bool>(true);
@@ -727,9 +743,18 @@ namespace Canis
             }
         }
 
-        auto entities = _root["Entities"];
+        auto runtimeRoot = RestoreLightingScenarioSources(_root, true);
+        auto entities = runtimeRoot["Entities"];
 
         LoadEntityNodes(entities);
+        if (m_window != nullptr && !m_lightingScenarios.empty()) {
+            // Ready callbacks run on the next update. Preload scenario data now,
+            // including scene switches and editor restores, without capturing.
+            std::string error;
+            if (auto* renderer = GetSystem<MeshRenderer3DSystem>())
+                if (!renderer->PrepareLightingScenarios(false, error))
+                    Debug::Warning("Lighting scenarios: %s", error.c_str());
+        }
     }
 
     std::vector<Entity*> Scene::LoadEntityNodes(YAML::Node &_entities, bool _copyUUID)
@@ -1027,6 +1052,14 @@ namespace Canis
             probes.push_back(p);
         }
         environment["LightingProbes"]=probes;
+        if (!m_lightingScenarios.empty()) {
+            YAML::Node scenarios(YAML::NodeType::Sequence);
+            for (const auto& scenario : m_lightingScenarios) scenarios.push_back(SerializeLightingScenario(scenario));
+            environment["LightingScenarios"] = scenarios;
+            environment["InitialLightingScenario"] = m_initialLightingScenario;
+        }
+        if (m_lightingScenarioSources && m_lightingScenarioSources.IsSequence())
+            environment["LightingScenarioSources"] = YAML::Clone(m_lightingScenarioSources);
         node["Environment"] = environment;
 
         YAML::Node entities = YAML::Node(YAML::NodeType::Sequence);

@@ -1,16 +1,17 @@
-#include <Canis/LightingBake.hpp>
-#include <Canis/AssetPipeline.hpp>
+#include <Canis/App.hpp>
 #include <Canis/AssetManager.hpp>
+#include <Canis/AssetPipeline.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/ConfigHelper.hpp>
-#include <Canis/App.hpp>
+#include <Canis/LightingBake.hpp>
+#include <chrono>
+#include <fstream>
+#include <map>
+#include <mutex>
+#include <numeric>
+#include <set>
 #include <stb_image.h>
 #include <thread>
-#include <mutex>
-#include <map>
-#include <set>
-#include <numeric>
-#include <fstream>
 namespace Canis
 {
     namespace
@@ -297,11 +298,87 @@ namespace Canis
                 out.vertices.push_back(v);
             }
         }
+        // Additional irradiance channels use accessors in the same buffer as the shared
+        // geometry. They never duplicate positions, indices or collision data.
+        static void WriteScenarioChannels(const std::filesystem::path& path,
+                                          const std::vector<LightingScenario>& scenarios,
+                                          const std::vector<std::vector<std::vector<float>>>& channels,
+                                          const std::filesystem::path& previousPath,
+                                          const std::vector<std::string>& preservedIds)
+        {
+            auto source = Pipeline::ReadGltf(path);
+            auto& json = source.json;
+            auto& binary = source.buffers.at(0);
+            auto append = [&](size_t p, const std::string& id, const std::vector<float>& values)
+            {
+                while (binary.size() % 4)
+                    binary.push_back(0);
+                const size_t offset = binary.size();
+                const auto* bytes = reinterpret_cast<const uint8_t*>(values.data());
+                binary.insert(binary.end(), bytes, bytes + values.size() * sizeof(float));
+                json["bufferViews"].push_back(
+                    {{"buffer", 0}, {"byteOffset", offset}, {"byteLength", values.size() * sizeof(float)}});
+                const size_t accessor = json["accessors"].size();
+                json["accessors"].push_back({{"bufferView", json["bufferViews"].size() - 1},
+                                             {"componentType", 5126},
+                                             {"count", values.size() / 3},
+                                             {"type", "VEC3"}});
+                json["meshes"][0]["primitives"][p]["extras"]["canisLightingScenarios"][id] = accessor;
+            };
+            for (size_t p = 0; p < channels.size(); ++p)
+                for (size_t s = 0; s < scenarios.size(); ++s)
+                    append(p, scenarios[s].id, channels[p][s]);
+            if (!preservedIds.empty())
+            {
+                const auto previous = Pipeline::ReadGltf(previousPath);
+                const auto& oldPrimitives = previous.json["meshes"][0]["primitives"];
+                if (oldPrimitives.size() != channels.size())
+                    throw std::runtime_error("Saved scenario geometry changed; bake all scenarios");
+                for (size_t p = 0; p < channels.size(); ++p)
+                {
+                    for (const char* attribute : {"POSITION", "NORMAL", "TEXCOORD_0"})
+                        if (Pipeline::Attribute(previous,
+                                                oldPrimitives[p]["attributes"][attribute].get<int>()) !=
+                            Pipeline::Attribute(
+                                source,
+                                json["meshes"][0]["primitives"][p]["attributes"][attribute].get<int>()))
+                            throw std::runtime_error("Saved scenario topology changed; bake all scenarios");
+                    for (const auto& id : preservedIds)
+                    {
+                        const auto& extras = oldPrimitives[p]["extras"];
+                        if (!extras.contains("canisLightingScenarios") ||
+                            !extras["canisLightingScenarios"].contains(id))
+                            throw std::runtime_error("Saved scenario channel is missing; bake all scenarios");
+                        append(
+                            p, id,
+                            Pipeline::Attribute(previous, extras["canisLightingScenarios"][id].get<int>()));
+                    }
+                }
+            }
+            json["buffers"][0]["byteLength"] = binary.size();
+            auto binaryPath = path.parent_path() / json["buffers"][0]["uri"].get<std::string>();
+            std::ofstream data(binaryPath, std::ios::binary | std::ios::trunc);
+            data.write(reinterpret_cast<const char*>(binary.data()), binary.size());
+            std::ofstream metadata(path, std::ios::trunc);
+            metadata << json.dump();
+            data.close();
+            metadata.close();
+            if (!data || !metadata)
+                throw std::runtime_error("Cannot write scenario channels: " + path.string());
+        }
     } // namespace
-    LightingBakeResult BakeSceneLighting(YAML::Node input, const std::filesystem::path& directory,
-                                         const LightingBakeOptions& options,
-                                         const std::function<void(const std::string&)>& progress)
+    static LightingBakeResult BakeSceneLightingInternal(
+        YAML::Node snapshot, const std::filesystem::path& directory, const LightingBakeOptions& options,
+        const std::function<void(const std::string&)>& progress,
+        const std::vector<LightingScenario>* scenarios = nullptr,
+        const std::map<uint64_t, std::string>& previousPaths = {},
+        const std::vector<std::string>& preservedIds = {})
     {
+        if (options.cancel && options.cancel->load())
+            throw std::runtime_error("Bake canceled");
+        // Repeat bakes always start from authored geometry, never from the previous
+        // subdivision.
+        auto input = RestoreLightingScenarioSources(snapshot);
         LightingBakeResult result;
         result.scene = YAML::Clone(input);
         std::map<uint64_t, YAML::Node> nodes;
@@ -339,8 +416,11 @@ namespace Canis
         for (auto [id, n] : nodes)
             if (active(active, id))
             {
+                if (options.cancel && options.cancel->load())
+                    throw std::runtime_error("Bake canceled");
                 auto transform = world(world, id);
-                if (auto l = n["Canis::PointLight"]; l && l["enabled"].as<bool>(true) &&
+                if (auto l = n["Canis::PointLight"];
+                    l && l["enabled"].as<bool>(true) &&
                     l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
                 {
                     Light light;
@@ -357,7 +437,8 @@ namespace Canis
                     }
                     lights.push_back(light);
                 }
-                if (auto l = n["Canis::DirectionalLight"]; l && l["enabled"].as<bool>(true) &&
+                if (auto l = n["Canis::DirectionalLight"];
+                    l && l["enabled"].as<bool>(true) &&
                     l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
                 {
                     Light light;
@@ -367,7 +448,8 @@ namespace Canis
                     light.intensity = l["intensity"].as<float>(1);
                     lights.push_back(light);
                 }
-                if (auto l = n["Canis::SpotLight"]; l && l["enabled"].as<bool>(true) &&
+                if (auto l = n["Canis::SpotLight"];
+                    l && l["enabled"].as<bool>(true) &&
                     l["mode"].as<int>(LightMode::Mixed) != LightMode::Realtime)
                 {
                     Light light;
@@ -398,6 +480,9 @@ namespace Canis
                         Pipeline::Flatten(Pipeline::ReadGltf(path), model["nodeIndex"].as<int>(-1),
                                           model["applyNodeTransform"].as<bool>(true));
                 Instance instance{id, meshCache[key], transform, n};
+                std::erase_if(instance.mesh.primitives, [](const auto& primitive)
+                              { return primitive.vertices.empty() || primitive.indices.size() < 3; });
+                if (instance.mesh.primitives.empty()) continue;
                 auto slots = n["Canis::Material"]["MaterialSlots"];
                 auto paths = n["Canis::BakeMaterialPaths"];
                 for (size_t i = 0; i < instance.mesh.materials.size(); i++)
@@ -469,6 +554,33 @@ namespace Canis
                      " triangles");
         Vector3 ambient = Color3(input["Environment"]["AmbientLight"], Vector3(.15f)) *
                           input["Environment"]["AmbientLightIntensity"].as<float>(.4f);
+        std::vector<std::vector<Light>> scenarioLights;
+        std::vector<Vector3> scenarioAmbient;
+        if (scenarios)
+            for (const auto& scenario : *scenarios)
+            {
+                auto local = lights;
+                std::erase_if(local, [](const Light& light) { return light.type == 1; });
+                if (scenario.sunEnabled && scenario.sunIntensity > 0)
+                {
+                    if (!std::isfinite(glm::length(scenario.sunDirection)) ||
+                        glm::length(scenario.sunDirection) < .00001f)
+                        throw std::runtime_error("Scenario sun direction must be nonzero: " + scenario.name);
+                    Light sun;
+                    sun.type = 1;
+                    sun.direction = glm::normalize(scenario.sunDirection);
+                    sun.color = Vector3(scenario.sunColor);
+                    sun.intensity = scenario.sunIntensity;
+                    local.push_back(sun);
+                }
+                scenarioLights.push_back(std::move(local));
+                scenarioAmbient.push_back(Vector3(scenario.ambientLight) * scenario.ambientIntensity);
+            }
+        else
+        {
+            scenarioLights.push_back(lights);
+            scenarioAmbient.push_back(ambient);
+        }
         std::atomic<size_t> next{0}, vertices{0};
         std::mutex outputMutex;
         std::exception_ptr failure;
@@ -486,6 +598,7 @@ namespace Canis
                         throw std::runtime_error("Bake canceled");
                     auto& instance = instances[id];
                     auto normalMatrix = glm::transpose(glm::inverse(glm::mat3(instance.world)));
+                    std::vector<std::vector<std::vector<float>>> channels;
                     for (auto& p : instance.mesh.primitives)
                     {
                         Pipeline::Primitive subdivided;
@@ -495,15 +608,20 @@ namespace Canis
                                       p.vertices[p.indices[i + 2]], instance.world,
                                       std::max(.1f, options.vertexSpacing));
                         p = std::move(subdivided);
+                        channels.emplace_back(scenarioLights.size());
+                        for (auto& channel : channels.back())
+                            channel.reserve(p.vertices.size() * 3);
                         for (auto& v : p.vertices)
                         {
+                            if (options.cancel && options.cancel->load())
+                                throw std::runtime_error("Bake canceled");
                             auto point = Vector3(instance.world * Vector4(v.position, 1)),
                                  normal = glm::normalize(normalMatrix * v.normal);
-                            Vector3 light = Direct(point, normal, lights, bvh), indirect(0);
                             int free = 0;
                             auto tangent = glm::normalize(glm::cross(
                                 std::abs(normal.y) < .9f ? Vector3(0, 1, 0) : Vector3(1, 0, 0), normal));
                             auto bitangent = glm::cross(normal, tangent);
+                            std::vector<std::pair<RayHit, Vector3>> hits;
                             for (int sample = 0; sample < options.indirectSamples; sample++)
                             {
                                 float u = (sample + .5f) / options.indirectSamples,
@@ -520,19 +638,39 @@ namespace Canis
                                 }
                                 auto& tri = bvh.triangles[hit.triangle];
                                 auto n = glm::dot(tri.normal, -direction) > 0 ? tri.normal : -tri.normal;
-                                indirect += tri.emission +
-                                            tri.albedo * Direct(hit.point, n, lights, bvh) * .318309886f;
+                                hits.emplace_back(hit, n);
                             }
                             float ao = options.indirectSamples ? float(free) / options.indirectSamples : 1;
-                            light += ambient * (.2f + .8f * ao);
-                            if (options.indirectSamples)
-                                light += indirect * (options.indirectIntensity / options.indirectSamples);
-                            v.color = Vector4(glm::clamp(light, Vector3(0), Vector3(64)), 1);
+                            for (size_t s = 0; s < scenarioLights.size(); ++s)
+                            {
+                                Vector3 light = Direct(point, normal, scenarioLights[s], bvh), indirect(0);
+                                for (const auto& [hit, hitNormal] : hits)
+                                {
+                                    const auto& tri = bvh.triangles[hit.triangle];
+                                    indirect += tri.emission +
+                                                tri.albedo *
+                                                    Direct(hit.point, hitNormal, scenarioLights[s], bvh) *
+                                                    .318309886f;
+                                }
+                                light += scenarioAmbient[s] * (.2f + .8f * ao);
+                                if (options.indirectSamples)
+                                    light += indirect * (options.indirectIntensity / options.indirectSamples);
+                                light = glm::clamp(light, Vector3(0), Vector3(64));
+                                if (s == 0)
+                                    v.color = Vector4(light, 1);
+                                auto& channel = channels.back()[s];
+                                channel.insert(channel.end(), {light.x, light.y, light.z});
+                            }
                         }
                         vertices += p.vertices.size();
                     }
                     auto path = directory / (std::to_string(instance.id) + ".gltf");
                     Pipeline::WriteGltf(instance.mesh, path, true);
+                    if (scenarios)
+                        WriteScenarioChannels(
+                            path, *scenarios, channels,
+                            previousPaths.contains(instance.id) ? previousPaths.at(instance.id) : "",
+                            preservedIds);
                     Pipeline::WriteMeta(path, "MODEL");
                     std::lock_guard lock(outputMutex);
                     outputs.emplace_back(instance.id, path.generic_string());
@@ -570,6 +708,14 @@ namespace Canis
             if (!paths.contains(id))
                 continue;
             auto model = n["Canis::Model"];
+            if (scenarios)
+            {
+                YAML::Node original;
+                original["ModelAsset"] = YAML::Clone(model["ModelAsset"]);
+                original["nodeIndex"] = model["nodeIndex"].as<int>(-1);
+                original["applyNodeTransform"] = model["applyNodeTransform"].as<bool>(true);
+                model["LightingScenarioSource"] = original;
+            }
             if (auto collider = n["Canis::MeshCollider"];
                 collider && collider["useAttachedModel"].as<bool>(true))
             {
@@ -583,6 +729,213 @@ namespace Canis
             n.remove("Canis::BakeMaterialPaths");
         }
         return result;
+    }
+    LightingBakeResult BakeSceneLighting(YAML::Node input, const std::filesystem::path& directory,
+                                         const LightingBakeOptions& options,
+                                         const std::function<void(const std::string&)>& progress)
+    {
+        return BakeSceneLightingInternal(std::move(input), directory, options, progress);
+    }
+    LightingScenarioBakeResult BakeLightingScenarios(YAML::Node input, const std::filesystem::path& directory,
+                                                     const std::vector<LightingScenario>& definitions,
+                                                     const LightingBakeOptions& options,
+                                                     const std::function<void(const std::string&)>& progress)
+    {
+        if (definitions.empty())
+            throw std::runtime_error("Create a lighting scenario before baking");
+        if (options.cancel && options.cancel->load())
+            throw std::runtime_error("Bake canceled");
+        if (!std::isfinite(options.vertexSpacing) || options.vertexSpacing <= 0 ||
+            options.indirectSamples < 0 || options.indirectSamples > 4096 ||
+            !std::isfinite(options.indirectIntensity) || options.indirectIntensity < 0 ||
+            !std::isfinite(options.ambientOcclusionDistance) || options.ambientOcclusionDistance <= 0)
+            throw std::runtime_error("Invalid lighting bake quality settings");
+        std::set<std::string> ids;
+        std::vector<LightingScenario> selected;
+        for (const auto& scenario : definitions)
+        {
+            if (scenario.id.empty() || !ids.insert(scenario.id).second)
+                throw std::runtime_error("Lighting scenario IDs must be nonempty and unique");
+            if (options.selectedScenarioIds.empty() ||
+                std::find(options.selectedScenarioIds.begin(), options.selectedScenarioIds.end(),
+                          scenario.id) != options.selectedScenarioIds.end())
+                selected.push_back(scenario);
+        }
+        for (const auto& selectedId : options.selectedScenarioIds)
+            if (!ids.contains(selectedId))
+                throw std::runtime_error("Unknown lighting scenario: " + selectedId);
+        if (selected.empty())
+            throw std::runtime_error("No lighting scenarios selected");
+        for (const auto& scenario : selected)
+        {
+            const auto finiteColor = [](const Vector4& c)
+            { return std::isfinite(c.x) && std::isfinite(c.y) && std::isfinite(c.z) && std::isfinite(c.w); };
+            if (!finiteColor(scenario.ambientLight) || !finiteColor(scenario.sunColor) ||
+                !std::isfinite(scenario.ambientIntensity) || scenario.ambientIntensity < 0 ||
+                !std::isfinite(scenario.sunIntensity) || scenario.sunIntensity < 0 ||
+                !std::isfinite(scenario.skyboxIntensity) || scenario.skyboxIntensity < 0)
+                throw std::runtime_error("Lighting values must be finite and nonnegative: " + scenario.name);
+        }
+        const auto fingerprint = LightingScenarioSourceFingerprint(input);
+        std::map<uint64_t, std::string> previousPaths;
+        for (auto node : input["Entities"])
+            if (auto model = node["Canis::Model"]; model && model["static"].as<bool>(false))
+                previousPaths[node["Entity"].as<uint64_t>()] = Path(model["ModelAsset"]);
+        YAML::Node quality;
+        quality["VertexSpacing"] = options.vertexSpacing;
+        quality["IndirectSamples"] = options.indirectSamples;
+        quality["IndirectIntensity"] = options.indirectIntensity;
+        quality["AmbientOcclusionDistance"] = options.ambientOcclusionDistance;
+        auto sameQuality = [&](const LightingScenario& scenario)
+        {
+            if (scenario.manifestPath.empty() || !std::filesystem::exists(scenario.manifestPath))
+                return false;
+            const auto saved = YAML::LoadFile(scenario.manifestPath)["Quality"];
+            return saved && saved["VertexSpacing"].as<float>(-1) == options.vertexSpacing &&
+                   saved["IndirectSamples"].as<int>(-1) == options.indirectSamples &&
+                   saved["IndirectIntensity"].as<float>(-1) == options.indirectIntensity &&
+                   saved["AmbientOcclusionDistance"].as<float>(-1) == options.ambientOcclusionDistance;
+        };
+        std::vector<std::string> preservedIds;
+        for (const auto& scenario : definitions)
+        {
+            const bool evaluating = std::any_of(selected.begin(), selected.end(),
+                                                [&](const auto& s) { return s.id == scenario.id; });
+            if (!evaluating && scenario.sourceFingerprint == fingerprint &&
+                scenario.settingsFingerprint == LightingScenarioSettingsFingerprint(scenario) &&
+                sameQuality(scenario))
+                preservedIds.push_back(scenario.id);
+        }
+        static std::atomic<uint64_t> sequence{0};
+        const auto token =
+            std::to_string(std::chrono::high_resolution_clock::now().time_since_epoch().count()) + "-" +
+            std::to_string(sequence.fetch_add(1));
+        const auto staging = directory / (".scenario-stage-" + token);
+        const auto generation = directory / ("scenario-" + token);
+        // Each published generation is immutable. An atomic directory rename commits geometry,
+        // channels, provenance and manifest together on every supported filesystem platform.
+        const auto manifestPath = generation / "lighting-scenarios.yaml";
+        const auto temporaryManifest = staging / "lighting-scenarios.yaml";
+        bool committed = false;
+        try
+        {
+            std::filesystem::create_directories(staging);
+            auto baked = BakeSceneLightingInternal(input, staging, options, progress, &selected,
+                                                   previousPaths, preservedIds);
+            if (baked.models.empty())
+                throw std::runtime_error("No static models were found to bake");
+            LightingScenarioBakeResult result;
+            static_cast<LightingBakeResult&>(result) = std::move(baked);
+            result.manifestPath = manifestPath.generic_string();
+            result.scenarios = definitions;
+            YAML::Node manifest;
+            manifest["Version"] = 1;
+            manifest["SourceFingerprint"] = fingerprint;
+            manifest["Quality"] = quality;
+            manifest["VertexFormat"] = "RGB32F linear irradiance";
+            manifest["Vertices"] = result.vertices;
+            manifest["Triangles"] = result.triangles;
+            const size_t probeCount =
+                input["Environment"]["LightingProbes"] ? input["Environment"]["LightingProbes"].size() : 0;
+            manifest["ProbeCount"] = probeCount;
+            for (size_t i = 0; i < probeCount; ++i)
+                manifest["ProbeEnabled"].push_back(input["Environment"]["LightingProbes"][i]["Enabled"].as<bool>(true));
+            for (auto& scenario : result.scenarios)
+            {
+                const bool evaluating = std::any_of(selected.begin(), selected.end(),
+                                                    [&](const auto& s) { return s.id == scenario.id; });
+                const bool preserving =
+                    std::find(preservedIds.begin(), preservedIds.end(), scenario.id) != preservedIds.end();
+                if (!evaluating && !preserving)
+                {
+                    scenario.manifestPath.clear();
+                    scenario.sourceFingerprint.clear();
+                    scenario.settingsFingerprint.clear();
+                    scenario.probeCachePaths.clear();
+                }
+                else
+                {
+                    scenario.manifestPath = result.manifestPath;
+                    scenario.sourceFingerprint = fingerprint;
+                    scenario.settingsFingerprint = LightingScenarioSettingsFingerprint(scenario);
+                    if (evaluating)
+                    {
+                        scenario.probeCachePaths.clear();
+                        const auto safeId = std::to_string(Pipeline::AssetUUID(scenario.id));
+                        for (size_t i = 0; i < probeCount; ++i)
+                            scenario.probeCachePaths.push_back(
+                                (generation / ("probe-" + safeId + "-" + std::to_string(i) + ".probe"))
+                                    .generic_string());
+                    }
+                }
+                manifest["Scenarios"].push_back(SerializeLightingScenario(scenario));
+            }
+            for (auto node : result.scene["Entities"])
+            {
+                auto model = node["Canis::Model"];
+                if (!model || !model["LightingScenarioSource"])
+                    continue;
+                const auto id = node["Entity"].as<uint64_t>();
+                const auto finalPath = generation / (std::to_string(id) + ".gltf");
+                model["ModelAsset"]["path"] = finalPath.generic_string();
+                YAML::Node entry;
+                entry["Entity"] = id;
+                entry["Path"] = finalPath.generic_string();
+                entry["GeneratedUUID"] = Pipeline::AssetUUID(finalPath.generic_string());
+                entry["Source"] = YAML::Clone(model["LightingScenarioSource"]);
+                manifest["Models"].push_back(entry);
+                model.remove("LightingScenarioSource");
+                // UUIDs name the final location even though files are still staged.
+                const auto metaPath = staging / (std::to_string(id) + ".gltf.meta");
+                auto metadata = YAML::LoadFile(metaPath.string());
+                metadata["UUID"] = Pipeline::AssetUUID(finalPath.generic_string());
+                std::ofstream metadataFile(metaPath);
+                metadataFile << metadata;
+                metadataFile.close();
+                if (!metadataFile)
+                    throw std::runtime_error("Cannot write staged model metadata");
+            }
+            result.models.clear();
+            for (const auto& model : manifest["Models"])
+                result.models.push_back(model["Path"].as<std::string>());
+            result.scene["Environment"]["LightingScenarios"] = manifest["Scenarios"];
+            result.scene["Environment"]["LightingScenarioSources"] = manifest["Models"];
+            if (!result.scene["Environment"]["InitialLightingScenario"] ||
+                !ids.contains(result.scene["Environment"]["InitialLightingScenario"].as<std::string>()))
+                result.scene["Environment"]["InitialLightingScenario"] = definitions.front().id;
+            if (options.cancel && options.cancel->load())
+                throw std::runtime_error("Bake canceled");
+            std::ofstream manifestFile(temporaryManifest);
+            manifestFile << manifest;
+            manifestFile.close();
+            if (!manifestFile)
+                throw std::runtime_error("Cannot write lighting scenario manifest");
+            if (options.cancel && options.cancel->load())
+                throw std::runtime_error("Bake canceled");
+            std::filesystem::rename(staging, generation);
+            committed = true;
+            // A UI callback cannot turn a completed atomic publication into a failed bake.
+            if (progress)
+                try
+                {
+                    progress("Lighting scenarios ready: " + std::to_string(selected.size()) + " evaluated, " +
+                             std::to_string(preservedIds.size()) + " retained; shared vertices " +
+                             std::to_string(result.vertices));
+                }
+                catch (...)
+                {
+                }
+            return result;
+        }
+        catch (...)
+        {
+            std::error_code error;
+            std::filesystem::remove_all(staging, error);
+            std::filesystem::remove(temporaryManifest, error);
+            if (!committed)
+                std::filesystem::remove_all(generation, error);
+            throw;
+        }
     }
     YAML::Node CaptureLightingBakeScene(Scene& scene)
     {

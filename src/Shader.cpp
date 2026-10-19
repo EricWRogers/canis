@@ -23,6 +23,20 @@ namespace Canis
 {
     namespace
     {
+        void InitializeLightingSamplers(unsigned int program)
+        {
+            // Different sampler types cannot alias even when a lighting branch is disabled.
+            GLint previousProgram=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previousProgram);glUseProgram(program);
+            for(const auto& [name,unit] : std::array<std::pair<const char*,int>,2>{{{"canisProbeArray",8},{"canisLightingScenarioData",14}}}) {
+                const GLint location=glGetUniformLocation(program,name);
+                if(location>=0)glUniform1i(location,unit);
+            }
+            for(int i=0;i<6;++i) {
+                const GLint location=glGetUniformLocation(program,("canisProbeMap"+std::to_string(i)).c_str());
+                if(location>=0)glUniform1i(location,8+i);
+            }
+            glUseProgram(previousProgram);
+        }
         bool HasActivePrecisionQualifier(const std::string &_source)
         {
             std::istringstream stream(_source);
@@ -203,7 +217,7 @@ namespace Canis
         auto version = [](std::string source) {
             const std::string marker = "[OPENGL VERSION]";
             auto p = source.find(marker);
-            if (p != std::string::npos) source.replace(p, marker.size(), "#version 410 core");
+            if (p != std::string::npos) source.replace(p, marker.size(), "#version 410 core\n#define CANIS_PROBE_ARRAYS 1");
             return source;
         };
         vertex=version(vertex); fragment=version(fragment);
@@ -230,7 +244,7 @@ namespace Canis
             for(auto shader:shaders)glDetachShader(variant->m_programId,shader);
         }
         for(auto shader:shaders)glDeleteShader(shader);
-        if(valid){variant->m_isLinked=true;variant->InitializeSkinning();variant->m_path=m_path+":stereo";m_stereoVariant=std::move(variant);}
+        if(valid){variant->m_isLinked=true;variant->InitializeSkinning();InitializeLightingSamplers(variant->m_programId);variant->m_path=m_path+":stereo";m_stereoVariant=std::move(variant);}
         return m_stereoVariant.get();
 #else
         return nullptr;
@@ -295,14 +309,7 @@ namespace Canis
             m_uniformTypes.emplace(std::string(uniformName.data(), length), type);
         }
 
-        // Cube and 2D samplers cannot alias even when the probe branch is disabled.
-        GLint previousProgram=0;glGetIntegerv(GL_CURRENT_PROGRAM,&previousProgram);glUseProgram(m_programId);
-        for(int i=0;i<4;++i) {
-            const auto name="canisProbeMap"+std::to_string(i);
-            const GLint location=glGetUniformLocation(m_programId,name.c_str());
-            if(location>=0)glUniform1i(location,8+i);
-        }
-        glUseProgram(previousProgram);
+        InitializeLightingSamplers(m_programId);
         glDetachShader(m_programId, m_vertexShaderId);
         glDetachShader(m_programId, m_fragmentShaderId);
         glDeleteShader(m_vertexShaderId);
@@ -454,6 +461,17 @@ namespace Canis
                 shaderFileCode += precisionBlock;
             else
                 shaderFileCode.insert(firstNewline + 1, precisionBlock);
+        }
+#endif
+
+#if !defined(__EMSCRIPTEN__)
+        // Probe arrays preserve one sampler binding while blending whole lighting sets.
+        // The normal material pipeline otherwise keeps its GLSL 330 contract.
+        if (shaderFileCode.find("samplerCubeArray") != std::string::npos)
+        {
+            const size_t newline=shaderFileCode.find('\n');
+            if(newline!=std::string::npos && (GLEW_VERSION_4_0 || GLEW_ARB_texture_cube_map_array))
+                shaderFileCode.insert(newline+1,"#extension GL_ARB_texture_cube_map_array : require\n#define CANIS_PROBE_ARRAYS 1\n");
         }
 #endif
 

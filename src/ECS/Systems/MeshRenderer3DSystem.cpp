@@ -1449,6 +1449,12 @@ namespace Canis
 #endif
     }
 
+    LightingScenarioBlend MeshRenderer3DSystem::RenderLightingScenario() const
+    {
+        if (m_probeCaptureScenario) return {m_probeCaptureScenario,m_probeCaptureScenario,0};
+        return scene->GetLightingScenarioBlend();
+    }
+
     void MeshRenderer3DSystem::DrawSkybox(const Matrix4 &_projection, const Matrix4 &_view)
     {
         RenderMetrics::Scope timing("Skybox");
@@ -1461,17 +1467,18 @@ namespace Canis
             m_skyboxShader->Link();
         }
 
-        const UUID skyboxUUID = scene->GetEnvironmentSkyboxUUID();
-        if ((uint64_t)skyboxUUID == 0)
-            return;
-
-        const std::string skyboxPath = AssetManager::GetPath(skyboxUUID);
-        if (skyboxPath == "Path was not found in AssetLibrary")
-            return;
-
-        SkyboxAsset *skybox = AssetManager::GetSkybox(skyboxPath);
-        if (skybox == nullptr || !skybox->IsLoaded())
-            return;
+        const auto lighting=RenderLightingScenario();
+        auto skyAsset=[&](const LightingScenario* scenario) -> SkyboxAsset* {
+            const UUID uuid=scenario ? UUID(scenario->skyboxUUID) : scene->GetEnvironmentSkyboxUUID();
+            std::string path=scenario ? scenario->skyboxPath : std::string{};
+            if (path.empty() && uint64_t(uuid)!=0) path=AssetManager::GetPath(uuid);
+            if (path.empty() || path=="Path was not found in AssetLibrary") return nullptr;
+            auto* sky=AssetManager::GetSkybox(path);
+            return sky && sky->IsLoaded() ? sky : nullptr;
+        };
+        SkyboxAsset* skybox=skyAsset(lighting.from);
+        SkyboxAsset* target=lighting.to ? skyAsset(lighting.to) : skybox;
+        if (!lighting.from && !skybox && !target) return;
 
         const Matrix4 skyboxView = Matrix4(glm::mat3(_view));
 
@@ -1482,11 +1489,20 @@ namespace Canis
         m_skyboxShader->SetMat4("projection", _projection);
         m_skyboxShader->SetMat4("view", skyboxView);
         m_skyboxShader->SetInt("skybox", 0);
+        m_skyboxShader->SetInt("skyboxTarget", 1);
+        m_skyboxShader->SetBool("skyboxAvailable",skybox!=nullptr);
+        m_skyboxShader->SetBool("skyboxTargetAvailable",target!=nullptr);
+        m_skyboxShader->SetFloat("skyboxBlend",lighting.from && lighting.to ? lighting.blend : 0);
+        m_skyboxShader->SetFloat("skyboxIntensity",lighting.from ? lighting.from->skyboxIntensity : 1);
+        m_skyboxShader->SetFloat("skyboxTargetIntensity",lighting.to ? lighting.to->skyboxIntensity : 1);
         m_skyboxShader->SetBool("canisProbeCapture",m_capturingProbe);
 
         glBindVertexArray(m_skyboxVao);
         glActiveTexture(GL_TEXTURE0);
-        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox->GetTexture());
+        glBindTexture(GL_TEXTURE_CUBE_MAP, skybox ? skybox->GetTexture() : 0);
+        glActiveTexture(GL_TEXTURE1);
+        glBindTexture(GL_TEXTURE_CUBE_MAP,target ? target->GetTexture() : 0);
+        glActiveTexture(GL_TEXTURE0);
         glDrawArrays(GL_TRIANGLES, 0, 36);
         glBindTexture(GL_TEXTURE_CUBE_MAP, 0);
         glBindVertexArray(0);
@@ -1502,19 +1518,37 @@ namespace Canis
             return;
         // Keep probe texture units private, including nested cubemap renders.
         struct ProbeBindingScope {
-            GLint active=0, textures[4]{}, samplers[4]{};
+            GLint active=0, textures[6]{}, samplers[6]{}, arrays[6]{}, lightingBuffer=0, lightingSampler=0;
+            int slots=6;
             ProbeBindingScope() {
+#if !defined(__EMSCRIPTEN__)
+                if(GLEW_VERSION_4_0 || GLEW_ARB_texture_cube_map_array)slots=1;
+#endif
                 glGetIntegerv(GL_ACTIVE_TEXTURE,&active);
-                for(int i=0;i<4;++i) {
+                for(int i=0;i<slots;++i) {
                     glActiveTexture(GL_TEXTURE8+i);glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP,&textures[i]);
+#if !defined(__EMSCRIPTEN__)
+                    if(GLEW_VERSION_4_0 || GLEW_ARB_texture_cube_map_array)glGetIntegerv(GL_TEXTURE_BINDING_CUBE_MAP_ARRAY,&arrays[i]);
+#endif
                     glGetIntegeri_v(GL_SAMPLER_BINDING,8+i,&samplers[i]);
                 }
+#if !defined(__EMSCRIPTEN__)
+                glActiveTexture(GL_TEXTURE14);glGetIntegerv(GL_TEXTURE_BINDING_BUFFER,&lightingBuffer);
+                glGetIntegeri_v(GL_SAMPLER_BINDING,14,&lightingSampler);
+#endif
                 glActiveTexture(active);
             }
             ~ProbeBindingScope() {
-                for(int i=0;i<4;++i) {
-                    glActiveTexture(GL_TEXTURE8+i);glBindTexture(GL_TEXTURE_CUBE_MAP,textures[i]);glBindSampler(8+i,samplers[i]);
+                for(int i=0;i<slots;++i) {
+                    glActiveTexture(GL_TEXTURE8+i);glBindTexture(GL_TEXTURE_CUBE_MAP,textures[i]);
+#if !defined(__EMSCRIPTEN__)
+                    if(GLEW_VERSION_4_0 || GLEW_ARB_texture_cube_map_array)glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY,arrays[i]);
+#endif
+                    glBindSampler(8+i,samplers[i]);
                 }
+#if !defined(__EMSCRIPTEN__)
+                glActiveTexture(GL_TEXTURE14);glBindTexture(GL_TEXTURE_BUFFER,lightingBuffer);glBindSampler(14,lightingSampler);
+#endif
                 glActiveTexture(active);
             }
         } probeBindings;
@@ -1712,8 +1746,20 @@ namespace Canis
         SelectLODs(_registry,view,projection,lodViewKey);
         if(!m_capturingProbe)scene->SetLastRenderCamera(view, projection, cameraPosition, cameraNearClip, cameraFarClip);
 
+        const auto lighting=RenderLightingScenario();
         DirectionalLightState directionalLight = GatherDirectionalLight(_registry);
+        if (lighting.from && lighting.to) {
+            const auto& a=*lighting.from; const auto& b=*lighting.to;
+            const float t=lighting.blend;
+            const Vector3 direction=glm::mix(a.sunDirection,b.sunDirection,t);
+            directionalLight.direction=glm::length(direction)>.0001f ? glm::normalize(direction) : Vector3(0,-1,0);
+            directionalLight.color=glm::mix(Vector3(a.sunColor),Vector3(b.sunColor),t);
+            directionalLight.intensity=glm::mix(a.sunEnabled?a.sunIntensity:0.f,b.sunEnabled?b.sunIntensity:0.f,t);
+            directionalLight.enabled=directionalLight.intensity>0;
+            directionalLight.mode=LightMode::Baked;
+        }
         std::vector<PointLightState> pointLights = GatherPointLights(_registry);
+        const bool directionalShadows=directionalLight.enabled && directionalLight.mode!=LightMode::Baked;
 
         const bool stereo = m_stereoFrame && scene->GetVRCamera().enabled;
         if (!stereo || !m_stereoShadowReady)
@@ -1725,7 +1771,7 @@ namespace Canis
                 stereo ? m_stereoShadowCenter : cameraPosition,
                 cameraFarClip,
                 directionalLight.direction,
-                directionalLight.enabled);
+                directionalShadows);
             if (stereo) m_stereoShadowReady = true;
         }
 
@@ -1850,9 +1896,12 @@ namespace Canis
                     currentShader->SetVec4("softDepthViewport",Vector4(softDepthViewport[0],softDepthViewport[1],softDepthViewport[2],softDepthViewport[3]));
                     currentShader->SetMat4("softInverseProjection",glm::inverse(projection));
                 }
-                const Color ambientLight = scene->GetEnvironmentAmbientLight();
+                const Color ambientLight = lighting.from && lighting.to ?
+                    Color(glm::mix(Vector3(lighting.from->ambientLight)*lighting.from->ambientIntensity,
+                                   Vector3(lighting.to->ambientLight)*lighting.to->ambientIntensity,lighting.blend),1) : scene->GetEnvironmentAmbientLight();
                 currentShader->SetVec3("ambientLightColor", ambientLight.r, ambientLight.g, ambientLight.b);
-                currentShader->SetFloat("ambientLightIntensity", scene->GetEnvironmentAmbientLightIntensity());
+                currentShader->SetFloat("ambientLightIntensity", lighting.from && lighting.to ?
+                    1.f : scene->GetEnvironmentAmbientLightIntensity());
 
                 currentShader->SetBool("canisDirectCapture", m_capturingProbe);
                 currentShader->SetInt("directionalLightMode", directionalLight.mode);
@@ -1860,7 +1909,7 @@ namespace Canis
                 currentShader->SetVec3("directionalLightDirection", directionalLight.direction);
                 currentShader->SetVec3("directionalLightColor", directionalLight.color);
                 currentShader->SetFloat("directionalLightIntensity", directionalLight.intensity);
-                currentShader->SetBool("useDirectionalShadow", directionalLight.enabled && m_shadowDepthTexture != 0);
+                currentShader->SetBool("useDirectionalShadow", directionalShadows && m_shadowDepthTexture != 0);
                 currentShader->SetMat4("directionalLightSpaceMatrix", m_shadowLightSpaceMatrix);
                 // Material maps occupy 0-5, embedded emission uses 7 and probes
                 // use 8-11. Normal maps must never replace the shadow texture.
@@ -2213,6 +2262,7 @@ namespace Canis
             if (material != nullptr && material->materialId >= 0)
                 materialAsset = AssetManager::GetMaterial(material->materialId);
 
+            model->SetLightingScenarioBlend(lighting.from ? lighting.from->id : "", lighting.to ? lighting.to->id : "", lighting.blend);
             useShaderForMaterial(materialAsset);
 
             const ModelAsset::Pose3D *pose = nullptr;
@@ -2390,6 +2440,7 @@ namespace Canis
             if (_batch.key.materialId >= 0)
                 materialAsset = AssetManager::GetMaterial(_batch.key.materialId);
 
+            model->SetLightingScenarioBlend(lighting.from ? lighting.from->id : "", lighting.to ? lighting.to->id : "", lighting.blend);
             useShaderForMaterial(materialAsset);
             if (_batch.graph && materialAsset) materialAsset->materialFields.Use(*currentShader,6);
 

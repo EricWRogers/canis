@@ -2,9 +2,18 @@
 namespace Canis {
 // Expanded by Shader::CompileSource at the explicit [CANIS PROBE LIGHTING] marker.
 inline constexpr const char* ProbeLightingGLSL=R"GLSL(
+#ifndef CANIS_PROBE_ARRAYS
+#define CANIS_PROBE_ARRAYS 0
+#endif
 uniform bool canisProbeCapture;
 uniform int canisProbeCount;
+#if CANIS_PROBE_ARRAYS
+uniform samplerCubeArray canisProbeArray;
+uniform int canisProbeLayerFrom,canisProbeLayerTo;
+uniform float canisProbeBlend;
+#else
 uniform samplerCube canisProbeMap0,canisProbeMap1,canisProbeMap2,canisProbeMap3,canisProbeMap4,canisProbeMap5;
+#endif
 uniform vec3 canisProbePosition[6],canisProbeExtent[6],canisProbeParams[6];
 uniform vec3 canisProbeSH[54];
 vec3 CanisProbeLighting(vec3 p,vec3 n,vec3 v,vec3 albedo,float roughness,vec3 f0,float diffuseWeight) {
@@ -32,12 +41,19 @@ vec3 CanisProbeLighting(vec3 p,vec3 n,vec3 v,vec3 albedo,float roughness,vec3 f0
         vec3 reflected=vec3(0);
         if(canisProbeParams[i].z>0.) {
             float lod=clamp(roughness,0.,1.)*6.;
+#if CANIS_PROBE_ARRAYS
+            if(canisProbeBlend<=0.)reflected=textureLod(canisProbeArray,vec4(direction,float(canisProbeLayerFrom+i)),lod).rgb;
+            else if(canisProbeBlend>=1.)reflected=textureLod(canisProbeArray,vec4(direction,float(canisProbeLayerTo+i)),lod).rgb;
+            else reflected=mix(textureLod(canisProbeArray,vec4(direction,float(canisProbeLayerFrom+i)),lod).rgb,
+                textureLod(canisProbeArray,vec4(direction,float(canisProbeLayerTo+i)),lod).rgb,canisProbeBlend);
+#else
             if(i==0)reflected=textureLod(canisProbeMap0,direction,lod).rgb;
             else if(i==1)reflected=textureLod(canisProbeMap1,direction,lod).rgb;
             else if(i==2)reflected=textureLod(canisProbeMap2,direction,lod).rgb;
             else if(i==3)reflected=textureLod(canisProbeMap3,direction,lod).rgb;
             else if(i==4)reflected=textureLod(canisProbeMap4,direction,lod).rgb;
             else reflected=textureLod(canisProbeMap5,direction,lod).rgb;
+#endif
         }
         vec3 irradiance=vec3(0);
         for(int j=0;j<9;j++)irradiance+=canisProbeSH[i*9+j]*b[j];

@@ -552,6 +552,7 @@ namespace Canis
             Color baseColor = Color(1.0f);
             bool dynamicVertices = false;
             bool bakedLighting = false;
+            std::map<std::string, std::vector<Vector3>> lightingScenarios;
             i32 normalTextureId = -1, emissionTextureId = -1;
             Vector3 emissionFactor{0};
         };
@@ -585,6 +586,8 @@ namespace Canis
             unsigned int ebo = 0;
             unsigned int instanceVbo = 0;
             unsigned int skinVbo = 0;
+            unsigned int lightingScenarioBuffer = 0, lightingScenarioTexture = 0;
+            std::map<std::string, int> lightingScenarioOffsets;
             std::vector<RenderVertex3D> bindVertices = {};
             std::vector<RenderVertex3D> skinnedVertices = {};
             std::vector<SkinVertex3D> skinVertices = {};
@@ -597,6 +600,7 @@ namespace Canis
             bool hasSkinning = false;
             bool dynamicVertices = false;
             bool bakedLighting = false;
+            std::map<std::string, std::vector<Vector3>> lightingScenarios;
             i32 normalTextureId = -1, emissionTextureId = -1;
             Vector3 emissionFactor{0};
         };
@@ -712,6 +716,8 @@ namespace Canis
             const MaterialAsset *_baseMaterial = nullptr,
             const VisibilityView *_visibility = nullptr,
             const DrawRanges3D* ranges = nullptr);
+        // Selecting channels changes only uniforms and texture bindings, never geometry.
+        void SetLightingScenarioBlend(const std::string& from, const std::string& to, float blend);
         bool HasBakedVisibility() const { return !m_bakedVisibility.bounds.empty(); }
         void DrawInstanced(
             Shader &_shader,
@@ -745,6 +751,9 @@ namespace Canis
 
     private:
         std::string m_path = "";
+        std::string m_lightingScenarioFrom, m_lightingScenarioTo;
+        float m_lightingScenarioBlend = 0;
+        void BindLightingScenarios(Shader& shader, const Primitive3D& primitive) const;
         std::vector<Node3D> m_nodes = {};
         std::vector<i32> m_sceneRoots = {};
         std::vector<Skin3D> m_skins = {};

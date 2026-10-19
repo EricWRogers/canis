@@ -2,7 +2,9 @@
 #include <Canis/System.hpp>
 #include <Canis/Math.hpp>
 #include <Canis/LightingProbe.hpp>
+#include <Canis/LightingScenario.hpp>
 #include <memory>
+#include <unordered_map>
 
 namespace Canis
 {
@@ -16,7 +18,12 @@ namespace Canis
         MeshRenderer3DSystem() : System() { m_name = type_name<MeshRenderer3DSystem>(); }
 
         void InvalidateLightingProbes() { m_probesDirty=true; m_forceProbeCapture=true; }
-        int ReadyLightingProbeCount() const { return static_cast<int>(m_probeTextures.size()); }
+        int ReadyLightingProbeCount() const { return m_scenarioProbeArray ? int(m_probeSettings.size()) : int(m_probeTextures.size()); }
+        // Explicit bake/prepare action may capture; ordinary rendering only loads caches.
+        bool PrepareLightingScenarios(bool captureMissing, std::string& error);
+        bool LightingScenariosReady() const { return m_scenariosReady; }
+        bool LightingScenarioProbesReady(const std::string& id) const;
+        const std::string& LightingScenariosError() const { return m_scenarioError; }
         void InvalidateStaticShadowCache() { m_staticShadowValid=false; }
         bool HasStaticShadowCache() const { return m_staticShadowValid; }
         void Create() override;
@@ -49,6 +56,14 @@ namespace Canis
         Vector3 m_probePosition{0};
         float m_probeNear=.1f, m_probeFar=100;
         std::vector<LightingProbe> m_probeSettings;
+        unsigned int m_scenarioProbeArray=0;
+        bool m_scenariosReady=false;
+        std::string m_scenarioError, m_scenarioProbeSignature;
+        std::vector<std::string> m_scenarioProbeIds;
+        std::unordered_map<std::string,std::string> m_scenarioReadySignatures;
+        std::vector<std::array<Vector3,9>> m_scenarioProbeIrradiance;
+        const LightingScenario* m_probeCaptureScenario=nullptr;
+        LightingScenarioBlend RenderLightingScenario() const;
         std::vector<unsigned int> m_probeTextures;
         std::vector<std::array<Vector3,9>> m_probeIrradiance;
         void UpdateLightingProbes(entt::registry& registry);

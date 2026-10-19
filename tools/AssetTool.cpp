@@ -1,8 +1,8 @@
-#include <Canis/UnityImport.hpp>
-#include <Canis/LightingBake.hpp>
-#include <Canis/VisibilityBake.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/AssetPipeline.hpp>
+#include <Canis/LightingBake.hpp>
+#include <Canis/UnityImport.hpp>
+#include <Canis/VisibilityBake.hpp>
 #include <fstream>
 #include <iostream>
 int main(int argc, char** argv)
@@ -18,9 +18,11 @@ int main(int argc, char** argv)
                       << '\n';
             return 0;
         }
-        if (argc >= 4 && std::string(argv[1]) == "bake-lighting")
+        if (argc >= 4 &&
+            (std::string(argv[1]) == "bake-lighting" || std::string(argv[1]) == "bake-lighting-scenarios"))
         {
-            // Build the native metadata index for material overrides without opening a window.
+            // Build the native metadata index for material overrides without opening
+            // a window.
             for (auto it = std::filesystem::recursive_directory_iterator("assets");
                  it != std::filesystem::recursive_directory_iterator(); ++it)
                 if (it->is_regular_file() && it->path().extension() == ".meta")
@@ -35,17 +37,34 @@ int main(int argc, char** argv)
                 opts.vertexSpacing = std::stof(argv[4]);
             if (argc > 5)
                 opts.indirectSamples = std::stoi(argv[5]);
-            auto result = Canis::BakeSceneLighting(doc, argv[3], opts,
-                                                   [](const std::string& s) { std::cout << s << std::endl; });
+            const bool scenarios = std::string(argv[1]) == "bake-lighting-scenarios";
+            Canis::LightingBakeResult result;
+            if (scenarios)
+            {
+                std::vector<Canis::LightingScenario> definitions;
+                if (doc["Environment"]["LightingScenarios"])
+                    for (const auto& scenario : doc["Environment"]["LightingScenarios"])
+                        definitions.push_back(Canis::DeserializeLightingScenario(scenario));
+                for (int i = 6; i < argc; ++i)
+                    opts.selectedScenarioIds.push_back(argv[i]);
+                result =
+                    Canis::BakeLightingScenarios(doc, argv[3], definitions, opts,
+                                                 [](const std::string& s) { std::cout << s << std::endl; });
+            }
+            else
+                result = Canis::BakeSceneLighting(doc, argv[3], opts,
+                                                  [](const std::string& s) { std::cout << s << std::endl; });
             auto output = std::filesystem::path(argv[2]);
-            output.replace_filename(output.stem().string() + "-baked.scene");
+            output.replace_filename(output.stem().string() +
+                                    (scenarios ? "-scenarios.scene" : "-baked.scene"));
             std::ofstream f(output);
             f << result.scene;
             f.close();
             Canis::Pipeline::WriteMeta(output, "SCENE");
-            std::cout << "CANIS_LIGHTING_BAKE_PASS models=" << result.models.size()
-                      << " vertices=" << result.vertices << " lights=" << result.lights << " scene=" << output
-                      << '\n';
+            std::cout << (scenarios ? "CANIS_LIGHTING_SCENARIO_BAKE_PASS models="
+                                    : "CANIS_LIGHTING_BAKE_PASS models=")
+                      << result.models.size() << " vertices=" << result.vertices
+                      << " lights=" << result.lights << " scene=" << output << '\n';
             return 0;
         }
         if (argc >= 4 && std::string(argv[1]) == "bake-visibility")
@@ -63,7 +82,12 @@ int main(int argc, char** argv)
             std::cout << "CANIS_VISIBILITY_BAKE_PASS\n";
             return 0;
         }
-        std::cerr << "Usage: canis-asset-tool import-unity <asset-root> <scene.unity> <destination>\n";
+        std::cerr << "Usage: canis-asset-tool import-unity <asset-root> "
+                     "<scene.unity> <destination>\n";
+        std::cerr << "       canis-asset-tool bake-lighting <scene> <directory> "
+                     "[spacing] [samples]\n";
+        std::cerr << "       canis-asset-tool bake-lighting-scenarios <scene> "
+                     "<directory> [spacing] [samples] [scenario-id ...]\n";
         return 2;
     }
     catch (const std::exception& e)

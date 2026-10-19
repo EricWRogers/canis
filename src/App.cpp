@@ -7,6 +7,7 @@
 #include "yaml-cpp/emittermanip.h"
 #include <Canis/App.hpp>
 #include <Canis/LightingBake.hpp>
+#include <Canis/WeatherTransition.hpp>
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
@@ -67,6 +68,14 @@
 
 namespace Canis
 {
+    namespace {
+        Color DecodeLightColor(const YAML::Node& color) {
+            if (!color || !color.IsSequence() || color.size() < 3)
+                return Color(1.0f);
+            return Color(color[0].as<float>(1), color[1].as<float>(1), color[2].as<float>(1),
+                         color.size() > 3 ? color[3].as<float>(1) : 1.0f);
+        }
+    }
     struct RuntimeTimelineEvent
     {
         double time = 0.0;
@@ -98,6 +107,7 @@ namespace Canis
         bool vrSimulated = false;
         VR::FoveationMode vrFoveation = VR::FoveationMode::Off;
         bool captureFinal = true;
+        bool prepareLightingScenarios = false;
         std::string launchScene = {};
         std::string inputScript = {};
         std::filesystem::path captureDirectory = {};
@@ -343,6 +353,7 @@ namespace Canis
             for (size_t index = 0u; index < _arguments.size(); ++index)
             {
                 const std::string &argument = _arguments[index];
+                if (argument == "--prepare-lighting-scenarios") { _outOptions.prepareLightingScenarios=true; continue; }
                 if (argument == "--vr-foveation")
                 {
                     if (++index >= _arguments.size()) { _outError = "--vr-foveation requires off, fixed, or eye."; return false; }
@@ -2147,6 +2158,15 @@ namespace Canis
         runtime.gameCodeInitialized = true;
 
         scene.Load(startupScenePath);
+        if(runtime.launch.prepareLightingScenarios) {
+            std::string error;
+            auto* renderer=scene.GetSystem<MeshRenderer3DSystem>();
+            if(!renderer || !renderer->PrepareLightingScenarios(true,error)) {
+                Debug::Error("Lighting scenario preparation failed: %s",error.c_str());
+                m_exitCode=9;runtime.exitReason="lighting-preparation-error";return;
+            }
+            Debug::Log("LIGHTING_SCENARIOS_PREPARED scenarios=%zu",scene.GetLightingScenarios().size());
+        }
 #if !CANIS_CSHARP
         if(!runtime.editorRuntimeEnabled && Scripting::HasManagedScripts(scene)) {
             Debug::Error("This scene contains C# components. Rebuild with CANIS_ENABLE_CSHARP=ON.");m_exitCode=8;runtime.exitReason="csharp-not-enabled";return;
@@ -2199,7 +2219,7 @@ namespace Canis
 
     bool App::RunFrame()
     {
-        if (m_runtime == nullptr)
+        if (m_runtime == nullptr || m_exitCode != 0)
             return false;
 
         RuntimeContext &runtime = *m_runtime;
@@ -2944,6 +2964,7 @@ namespace Canis
                 << "  --vr                       Run the OpenXR headset path (requires runtime).\n"
                 << "  --vr-foveation MODE        off (default), fixed, eye; experimental NVIDIA GL path.\n"
                 << "  --vr-sim                   Run deterministic stereo simulation without a headset.\n"
+                << "  --prepare-lighting-scenarios Capture missing scenario probes before gameplay.\n"
                 << "  --offscreen                 Create a hidden OpenGL window for automated runs.\n";
             return 0;
         }
@@ -3109,6 +3130,7 @@ namespace Canis
         RegisterTrailComponents(*this);
         RegisterAudioComponents(*this);
         RegisterBakeLight(*this);
+        RegisterWeatherTransition(*this);
         RegisterParticleEmitterSystem(*this);
 
         ScriptConf canvasConf = {
@@ -5359,7 +5381,7 @@ namespace Canis
                     // on dynamic objects: preserve that behavior as Mixed.
                     light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
                     light.enabled = comp["enabled"].as<bool>(true);
-                    light.color = comp["color"].as<Vector4>(Color(1.0f));
+                    light.color = DecodeLightColor(comp["color"]);
                     light.intensity = comp["intensity"].as<float>(1.0f);
                     light.direction = comp["direction"].as<Vector3>(Vector3(-0.4f, -1.0f, -0.25f));
                     if (_callCreate)
@@ -5414,7 +5436,7 @@ namespace Canis
                     // on dynamic objects: preserve that behavior as Mixed.
                     light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
                     light.enabled = comp["enabled"].as<bool>(true);
-                    light.color = comp["color"].as<Vector4>(Color(1.0f));
+                    light.color = DecodeLightColor(comp["color"]);
                     light.intensity = comp["intensity"].as<float>(1.2f);
                     light.range = comp["range"].as<float>(12.0f);
                     if (_callCreate)
@@ -5471,7 +5493,7 @@ namespace Canis
                     // on dynamic objects: preserve that behavior as Mixed.
                     light.mode = std::clamp(comp["mode"].as<int>(LightMode::Mixed), 0, 2);
                     light.enabled = comp["enabled"].as<bool>(true);
-                    light.color = comp["color"].as<Vector4>(Color(1.0f));
+                    light.color = DecodeLightColor(comp["color"]);
                     light.intensity = comp["intensity"].as<float>(1.2f);
                     light.range = comp["range"].as<float>(35.0f);
                     light.spotAngle = std::clamp(comp["spotAngle"].as<float>(55.f), .1f, 179.f);

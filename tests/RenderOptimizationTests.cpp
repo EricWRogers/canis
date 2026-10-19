@@ -1,5 +1,6 @@
 #include <Canis/StaticVisibility.hpp>
 #include <Canis/AssetPipeline.hpp>
+#include <Canis/LightingBake.hpp>
 #include <Canis/Asset.hpp>
 #include <Canis/Frustum.hpp>
 #include <Canis/OpenGL.hpp>
@@ -9,6 +10,7 @@
 #include <Canis/Time.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/App.hpp>
+#include <Canis/Editor.hpp>
 #include <Canis/Scripting/SceneBindings.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scripting/NativeBindings.hpp>
@@ -720,6 +722,53 @@ static void StereoPreparation(Window& window) {
     t.active=false;auto hidden=verify();t.active=true;
     Check(verify()!=hidden,"Reactivated model missing from prepared candidates");
     cached.OnDestroy();AssetManager::FreeModel(id);
+}
+
+static void LightingScenarioPixels()
+{
+    ModelAsset model,legacy,merged;
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-.4f,-.6f,0},{0,0,1},{},Color(.4f)},{{.4f,-.6f,0},{0,0,1},{},Color(.4f)},
+                   {{.4f,.6f,0},{0,0,1},{},Color(.4f)},{{-.4f,.6f,0},{0,0,1},{},Color(.4f)}};
+    quad.indices={0,1,2,0,2,3};quad.bakedLighting=true;
+    Check(legacy.SetRuntimePrimitives({quad}),"Scenario legacy fixture failed");
+    quad.lightingScenarios["dusk"]={4,Vector3(.8f,.4f,.2f)};
+    quad.lightingScenarios["night"]={4,Vector3(.1f,.2f,.6f)};
+    Check(model.SetRuntimePrimitives({quad}),"Scenario channel fixture failed");
+    std::ifstream source("assets/shaders/model3d.vs");
+    const std::string vertex((std::istreambuf_iterator<char>(source)),{});
+    Check(!vertex.empty(),"Scenario production shader missing");
+    Shader shader;shader.CompileSource(vertex,"[OPENGL VERSION]\nin vec3 fragmentBakedLighting;out vec4 result;void main(){result=vec4(fragmentBakedLighting,1);}","lighting scenario production vertex pixels");
+    shader.Link();shader.Use();shader.SetMat4("P",Matrix4(1));shader.SetMat4("V",Matrix4(1));
+    glBindFramebuffer(GL_FRAMEBUFFER,0);glViewport(0,0,320,240);
+    glDisable(GL_DEPTH_TEST);glDisable(GL_BLEND);glDisable(GL_CULL_FACE);glDisable(GL_FRAMEBUFFER_SRGB);
+    auto pixel=[&](int x,int y,Vector3 expected) {
+        std::array<unsigned char,4> actual{};glReadPixels(x,y,1,1,GL_RGBA,GL_UNSIGNED_BYTE,actual.data());
+        for(int c=0;c<3;++c)Check(std::abs(int(actual[c])-int(std::round(expected[c]*255)))<=2,
+            "Lighting scenario endpoint/midpoint pixels differ from linear irradiance");
+    };
+    const auto revision=model.GetGeometryRevision();
+    for(float blend:{0.f,.5f,1.f}) {
+        model.SetLightingScenarioBlend("dusk","night",blend);
+        glClearColor(0,0,0,1);glClear(GL_COLOR_BUFFER_BIT);model.Draw(shader,Matrix4(1));
+        pixel(160,120,glm::mix(Vector3(.8f,.4f,.2f),Vector3(.1f,.2f,.6f),blend));
+        Check(model.GetGeometryRevision()==revision,"Scenario preview rebuilt shared geometry");
+    }
+    model.SetLightingScenarioBlend("","",0);glClear(GL_COLOR_BUFFER_BIT);model.Draw(shader,Matrix4(1));
+    pixel(160,120,Vector3(.4f));
+    model.SetLightingScenarioBlend("night","night",0);glClear(GL_COLOR_BUFFER_BIT);model.DrawInstanced(shader,{Matrix4(1)});
+    pixel(160,120,Vector3(.1f,.2f,.6f));
+    std::vector<ModelAsset::DrawRanges3D> ranges;
+    Check(merged.BuildStaticBatch({{&model,glm::translate(Matrix4(1),Vector3(-.5f,0,0))},
+                                  {&legacy,glm::translate(Matrix4(1),Vector3(.5f,0,0))}},ranges),
+        "Scenario shared static batch failed");
+    merged.SetLightingScenarioBlend("night","night",0);glClear(GL_COLOR_BUFFER_BIT);merged.Draw(shader,Matrix4(1));
+    pixel(80,120,Vector3(.1f,.2f,.6f));pixel(240,120,Vector3(.4f));
+    glClear(GL_COLOR_BUFFER_BIT);
+    merged.Draw(shader,Matrix4(1),nullptr,-1,Color(1),nullptr,-1,true,nullptr,nullptr,&ranges[1]);
+    pixel(80,120,Vector3(0));pixel(240,120,Vector3(.4f));
+    Check(glGetError()==GL_NO_ERROR,"Lighting scenarios caused an OpenGL sampler/buffer error");
+    model.Free();legacy.Free();merged.Free();shader.UnUse();glEnable(GL_DEPTH_TEST);
 }
 
 static void VertexColorsSurviveInstancing() {
@@ -1703,7 +1752,8 @@ static void LightingProbeRendering(Window& window) {
     const auto root=std::filesystem::temp_directory_path()/("canis-probes-"+std::to_string(SDL_GetTicksNS()));
     std::filesystem::create_directories(root);
     std::ofstream(root/"red.material")<<"color: [1,0,0,1]\nbackFaceCulling: false\n";
-    Scene scene;scene.SetEnvironmentAmbientLight(Color(1,1,1,1));scene.SetEnvironmentAmbientLightIntensity(.3f);
+    App app;Editor editor;app.RegisterDefaults(editor);
+    Scene scene;scene.Init(&app,&window,nullptr);scene.SetEnvironmentAmbientLight(Color(1,1,1,1));scene.SetEnvironmentAmbientLightIntensity(.3f);
     const int id=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
     quad.vertices={{{-2,-2,0},{0,0,1},{}},{{2,-2,0},{0,0,1},{}},{{2,2,0},{0,0,1},{}},{{-2,2,0},{0,0,1},{}}};
     quad.indices={0,1,2,0,2,3};
@@ -1760,7 +1810,74 @@ static void LightingProbeRendering(Window& window) {
     sourceModel.staticModel=false;renderer.InvalidateLightingProbes();auto empty=draw();
     Check(empty==baseline,"Dynamic objects leaked into static probe capture");
     p.enabled=false;Check(draw()==baseline && renderer.ReadyLightingProbeCount()==0,"Disabled probe retained lighting");
-    scene.GetLightingProbes().clear();draw();renderer.OnDestroy();AssetManager::FreeModel(id);
+    scene.GetLightingProbes().clear();draw();
+    // Older desktop contexts retain their tested legacy captures.
+    if(!(GLEW_VERSION_4_0 || GLEW_ARB_texture_cube_map_array)) {
+        renderer.OnDestroy();AssetManager::FreeModel(id);std::filesystem::remove_all(root);return;
+    }
+    // All endpoint captures are explicitly prepared before a scenario transition.
+    sourceModel.staticModel=true;probe.specularIntensity=0;probe.diffuseIntensity=1;probe.enabled=true;
+    scene.GetLightingProbes().push_back(probe);
+    LightingScenario dusk;dusk.id="dusk";dusk.name="Dusk";dusk.ambientLight=Color(1);dusk.ambientIntensity=.3f;dusk.sunEnabled=false;
+    dusk.probeCachePaths={(root/"dusk.probe").string()};
+    LightingScenario night=dusk;night.id="night";night.name="Night";night.ambientIntensity=.02f;night.probeCachePaths={(root/"night.probe").string()};
+    Pipeline::Mesh sourceMesh;Pipeline::Primitive sourcePrimitive;
+    for(const auto& vertex:quad.vertices)sourcePrimitive.vertices.push_back({vertex.position,vertex.normal,vertex.uv,Vector4(vertex.color)});
+    sourcePrimitive.indices=quad.indices;sourceMesh.primitives.push_back(sourcePrimitive);
+    Pipeline::WriteGltf(sourceMesh,root/"surface-source.gltf");
+    const int sourceId=AssetManager::LoadModel((root/"surface-source.gltf").string());
+    sourceModel.modelId=sourceId;receiver.GetComponent<Model>().modelId=sourceId;
+    scene.GetLightingScenarios()={dusk,night};
+    LightingBakeOptions bakeOptions;bakeOptions.vertexSpacing=2;bakeOptions.indirectSamples=0;
+    auto surfaceBake=BakeLightingScenarios(CaptureLightingBakeScene(scene),root/"baked",scene.GetLightingScenarios(),bakeOptions);
+    ApplyLightingBake(scene,surfaceBake);scene.GetLightingScenarios()=surfaceBake.scenarios;
+    scene.SetLightingScenarioSources(surfaceBake.scene["Environment"]["LightingScenarioSources"]);
+    dusk=scene.GetLightingScenarios()[0];night=scene.GetLightingScenarios()[1];
+    const auto authoredAmbient=scene.GetEnvironmentAmbientLight();const float authoredIntensity=scene.GetEnvironmentAmbientLightIntensity();
+    std::string prepareError;
+    Check(!renderer.PrepareLightingScenarios(false,prepareError) && !prepareError.empty(),"Missing scenario probe caches were silently considered ready");
+    draw();Check(!std::filesystem::exists(dusk.probeCachePaths[0]),"Ordinary rendering synchronously captured missing scenario probes");
+    Check(renderer.PrepareLightingScenarios(true,prepareError) && renderer.LightingScenariosReady(),"Explicit scenario probe preparation failed");
+    const auto duskTime=std::filesystem::last_write_time(dusk.probeCachePaths[0]);
+    const auto nightTime=std::filesystem::last_write_time(night.probeCachePaths[0]);
+    scene.SetLightingScenarioPreview("dusk","night",0);const auto duskPixel=draw();
+    scene.SetLightingScenarioPreview("dusk","night",.5f);const auto middlePixel=draw();
+    scene.SetLightingScenarioPreview("dusk","night",1);const auto nightPixel=draw();
+    LightingScenario unbaked=night;unbaked.id="new-unbaked";unbaked.name="New unbaked";unbaked.probeCachePaths.clear();
+    scene.GetLightingScenarios().push_back(unbaked);
+    Check(!renderer.PrepareLightingScenarios(false,prepareError),"An unbaked scenario was considered prepared");
+    Check(renderer.LightingScenarioProbesReady("dusk") && renderer.LightingScenarioProbesReady("night") &&
+          !renderer.LightingScenarioProbesReady("new-unbaked"),"Per-scenario readiness did not preserve prepared endpoints");
+    scene.SetLightingScenarioPreview("dusk","night",0);Check(draw()==duskPixel,"Adding an unbaked scenario removed a valid dusk capture");
+    scene.SetLightingScenarioPreview("dusk","night",1);Check(draw()==nightPixel,"Adding an unbaked scenario removed a valid night capture");
+    scene.GetLightingScenarios().pop_back();
+    scene.GetLightingScenarios()[0].ambientIntensity=.31f;
+    Check(!renderer.LightingScenarioProbesReady("dusk") && renderer.LightingScenarioProbesReady("night"),
+        "Editing a scenario retained stale per-ID readiness");
+    scene.GetLightingScenarios()[0]=dusk;
+    Check(renderer.LightingScenarioProbesReady("dusk"),"Restoring an unchanged authoring definition lost readiness");
+    Check(duskPixel[0]>middlePixel[0]+3 && middlePixel[0]>nightPixel[0]+3,"Scenario captures and dynamic receiver lighting failed to blend");
+    Check(scene.GetEnvironmentAmbientLight()==authoredAmbient && scene.GetEnvironmentAmbientLightIntensity()==authoredIntensity,
+        "Scenario capture/preview overwrote authored ambient values");
+    Check(std::filesystem::last_write_time(dusk.probeCachePaths[0])==duskTime &&
+          std::filesystem::last_write_time(night.probeCachePaths[0])==nightTime,"Scenario blending recaptured probe data");
+    renderer.InvalidateLightingProbes();Check(renderer.PrepareLightingScenarios(false,prepareError),"Prepared endpoint probes failed to reload");
+    std::filesystem::remove(night.probeCachePaths[0]);
+    Check(!renderer.PrepareLightingScenarios(false,prepareError) && !std::filesystem::exists(night.probeCachePaths[0]),
+        "Missing endpoint cache was captured during a load-only preparation");
+    scene.ClearLightingScenarioPreview();scene.GetLightingProbes().clear();
+    auto noProbeBake=BakeLightingScenarios(CaptureLightingBakeScene(scene),root/"baked-no-probes",scene.GetLightingScenarios(),bakeOptions);
+    ApplyLightingBake(scene,noProbeBake);scene.GetLightingScenarios()=noProbeBake.scenarios;
+    scene.SetLightingScenarioSources(noProbeBake.scene["Environment"]["LightingScenarioSources"]);
+    Check(renderer.PrepareLightingScenarios(false,prepareError) && renderer.LightingScenarioProbesReady("dusk") &&
+          renderer.LightingScenarioProbesReady("night"),"Valid zero-probe scenarios failed surface readiness");
+    scene.GetLightingScenarios()[0].ambientIntensity=.31f;
+    Check(!renderer.LightingScenarioProbesReady("dusk") && renderer.LightingScenarioProbesReady("night"),
+        "Zero-probe scenes retained readiness for edited surface lighting");
+    Check(!renderer.PrepareLightingScenarios(true,prepareError) && !renderer.LightingScenarioProbesReady("dusk") &&
+          renderer.LightingScenarioProbesReady("night"),"Zero-probe preparation skipped surface validation");
+    scene.GetLightingScenarios().clear();renderer.OnDestroy();AssetManager::FreeModel(id);AssetManager::FreeModel(sourceId);
+    std::cout<<"Lighting scenarios preserve linear channel pixels, prepared endpoint probes, partial readiness and zero-probe surface validation\n";
     std::filesystem::remove_all(root);
 }
 
@@ -1934,6 +2051,7 @@ int main(int argc,char** argv) {
         SinglePassPixels();
         SoftDepthIntersections(window);
         VertexColorsSurviveInstancing();
+        LightingScenarioPixels();
         PickingIdsIgnoreMaterialTint();
         BakedVisibilitySafety();
         MaterialSlotCulling(window);

@@ -29,6 +29,7 @@
 #include <unordered_set>
 
 #include <glm/gtc/quaternion.hpp>
+#include <glm/gtc/packing.hpp>
 #include <stb_image.h>
 #define STB_VORBIS_HEADER_ONLY
 #include <stb_vorbis.c>
@@ -2233,6 +2234,25 @@ namespace Canis
                 }
 
                 const size_t vertexCount = positionAccessor.count;
+                if (primitive.extras.IsObject() && primitive.extras.Has("canisLightingScenarios"))
+                {
+                    const auto& channels = primitive.extras.Get("canisLightingScenarios");
+                    if (channels.IsObject()) for (const auto& id : channels.Keys())
+                    {
+                        const auto& value = channels.Get(id);
+                        if (!value.IsInt()) continue;
+                        const int accessorIndex = value.Get<int>();
+                        if (accessorIndex < 0 || accessorIndex >= int(gltfModel.accessors.size())) continue;
+                        const auto& accessor = gltfModel.accessors[accessorIndex];
+                        std::vector<float> colors;
+                        if (accessor.type != TINYGLTF_TYPE_VEC3 || accessor.count != vertexCount ||
+                            !ReadAccessorFloats(gltfModel, accessor, colors)) continue;
+                        auto& output = outputPrimitive.lightingScenarios[id];
+                        output.reserve(vertexCount);
+                        for (size_t i=0;i<vertexCount;++i)
+                            output.emplace_back(colors[i*3], colors[i*3+1], colors[i*3+2]);
+                    }
+                }
                 outputPrimitive.bindVertices.resize(vertexCount);
                 outputPrimitive.skinnedVertices.resize(vertexCount);
 
@@ -2450,6 +2470,8 @@ namespace Canis
                 primitive.skinVertices.size() == primitive.bindVertices.size();
             primitive.dynamicVertices = buildPrimitive.dynamicVertices || primitive.hasSkinning;
             primitive.bakedLighting = buildPrimitive.bakedLighting;
+            primitive.lightingScenarios = buildPrimitive.lightingScenarios;
+            std::erase_if(primitive.lightingScenarios,[&](const auto& channel) { return channel.second.size()!=primitive.bindVertices.size(); });
             primitive.normalTextureId = buildPrimitive.normalTextureId;
             primitive.emissionTextureId = buildPrimitive.emissionTextureId;
             primitive.emissionFactor = buildPrimitive.emissionFactor;
@@ -2516,6 +2538,19 @@ namespace Canis
                     vertex.position = Vector3(matrix * Vector4(vertex.position, 1));
                     vertex.normal = normalMatrix * vertex.normal;
                     group.vertices.push_back(vertex);
+                }
+                // Channels share the same vertices and draw ranges as their geometry.
+                // A source missing a scenario retains its legacy irradiance.
+                for (const auto& [id, values] : primitive.lightingScenarios)
+                    if (!group.lightingScenarios.contains(id)) {
+                        auto& output=group.lightingScenarios[id];
+                        output.reserve(group.vertices.size());
+                        for (unsigned int i=0;i<firstVertex;++i) output.emplace_back(group.vertices[i].color);
+                    }
+                for (auto& [id, output] : group.lightingScenarios) {
+                    const auto channel=primitive.lightingScenarios.find(id);
+                    for (size_t i=0;i<primitive.bindVertices.size();++i)
+                        output.push_back(channel!=primitive.lightingScenarios.end() ? channel->second[i] : Vector3(primitive.bindVertices[i].color));
                 }
                 for (auto index : primitive.indices) group.indices.push_back(firstVertex + index);
                 auto& ranges = sourceRanges[sourceIndex];
@@ -2649,6 +2684,8 @@ namespace Canis
                 glDeleteBuffers(1, &primitive.instanceVbo);
             if (primitive.skinVbo != 0)
                 glDeleteBuffers(1, &primitive.skinVbo);
+            if (primitive.lightingScenarioBuffer) glDeleteBuffers(1, &primitive.lightingScenarioBuffer);
+            if (primitive.lightingScenarioTexture) glDeleteTextures(1, &primitive.lightingScenarioTexture);
             if (primitive.ebo != 0)
                 glDeleteBuffers(1, &primitive.ebo);
             if (primitive.vbo != 0)
@@ -2724,8 +2761,61 @@ namespace Canis
                                   reinterpret_cast<void*>(offsetof(SkinVertex3D, weights)));
         }
 
+#if !defined(__EMSCRIPTEN__)
+        if (!_primitive.lightingScenarios.empty())
+        {
+            std::vector<uint16_t> packed;
+            for (const auto& [id, values] : _primitive.lightingScenarios)
+            {
+                if (values.size()!=_primitive.bindVertices.size()) continue;
+                _primitive.lightingScenarioOffsets[id]=int(packed.size()/4);
+                for (const auto& value : values) {
+                    for(int c=0;c<3;++c)packed.push_back(glm::packHalf1x16(glm::clamp(std::isfinite(value[c])?value[c]:0.f,0.f,65504.f)));
+                    packed.push_back(glm::packHalf1x16(1));
+                }
+            }
+            if (!packed.empty()) {
+                glGenBuffers(1, &_primitive.lightingScenarioBuffer);
+                glBindBuffer(GL_TEXTURE_BUFFER, _primitive.lightingScenarioBuffer);
+                glBufferData(GL_TEXTURE_BUFFER, packed.size()*sizeof(uint16_t), packed.data(), GL_STATIC_DRAW);
+                glGenTextures(1, &_primitive.lightingScenarioTexture);
+                glActiveTexture(GL_TEXTURE14);
+                glBindTexture(GL_TEXTURE_BUFFER, _primitive.lightingScenarioTexture);
+                glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA16F, _primitive.lightingScenarioBuffer);
+                glBindBuffer(GL_TEXTURE_BUFFER, 0);
+                glActiveTexture(GL_TEXTURE0);
+            }
+        }
+#endif
         glBindVertexArray(0);
         return true;
+    }
+
+    void ModelAsset::SetLightingScenarioBlend(const std::string& from, const std::string& to, float blend)
+    {
+        m_lightingScenarioFrom=from; m_lightingScenarioTo=to;
+        m_lightingScenarioBlend=glm::clamp(blend,0.f,1.f);
+    }
+
+    void ModelAsset::BindLightingScenarios(Shader& shader, const Primitive3D& primitive) const
+    {
+        const auto from=primitive.lightingScenarioOffsets.find(m_lightingScenarioFrom);
+        const auto to=primitive.lightingScenarioOffsets.find(m_lightingScenarioTo);
+        const bool enabled=primitive.lightingScenarioTexture && from!=primitive.lightingScenarioOffsets.end() &&
+                           to!=primitive.lightingScenarioOffsets.end();
+        shader.SetBool("canisUseScenarioLighting", enabled);
+        // Sampler types must have distinct units even when their branch is disabled.
+        shader.SetInt("canisLightingScenarioData",14);
+        if (!enabled) return;
+        shader.SetInt("canisLightingScenarioFrom",from->second);
+        shader.SetInt("canisLightingScenarioTo",to->second);
+        shader.SetFloat("canisLightingScenarioBlend",m_lightingScenarioBlend);
+#if !defined(__EMSCRIPTEN__)
+        glActiveTexture(GL_TEXTURE14);
+        glBindSampler(14,0);
+        glBindTexture(GL_TEXTURE_BUFFER,primitive.lightingScenarioTexture);
+        glActiveTexture(GL_TEXTURE0);
+#endif
     }
 
     bool ModelAsset::Free()
@@ -3299,6 +3389,7 @@ namespace Canis
             }
             glActiveTexture(GL_TEXTURE0);
             _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
+            BindLightingScenarios(_shader, primitive);
             glBindVertexArray(vertexArray);
             if (ranges)
             {
@@ -3459,6 +3550,7 @@ namespace Canis
             }
             glActiveTexture(GL_TEXTURE0);
             _shader.SetBool("useBakedVertexLighting", primitive.bakedLighting);
+            BindLightingScenarios(_shader, primitive);
             glDrawElementsInstanced(
                 GL_TRIANGLES,
                 static_cast<GLsizei>(primitive.indices.size()),
