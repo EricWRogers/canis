@@ -3163,6 +3163,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         bool DrawAnimatorModelMotionField(
+            Editor& _editor,
             const char* _label,
             const char* _idSuffix,
             std::string& _modelPath)
@@ -3184,6 +3185,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             EditorUI::PropertyLabel(_label);
             ImGui::PushID(_idSuffix);
             ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(_modelPath.empty() ? 0.f : EditorUI::TrailingButtonWidth("Clear")), 0.0f));
+            _editor.NavigateAssetReference(_modelPath);
             if (ImGui::IsItemHovered())
             {
                 ImGui::SetTooltip(
@@ -9411,6 +9413,46 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_hierarchyRevealPath.push_back(current->GetUUID());
     }
 
+    void Editor::RevealAsset(const std::string& _path)
+    {
+        namespace fs = std::filesystem;
+        if (_path.empty()) return;
+        std::error_code ec;
+        fs::path path = fs::path(_path).lexically_normal();
+        if (!fs::is_regular_file(path, ec))
+        {
+            // A shader program can reference the common basename of its stages.
+            if (!path.extension().empty()) return;
+            for (const char* extension : {".vs", ".fs"})
+                if (fs::is_regular_file(path.string() + extension, ec))
+                {
+                    path += extension;
+                    break;
+                }
+            if (!fs::is_regular_file(path, ec)) return;
+        }
+        const fs::path relative = fs::relative(path, "assets", ec);
+        if (ec || relative.empty() || *relative.begin() == "..") return;
+        path = (fs::path("assets") / relative).lexically_normal();
+        m_selectedAssetPath = path.generic_string();
+        m_assetSearch.clear();
+        m_assetRevealTargetPath = m_selectedAssetPath;
+        m_assetRevealFolders.clear();
+        for (auto parent = path.parent_path(); parent != "assets" && !parent.empty(); parent = parent.parent_path())
+            m_assetRevealFolders.push_back(parent.generic_string());
+        m_showAssetsPanel = m_focusAssetsPanel = true;
+    }
+
+    void Editor::NavigateAssetReference(const std::string& _path)
+    {
+        if (ImGui::IsItemHovered(ImGuiHoveredFlags_AllowWhenDisabled) &&
+            ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+        {
+            SceneHistoryIgnoreScope navigation;
+            RevealAsset(_path);
+        }
+    }
+
     void Editor::FocusEntity(Canis::Entity *_entity)
     {
         m_selectedEntityUUIDs.clear();
@@ -9422,6 +9464,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 m_selectedEntityUUIDs.push_back(_entity->GetUUID());
                 m_selectedAssetPath.clear();
                 RequestHierarchyReveal(_entity);
+                m_showHierarchyPanel = true;
                 return;
             }
         }
@@ -10191,7 +10234,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
         {
             if (entity)
+            {
+                SceneHistoryIgnoreScope navigation;
                 FocusEntity(entity);
+            }
         }
 
         if (ImGui::BeginPopupContextItem("ctx"))
@@ -10257,6 +10303,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10309,6 +10356,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::Button(meta->name.c_str(), ImVec2(EditorUI::ControlWidth(), 0));
         else
             ImGui::Button(empty, ImVec2(EditorUI::ControlWidth(), 0));
+        NavigateAssetReference(_variable >= 0 ? AssetManager::GetPath(_variable) : std::string{});
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10348,6 +10396,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10415,6 +10464,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10486,6 +10536,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10553,6 +10604,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -12348,6 +12400,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             EditorUI::PropertyLabel(_label);
             const std::string buttonLabel = display + "##asset_ref";
             ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+            NavigateAssetReference(refPath);
             if (ImGui::IsItemHovered() && !refPath.empty())
             {
                 ImGui::BeginTooltip();
@@ -12757,6 +12810,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             EditorUI::PropertyLabel(uniform.name.c_str());
             const std::string buttonLabel = getTextureDisplayName(textureId) + "##texture_value";
             ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+            NavigateAssetReference(textureId >= 0 ? AssetManager::GetPath(textureId) : std::string{});
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -12853,6 +12907,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::PushID(_key);
             ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(), 0));
+            NavigateAssetReference(refPath);
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -12999,10 +13054,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
 
             std::string shaderLabel = getShaderLabel(passNode["shader"]);
-            ImGui::Text("shader");
-            ImGui::SameLine();
+            EditorUI::PropertyLabel("shader");
             const std::string shaderPopupName = "postprocess_shader_picker##" + std::to_string(i);
-            if (ImGui::Button(shaderLabel.c_str(), ImVec2(220, 0)))
+            ImGui::Button(shaderLabel.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("Choose")), 0));
+            NavigateAssetReference(ResolveAssetRefPath(passNode["shader"]));
+            assignShaderDrop(passNode);
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Choose"))
             {
                 ImGui::OpenPopup(shaderPopupName.c_str());
             }
@@ -13048,8 +13106,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 ImGui::EndPopup();
             }
-            assignShaderDrop(passNode);
-
             const std::string shaderPath = ToLowerCopy(NormalizeShaderAssetPath(ResolveAssetRefPath(passNode["shader"])));
             const bool showBloomControls = shaderPath.find("bloom") != std::string::npos;
             const bool showColorControls = shaderPath.find("color_correction") != std::string::npos;
@@ -13545,7 +13601,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
 
                     AnimationClipAssetHandle previousClip = state.clip;
-                    if (DrawAnimatorModelMotionField(
+                    if (DrawAnimatorModelMotionField(*this,
                             "3D Motion",
                             "animator_inspector_state_model",
                             state.modelPath))
@@ -14296,7 +14352,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::TextDisabled(
                 "Drop a model animation here or use a property clip. A state uses the 3D motion when both are assigned.");
-            if (DrawAnimatorModelMotionField(
+            if (DrawAnimatorModelMotionField(*this,
                     "3D Motion",
                     "animator_window_state_model",
                     state.modelPath))
@@ -14812,6 +14868,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::TextUnformatted("Clip");
         ImGui::SameLine();
         ImGui::Button(clipLabel.c_str(), ImVec2(180, 0));
+        NavigateAssetReference(m_animationClipStatePath);
         if (ImGui::BeginDragDropTarget())
         {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
@@ -15833,6 +15890,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         EditorUI::PropertyLabel("Skybox");
         ImGui::Button((skyboxLabel + "##EnvironmentSkybox").c_str(), ImVec2(EditorUI::ControlWidth(), 0));
+        NavigateAssetReference(uint64_t(skyboxUUID) != 0 ? AssetManager::GetPath(skyboxUUID) : std::string{});
         if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
         {
             m_scene->SetEnvironmentSkyboxUUID(UUID(0));
@@ -15880,6 +15938,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         EditorUI::PropertyLabel("Post process");
         ImGui::Button((postProcessLabel + "##EnvironmentPostProcess").c_str(), ImVec2(EditorUI::ControlWidth(), 0));
+        NavigateAssetReference(uint64_t(postProcessUUID) != 0 ? AssetManager::GetPath(postProcessUUID) : std::string{});
         if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
         {
             m_scene->SetEnvironmentPostProcessUUID(UUID(0));
@@ -17213,6 +17272,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (searchActive)
                     nodeFlags |= ImGuiTreeNodeFlags_DefaultOpen;
 
+                if (std::find(m_assetRevealFolders.begin(), m_assetRevealFolders.end(), fullPath) != m_assetRevealFolders.end())
+                    ImGui::SetNextItemOpen(true);
+
                 bool open = ImGui::TreeNodeEx(entry.path().string().c_str(), nodeFlags, "%s", name.c_str());
 
                 if (ImGui::BeginDragDropTarget())
@@ -17352,6 +17414,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         selected,
                         assetCardWidth,
                         assetCardHeight);
+                    if (m_assetRevealTargetPath == fullPath)
+                    {
+                        ImGui::SetScrollHereY(0.5f);
+                        m_assetRevealTargetPath.clear();
+                        m_assetRevealFolders.clear();
+                    }
                     if (clicked)
                     {
                         if (meta != nullptr)
@@ -17958,11 +18026,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::DrawAssetsPanel()
     {
         Profiler::Scope timing("Editor assets", Profiler::Category::Editor);
+        if (m_focusAssetsPanel) ImGui::SetNextWindowFocus();
         if (!m_panelMaximizer.Begin("Assets", &m_showAssetsPanel))
         {
             ImGui::End();
             return;
         }
+        m_focusAssetsPanel = false;
 
         ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 72.0f));
         ImGui::InputTextWithHint("##AssetSearch", "Search assets...", &m_assetSearch);
@@ -18513,6 +18583,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             const MetaFileAsset* iconMeta = AssetManager::GetMetaFile(iconPath);
             const std::string iconLabel = (iconMeta ? iconMeta->name : "[ none ]") + std::string("##projectIcon");
             ImGui::Button(iconLabel.c_str(), ImVec2(EditorUI::ControlWidth(), 0.0f));
+            NavigateAssetReference(iconPath);
 
             if (ImGui::BeginDragDropTarget())
             {

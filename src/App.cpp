@@ -1106,13 +1106,21 @@ namespace Canis
         // Asset fields share the same label column as scalar and vector properties.
         // Keep their IDs independent of the displayed asset name and reserve room
         // for any trailing action so narrow Inspectors never overflow.
-        bool DrawInspectorAssetButton(const char *_label, const char *_id,
-                                      const std::string &_value, float _trailingWidth = 0.0f)
+        void NavigateInspectorAssetReference(Editor &_editor, const std::string &_path)
+        {
+            _editor.NavigateAssetReference(_path);
+        }
+
+        bool DrawInspectorAssetButton(Editor &_editor, const char *_label, const char *_id,
+                                      const std::string &_value, const std::string &_assetPath,
+                                      float _trailingWidth = 0.0f)
         {
             DrawInspectorFieldLabel(_label);
             SetNextInspectorFieldItemWidth();
             const std::string buttonLabel = _value + "###" + _id;
-            return ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(_trailingWidth), 0.0f));
+            const bool pressed = ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(_trailingWidth), 0.0f));
+            NavigateInspectorAssetReference(_editor, _assetPath);
+            return pressed;
         }
 
         void DrawInspectorReadOnlyText(const char *_label, const std::string &_value)
@@ -1122,7 +1130,7 @@ namespace Canis
             ImGui::TextWrapped("%s", _value.c_str());
         }
 
-        void DrawModelColliderAssetField(const char *_id, std::string &_modelPath, i32 &_modelId)
+        void DrawModelColliderAssetField(Editor &_editor, const char *_id, std::string &_modelPath, i32 &_modelId)
         {
             std::string modelLabel = "[ drop a model ]";
             if (!_modelPath.empty())
@@ -1140,7 +1148,7 @@ namespace Canis
 
             ImGui::PushID(_id);
             const float clearWidth = _modelPath.empty() ? 0.0f : EditorUI::TrailingButtonWidth("X");
-            DrawInspectorAssetButton("model", "modelAsset", modelLabel, clearWidth);
+            DrawInspectorAssetButton(_editor, "model", "modelAsset", modelLabel, _modelPath, clearWidth);
             if (ImGui::IsItemHovered() && !_modelPath.empty())
                 ImGui::SetTooltip("%s", _modelPath.c_str());
 
@@ -3535,7 +3543,7 @@ namespace Canis
                             textureLabel = texturePath;
                     }
 
-                    DrawInspectorAssetButton("texture", "spriteTexture", textureLabel);
+                    DrawInspectorAssetButton(_editor, "texture", "spriteTexture", textureLabel, texturePath);
 
                     if (ImGui::BeginDragDropTarget())
                     {
@@ -3671,7 +3679,9 @@ namespace Canis
                     {
                         TextAsset* textAsset = AssetManager::GetText(text->assetId);
                         MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
-                        DrawInspectorAssetButton("font", "textFont", fontMeta != nullptr ? fontMeta->name : "Missing Font");
+                        DrawInspectorAssetButton(_editor, "font", "textFont",
+                            fontMeta != nullptr ? fontMeta->name : "Missing Font",
+                            textAsset != nullptr ? textAsset->GetPath() : "");
 
                         if (ImGui::BeginDragDropTarget())
                         {
@@ -4582,7 +4592,7 @@ namespace Canis
                 DrawInspectorField(_editor, "useAttachedModel", _conf.name.c_str(), meshCollider->useAttachedModel);
 
                 if (!meshCollider->useAttachedModel)
-                    DrawModelColliderAssetField("MeshColliderModel", meshCollider->modelPath, meshCollider->modelId);
+                    DrawModelColliderAssetField(_editor, "MeshColliderModel", meshCollider->modelPath, meshCollider->modelId);
             },
         };
 
@@ -4666,7 +4676,7 @@ namespace Canis
                 DrawInspectorField(_editor, "convexRadius", _conf.name.c_str(), collider->convexRadius);
                 collider->convexRadius = std::max(0.0f, collider->convexRadius);
                 if (!collider->useAttachedModel)
-                    DrawModelColliderAssetField("ConvexMeshColliderModel", collider->modelPath, collider->modelId);
+                    DrawModelColliderAssetField(_editor, "ConvexMeshColliderModel", collider->modelPath, collider->modelId);
             },
         };
 
@@ -5719,7 +5729,8 @@ namespace Canis
 
                     std::string materialLabel = getMaterialLabel(material->materialId);
 
-                    DrawInspectorAssetButton("material", "baseMaterial", materialLabel);
+                    DrawInspectorAssetButton(_editor, "material", "baseMaterial", materialLabel,
+                        material->materialId >= 0 ? AssetManager::GetPath(material->materialId) : "");
                     handleMaterialDrop(material->materialId);
 
                     Model* model = _entity.HasComponent<Model>() ? &_entity.GetComponent<Model>() : nullptr;
@@ -5740,8 +5751,10 @@ namespace Canis
                                 ? ("slot " + std::to_string(slotIndex))
                                 : ("slot " + std::to_string(slotIndex) + " (" + slotName + ")");
                             const std::string buttonId = "material_slot_" + std::to_string(slotIndex);
-                            DrawInspectorAssetButton(slotLabel.c_str(), buttonId.c_str(),
-                                getMaterialLabel(material->materialIds[static_cast<size_t>(slotIndex)]));
+                            const i32 slotMaterialId = material->materialIds[static_cast<size_t>(slotIndex)];
+                            DrawInspectorAssetButton(_editor, slotLabel.c_str(), buttonId.c_str(),
+                                getMaterialLabel(slotMaterialId),
+                                slotMaterialId >= 0 ? AssetManager::GetPath(slotMaterialId) : "");
                             handleMaterialDrop(material->materialIds[static_cast<size_t>(slotIndex)]);
                         }
                     }
@@ -5972,6 +5985,8 @@ namespace Canis
                                 const std::string textureButtonLabel = getTextureLabel(overrideTextureId) + "##texture_override";
                                 SetNextInspectorFieldItemWidth();
                                 ImGui::Button(textureButtonLabel.c_str(), ImVec2(ImGui::GetContentRegionAvail().x, 0));
+                                NavigateInspectorAssetReference(_editor,
+                                    overrideTextureId >= 0 ? AssetManager::GetPath(overrideTextureId) : "");
                                 if (hasOverride && ImGui::BeginDragDropTarget())
                                 {
                                     if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
@@ -6042,6 +6057,7 @@ namespace Canis
                 auto& group=entity.GetComponent<LODGroup>();
                 DrawInspectorField(editor,"enabled",conf.name.c_str(),group.enabled);
                 DrawInspectorField(editor,"profilePath",conf.name.c_str(),group.profilePath);
+                NavigateInspectorAssetReference(editor, group.profilePath);
                 if(ImGui::BeginDragDropTarget()) {
                     if(auto* payload=ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
                         auto data=*static_cast<const AssetDragData*>(payload->Data);
@@ -6072,7 +6088,7 @@ namespace Canis
                             ImGui::PushID(int(i));auto& level=chain.levels[i];
                             ImGui::Text("LOD %d",int(i));
                             auto oldPath=level.modelPath;
-                            DrawModelColliderAssetField("LODModel",level.modelPath,level.modelId);
+                            DrawModelColliderAssetField(editor,"LODModel",level.modelPath,level.modelId);
                             changed|=oldPath!=level.modelPath;
                             DrawInspectorFieldLabel("Minimum screen height");
                             SetNextInspectorFieldItemWidth();
@@ -6226,7 +6242,8 @@ namespace Canis
                         }
                     }
 
-                    DrawInspectorAssetButton("model", "renderModel", modelLabel);
+                    DrawInspectorAssetButton(_editor, "model", "renderModel", modelLabel,
+                        modelAsset != nullptr ? modelAsset->GetPath() : "");
 
                     if (ImGui::BeginDragDropTarget())
                     {

@@ -349,6 +349,10 @@ void Editor::DrawLightingScenarios() {
         EditorUI::PropertyLabel("Skybox");
         const float clearWidth = ImGui::CalcTextSize("Clear sky").x + ImGui::GetStyle().FramePadding.x * 2.f + ImGui::GetStyle().ItemSpacing.x;
         ImGui::Button((skyLabel + "##ScenarioSky").c_str(), ImVec2(EditorUI::ControlWidth(clearWidth), 0));
+        NavigateAssetReference(!selected->skyboxPath.empty()
+                                   ? selected->skyboxPath
+                                   : selected->skyboxUUID != 0 ? AssetManager::GetPath(UUID(selected->skyboxUUID))
+                                                              : std::string{});
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
                 auto dropped = *static_cast<const AssetDragData *>(payload->Data);

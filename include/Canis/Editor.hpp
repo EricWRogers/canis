@@ -95,7 +95,8 @@ namespace Canis
         void FocusEntity(Canis::Entity* _entity);
         // Call after a scene command that does not use an edited property widget.
         void NotifySceneChanged() { m_sceneHistoryEditWasActive = true; }
-        void RevealAsset(const std::string& path) { m_selectedAssetPath=path;m_assetSearch=std::filesystem::path(path).filename().string();m_showAssetsPanel=true; }
+        void RevealAsset(const std::string& _path);
+        void NavigateAssetReference(const std::string& _path);
         bool BakeBlockoutEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
@@ -472,6 +473,9 @@ namespace Canis
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
         std::string m_assetSearch = {};
+        std::string m_assetRevealTargetPath = {};
+        std::vector<std::string> m_assetRevealFolders = {};
+        bool m_focusAssetsPanel = false;
         std::string m_prefabDropStatus = {};
         struct MaterialPreviewCacheEntry
         {

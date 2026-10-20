@@ -47,6 +47,9 @@ namespace Canis
         (void)_entity;
     }
 
+    void Editor::RevealAsset(const std::string&) {}
+    void Editor::NavigateAssetReference(const std::string&) {}
+
     void Editor::RebuildPrefabInstance(Canis::Entity* _entity)
     {
         (void)_entity;
