@@ -59,6 +59,7 @@
 #include <limits>
 #include <optional>
 #include <sstream>
+#include <stdexcept>
 #include <unordered_map>
 
 #include <stb_image_write.h>
@@ -152,6 +153,11 @@ namespace Canis
         uint64_t interactiveFramesRemaining = 0u;
         std::string interactiveCaptureLabel = "initial";
         size_t interactiveStep = 0u;
+        // Persistent input-script state is independent from GetState(): an
+        // unfocused simulated frame intentionally clears its public hands.
+        // Merging all due patches here preserves untouched controls and allows
+        // several events at the same timestamp to form one coherent XR frame.
+        std::optional<VR::State> scriptedVRState = std::nullopt;
     };
 
     VR::System* App::GetVR() { return m_runtime ? m_runtime->vr.get() : nullptr; }
@@ -186,6 +192,7 @@ namespace Canis
         runtime.window->SetSync(Window::IMMEDIATE);
         runtime.stopEditorVR = false;
         runtime.vr = std::move(vr);
+        runtime.scriptedVRState.reset();
         Time::ResetFrameClock();
         Debug::Log("Editor VR started: %s", runtime.vr->GetDiagnostics().runtime.c_str());
         Debug::Log("VR hand tracking: %s", runtime.vr->GetDiagnostics().handTracking.c_str());
@@ -208,6 +215,7 @@ namespace Canis
             const auto& d = runtime.vr->GetDiagnostics();
             Debug::Log("Editor VR stopped: frames=%llu eyes=%llu", (unsigned long long)d.frames, (unsigned long long)d.renderedEyes);
             runtime.vr.reset();
+            runtime.scriptedVRState.reset();
         }
         runtime.stopEditorVR = false;
         runtime.window->SetSync(runtime.syncBeforeVR);
@@ -567,6 +575,128 @@ namespace Canis
             return true;
         }
 
+        Vector3 ReadRuntimeVRVector(const YAML::Node& node, Vector3 fallback)
+        {
+            if (!node)
+                return fallback;
+            if (!node.IsSequence() || node.size() != 3u)
+                throw std::runtime_error("VR position/rotation requires three numbers");
+            Vector3 value(node[0].as<float>(), node[1].as<float>(), node[2].as<float>());
+            if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z))
+                throw std::runtime_error("VR pose numbers must be finite");
+            return value;
+        }
+
+        void PatchRuntimeVRPose(const YAML::Node& node, VR::Pose& pose)
+        {
+            if (!node || !node.IsMap())
+                throw std::runtime_error("VR poses must be objects");
+            pose.position = ReadRuntimeVRVector(node["position"], pose.position);
+            if (node["rotation"])
+                pose.orientation = Quaternion(glm::radians(ReadRuntimeVRVector(node["rotation"], Vector3(0))));
+            // Quaternion order follows OpenXR/glTF: [x, y, z, w]. Explicit
+            // quaternion takes precedence over the Euler-degrees convenience.
+            if (const auto quaternion = node["quaternion"]; quaternion)
+            {
+                if (!quaternion.IsSequence() || quaternion.size() != 4u)
+                    throw std::runtime_error("VR quaternion requires [x, y, z, w]");
+                Quaternion value(quaternion[3].as<float>(), quaternion[0].as<float>(),
+                                 quaternion[1].as<float>(), quaternion[2].as<float>());
+                const float length = glm::dot(value, value);
+                if (!std::isfinite(value.x) || !std::isfinite(value.y) || !std::isfinite(value.z) ||
+                    !std::isfinite(value.w) || !std::isfinite(length) || length < .0001f)
+                    throw std::runtime_error("VR quaternion must be finite and nonzero");
+                pose.orientation = glm::normalize(value);
+            }
+            if (node["valid"])
+                pose.valid = node["valid"].as<bool>();
+        }
+
+        void PatchRuntimeVRHand(const YAML::Node& node, VR::Hand& hand)
+        {
+            if (!node || !node.IsMap())
+                throw std::runtime_error("VR hands must be objects");
+            bool gripChanged = false;
+            if (node["position"] || node["rotation"] || node["quaternion"] || node["valid"])
+            {
+                PatchRuntimeVRPose(node, hand.grip);
+                gripChanged = true;
+            }
+            if (node["grip"])
+            {
+                PatchRuntimeVRPose(node["grip"], hand.grip);
+                gripChanged = true;
+            }
+            if (node["aim"])
+                PatchRuntimeVRPose(node["aim"], hand.aim);
+            else if (gripChanged)
+                hand.aim = hand.grip;
+            for (auto entry : {std::pair{"trigger", &hand.trigger}, std::pair{"squeeze", &hand.squeeze}})
+            {
+                if (!node[entry.first])
+                    continue;
+                const float value = node[entry.first].as<float>();
+                if (!std::isfinite(value))
+                    throw std::runtime_error("VR trigger/squeeze must be finite");
+                *entry.second = std::clamp(value, 0.f, 1.f);
+            }
+            if (node["stick"])
+            {
+                Vector2 value;
+                if (!ReadVector2(node["stick"], value) || !std::isfinite(value.x) || !std::isfinite(value.y))
+                    throw std::runtime_error("VR stick requires two finite numbers");
+                hand.stick = glm::clamp(value, Vector2(-1), Vector2(1));
+            }
+            for (auto entry : {std::pair{"active", &hand.active}, std::pair{"select", &hand.select},
+                               std::pair{"interact", &hand.interact}, std::pair{"jump", &hand.jump},
+                               std::pair{"weaponSwitch", &hand.weaponSwitch},
+                               std::pair{"grappleToggle", &hand.grappleToggle}})
+                if (node[entry.first])
+                    *entry.second = node[entry.first].as<bool>();
+        }
+
+        VR::State RuntimeVRDefaults(const VR::System& vr)
+        {
+            auto state = vr.GetState();
+            if (state.running)
+                return state;
+            state.head = {{0, vr.GetPlayerSettings().localFloorHeight, 0}, {1, 0, 0, 0}, true};
+            state.focused = true;
+            for (unsigned side = 0; side < 2; ++side)
+            {
+                auto& hand = state.hands[side];
+                hand.active = true;
+                hand.grip = {{side ? .25f : -.25f, 1.2f, -.45f}, {1, 0, 0, 0}, true};
+                hand.aim = hand.grip;
+            }
+            return state;
+        }
+
+        void PatchRuntimeVRInput(const YAML::Node& node, VR::State& state)
+        {
+            try
+            {
+                if (!node.IsMap())
+                    throw std::runtime_error("VR input must be an object");
+                auto patch = state;
+                if (node["head"])
+                    PatchRuntimeVRPose(node["head"], patch.head);
+                if (node["left"])
+                    PatchRuntimeVRHand(node["left"], patch.hands[0]);
+                if (node["right"])
+                    PatchRuntimeVRHand(node["right"], patch.hands[1]);
+                if (node["focus"])
+                    patch.focused = node["focus"].as<bool>();
+                if (node["focused"])
+                    patch.focused = node["focused"].as<bool>();
+                state = std::move(patch);
+            }
+            catch (const std::exception& error)
+            {
+                Debug::Warning("Runtime VR input patch ignored: %s", error.what());
+            }
+        }
+
         bool LoadRuntimeTimeline(
             const std::string &_path,
             std::vector<RuntimeTimelineEvent> &_outEvents,
@@ -693,7 +823,7 @@ namespace Canis
                 YAML::Node immediateEvent(YAML::NodeType::Map);
                 immediateEvent["time"] = _simulationTime;
                 bool hasImmediateInput = false;
-                for (const char *field : {"keyboard", "mouse", "gamepad"})
+                for (const char *field : {"keyboard", "mouse", "gamepad", "vr", "focus"})
                 {
                     if (command[field])
                     {
@@ -2332,6 +2462,25 @@ namespace Canis
             Time::ResetFrameClock();
 
         Profiler::FrameScope profilerFrame;
+        // Apply simulated tracking before BeginFrame copies it into head/eye
+        // poses. Actual headset sessions never accept scripted tracking input.
+        if (runtime.vr && runtime.vr->IsSimulated() && !runtime.stopEditorVR)
+        {
+            constexpr double vrTimelineEpsilon = 1e-7;
+            for (size_t index = runtime.nextTimelineEvent; index < runtime.timeline.size() &&
+                 runtime.timeline[index].time <= runtime.simulationTime + vrTimelineEpsilon; ++index)
+            {
+                const auto input = runtime.timeline[index].data["vr"];
+                if (!input)
+                    continue;
+                if (!runtime.scriptedVRState)
+                    runtime.scriptedVRState = RuntimeVRDefaults(*runtime.vr);
+                PatchRuntimeVRInput(input, *runtime.scriptedVRState);
+            }
+            if (runtime.scriptedVRState)
+                runtime.vr->SetSimulatedInput(runtime.scriptedVRState->head,
+                    runtime.scriptedVRState->hands, runtime.scriptedVRState->focused);
+        }
         if (runtime.vr && !runtime.stopEditorVR)
         {
             std::string error;
@@ -2991,6 +3140,7 @@ namespace Canis
                 << "  --vr                       Run the OpenXR headset path (requires runtime).\n"
                 << "  --vr-foveation MODE        off (default), fixed, eye; experimental NVIDIA GL path.\n"
                 << "  --vr-sim                   Run deterministic stereo simulation without a headset.\n"
+                << "                             Input events accept vr head/left/right/focus patches.\n"
                 << "  --prepare-lighting-scenarios Capture missing scenario probes before gameplay.\n"
                 << "  --offscreen                 Create a hidden OpenGL window for automated runs.\n";
             return 0;

@@ -115,9 +115,16 @@ namespace Canis::VR
                 interactAction = Action("interact", "Interact / start", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 grappleAction = Action("grapple", "Grapple gauntlet", XR_ACTION_TYPE_BOOLEAN_INPUT);
                 weaponSwitchAction = Action("weapon_switch", "Y / switch weapon", XR_ACTION_TYPE_BOOLEAN_INPUT);
-                for (int profile = 0; profile < 3; ++profile)
+                constexpr std::array<const char*, 5> profiles{
+                    "/interaction_profiles/oculus/touch_controller",
+                    "/interaction_profiles/khr/simple_controller",
+                    "/interaction_profiles/valve/frame_controller_valve",
+                    "/interaction_profiles/valve/index_controller",
+                    "/interaction_profiles/htc/vive_controller"};
+                for (unsigned profile = 0; profile < profiles.size(); ++profile)
                 {
-                    const bool simple = profile == 1, frame = profile == 2;
+                    const bool simple = profile == 1, frame = profile == 2,
+                               index = profile == 3, vive = profile == 4;
                     if (frame && !frameControllerSupported) continue;
                     std::vector<XrActionSuggestedBinding> bindings;
                     for (unsigned i = 0; i < 2; ++i)
@@ -127,6 +134,22 @@ namespace Canis::VR
                         add(gripAction, "/input/grip/pose"); add(aimAction, "/input/aim/pose");
                         add(hapticAction, "/output/haptic");
                         if (simple) add(selectAction, "/input/select/click");
+                        else if (index || vive)
+                        {
+                            add(triggerAction, "/input/trigger/value");
+                            // OpenXR converts the Vive's binary grip to the
+                            // float action's 0/1 range. Index exposes force.
+                            add(squeezeAction, index ? "/input/squeeze/force" : "/input/squeeze/click");
+                            add(stickAction, index ? "/input/thumbstick" : "/input/trackpad");
+                            add(selectAction, index ? "/input/a/click" : "/input/menu/click");
+                            if (index)
+                            {
+                                add(i == 0 ? weaponSwitchAction : jumpAction, "/input/b/click");
+                                add(i == 0 ? interactAction : grappleAction, "/input/thumbstick/click");
+                            }
+                            else
+                                add(i == 0 ? interactAction : jumpAction, "/input/trackpad/click");
+                        }
                         else
                         {
                             add(triggerAction, "/input/trigger/value"); add(squeezeAction, "/input/squeeze/value");
@@ -144,11 +167,15 @@ namespace Canis::VR
                         }
                     }
                     XrInteractionProfileSuggestedBinding info{XR_TYPE_INTERACTION_PROFILE_SUGGESTED_BINDING};
-                    info.interactionProfile = Path(frame ? "/interaction_profiles/valve/frame_controller_valve" : simple ? "/interaction_profiles/khr/simple_controller" : "/interaction_profiles/oculus/touch_controller");
+                    info.interactionProfile = Path(profiles[profile]);
                     info.countSuggestedBindings = static_cast<uint32_t>(bindings.size());
                     info.suggestedBindings = bindings.data();
                     const auto result = xrSuggestInteractionProfileBindings(instance, &info);
-                    if (result != XR_ERROR_PATH_UNSUPPORTED) Check(result, "xrSuggestInteractionProfileBindings");
+                    if (XR_FAILED(result) && (result == XR_ERROR_PATH_UNSUPPORTED || frame || index || vive))
+                        Debug::Warning("OpenXR controller bindings unavailable for %s (%d); other controller profiles remain enabled",
+                                       profiles[profile], result);
+                    else
+                        Check(result, "xrSuggestInteractionProfileBindings");
                 }
                 for (unsigned i = 0; i < 2; ++i)
                 {
@@ -177,6 +204,34 @@ namespace Canis::VR
                 XrSessionActionSetsAttachInfo attach{XR_TYPE_SESSION_ACTION_SETS_ATTACH_INFO};
                 attach.countActionSets = 1; attach.actionSets = &actions;
                 Check(xrAttachSessionActionSets(session, &attach), "xrAttachSessionActionSets");
+            }
+            void LogInteractionProfiles()
+            {
+                for (unsigned i = 0; i < handPaths.size(); ++i)
+                {
+                    XrInteractionProfileState current{XR_TYPE_INTERACTION_PROFILE_STATE};
+                    const auto result = xrGetCurrentInteractionProfile(session, handPaths[i], &current);
+                    if (XR_FAILED(result))
+                    {
+                        Debug::Warning("OpenXR could not read %s controller profile (%d)", i ? "right" : "left", result);
+                        continue;
+                    }
+                    std::array<char, XR_MAX_PATH_LENGTH> name{};
+                    if (current.interactionProfile == XR_NULL_PATH)
+                        std::strcpy(name.data(), "none");
+                    else
+                    {
+                        uint32_t length = 0;
+                        const auto converted = xrPathToString(instance, current.interactionProfile,
+                            static_cast<uint32_t>(name.size()), &length, name.data());
+                        if (XR_FAILED(converted))
+                        {
+                            Debug::Warning("OpenXR could not name %s controller profile (%d)", i ? "right" : "left", converted);
+                            continue;
+                        }
+                    }
+                    Debug::Log("OpenXR controller profile hand=%s profile=%s", i ? "right" : "left", name.data());
+                }
             }
             Pose Locate(XrSpace target)
             {
@@ -474,6 +529,8 @@ namespace Canis::VR
                 while ((poll = xrPollEvent(instance, &event)) == XR_SUCCESS)
                 {
                     if (event.type == XR_TYPE_EVENT_DATA_INSTANCE_LOSS_PENDING) state.exitRequested = true;
+                    if (event.type == XR_TYPE_EVENT_DATA_INTERACTION_PROFILE_CHANGED)
+                        LogInteractionProfiles();
                     if (event.type == XR_TYPE_EVENT_DATA_SESSION_STATE_CHANGED)
                     {
                         const auto& changed = reinterpret_cast<const XrEventDataSessionStateChanged&>(event);

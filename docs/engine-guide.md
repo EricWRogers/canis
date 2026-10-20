@@ -510,6 +510,47 @@ This guide is intentionally broad. Good next docs to add later would be:
 - an editor guide
 - a scripting cookbook with examples
 
+## Simulated headset input replay
+
+With `--vr-sim`, `--input-script` JSON/YAML events can patch tracked poses and
+controller input through a `vr` object. Times are simulation seconds. The same
+payload works in immediate `--interactive-test` commands.
+
+```json
+{
+  "events": [
+    {"time": 0, "vr": {
+      "head": {"position": [0, 1.66, 0], "rotation": [0, 0, 0]},
+      "left": {"position": [-0.25, 1.2, -0.45]},
+      "right": {"grip": {"position": [0.22, 1.50, 0.25]}, "squeeze": 0},
+      "focus": true
+    }},
+    {"time": 0.2, "vr": {"right": {"squeeze": 1}}},
+    {"time": 0.3, "vr": {"right": {"squeeze": 0, "position": [0.25, 1.35, -0.4]}}},
+    {"time": 0.5, "vr": {"right": {"trigger": 1}}},
+    {"time": 0.7, "vr": {"right": {"trigger": 0}}},
+    {"time": 0.9, "vr": {"focus": false}},
+    {"time": 1.0, "vr": {"focus": true}}
+  ]
+}
+```
+
+Positions are metres in tracking space, with +Y up and -Z forward. `rotation`
+contains Euler XYZ degrees; `quaternion: [x,y,z,w]` takes precedence when both
+are provided. Poses accept `valid: false` to simulate tracking loss, followed by
+`valid: true` to recover. Each hand accepts `grip` and `aim` pose objects, or pose
+fields directly as a grip shorthand. A changed grip also updates aim unless an
+explicit aim is supplied in that patch.
+
+Hand input fields are `active`, `trigger`, `squeeze`, `stick: [x,y]`, `select`,
+`interact`, `jump`, `weaponSwitch`, and `grappleToggle`. Buttons are booleans;
+trigger/squeeze are clamped to 0–1 and sticks to -1–1. `vr.focused` is an alias for
+`vr.focus`. Unspecified fields persist, including while unfocused. All events due
+on one frame are merged before tracked head, hands and stereo eyes are sampled.
+There is no interpolation: throwing tests should supply successive physical hand
+samples at the intended simulation rate. Malformed/non-finite patches are rejected
+with a warning. Scripted tracking is ignored by real OpenXR sessions.
+
 ## Experimental Single-Pass Opaque VR
 
 Set `CANIS_VR_SINGLE_PASS=1` before launching with `--vr` or `--vr-sim` to
