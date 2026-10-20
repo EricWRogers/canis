@@ -84,6 +84,139 @@ static void RuntimeLocks()
     }
 }
 
+static void ContinuousYawLocks(float dt)
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;
+    physics.scene = &scene;
+    physics.Create();
+    constexpr float pi = 3.14159265358979323846f;
+    const Vector3 up(0, 1, 0), front(0, 0, -1);
+    struct Spinner
+    {
+        Entity entity;
+        Quaternion initial;
+        Vector3 previousForward;
+        float direction = 1, accumulated = 0;
+        bool kinematic = false;
+    };
+    std::vector<Spinner> spinners;
+    for (bool kinematic : {false, true})
+        for (float direction : {-1.f, 1.f})
+            for (float heading : {0.f, pi})
+                for (bool tiltedParent : {false, true})
+                {
+                    auto entity = scene.CreateEntity("Yaw-only turning body");
+                    auto& transform = *entity.AddComponent<Transform>();
+                    transform.position = {float(spinners.size()) * 4, 0, 0};
+                    transform.rotation = glm::angleAxis(heading, up);
+                    if (tiltedParent)
+                    {
+                        transform.rotation *= Quaternion(Vector3(.21f, 0, -.13f));
+                        auto parent = scene.CreateEntity("Rotated body parent");
+                        parent.AddComponent<Transform>()->rotation = Quaternion(Vector3(.1f, .37f, -.08f));
+                        transform.SetParent(&parent); // Preserve the authored world tilt.
+                    }
+                    auto& body = *entity.AddComponent<Rigidbody>();
+                    body.motionType = kinematic ? RigidbodyMotionType::KINEMATIC : RigidbodyMotionType::DYNAMIC;
+                    body.useGravity = false;
+                    body.linearDamping = body.angularDamping = 0;
+                    body.allowSleeping = false;
+                    body.lockRotationX = body.lockRotationZ = true;
+                    entity.AddComponent<BoxCollider>()->size = {.6f, 1, .8f};
+                    const auto initial = transform.GetGlobalRotation();
+                    auto forward = initial * front;
+                    forward.y = 0;
+                    spinners.push_back({entity, initial, glm::normalize(forward), direction, 0, kinematic});
+                }
+    physics.Update(scene.GetRegistry(), dt);
+    for (int frame = 0; frame < int(std::ceil(4.f / dt)); ++frame)
+    {
+        for (auto& spinner : spinners)
+        {
+            auto& body = spinner.entity.GetComponent<Rigidbody>();
+            if (spinner.kinematic)
+                body.Rotate({0, spinner.direction * 2 * dt, 0});
+            else
+                body.SetAngularVelocity({1.25f, spinner.direction * 2, -.75f});
+        }
+        physics.Update(scene.GetRegistry(), dt);
+        for (auto& spinner : spinners)
+        {
+            const auto rotation = spinner.entity.GetComponent<Transform>().GetGlobalRotation();
+            auto forward = rotation * front;
+            forward.y = 0;
+            forward = glm::normalize(forward);
+            const float turn = std::atan2(glm::dot(up, glm::cross(spinner.previousForward, forward)),
+                                           glm::dot(spinner.previousForward, forward));
+            Check(turn * spinner.direction >= -.0001f,
+                  "Yaw-only body reversed at an Euler branch while turning");
+            Check(std::abs(turn) < 2 * std::max(dt, 1.f / 60.f) + .01f,
+                  "Yaw-only body jumped while crossing a rotation branch");
+            spinner.accumulated += turn;
+            spinner.previousForward = forward;
+            for (const auto axis : {Vector3(1, 0, 0), up, Vector3(0, 0, 1)})
+                Check(std::abs((rotation * axis).y - (spinner.initial * axis).y) < .001f,
+                      "Yaw-only rotation changed the authored world tilt");
+            const auto velocity = spinner.entity.GetComponent<Rigidbody>().angularVelocity;
+            Check(std::abs(velocity.x) < .0001f && std::abs(velocity.z) < .0001f,
+                  "Solver rotation locks admitted a locked angular velocity");
+        }
+    }
+    for (const auto& spinner : spinners)
+    {
+        if (std::abs(spinner.accumulated - spinner.direction * 8) > .1f)
+            std::cerr << "Yaw progress dt=" << dt << " kinematic=" << spinner.kinematic
+                      << " direction=" << spinner.direction << " turn=" << spinner.accumulated << '\n';
+        Check(std::abs(spinner.accumulated - spinner.direction * 8) < .1f,
+              "Yaw-only body failed to turn continuously through 180 and 360 degrees");
+    }
+}
+
+static void FullyLockedAuthoredRotation()
+{
+    Scene scene;
+    JoltPhysics3DSystem physics;
+    physics.scene = &scene;
+    physics.Create();
+    for (bool kinematic : {false, true})
+    {
+        auto entity = scene.CreateEntity("All rotation axes locked");
+        auto& transform = *entity.AddComponent<Transform>();
+        transform.position = {kinematic ? 5.f : 0.f, 0, 0};
+        const auto authored = glm::normalize(Quaternion(Vector3(.6f, 2.4f, -.35f)));
+        transform.rotation = authored;
+        auto& body = *entity.AddComponent<Rigidbody>();
+        body.motionType = kinematic ? RigidbodyMotionType::KINEMATIC : RigidbodyMotionType::DYNAMIC;
+        body.useGravity = false;
+        body.allowSleeping = false;
+        body.linearDamping = body.angularDamping = 0;
+        body.lockRotationX = body.lockRotationY = body.lockRotationZ = true;
+        entity.AddComponent<BoxCollider>();
+        const auto start = transform.position;
+        for (int frame = 0; frame < 120; ++frame)
+        {
+            if (kinematic)
+            {
+                body.Rotate({.03f, .07f, -.02f});
+                body.Move({.02f, 0, 0});
+            }
+            else
+            {
+                body.SetAngularVelocity({2, 4, -3});
+                body.SetLinearVelocity({1.2f, 0, 0});
+            }
+            physics.Update(scene.GetRegistry(), 1.f / 60.f);
+            Check(1 - std::abs(glm::dot(authored, transform.GetGlobalRotation())) < .00001f,
+                  "All-axis locks changed an authored nonidentity orientation");
+            Check(glm::length(body.angularVelocity) < .0001f,
+                  "All-axis locks retained commanded angular velocity");
+        }
+        Check(transform.position.x > start.x + 2.3f,
+              "All rotation locks accidentally constrained translation");
+    }
+}
+
 static void SubframeMotionAfterTurn()
 {
     Scene scene;
@@ -364,12 +497,14 @@ int main()
         for (float dt : {1.f/30.f,1.f/60.f,1.f/144.f}) StepContact(dt);
         RotationRebuilds();
         RuntimeLocks();
+        for (float dt : {1.f / 30.f, 1.f / 60.f, 1.f / 144.f}) ContinuousYawLocks(dt);
+        FullyLockedAuthoredRotation();
         SubframeMotionAfterTurn();
         MovingSpinningBodies();
         AdaptivePhysicsJobs();
         StaticEdits();
         UnchangedKinematicCommands();
-        std::cout << "Capsule step contact and runtime rotation locks passed\n";
+        std::cout << "Capsule step contact, runtime rotation locks and continuous yaw turns passed\n";
         return 0;
     } catch (const std::exception& error) {
         std::cerr << error.what() << '\n';

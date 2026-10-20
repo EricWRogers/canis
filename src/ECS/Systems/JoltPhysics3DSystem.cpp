@@ -288,42 +288,6 @@ namespace Canis
             return allowed;
         }
 
-        bool ApplyLockedRotationAxes(
-            const Transform &_desiredTransform,
-            const Rigidbody &_rigidbody,
-            Vector3 &_worldRotation,
-            Vector3 &_angularVelocity)
-        {
-            if (!_rigidbody.lockRotationX && !_rigidbody.lockRotationY && !_rigidbody.lockRotationZ)
-                return false;
-
-            const Vector3 desiredWorldRotation = glm::eulerAngles(_desiredTransform.GetGlobalRotation());
-            bool corrected = false;
-
-            if (_rigidbody.lockRotationX)
-            {
-                corrected = corrected || std::abs(_worldRotation.x - desiredWorldRotation.x) > 0.0005f || std::abs(_angularVelocity.x) > 0.0005f;
-                _worldRotation.x = desiredWorldRotation.x;
-                _angularVelocity.x = 0.0f;
-            }
-
-            if (_rigidbody.lockRotationY)
-            {
-                corrected = corrected || std::abs(_worldRotation.y - desiredWorldRotation.y) > 0.0005f || std::abs(_angularVelocity.y) > 0.0005f;
-                _worldRotation.y = desiredWorldRotation.y;
-                _angularVelocity.y = 0.0f;
-            }
-
-            if (_rigidbody.lockRotationZ)
-            {
-                corrected = corrected || std::abs(_worldRotation.z - desiredWorldRotation.z) > 0.0005f || std::abs(_angularVelocity.z) > 0.0005f;
-                _worldRotation.z = desiredWorldRotation.z;
-                _angularVelocity.z = 0.0f;
-            }
-
-            return corrected;
-        }
-
         void SetTransformFromWorldPose(Transform &_transform, const Vector3 &_worldPosition, const Quaternion &_worldRotation)
         {
             if (_transform.parent != nullptr)
@@ -2074,19 +2038,10 @@ namespace Canis
                 const JPH::Vec3 bodyAngularVelocity = bodyInterface->GetAngularVelocity(runtimeData.bodyID);
                 Vector3 angularVelocity = Vector3(bodyAngularVelocity.GetX(), bodyAngularVelocity.GetY(), bodyAngularVelocity.GetZ());
 
-                Vector3 worldEuler = glm::eulerAngles(worldRotation);
-                if (ApplyLockedRotationAxes(*transform, *rigidbody, worldEuler, angularVelocity))
-                {
-                    worldRotation = glm::normalize(Quaternion(worldEuler));
-                    bodyInterface->SetPositionAndRotation(
-                        runtimeData.bodyID,
-                        ToJoltPosition(worldPosition),
-                        ToJoltRotation(worldRotation),
-                        JPH::EActivation::Activate);
-                    bodyInterface->SetAngularVelocity(runtimeData.bodyID, ToJoltVec3(angularVelocity));
-                    runtimeData.currentWorldPosition = worldPosition;
-                    runtimeData.currentWorldRotation = worldRotation;
-                }
+                // BuildAllowedDOFs constrains velocities, impulses and kinematic
+                // commands inside Jolt. Keep its quaternion pose intact: replacing
+                // individual Euler angles here folds yaw at +/-90 degrees, even
+                // when X/Z are correctly locked by the solver.
 
                 Quaternion interpolatedRotation = runtimeData.currentWorldRotation;
                 if (glm::dot(runtimeData.previousWorldRotation, interpolatedRotation) < 0.0f)
