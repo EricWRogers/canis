@@ -442,6 +442,16 @@ namespace
         scene.ResetLightingScenarioRuntime();
         Check(!scene.IsLightingScenarioBlendManual() && !weather->ApplyManual(.9f, .9f) &&
                   Near(weather->RainIntensity(), .5f), "Reset left manual lighting controls active");
+        emitter.pendingDestroy = true;
+        emitter.spawnAccumulator = .7f;
+        weather->Reset();
+        Check(!weather->IsRunning() && !weather->IsManual() && Near(weather->Elapsed(), 0) &&
+                  Near(weather->RainIntensity(), 0) && weather->LastError().empty() &&
+                  Near(emitter.spawnInterval, .02f) && !emitter.playing && !emitter.initialized &&
+                  !emitter.pendingDestroy && Near(emitter.spawnAccumulator, 0),
+              "Explicit weather reset retained an old rain envelope, timer or emitter runtime state");
+        Check(weather->BeginManual(dusk.id) && weather->ApplyManual(.3f, .4f),
+              "A reset weather component could not start a fresh manual transition");
         owner.RemoveScript<WeatherTransition>();
         Check(Near(emitter.spawnInterval, .02f) && !emitter.playing && !emitter.initialized,
               "Removing animated weather did not restore its authored rain settings");

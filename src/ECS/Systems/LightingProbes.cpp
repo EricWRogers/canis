@@ -10,6 +10,8 @@
 #include <Canis/AssetManager.hpp>
 #include <fstream>
 #include <cstring>
+#include <set>
+#include <functional>
 
 namespace Canis
 {
@@ -28,7 +30,7 @@ namespace Canis
         m_probeTextures.clear();
         m_probeIrradiance.clear();
         if(m_scenarioProbeArray)glDeleteTextures(1,&m_scenarioProbeArray);
-        m_scenarioProbeArray=0;m_scenariosReady=false;
+        m_scenarioProbeArray=0;m_scenariosReady=false;m_scenarioProbeRepairable=false;
         m_scenarioProbeIrradiance.clear();
         m_scenarioReadySignatures.clear();
     }
@@ -44,6 +46,62 @@ namespace Canis
                 hash *= 1099511628211ULL;
             }
         };
+        std::set<std::string> dependencies;
+        std::function<void(const std::string&)> dependency;
+        std::function<void(const YAML::Node&)> references;
+        references = [&](const YAML::Node& node)
+        {
+            if (node.IsMap())
+            {
+                if (node["path"] && node["path"].IsScalar()) dependency(node["path"].as<std::string>());
+                else if (node["uuid"] && node["uuid"].IsScalar())
+                    dependency(AssetManager::GetPath(UUID(node["uuid"].as<uint64_t>())));
+                for (const auto& child : node) references(child.second);
+            }
+            else if (node.IsSequence()) for (const auto& child : node) references(child);
+        };
+        dependency = [&](const std::string& name)
+        {
+            if (name.empty() || name == "Path was not found in AssetLibrary" || name.starts_with("data:")) return;
+            const auto path = std::filesystem::path(name).lexically_normal();
+            if (!dependencies.insert(path.generic_string()).second) return;
+            const auto extension = path.extension().string();
+            // Native shaders are referenced by their shared .vs/.fs prefix.
+            if (extension.empty() || extension == ".shader")
+            {
+                dependency(path.string() + ".vs");
+                dependency(path.string() + ".fs");
+                return;
+            }
+            try
+            {
+                if (extension == ".material" || extension == ".skybox" || extension == ".shadergraph")
+                    references(YAML::LoadFile(path.string()));
+                else if (extension == ".gltf" || extension == ".glb")
+                {
+                    std::ifstream file(path, std::ios::binary);
+                    Pipeline::Json gltf;
+                    if (extension == ".gltf") file >> gltf;
+                    else
+                    {
+                        uint32_t header[5]{};
+                        if (!file.read(reinterpret_cast<char*>(header), sizeof(header)) ||
+                            header[0] != 0x46546c67 || header[3] > 64 * 1024 * 1024 || header[4] != 0x4e4f534a) return;
+                        std::string json(header[3], '\0');
+                        if (!file.read(json.data(), json.size())) return;
+                        gltf = Pipeline::Json::parse(json);
+                    }
+                    for (const char* category : {"buffers", "images"})
+                        if (gltf.contains(category)) for (const auto& item : gltf[category])
+                            if (item.contains("uri"))
+                            {
+                                const auto uri = item["uri"].get<std::string>();
+                                if (!uri.starts_with("data:")) dependency((path.parent_path() / uri).generic_string());
+                            }
+                }
+            }
+            catch (const std::exception&) { /* The file's own missing/changed stamp still invalidates it. */ }
+        };
         auto fileStamp = [&](const std::string& path)
         {
             bytes(path.data(), path.size());
@@ -55,7 +113,7 @@ namespace Canis
         };
         // Capture filtering changes radiance even when all source assets stay
         // unchanged. Rebuild caches captured with nearest-sampled normal maps.
-        constexpr uint32_t captureRevision = 4;
+        constexpr uint32_t captureRevision = 5;
         bytes(&captureRevision, sizeof(captureRevision));
         const auto cloudConfig=YAML::Dump(SerializeCloudVolumeSettings(scene.GetCloudVolumeSettings()));
         bytes(cloudConfig.data(),cloudConfig.size());
@@ -69,26 +127,81 @@ namespace Canis
         const float ambientIntensity = scene.GetEnvironmentAmbientLightIntensity();
         bytes(&ambientIntensity, sizeof(ambientIntensity));
         const auto skyPath = AssetManager::GetPath(scene.GetEnvironmentSkyboxUUID());
-        fileStamp(skyPath);
-        fileStamp("assets/shaders/model3d.vs");
-        fileStamp("assets/shaders/model3d.fs");
-        fileStamp("assets/shaders/skybox.fs");
-        // Texture/material edits also change captured radiance. This scan occurs
-        // only when loading or recapturing probes, never during ordinary frames.
-        if (std::filesystem::exists("assets"))
-            for (const auto& entry : std::filesystem::recursive_directory_iterator("assets"))
+        dependency(skyPath);
+        dependency("assets/shaders/model3d.vs");
+        dependency("assets/shaders/model3d.fs");
+        dependency("assets/shaders/skybox.fs");
+        for (const auto& scenario : scene.GetLightingScenarios())
+            dependency(scenario.skyboxPath.empty() ? AssetManager::GetPath(UUID(scenario.skyboxUUID)) : scenario.skyboxPath);
+        // Capture only depends on static receivers and their actual material,
+        // texture and sky references. Importing a hand atlas or editing another
+        // scene must not disable this scene's weather. Sort both asset paths and
+        // scene UUIDs: filesystem/entt insertion order is not authored radiance.
+        const auto sorted = [&](auto view)
+        {
+            std::vector<entt::entity> handles(view.begin(), view.end());
+            auto id = [&](entt::entity handle) {
+                const auto* metadata = registry.try_get<EntityMetadata>(handle);
+                return metadata ? uint64_t(metadata->uuid) : uint64_t(entt::to_integral(handle));
+            };
+            std::sort(handles.begin(), handles.end(), [&](auto a, auto b) { return id(a) < id(b); });
+            return handles;
+        };
+        const auto assetReference = [&](int id)
+        {
+            const auto path = id >= 0 ? AssetManager::GetPath(id) : std::string{};
+            const auto length = path.size();
+            bytes(&length, sizeof(length));
+            bytes(path.data(), path.size());
+            dependency(path);
+        };
+        const auto fieldDependencies = [&](const MaterialFields& fields)
+        {
+            const auto values = [&](auto uniforms)
             {
-                auto extension = entry.path().extension().string();
-                if (entry.is_regular_file() && (extension == ".material" || extension == ".png" ||
-                                                extension == ".jpg" || extension == ".shader" ||
-                                                extension == ".fs" || extension == ".vs"))
-                    fileStamp(entry.path().string());
+                std::sort(uniforms.begin(), uniforms.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+                const auto count = uniforms.size();
+                bytes(&count, sizeof(count));
+                for (const auto& uniform : uniforms)
+                {
+                    bytes(uniform.name.data(), uniform.name.size());
+                    bytes(&uniform.value, sizeof(uniform.value));
+                }
+            };
+            values(fields.GetIntUniforms());values(fields.GetFloatUniforms());
+            values(fields.GetVec2Uniforms());values(fields.GetVec3Uniforms());
+            values(fields.GetVec4Uniforms());values(fields.GetColorUniforms());
+            auto textures = fields.GetTextureUniforms();
+            std::sort(textures.begin(), textures.end(), [](const auto& a, const auto& b) { return a.name < b.name; });
+            for (const auto& texture : textures)
+            {
+                bytes(texture.name.data(), texture.name.size());
+                assetReference(texture.textureId);
             }
-        for (auto handle : registry.view<Transform, Model>())
+        };
+        auto materialDependencies = [&](const MaterialAsset& material)
+        {
+            for (auto id : {material.shaderId, material.albedoId, material.normalId, material.specularId,
+                            material.roughnessId, material.metallicId, material.emissionId})
+                assetReference(id);
+            bytes(&material.info, sizeof(material.info));
+            bytes(&material.color, sizeof(material.color));
+            bytes(&material.emissionColor, sizeof(material.emissionColor));
+            bytes(&material.emissionIntensity, sizeof(material.emissionIntensity));
+            bytes(&material.specularValue, sizeof(material.specularValue));
+            bytes(&material.roughnessValue, sizeof(material.roughnessValue));
+            bytes(&material.roughnessChannel, sizeof(material.roughnessChannel));
+            bytes(&material.metallicValue, sizeof(material.metallicValue));
+            bytes(&material.normalScale, sizeof(material.normalScale));
+            fieldDependencies(material.materialFields);
+        };
+        for (auto handle : sorted(registry.view<Transform, Model>()))
         {
             auto& t = registry.get<Transform>(handle);
             auto& m = registry.get<Model>(handle);
-            if (!m.staticModel || !t.IsActiveInHierarchy())
+            const auto* body = registry.try_get<Rigidbody>(handle);
+            if (!m.staticModel || !t.IsActiveInHierarchy() ||
+                (body && body->active && body->motionType != RigidbodyMotionType::STATIC))
                 continue;
             auto matrix = t.GetModelMatrix();
             bytes(&matrix, sizeof(matrix));
@@ -97,33 +210,36 @@ namespace Canis
                 continue;
             auto path = asset->GetPath();
             bytes(path.data(), path.size());
-            std::error_code error;
-            auto size = std::filesystem::file_size(path, error);
-            bytes(&size, sizeof(size));
-            auto modified = std::filesystem::last_write_time(path, error).time_since_epoch().count();
-            bytes(&modified, sizeof(modified));
-            auto bin = std::filesystem::path(path);
-            bin.replace_extension(".bin");
-            if (std::filesystem::exists(bin))
-            {
-                auto time = std::filesystem::last_write_time(bin, error).time_since_epoch().count();
-                bytes(&time, sizeof(time));
-            }
+            dependency(path);
+            bytes(&m.nodeIndex, sizeof(m.nodeIndex));
+            bytes(&m.applyNodeTransform, sizeof(m.applyNodeTransform));
             bytes(&m.color, sizeof(m.color));
             bytes(&m.weatherSurface, sizeof(m.weatherSurface));
+            bytes(&m.castShadow, sizeof(m.castShadow));
             if (const auto* material = registry.try_get<Material>(handle))
             {
                 bytes(&material->color, sizeof(material->color));
+                assetReference(material->materialId);
                 if (material->materialId >= 0)
                     if (auto* asset = AssetManager::GetMaterial(material->materialId))
-                        fileStamp(AssetManager::GetPath(material->materialId));
+                    {
+                        materialDependencies(*asset);
+                    }
+                const auto slots = material->materialIds.size();
+                bytes(&slots, sizeof(slots));
                 for (auto id : material->materialIds)
+                {
+                    assetReference(id);
                     if (id >= 0)
                         if (auto* asset = AssetManager::GetMaterial(id))
-                            fileStamp(AssetManager::GetPath(id));
+                        {
+                            materialDependencies(*asset);
+                        }
+                }
+                fieldDependencies(material->materialFields);
             }
         }
-        for (auto handle : registry.view<DirectionalLight>())
+        for (auto handle : sorted(registry.view<DirectionalLight>()))
         {
             const auto& light = registry.get<DirectionalLight>(handle);
             if (light.mode == LightMode::Realtime) continue;
@@ -133,7 +249,7 @@ namespace Canis
             bytes(&light.intensity, sizeof(light.intensity));
             bytes(&light.enabled, sizeof(light.enabled));
         }
-        for (auto handle : registry.view<PointLight, Transform>())
+        for (auto handle : sorted(registry.view<PointLight, Transform>()))
         {
             auto light = registry.get<PointLight>(handle);
             if (light.mode == LightMode::Realtime) continue;
@@ -145,7 +261,7 @@ namespace Canis
             bytes(&light.range, sizeof(light.range));
             bytes(&light.enabled, sizeof(light.enabled));
         }
-        for (auto handle : registry.view<SpotLight, Transform>())
+        for (auto handle : sorted(registry.view<SpotLight, Transform>()))
         {
             const auto& light = registry.get<SpotLight>(handle);
             if (light.mode == LightMode::Realtime) continue;
@@ -162,6 +278,7 @@ namespace Canis
             bytes(&light.innerAngle, sizeof(light.innerAngle));
             bytes(&light.enabled, sizeof(light.enabled));
         }
+        for (const auto& path : dependencies) fileStamp(path);
         return hash;
     }
     static std::string ScenarioProbeSignature(const Scene& scene)
@@ -225,6 +342,7 @@ namespace Canis
     bool MeshRenderer3DSystem::PrepareLightingScenarios(bool captureMissing, std::string& error)
     {
         error.clear();
+        m_scenarioProbeRepairable=false;
         // Warm the resident density texture before a clear-to-storm fade starts,
         // so its first nonzero coverage never generates/uploads noise in play.
         if(scene->GetCloudVolumeSettings().enabled && std::any_of(scene->GetLightingScenarios().begin(),scene->GetLightingScenarios().end(),
@@ -310,6 +428,8 @@ namespace Canis
                     }
                 }
                 if(!capture.cached && (!captureMissing || capture.path.empty())) {
+                    if(!captureMissing && !capture.path.empty() && surfaceReady.size()==scenarios.size())
+                        m_scenarioProbeRepairable=true;
                     if(incompleteError.empty())incompleteError="Prepare lighting probes for '"+scenario.name+"': "+(capture.path.empty()?"scenario has no probe cache paths":"cache is missing or stale");
                     complete=false;break;
                 }
@@ -413,6 +533,19 @@ namespace Canis
 #else
         return false;
 #endif
+    }
+
+    bool MeshRenderer3DSystem::LoadLightingScenarios(std::string& error)
+    {
+        if(PrepareLightingScenarios(false,error))return true;
+        if(!m_scenarioProbeRepairable)return false;
+        // Only a known missing/stale probe cache is repairable automatically.
+        // The capture path validates the current static source fingerprint
+        // against the surface bake before rendering any endpoint cubemaps.
+        Debug::Log("LIGHTING_SCENARIO_PROBES_REPAIR phase=scene-load");
+        const bool ready=PrepareLightingScenarios(true,error);
+        if(ready)Debug::Log("LIGHTING_SCENARIO_PROBES_READY phase=scene-load");
+        return ready;
     }
 
     void MeshRenderer3DSystem::UpdateLightingProbes(entt::registry& registry)

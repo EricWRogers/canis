@@ -21,6 +21,9 @@ namespace Canis
         int ReadyLightingProbeCount() const { return m_scenarioProbeArray ? int(m_probeSettings.size()) : int(m_probeTextures.size()); }
         // Explicit bake/prepare action may capture; ordinary rendering only loads caches.
         bool PrepareLightingScenarios(bool captureMissing, std::string& error);
+        // Scene-load preparation may repair probe caches before gameplay. It
+        // never rebakes geometry or accepts incompatible surface lighting.
+        bool LoadLightingScenarios(std::string& error);
         bool LightingScenariosReady() const { return m_scenariosReady; }
         bool LightingScenarioProbesReady(const std::string& id) const;
         const std::string& LightingScenariosError() const { return m_scenarioError; }
@@ -58,6 +61,7 @@ namespace Canis
         std::vector<LightingProbe> m_probeSettings;
         unsigned int m_scenarioProbeArray=0;
         bool m_scenariosReady=false;
+        bool m_scenarioProbeRepairable=false;
         std::string m_scenarioError, m_scenarioProbeSignature;
         std::vector<std::string> m_scenarioProbeIds;
         std::unordered_map<std::string,std::string> m_scenarioReadySignatures;

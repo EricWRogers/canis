@@ -57,6 +57,9 @@ namespace Canis
         bool BeginManual(const std::string& fromScenario);
         bool ApplyManual(float lightingBlend, float rainIntensity);
         void EndManual();
+        // Release runtime ownership and restore captured emission settings.
+        // A reusable scene/game controller can return to its authored baseline.
+        void Reset();
         bool IsManual() const { return m_manual; }
         bool IsRunning() const { return m_running; }
         float Elapsed() const { return m_elapsed; }
@@ -71,6 +74,8 @@ namespace Canis
             Entity emitter;
             float authoredInterval = 0.03f;
             bool authoredPlaying = false, authoredInitialized = false;
+            bool authoredPendingDestroy = false;
+            float authoredAccumulator = 0;
             WeatherRainEnvelope envelope;
         };
         std::vector<RainState> m_rain;

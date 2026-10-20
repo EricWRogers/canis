@@ -758,10 +758,12 @@ namespace Canis
         LoadEntityNodes(entities);
         if (m_window != nullptr && !m_lightingScenarios.empty()) {
             // Ready callbacks run on the next update. Preload scenario data now,
-            // including scene switches and editor restores, without capturing.
+            // including scene switches and editor restores. Missing/stale probe
+            // caches are repaired here, after validating the existing surface
+            // bake, so reaching a weather trigger never performs captures.
             std::string error;
             if (auto* renderer = GetSystem<MeshRenderer3DSystem>())
-                if (!renderer->PrepareLightingScenarios(false, error))
+                if (!renderer->LoadLightingScenarios(error))
                     Debug::Warning("Lighting scenarios: %s", error.c_str());
         }
     }

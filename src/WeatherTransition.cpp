@@ -203,6 +203,8 @@ namespace Canis
                 state.authoredInterval = emitter.spawnInterval;
                 state.authoredPlaying = emitter.playing;
                 state.authoredInitialized = emitter.initialized;
+                state.authoredPendingDestroy = emitter.pendingDestroy;
+                state.authoredAccumulator = emitter.spawnAccumulator;
                 from = (emitter.initialized ? emitter.playing : emitter.playOnStart) ? 1.0f : 0.0f;
             }
             if (manual)
@@ -227,6 +229,8 @@ namespace Canis
                 emitter.spawnInterval = state.authoredInterval;
                 emitter.playing = state.authoredPlaying;
                 emitter.initialized = state.authoredInitialized;
+                emitter.pendingDestroy = state.authoredPendingDestroy;
+                emitter.spawnAccumulator = state.authoredAccumulator;
             }
         }
         m_rain = std::move(next);
@@ -281,7 +285,7 @@ namespace Canis
         return intensity / float(m_rain.size());
     }
 
-    void WeatherTransition::Destroy()
+    void WeatherTransition::Reset()
     {
         EndManual();
         for (RainState& state : m_rain)
@@ -291,9 +295,18 @@ namespace Canis
                 emitter.spawnInterval = state.authoredInterval;
                 emitter.playing = state.authoredPlaying;
                 emitter.initialized = state.authoredInitialized;
+                emitter.pendingDestroy = state.authoredPendingDestroy;
+                emitter.spawnAccumulator = state.authoredAccumulator;
             }
         m_rain.clear();
-        m_running = false;
+        m_elapsed = 0;
+        m_running = m_manual = m_controlsLighting = false;
+        m_lastError.clear();
+    }
+
+    void WeatherTransition::Destroy()
+    {
+        Reset();
     }
 
     void RegisterWeatherTransition(App& app)

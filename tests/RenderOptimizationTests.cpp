@@ -29,6 +29,7 @@
 #include <iostream>
 #include <limits>
 #include <stdexcept>
+#include <chrono>
 
 using namespace Canis;
 static void Check(bool ok,const char* message) { if(!ok)throw std::runtime_error(message); }
@@ -1978,7 +1979,9 @@ static void LightingProbeRendering(Window& window) {
     // A red wall behind the camera must illuminate/reflect in a dynamic white receiver.
     const auto root=std::filesystem::temp_directory_path()/("canis-probes-"+std::to_string(SDL_GetTicksNS()));
     std::filesystem::create_directories(root);
-    std::ofstream(root/"red.material")<<"color: [1,0,0,1]\nbackFaceCulling: false\n";
+    std::filesystem::copy_file("assets/defaults/textures/square.png",root/"source.png");
+    std::ofstream(root/"red.material")<<"color: [1,0,0,1]\nbackFaceCulling: false\nalbedo:\n  path: "
+                                     <<(root/"source.png").generic_string()<<"\n";
     App app;Editor editor;app.RegisterDefaults(editor);
     Scene scene;scene.Init(&app,&window,nullptr);scene.SetEnvironmentAmbientLight(Color(1,1,1,1));scene.SetEnvironmentAmbientLightIntensity(.3f);
     const int id=AssetManager::CreateModel();ModelAsset::PrimitiveBuild3D quad;
@@ -2064,9 +2067,37 @@ static void LightingProbeRendering(Window& window) {
     std::string prepareError;
     Check(!renderer.PrepareLightingScenarios(false,prepareError) && !prepareError.empty(),"Missing scenario probe caches were silently considered ready");
     draw();Check(!std::filesystem::exists(dusk.probeCachePaths[0]),"Ordinary rendering synchronously captured missing scenario probes");
-    Check(renderer.PrepareLightingScenarios(true,prepareError) && renderer.LightingScenariosReady(),"Explicit scenario probe preparation failed");
+    Check(renderer.LoadLightingScenarios(prepareError) && renderer.LightingScenariosReady(),
+          "Cold scene-load preparation failed to repair missing probe caches before gameplay");
     const auto duskTime=std::filesystem::last_write_time(dusk.probeCachePaths[0]);
     const auto nightTime=std::filesystem::last_write_time(night.probeCachePaths[0]);
+    Check(renderer.LoadLightingScenarios(prepareError) &&
+          std::filesystem::last_write_time(dusk.probeCachePaths[0])==duskTime &&
+          std::filesystem::last_write_time(night.probeCachePaths[0])==nightTime,
+          "Warm scene loading recaptured valid scenario probes");
+    // A local hand/weapon import used to invalidate every scene because the
+    // cache scanned the whole assets folder, in filesystem iteration order.
+    const auto unrelated=std::filesystem::path("assets")/(".probe-dependency-test-"+std::to_string(SDL_GetTicksNS()));
+    struct Cleanup { std::filesystem::path path; ~Cleanup(){std::error_code error;std::filesystem::remove_all(path,error);} } cleanup{unrelated};
+    std::filesystem::create_directories(unrelated);
+    std::ofstream(unrelated/"hand-atlas.png")<<"Unrelated dynamic atlas";
+    std::ofstream(unrelated/"gun.material")<<"color: [0,0,1,1]\n";
+    auto unrelatedActor=scene.CreateEntity("Unrelated dynamic weapon");
+    unrelatedActor.AddComponent<Transform>();
+    unrelatedActor.AddComponent<Model>()->modelId=sourceId;
+    unrelatedActor.AddComponent<Material>()->materialId=AssetManager::LoadMaterial((unrelated/"gun.material").string());
+    Check(renderer.PrepareLightingScenarios(false,prepareError),
+          "An unrelated hand atlas/material import invalidated static scenario captures");
+    unrelatedActor.Destroy();
+    // An actual static model's referenced texture must still invalidate cache
+    // data; restoring identical dependency metadata must restore warm readiness.
+    const auto textureTime=std::filesystem::last_write_time(root/"source.png");
+    std::filesystem::last_write_time(root/"source.png",textureTime+std::chrono::seconds(1));
+    Check(!renderer.PrepareLightingScenarios(false,prepareError),
+          "Editing a captured static material texture retained stale probe caches");
+    std::filesystem::last_write_time(root/"source.png",textureTime);
+    Check(renderer.PrepareLightingScenarios(false,prepareError),
+          "Restoring an unchanged capture dependency failed to restore warm readiness");
     scene.SetLightingScenarioPreview("dusk","night",0);const auto duskPixel=draw();
     scene.SetLightingScenarioPreview("dusk","night",.5f);const auto middlePixel=draw();
     scene.SetLightingScenarioPreview("dusk","night",1);const auto nightPixel=draw();
@@ -2081,8 +2112,12 @@ static void LightingProbeRendering(Window& window) {
     scene.GetLightingScenarios()[0].ambientIntensity=.31f;
     Check(!renderer.LightingScenarioProbesReady("dusk") && renderer.LightingScenarioProbesReady("night"),
         "Editing a scenario retained stale per-ID readiness");
+    Check(!renderer.LoadLightingScenarios(prepareError) &&
+          std::filesystem::last_write_time(dusk.probeCachePaths[0])==duskTime,
+          "Scene-load repair accepted changed surface lighting or recaptured an incompatible bake");
     scene.GetLightingScenarios()[0]=dusk;
-    Check(renderer.LightingScenarioProbesReady("dusk"),"Restoring an unchanged authoring definition lost readiness");
+    Check(renderer.PrepareLightingScenarios(false,prepareError) && renderer.LightingScenarioProbesReady("dusk"),
+          "Restoring an unchanged authoring definition failed to reload its resident cache");
     Check(duskPixel[0]>middlePixel[0]+3 && middlePixel[0]>nightPixel[0]+3,"Scenario captures and dynamic receiver lighting failed to blend");
     Check(scene.GetEnvironmentAmbientLight()==authoredAmbient && scene.GetEnvironmentAmbientLightIntensity()==authoredIntensity,
         "Scenario capture/preview overwrote authored ambient values");
@@ -2104,7 +2139,7 @@ static void LightingProbeRendering(Window& window) {
     Check(!renderer.PrepareLightingScenarios(true,prepareError) && !renderer.LightingScenarioProbesReady("dusk") &&
           renderer.LightingScenarioProbesReady("night"),"Zero-probe preparation skipped surface validation");
     scene.GetLightingScenarios().clear();renderer.OnDestroy();AssetManager::FreeModel(id);AssetManager::FreeModel(sourceId);
-    std::cout<<"Lighting scenarios preserve linear channel pixels, prepared endpoint probes, partial readiness and zero-probe surface validation\n";
+    std::cout<<"Lighting scenarios preserve scoped capture dependencies, cold/warm load preparation, linear channel pixels, partial readiness and zero-probe surface validation\n";
     std::filesystem::remove_all(root);
 }
 
