@@ -1,6 +1,7 @@
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/EditorUI.hpp>
 #include <Canis/Profiler.hpp>
 #include "EditorHistoryEvent.hpp"
 #include <Canis/RenderMetrics.hpp>
@@ -113,25 +114,11 @@ namespace Canis
             else scene->ClearEditorCameraOverrides();
         }
     };
-    // Sizes are relative to the configured editor font, so accessibility scaling
-    // and a user-selected typeface apply consistently to every text role.
-    struct ScopedEditorFont
-    {
-        explicit ScopedEditorFont(float _size)
-        {
-            const ImFont *font = ImGui::GetIO().FontDefault;
-            const float baseSize = font != nullptr ? font->LegacySize : 16.0f;
-            ImGui::PushFont(nullptr, baseSize * (_size / 16.0f));
-        }
-        ~ScopedEditorFont() { ImGui::PopFont(); }
-        ScopedEditorFont(const ScopedEditorFont&) = delete;
-        ScopedEditorFont& operator=(const ScopedEditorFont&) = delete;
-    };
+    using ScopedEditorFont = EditorUI::ScopedFont;
 
     static bool EditorSectionHeader(const char *_label, ImGuiTreeNodeFlags _flags = 0)
     {
-        ScopedEditorFont headingFont(18.0f);
-        return ImGui::CollapsingHeader(_label, _flags);
+        return EditorUI::SectionHeader(_label, _flags);
     }
 
     static void DrawEditorAssetHeading(const std::string &_name, const std::string &_path)
@@ -3194,10 +3181,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
-            ImGui::TextUnformatted(_label);
-            ImGui::SameLine();
+            EditorUI::PropertyLabel(_label);
             ImGui::PushID(_idSuffix);
-            ImGui::Button(label.c_str(), ImVec2(210.0f, 0.0f));
+            ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(_modelPath.empty() ? 0.f : EditorUI::TrailingButtonWidth("Clear")), 0.0f));
             if (ImGui::IsItemHovered())
             {
                 ImGui::SetTooltip(
@@ -10178,9 +10164,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputEntity(const std::string &_name, const char *_idSuffix, Entity &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string label;
         Canis::Entity *entity = _variable.TryGet();
@@ -10189,7 +10173,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else
             label = _variable.GetUUID() == UUID(0) ? "[ none ]" : "[ missing entity " + std::to_string(static_cast<uint64_t>(_variable.GetUUID())) + " ]";
 
-        ImGui::Button(label.c_str(), ImVec2(150, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10250,8 +10234,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputAudioAsset(const std::string &_name, const char *_idSuffix, Canis::AudioAssetHandle &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string resolvedPath = _variable.path;
         if (_variable.uuid != UUID(0))
@@ -10273,7 +10256,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 label = resolvedPath;
         }
 
-        ImGui::Button(label.c_str(), ImVec2(170, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10318,16 +10301,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputAnimationClip(const std::string& _name, const char *_idSuffix, Canis::AnimationClip2DID &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         const char* empty = "[ empty ]";
 
         if (auto *meta = AssetManager::GetMetaFile(AssetManager::GetPath(_variable)))
-            ImGui::Button(meta->name.c_str(), ImVec2(150, 0));
+            ImGui::Button(meta->name.c_str(), ImVec2(EditorUI::ControlWidth(), 0));
         else
-            ImGui::Button(empty, ImVec2(150, 0));
+            ImGui::Button(empty, ImVec2(EditorUI::ControlWidth(), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10351,8 +10332,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputAnimationClipAsset(const std::string &_name, const char *_idSuffix, Canis::AnimationClipAssetHandle &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string resolvedPath = AssetManager::ResolvePath(_variable);
         if (!resolvedPath.empty())
@@ -10367,7 +10347,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 label = resolvedPath;
         }
 
-        ImGui::Button(label.c_str(), ImVec2(170, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10419,8 +10399,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputAnimatorControllerAsset(const std::string &_name, const char *_idSuffix, Canis::AnimatorControllerAssetHandle &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string resolvedPath = AssetManager::ResolvePath(_variable);
         if (!resolvedPath.empty())
@@ -10435,7 +10414,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 label = resolvedPath;
         }
 
-        ImGui::Button(label.c_str(), ImVec2(170, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10484,8 +10463,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     void Editor::InputSceneAsset(const std::string &_name, const char *_idSuffix, Canis::SceneAssetHandle &_variable)
     {
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string resolvedPath = _variable.path;
         if (_variable.uuid != UUID(0))
@@ -10507,7 +10485,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 label = resolvedPath;
         }
 
-        ImGui::Button(label.c_str(), ImVec2(170, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -10559,8 +10537,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         bool changed = false;
 
         PushInspectorFieldID(_name.c_str(), _idSuffix);
-        ImGui::Text("%s", _name.c_str());
-        ImGui::SameLine();
+        EditorUI::PropertyLabel(_name.c_str());
 
         std::string resolvedPath = AssetManager::ResolvePath(_variable);
         if (!resolvedPath.empty())
@@ -10575,7 +10552,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 label = resolvedPath;
         }
 
-        ImGui::Button(label.c_str(), ImVec2(170, 0));
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
         if (ImGui::BeginDragDropTarget())
         {
@@ -12019,52 +11996,62 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
+        ScopedEditorFont propertyFont(EditorUI::BodySize);
+
         if (!m_selectedAssetPath.empty())
         {
             if (DrawModelAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawMaterialAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawSkyboxAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawPostProcessAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawAnimationClipAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawAnimatorControllerAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawShaderGraphAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
 
             if (DrawTerrainAssetInspector(m_selectedAssetPath))
             {
+                propertyFont.Reset();
                 ImGui::End();
                 return;
             }
@@ -12075,6 +12062,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (entities.empty())
         {
             m_index = -1;
+            propertyFont.Reset();
             ImGui::End();
             return;
         }
@@ -12107,16 +12095,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             {
                 SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
-                ImGui::Text("active:");
-                ImGui::SameLine();
+                EditorUI::PropertyLabel("active");
                 ImGui::Checkbox("##entity_active", &entity.Active());
                 ImGui::SameLine();
                 ImGui::Checkbox("Locked", &entity.EditorLocked());
-                ImGui::Text("name: ");
-                ImGui::SameLine();
+                EditorUI::PropertyLabel("name");
                 ImGui::InputText("##name", &entity.GetName());
-                ImGui::Text("tag:  ");
-                ImGui::SameLine();
+                EditorUI::PropertyLabel("tag");
                 const auto& projectTags = Canis::GetProjectConfig().tags;
                 const std::string& tagName = entity.GetTagName();
                 if (ImGui::BeginCombo("##tag", entity.GetTag() == NoTag ? "None" : tagName.c_str()))
@@ -12181,6 +12166,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawAddComponentDropDown(_refresh);
         }
 
+        propertyFont.Reset();
         ImGui::End();
     }
 
@@ -12291,7 +12277,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         root=ResolveShaderGraphMaterial(root);
 
-        if (ImGui::CollapsingHeader("Studio preview", ImGuiTreeNodeFlags_DefaultOpen))
+        if (EditorSectionHeader("Studio preview", ImGuiTreeNodeFlags_DefaultOpen))
         {
             unsigned int previewTexture = 0;
             if (GetMaterialPreviewTexture(materialPath, previewTexture) && previewTexture != 0)
@@ -12309,10 +12295,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::Separator();
 
         bool dirty = false;
-        constexpr float kMaterialNumberFieldMaxWidth = 240.0f;
         auto setMaterialNumberFieldWidth = []() -> void
         {
-            ImGui::SetNextItemWidth(kMaterialNumberFieldMaxWidth);
+            EditorUI::PropertyWidth(EditorUI::TrailingButtonWidth("X"));
         };
 
         auto drawAssetField = [&](const char *_label, const char *_key, bool _shaderField) -> void
@@ -12360,10 +12345,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::PushID(_key);
 
-            ImGui::Text("%s", _label);
-            ImGui::SameLine();
+            EditorUI::PropertyLabel(_label);
             const std::string buttonLabel = display + "##asset_ref";
-            ImGui::Button(buttonLabel.c_str(), ImVec2(220, 0));
+            ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
             if (ImGui::IsItemHovered() && !refPath.empty())
             {
                 ImGui::BeginTooltip();
@@ -12458,15 +12442,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::TextWrapped("Unassigned textures can come from the model. The studio preview shows this material's own assignments.");
 
         Color color = root["color"].as<Color>(Color(1.0f));
-        if (ImGui::ColorEdit4("color", &color.r))
+        EditorUI::PropertyLabel("color");
+        if (ImGui::ColorEdit4("##color", &color.r))
         {
             root["color"] = color;
             dirty = true;
         }
 
         Color emissionColor = root["emissionColor"].as<Color>(Color(1.0f));
+        EditorUI::PropertyLabel("emissionColor");
         if (ImGui::ColorEdit4(
-                "emissionColor",
+                "##emissionColor",
                 &emissionColor.r,
                 ImGuiColorEditFlags_Float | ImGuiColorEditFlags_HDR))
         {
@@ -12475,32 +12461,32 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         float emissionIntensity = root["emissionIntensity"].as<float>(0.0f);
-        setMaterialNumberFieldWidth();
-        if (ImGui::DragFloat("emissionIntensity", &emissionIntensity, 0.05f, 0.0f, 50.0f))
+        EditorUI::PropertyLabel("emissionIntensity");
+        if (ImGui::DragFloat("##emissionIntensity", &emissionIntensity, 0.05f, 0.0f, 50.0f))
         {
             root["emissionIntensity"] = std::max(0.0f, emissionIntensity);
             dirty = true;
         }
 
         float specularValue = root["specularValue"].as<float>(0.5f);
-        setMaterialNumberFieldWidth();
-        if (ImGui::DragFloat("specularValue", &specularValue, 0.01f, 0.0f, 1.0f))
+        EditorUI::PropertyLabel("specularValue");
+        if (ImGui::DragFloat("##specularValue", &specularValue, 0.01f, 0.0f, 1.0f))
         {
             root["specularValue"] = specularValue;
             dirty = true;
         }
 
         float roughnessValue = root["roughnessValue"].as<float>(0.5f);
-        setMaterialNumberFieldWidth();
-        if (ImGui::DragFloat("roughnessValue", &roughnessValue, 0.01f, 0.0f, 1.0f))
+        EditorUI::PropertyLabel("roughnessValue");
+        if (ImGui::DragFloat("##roughnessValue", &roughnessValue, 0.01f, 0.0f, 1.0f))
         {
             root["roughnessValue"] = roughnessValue;
             dirty = true;
         }
         int roughnessChannel = std::clamp(root["roughnessChannel"].as<int>(0), 0, 3);
         const char* roughnessChannels[] = {"R (red)", "G (green)", "B (blue)", "A (alpha)"};
-        setMaterialNumberFieldWidth();
-        if (ImGui::Combo("Roughness channel", &roughnessChannel, roughnessChannels, IM_ARRAYSIZE(roughnessChannels)))
+        EditorUI::PropertyLabel("Roughness channel");
+        if (ImGui::Combo("##Roughness channel", &roughnessChannel, roughnessChannels, IM_ARRAYSIZE(roughnessChannels)))
         {
             root["roughnessChannel"] = roughnessChannel;
             dirty = true;
@@ -12510,8 +12496,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         float normalScale = root["normalScale"].as<float>(1.0f);
         normalScale = std::isfinite(normalScale) ? std::clamp(normalScale, 0.0f, 4.0f) : 1.0f;
-        setMaterialNumberFieldWidth();
-        if (ImGui::DragFloat("Normal strength##normalScale", &normalScale, 0.01f, 0.0f, 4.0f))
+        EditorUI::PropertyLabel("Normal strength");
+        if (ImGui::DragFloat("##Normal strength##normalScale", &normalScale, 0.01f, 0.0f, 4.0f))
         {
             root["normalScale"] = normalScale;
             dirty = true;
@@ -12520,22 +12506,24 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::SetTooltip("0 flattens normal detail; 1 uses the normal map's full strength. An unassigned map uses the model's normal texture when available.");
 
         float metallicValue = root["metallicValue"].as<float>(0.0f);
-        setMaterialNumberFieldWidth();
-        if (ImGui::DragFloat("metallicValue", &metallicValue, 0.01f, 0.0f, 1.0f))
+        EditorUI::PropertyLabel("metallicValue");
+        if (ImGui::DragFloat("##metallicValue", &metallicValue, 0.01f, 0.0f, 1.0f))
         {
             root["metallicValue"] = metallicValue;
             dirty = true;
         }
 
         bool backFaceCulling = root["backFaceCulling"].as<bool>(false);
-        if (ImGui::Checkbox("backFaceCulling", &backFaceCulling))
+        EditorUI::PropertyLabel("backFaceCulling");
+        if (ImGui::Checkbox("##backFaceCulling", &backFaceCulling))
         {
             root["backFaceCulling"] = backFaceCulling;
             dirty = true;
         }
 
         bool frontFaceCulling = root["frontFaceCulling"].as<bool>(false);
-        if (ImGui::Checkbox("frontFaceCulling", &frontFaceCulling))
+        EditorUI::PropertyLabel("frontFaceCulling");
+        if (ImGui::Checkbox("##frontFaceCulling", &frontFaceCulling))
         {
             root["frontFaceCulling"] = frontFaceCulling;
             dirty = true;
@@ -12576,12 +12564,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return texturePath;
         };
 
-        ImGui::SetNextItemWidth(170.0f);
+        EditorUI::PropertyLabel("uniform name");
         ImGui::InputTextWithHint("##new_uniform_name", "uniform name", &newUniformName);
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(110.0f);
+        EditorUI::PropertyLabel("uniform type");
         ImGui::Combo("##new_uniform_type", &newUniformTypeIndex, uniformTypeOptions, IM_ARRAYSIZE(uniformTypeOptions));
-        ImGui::SameLine();
         if (ImGui::Button("Add Uniform"))
         {
             const std::string uniformName = trimUniformName(newUniformName);
@@ -12611,14 +12597,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("int_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
             setMaterialNumberFieldWidth();
             if (ImGui::DragInt("##value", &value, 1.0f))
             {
                 customUniforms.SetInt(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (int)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12638,14 +12623,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("float_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
             setMaterialNumberFieldWidth();
             if (ImGui::DragFloat("##value", &value, 0.01f))
             {
                 customUniforms.SetFloat(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (float)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12665,14 +12649,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("vec2_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
             setMaterialNumberFieldWidth();
             if (ImGui::DragFloat2("##value", &value.x, 0.01f))
             {
                 customUniforms.SetVec2(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (Vector2)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12692,14 +12675,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("vec3_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
             setMaterialNumberFieldWidth();
             if (ImGui::DragFloat3("##value", &value.x, 0.01f))
             {
                 customUniforms.SetVec3(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (Vector3)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12719,14 +12701,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("vec4_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
             setMaterialNumberFieldWidth();
             if (ImGui::DragFloat4("##value", &value.x, 0.01f))
             {
                 customUniforms.SetVec4(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (Vector4)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12746,13 +12727,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             bool removeUniform = false;
 
             ImGui::PushID(("color_" + uniform.name).c_str());
+            EditorUI::PropertyLabel(uniform.name.c_str());
+            setMaterialNumberFieldWidth();
             if (ImGui::ColorEdit4("##value", &value.r))
             {
                 customUniforms.SetColor(uniform.name, value);
                 uniformsDirty = true;
             }
-            ImGui::SameLine();
-            ImGui::Text("%s (Color)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12773,8 +12754,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             ImGui::PushID(("texture_" + uniform.name).c_str());
 
+            EditorUI::PropertyLabel(uniform.name.c_str());
             const std::string buttonLabel = getTextureDisplayName(textureId) + "##texture_value";
-            ImGui::Button(buttonLabel.c_str(), ImVec2(220, 0));
+            ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -12801,8 +12783,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::EndPopup();
             }
 
-            ImGui::SameLine();
-            ImGui::Text("%s (Texture)", uniform.name.c_str());
             ImGui::SameLine();
             if (ImGui::SmallButton("X"))
                 removeUniform = true;
@@ -12869,11 +12849,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     buttonLabel = refPath;
             }
 
-            ImGui::Text("%s", _label);
-            ImGui::SameLine();
+            EditorUI::PropertyLabel(_label);
 
             ImGui::PushID(_key);
-            ImGui::Button(buttonLabel.c_str(), ImVec2(170, 0));
+            ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(), 0));
 
             if (ImGui::BeginDragDropTarget())
             {
@@ -15721,43 +15700,55 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::End();
             return;
         }
+        EditorUI::ScopedFont propertyFont(14.f);
         SceneHistoryEditScope sceneProperties(m_sceneHistoryEditWasActive);
+        auto help = [](const char* text) {
+            EditorUI::ScopedFont detailFont(13.f);
+            ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
+            ImGui::TextWrapped("%s", text);
+            ImGui::PopStyleColor();
+        };
         DrawCloudVolume();
         DrawSurfaceWetness();
         DrawLightingScenarios();
-        if (!m_scene->GetLightingScenarios().empty()) {
-            ImGui::SeparatorText("Scene base lighting");
-            ImGui::TextWrapped("Edit the scenario controls above to change the visible lighting. "
-                               "These base values are used by Add from current lighting.");
-        }
-        Color background = m_window->GetClearColor();
-        ImGui::ColorEdit4("Background##", &background.r);
+        if (EditorUI::SectionHeader("Scene base lighting", ImGuiTreeNodeFlags_DefaultOpen)) {
+            if (!m_scene->GetLightingScenarios().empty()) {
+                help("Edit the scenario controls above to change the visible lighting. "
+                     "These base values are used by Add from current lighting.");
+            }
+            Color background = m_window->GetClearColor();
+            EditorUI::PropertyLabel("Background");
+            ImGui::ColorEdit4("##Background", &background.r);
 
-        if (background != m_window->GetClearColor())
-            m_window->SetClearColor(background);
+            if (background != m_window->GetClearColor())
+                m_window->SetClearColor(background);
 
-        Color ambientLight = m_scene->GetEnvironmentAmbientLight();
-        if (ImGui::ColorEdit3("Ambient Light##", &ambientLight.r))
-        {
-            ambientLight.a = 1.0f;
-            m_scene->SetEnvironmentAmbientLight(ambientLight);
+            Color ambientLight = m_scene->GetEnvironmentAmbientLight();
+            EditorUI::PropertyLabel("Ambient Light");
+            if (ImGui::ColorEdit3("##Ambient Light", &ambientLight.r))
+            {
+                ambientLight.a = 1.0f;
+                m_scene->SetEnvironmentAmbientLight(ambientLight);
+            }
+            float ambientLightIntensity = m_scene->GetEnvironmentAmbientLightIntensity();
+            EditorUI::PropertyLabel("Ambient Intensity");
+            if (ImGui::SliderFloat("##Ambient Intensity", &ambientLightIntensity, 0.0f, 8.0f, "%.2f"))
+                m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
+            help("Scene-wide fill light for darker areas.");
+            bool reflections = m_scene->GetEnvironmentReflectionsEnabled();
+            EditorUI::PropertyLabel("Reflections");
+            if (ImGui::Checkbox("##Reflections", &reflections))
+                m_scene->SetEnvironmentReflectionsEnabled(reflections);
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Enable reflection probes' reflective contribution. Indirect lighting remains active.");
         }
-        float ambientLightIntensity = m_scene->GetEnvironmentAmbientLightIntensity();
-        if (ImGui::SliderFloat("Ambient Intensity##", &ambientLightIntensity, 0.0f, 8.0f, "%.2f"))
-            m_scene->SetEnvironmentAmbientLightIntensity(ambientLightIntensity);
-        ImGui::TextDisabled("Scene-wide fill light for darker areas.");
-        bool reflections = m_scene->GetEnvironmentReflectionsEnabled();
-        if (ImGui::Checkbox("Reflections", &reflections))
-            m_scene->SetEnvironmentReflectionsEnabled(reflections);
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Enable reflection probes' reflective contribution. Indirect lighting remains active.");
 
         ImGui::Separator();
         auto& baking=m_scene->GetBakingSettings();
         auto* renderer=m_scene->GetSystem<MeshRenderer3DSystem>();
-        if(EditorSectionHeader("Reflection probes / Global illumination",ImGuiTreeNodeFlags_DefaultOpen)) {
+        if(EditorUI::SectionHeader("Reflection probes / Global illumination",ImGuiTreeNodeFlags_DefaultOpen)) {
             auto& probes=m_scene->GetLightingProbes();
-            ImGui::TextWrapped("Static scene captures provide box-projected reflections and diffuse indirect light. Captured on load; recapture after changing geometry or lighting.");
+            help("Static scene captures provide box-projected reflections and diffuse indirect light. Captured on load; recapture after changing geometry or lighting.");
             ImGui::BeginDisabled(probes.size()>=MaxLightingProbes);
             if(ImGui::Button("Add lighting probe")) {
                 LightingProbe probe;
@@ -15769,14 +15760,22 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::PushID(static_cast<int>(i));
                 if(ImGui::TreeNode("Probe","Probe %d",static_cast<int>(i+1))) {
                     auto& p=probes[i];
-                    ImGui::Checkbox("Enabled",&p.enabled);
-                    ImGui::DragFloat3("Capture position",&p.position.x,.1f);
-                    ImGui::DragFloat3("Box half extents",&p.halfExtents.x,.1f,.01f,10000.f);
-                    ImGui::DragFloat("Blend distance",&p.blendDistance,.1f,.001f,10000.f);
-                    ImGui::SliderFloat("Indirect diffuse",&p.diffuseIntensity,0,4);
-                    ImGui::SliderFloat("Reflections",&p.specularIntensity,0,4);
-                    ImGui::DragFloat("Capture near",&p.nearClip,.01f,.01f,100);
-                    ImGui::DragFloat("Capture far",&p.farClip,1,1,20000);
+                    EditorUI::PropertyLabel("Enabled");
+                    ImGui::Checkbox("##Enabled",&p.enabled);
+                    EditorUI::PropertyLabel("Capture position");
+                    ImGui::DragFloat3("##Capture position",&p.position.x,.1f);
+                    EditorUI::PropertyLabel("Box half extents");
+                    ImGui::DragFloat3("##Box half extents",&p.halfExtents.x,.1f,.01f,10000.f);
+                    EditorUI::PropertyLabel("Blend distance");
+                    ImGui::DragFloat("##Blend distance",&p.blendDistance,.1f,.001f,10000.f);
+                    EditorUI::PropertyLabel("Indirect diffuse");
+                    ImGui::SliderFloat("##Indirect diffuse",&p.diffuseIntensity,0,4);
+                    EditorUI::PropertyLabel("Reflections");
+                    ImGui::SliderFloat("##Reflections",&p.specularIntensity,0,4);
+                    EditorUI::PropertyLabel("Capture near");
+                    ImGui::DragFloat("##Capture near",&p.nearClip,.01f,.01f,100);
+                    EditorUI::PropertyLabel("Capture far");
+                    ImGui::DragFloat("##Capture far",&p.farClip,1,1,20000);
                     p.Sanitize();
                     if(ImGui::Button("Remove")) { probes.erase(probes.begin()+i);ImGui::TreePop();ImGui::PopID();break; }
                     ImGui::TreePop();
@@ -15786,37 +15785,37 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::BeginDisabled(!renderer);
             if(ImGui::Button("Recapture lighting probes"))renderer->InvalidateLightingProbes();
             ImGui::EndDisabled();
-            ImGui::Text("Ready captures: %d / %d",renderer?renderer->ReadyLightingProbeCount():0,static_cast<int>(probes.size()));
-            ImGui::TextWrapped("64px HDR captures, up to six probes. Rough reflections use mipmaps; diffuse uses 9 spherical harmonics coefficients. Save the scene to retain placement.");
+            EditorUI::PropertyLabel("Ready captures");
+            ImGui::Text("%d / %d",renderer?renderer->ReadyLightingProbeCount():0,static_cast<int>(probes.size()));
+            help("64px HDR captures, up to six probes. Rough reflections use mipmaps; diffuse uses 9 spherical harmonics coefficients. Save the scene to retain placement.");
         }
-        if(EditorSectionHeader("Native lighting bake",ImGuiTreeNodeFlags_DefaultOpen)) {
-            ImGui::Checkbox("Use baked lighting",&baking.lightmaps);
-            ImGui::TextWrapped("C++ static vertex irradiance: shadowed direct lighting, ambient occlusion and one indirect bounce. Moving objects are excluded. Original collision geometry is retained.");
+        if(EditorUI::SectionHeader("Native lighting bake",ImGuiTreeNodeFlags_DefaultOpen)) {
+            EditorUI::PropertyLabel("Use baked lighting");
+            ImGui::Checkbox("##Use baked lighting",&baking.lightmaps);
+            help("C++ static vertex irradiance: shadowed direct lighting, ambient occlusion and one indirect bounce. Moving objects are excluded. Original collision geometry is retained.");
             ImGui::BeginDisabled(m_environmentBakeRunning || m_lightingScenarioBakeRunning || !m_scene->GetLightingScenarios().empty() || m_mode!=EditorMode::EDIT || !renderer);
             if(ImGui::Button("Bake / rebake lighting"))StartEnvironmentBake();
             ImGui::EndDisabled();
-            if(!m_scene->GetLightingScenarios().empty())ImGui::TextDisabled("Use the scenario bake controls above for this scene.");
+            if(!m_scene->GetLightingScenarios().empty())help("Use the scenario bake controls above for this scene.");
             if(m_environmentBakeRunning && ImGui::Button("Cancel bake"))m_environmentBakeCancel=true;
             if(!m_environmentBakeStatus.empty())ImGui::TextWrapped("%s",m_environmentBakeStatus.c_str());
-            ImGui::Checkbox("Cache static shadows",&baking.staticShadows);
+            EditorUI::PropertyLabel("Cache static shadows");
+            ImGui::Checkbox("##Cache static shadows",&baking.staticShadows);
             ImGui::BeginDisabled(!renderer || !baking.staticShadows);
             if(ImGui::Button("Rebuild static shadows"))renderer->InvalidateStaticShadowCache();
             ImGui::EndDisabled();
-            ImGui::Checkbox("Use baked occlusion",&baking.occlusion);
-            ImGui::TextWrapped("Native frustum/room visibility remains active. Legacy visibility data is read without launching an external program.");
+            EditorUI::PropertyLabel("Use baked occlusion");
+            ImGui::Checkbox("##Use baked occlusion",&baking.occlusion);
+            help("Native frustum/room visibility remains active. Legacy visibility data is read without launching an external program.");
         }
-
-
 
         ImGui::Separator();
         bool showColliders = m_scene->GetShowColliders();
-        if (ImGui::Checkbox("Show Colliders", &showColliders))
+        EditorUI::PropertyLabel("Show Colliders");
+        if (ImGui::Checkbox("##Show Colliders", &showColliders))
             m_scene->SetShowColliders(showColliders);
-        ImGui::TextDisabled("Draw physics collider wireframes for this scene.");
+        help("Draw physics collider wireframes for this scene.");
         ImGui::Separator();
-
-        ImGui::Text("Skybox");
-        ImGui::SameLine();
 
         UUID skyboxUUID = m_scene->GetEnvironmentSkyboxUUID();
         std::string skyboxLabel = "[ none ]";
@@ -15832,7 +15831,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        ImGui::Button(skyboxLabel.c_str(), ImVec2(180, 0));
+        EditorUI::PropertyLabel("Skybox");
+        ImGui::Button((skyboxLabel + "##EnvironmentSkybox").c_str(), ImVec2(EditorUI::ControlWidth(), 0));
         if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
         {
             m_scene->SetEnvironmentSkyboxUUID(UUID(0));
@@ -15864,9 +15864,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::EndPopup();
         }
 
-        ImGui::Text("Post Process");
-        ImGui::SameLine();
-
         UUID postProcessUUID = m_scene->GetEnvironmentPostProcessUUID();
         std::string postProcessLabel = "[ none ]";
         if ((uint64_t)postProcessUUID != 0)
@@ -15881,7 +15878,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        ImGui::Button(postProcessLabel.c_str(), ImVec2(180, 0));
+        EditorUI::PropertyLabel("Post process");
+        ImGui::Button((postProcessLabel + "##EnvironmentPostProcess").c_str(), ImVec2(EditorUI::ControlWidth(), 0));
         if (ImGui::IsItemHovered() && ImGui::IsKeyPressed(ImGuiKey_Delete, false))
         {
             m_scene->SetEnvironmentPostProcessUUID(UUID(0));
@@ -15913,6 +15911,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ImGui::EndPopup();
         }
 
+        propertyFont.Reset();
         ImGui::End();
     }
 
@@ -18449,64 +18448,101 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
+        EditorUI::ScopedFont bodyFont(14.0f);
+        const auto detail = [](const char* text)
+        {
+            EditorUI::ScopedFont detailFont(13.0f);
+            ImGui::PushTextWrapPos(0.0f);
+            ImGui::TextDisabled("%s", text);
+            ImGui::PopTextWrapPos();
+        };
+
         if (ImGui::Button("Save Project", ImVec2(-1.0f, 0.0f)))
         {
             Canis::SaveProjectConfig();
             Canis::SaveEditorConfig();
         }
 
-        ImGui::InputText("Input asset", &Canis::GetProjectConfig().inputAsset);
-        if (ImGui::Button("Open Input Actions")) m_showInputActionsPanel = true;
-        std::string &gameName = Canis::GetProjectConfig().gameName;
-        ImGui::Text("game name");
-        ImGui::SameLine();
-        if (ImGui::InputText("##gameName", &gameName))
-            Canis::SaveProjectConfig();
-        ImGui::TextDisabled("Window title shown to players.");
-
-        static const char* gpuLabels[] = { "Automatic", "Integrated", "Dedicated" };
-        int gpuPreference = NormalizeGpuPreference(Canis::GetProjectConfig().gpuPreference);
-        ImGui::Text("preferred GPU");
-        ImGui::SameLine();
-        ImGui::SetNextItemWidth(160.0f);
-        if (ImGui::Combo("##gpuPreference", &gpuPreference, gpuLabels, IM_ARRAYSIZE(gpuLabels)))
+        if (EditorUI::SectionHeader("Project", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().gpuPreference = gpuPreference;
-            Canis::SaveProjectConfig();
-        }
-        if (ImGui::IsItemHovered())
-            ImGui::SetTooltip("Automatic inherits the launcher/system choice. Linux applies the preference when the GPU can be identified. Other platforms use OS graphics settings. VR may require the headset runtime to use the same GPU.");
-        ImGui::TextDisabled("(restart required)");
-        const auto* activeGpu = glGetString(GL_RENDERER);
-        ImGui::TextWrapped("Active GPU: %s", activeGpu ? reinterpret_cast<const char*>(activeGpu) : "Unknown");
-        if (!GetGpuPreferenceWarning().empty())
-            ImGui::TextWrapped("%s", GetGpuPreferenceWarning().c_str());
+            EditorUI::PropertyLabel("input asset");
+            ImGui::InputText("##inputAsset", &Canis::GetProjectConfig().inputAsset);
+            if (ImGui::Button("Open Input Actions")) m_showInputActionsPanel = true;
+            std::string &gameName = Canis::GetProjectConfig().gameName;
+            EditorUI::PropertyLabel("game name");
+            if (ImGui::InputText("##gameName", &gameName))
+                Canis::SaveProjectConfig();
+            detail("Window title shown to players.");
 
-        std::string &executableName = Canis::GetProjectConfig().executableName;
-        ImGui::Text("executable name");
-        ImGui::SameLine();
-        if (ImGui::InputText("##executableName", &executableName) &&
-            Canis::IsValidProjectExecutableName(executableName))
-        {
-            Canis::SaveProjectConfig();
-        }
-        if (Canis::IsValidProjectExecutableName(executableName))
-            ImGui::TextDisabled("CMake output name; reconfigure after changing it.");
-        else
-            ImGui::TextColored(ImVec4(1.0f, 0.35f, 0.35f, 1.0f),
-                "Use only letters, numbers, _, ., +, or -.");
+            static const char* gpuLabels[] = { "Automatic", "Integrated", "Dedicated" };
+            int gpuPreference = NormalizeGpuPreference(Canis::GetProjectConfig().gpuPreference);
+            EditorUI::PropertyLabel("preferred GPU");
+            if (ImGui::Combo("##gpuPreference", &gpuPreference, gpuLabels, IM_ARRAYSIZE(gpuLabels)))
+            {
+                Canis::GetProjectConfig().gpuPreference = gpuPreference;
+                Canis::SaveProjectConfig();
+            }
+            if (ImGui::IsItemHovered())
+                ImGui::SetTooltip("Automatic inherits the launcher/system choice. Linux applies the preference when the GPU can be identified. Other platforms use OS graphics settings. VR may require the headset runtime to use the same GPU.");
+            detail("Restart required.");
+            const auto* activeGpu = glGetString(GL_RENDERER);
+            ImGui::TextWrapped("Active GPU: %s", activeGpu ? reinterpret_cast<const char*>(activeGpu) : "Unknown");
+            if (!GetGpuPreferenceWarning().empty())
+                ImGui::TextWrapped("%s", GetGpuPreferenceWarning().c_str());
 
-        if (EditorSectionHeader("Tags"))
+            std::string &executableName = Canis::GetProjectConfig().executableName;
+            EditorUI::PropertyLabel("executable name");
+            if (ImGui::InputText("##executableName", &executableName) &&
+                Canis::IsValidProjectExecutableName(executableName))
+            {
+                Canis::SaveProjectConfig();
+            }
+            if (Canis::IsValidProjectExecutableName(executableName))
+                detail("CMake output name; reconfigure after changing it.");
+            else
+            {
+                EditorUI::ScopedFont detailFont(13.0f);
+                ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.0f, 0.35f, 0.35f, 1.0f));
+                ImGui::TextWrapped("Use only letters, numbers, _, ., +, or -.");
+                ImGui::PopStyleColor();
+            }
+
+            // application icon
+            EditorUI::PropertyLabel("icon");
+            const std::string iconPath = AssetManager::GetPath(Canis::GetProjectConfig().iconUUID);
+            const MetaFileAsset* iconMeta = AssetManager::GetMetaFile(iconPath);
+            const std::string iconLabel = (iconMeta ? iconMeta->name : "[ none ]") + std::string("##projectIcon");
+            ImGui::Button(iconLabel.c_str(), ImVec2(EditorUI::ControlWidth(), 0.0f));
+
+            if (ImGui::BeginDragDropTarget())
+            {
+                if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                {
+                    const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                    std::string path = AssetManager::GetPath(dropped.uuid);
+                    TextureAsset *asset = AssetManager::GetTexture(path);
+
+                    if (asset) // validate that this is a texture
+                    {
+                        Canis::GetProjectConfig().iconUUID = dropped.uuid;
+                        Canis::SaveProjectConfig();
+                        m_window->SetWindowIcon(path);
+                    }
+                }
+                ImGui::EndDragDropTarget();
+            }
+        }
+
+        if (EditorUI::SectionHeader("Tags"))
         {
             auto& tags = Canis::GetProjectConfig().tags;
-            ImGui::TextWrapped("Add tags here, then rebuild game code to use Tags. "
+            detail("Add tags here, then rebuild game code to use Tags. "
                 "Removing a tag keeps existing scene assignments.");
             for (std::size_t i = 0; i < tags.size();)
             {
                 ImGui::PushID(static_cast<int>(i));
+                EditorUI::PropertyLabel(tags[i].c_str());
                 const bool remove = ImGui::SmallButton("Remove");
-                ImGui::SameLine();
-                ImGui::TextUnformatted(tags[i].c_str());
                 ImGui::PopID();
                 if (remove)
                 {
@@ -18517,7 +18553,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ++i;
             }
             static std::string newTag;
-            ImGui::InputText("New tag", &newTag);
+            EditorUI::PropertyLabel("new tag");
+            ImGui::InputText("##newTag", &newTag);
             const bool validTag = Canis::IsValidProjectTag(newTag) &&
                 std::find(tags.begin(), tags.end(), newTag) == tags.end();
             ImGui::BeginDisabled(!validTag);
@@ -18528,273 +18565,241 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Canis::SaveProjectConfig();
             }
             ImGui::EndDisabled();
-            ImGui::TextDisabled("Start with A-Z; use letters, numbers, or _. None and __ are reserved.");
+            detail("Start with A-Z; use letters, numbers, or _. None and __ are reserved.");
             if (!newTag.empty() && !validTag)
-                ImGui::TextDisabled("Enter a valid, unique tag name.");
+                detail("Enter a valid, unique tag name.");
         }
 
-        bool editorEnabled = Canis::GetProjectConfig().editor;
-        ImGui::Text("editor mode");
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##editorEnabled", &editorEnabled))
+        if (EditorUI::SectionHeader("Editor", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().editor = editorEnabled;
-            Canis::SaveProjectConfig();
-        }
-        ImGui::SameLine();
-        ImGui::TextDisabled("(restart required)");
-
-        static const char* editorThemeLabels[] = { "Dark", "Light" };
-        int editorThemeSelection = m_editorThemeSelection;
-        ImGui::Text("editor theme");
-        ImGui::SameLine();
-        if (ImGui::Combo("##editorTheme", &editorThemeSelection, editorThemeLabels, IM_ARRAYSIZE(editorThemeLabels)))
-        {
-            ApplyEditorTheme(editorThemeSelection);
-            Canis::SaveEditorConfig();
-        }
-
-        ImGui::Text("editor font");
-        ImGui::SameLine();
-        const char* fontPreview =
-            (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontLabels.size())) ?
-            m_editorFontLabels[m_editorFontSelection].c_str() : "Default";
-        if (ImGui::BeginCombo("##editorFont", fontPreview))
-        {
-            for (int i = 0; i < static_cast<int>(m_editorFontLabels.size()); ++i)
+            bool editorEnabled = Canis::GetProjectConfig().editor;
+            EditorUI::PropertyLabel("editor mode");
+            if (ImGui::Checkbox("##editorEnabled", &editorEnabled))
             {
-                const bool selected = (i == m_editorFontSelection);
-                if (ImGui::Selectable(m_editorFontLabels[i].c_str(), selected))
-                {
-                    m_editorFontSelection = i;
-                    const std::string selectedPath =
-                        (i >= 0 && i < static_cast<int>(m_editorFontPaths.size())) ? m_editorFontPaths[i] : std::string();
-                    QueueEditorFontApply(selectedPath, true);
-                }
+                Canis::GetProjectConfig().editor = editorEnabled;
+                Canis::SaveProjectConfig();
+            }
+            detail("Restart required.");
 
-                if (selected)
-                    ImGui::SetItemDefaultFocus();
+            static const char* editorThemeLabels[] = { "Dark", "Light" };
+            int editorThemeSelection = m_editorThemeSelection;
+            EditorUI::PropertyLabel("editor theme");
+            if (ImGui::Combo("##editorTheme", &editorThemeSelection, editorThemeLabels, IM_ARRAYSIZE(editorThemeLabels)))
+            {
+                ApplyEditorTheme(editorThemeSelection);
+                Canis::SaveEditorConfig();
             }
 
-            ImGui::EndCombo();
-        }
-        ImGui::SameLine();
-        if (ImGui::Button("rescan##editorFont"))
-            RefreshEditorFontOptions();
+            EditorUI::PropertyLabel("editor font");
+            const char* fontPreview =
+                (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontLabels.size())) ?
+                m_editorFontLabels[m_editorFontSelection].c_str() : "Default";
+            if (ImGui::BeginCombo("##editorFont", fontPreview))
+            {
+                for (int i = 0; i < static_cast<int>(m_editorFontLabels.size()); ++i)
+                {
+                    const bool selected = (i == m_editorFontSelection);
+                    if (ImGui::Selectable(m_editorFontLabels[i].c_str(), selected))
+                    {
+                        m_editorFontSelection = i;
+                        const std::string selectedPath =
+                            (i >= 0 && i < static_cast<int>(m_editorFontPaths.size())) ? m_editorFontPaths[i] : std::string();
+                        QueueEditorFontApply(selectedPath, true);
+                    }
 
-        float editorFontScale = m_editorFontScale;
-        ImGui::Text("editor font scale");
-        ImGui::SameLine();
-        if (ImGui::SliderFloat("##editorFontScale", &editorFontScale, 0.5f, 2.5f, "%.2fx"))
-            m_editorFontScale = NormalizeEditorFontScale(editorFontScale);
+                    if (selected)
+                        ImGui::SetItemDefaultFocus();
+                }
 
-        if (ImGui::IsItemDeactivatedAfterEdit())
-        {
-            const std::string selectedPath =
-                (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontPaths.size())) ?
-                m_editorFontPaths[m_editorFontSelection] : std::string();
-            QueueEditorFontApply(selectedPath, true);
-        }
+                ImGui::EndCombo();
+            }
+            if (ImGui::Button("Rescan Fonts##editorFont"))
+                RefreshEditorFontOptions();
 
-        SceneAssetHandle launchScene = Canis::GetProjectConfig().launchScene;
-        InputSceneAsset("launch scene", "##launchScene", launchScene);
-        if (SceneAssetHandleChanged(launchScene, Canis::GetProjectConfig().launchScene))
-        {
-            Canis::GetProjectConfig().launchScene = launchScene;
-            Canis::SaveProjectConfig();
-        }
+            float editorFontScale = m_editorFontScale;
+            EditorUI::PropertyLabel("editor font scale");
+            if (ImGui::SliderFloat("##editorFontScale", &editorFontScale, 0.5f, 2.5f, "%.2fx"))
+                m_editorFontScale = NormalizeEditorFontScale(editorFontScale);
 
-        std::string &launchExecutablePath = Canis::GetProjectConfig().launchExecutablePath;
-        ImGui::Text("launch executable");
-        ImGui::SameLine();
-        if (ImGui::InputText("##launchExecutablePath", &launchExecutablePath))
-            Canis::SaveProjectConfig();
-
-        std::string &launchWorkingDirectory = Canis::GetProjectConfig().launchWorkingDirectory;
-        ImGui::Text("launch working dir");
-        ImGui::SameLine();
-        if (ImGui::InputText("##launchWorkingDirectory", &launchWorkingDirectory))
-            Canis::SaveProjectConfig();
-
-        std::string &launchArguments = Canis::GetProjectConfig().launchArguments;
-        ImGui::Text("launch arguments");
-        ImGui::SameLine();
-        if (ImGui::InputText("##launchArguments", &launchArguments))
-            Canis::SaveProjectConfig();
-
-        ImGui::TextDisabled(
-            "Launch runs a separate no-editor process. Empty executable defaults to %s",
-            GetDefaultStandaloneExecutablePath().generic_string().c_str());
-
-        int targetGameWidth = Canis::GetProjectConfig().targetGameWidth;
-        int targetGameHeight = Canis::GetProjectConfig().targetGameHeight;
-        ImGui::Text("target game width");
-        ImGui::SameLine();
-        if (ImGui::InputInt("##targetGameWidth", &targetGameWidth, 0))
-        {
-            Canis::GetProjectConfig().targetGameWidth = std::max(1, targetGameWidth);
-            Canis::SaveProjectConfig();
+            if (ImGui::IsItemDeactivatedAfterEdit())
+            {
+                const std::string selectedPath =
+                    (m_editorFontSelection >= 0 && m_editorFontSelection < static_cast<int>(m_editorFontPaths.size())) ?
+                    m_editorFontPaths[m_editorFontSelection] : std::string();
+                QueueEditorFontApply(selectedPath, true);
+            }
         }
 
-        ImGui::Text("target game height");
-        ImGui::SameLine();
-        if (ImGui::InputInt("##targetGameHeight", &targetGameHeight, 0))
+        if (EditorUI::SectionHeader("Launch", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().targetGameHeight = std::max(1, targetGameHeight);
-            Canis::SaveProjectConfig();
+            SceneAssetHandle launchScene = Canis::GetProjectConfig().launchScene;
+            InputSceneAsset("launch scene", "##launchScene", launchScene);
+            if (SceneAssetHandleChanged(launchScene, Canis::GetProjectConfig().launchScene))
+            {
+                Canis::GetProjectConfig().launchScene = launchScene;
+                Canis::SaveProjectConfig();
+            }
+
+            std::string &launchExecutablePath = Canis::GetProjectConfig().launchExecutablePath;
+            EditorUI::PropertyLabel("launch executable");
+            if (ImGui::InputText("##launchExecutablePath", &launchExecutablePath))
+                Canis::SaveProjectConfig();
+
+            std::string &launchWorkingDirectory = Canis::GetProjectConfig().launchWorkingDirectory;
+            EditorUI::PropertyLabel("launch working dir");
+            if (ImGui::InputText("##launchWorkingDirectory", &launchWorkingDirectory))
+                Canis::SaveProjectConfig();
+
+            std::string &launchArguments = Canis::GetProjectConfig().launchArguments;
+            EditorUI::PropertyLabel("launch arguments");
+            if (ImGui::InputText("##launchArguments", &launchArguments))
+                Canis::SaveProjectConfig();
+
+            detail(("Launch runs a separate no-editor process. Empty executable defaults to " +
+                GetDefaultStandaloneExecutablePath().generic_string()).c_str());
         }
 
-        static const char* windowModeLabels[] = {
-            "Windowed",
-            "Borderless",
-            "Fullscreen"
-        };
-        int windowMode = std::clamp(
-            Canis::GetProjectConfig().windowMode,
-            static_cast<int>(PROJECT_WINDOW_WINDOWED),
-            static_cast<int>(PROJECT_WINDOW_FULLSCREEN));
-        ImGui::Text("window mode");
-        ImGui::SameLine();
-        if (ImGui::Combo("##windowMode", &windowMode, windowModeLabels, IM_ARRAYSIZE(windowModeLabels)))
+        if (EditorUI::SectionHeader("Window", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().windowMode = windowMode;
-            Canis::SaveProjectConfig();
+            int targetGameWidth = Canis::GetProjectConfig().targetGameWidth;
+            int targetGameHeight = Canis::GetProjectConfig().targetGameHeight;
+            EditorUI::PropertyLabel("target game width");
+            if (ImGui::InputInt("##targetGameWidth", &targetGameWidth, 0))
+            {
+                Canis::GetProjectConfig().targetGameWidth = std::max(1, targetGameWidth);
+                Canis::SaveProjectConfig();
+            }
+
+            EditorUI::PropertyLabel("target game height");
+            if (ImGui::InputInt("##targetGameHeight", &targetGameHeight, 0))
+            {
+                Canis::GetProjectConfig().targetGameHeight = std::max(1, targetGameHeight);
+                Canis::SaveProjectConfig();
+            }
+
+            static const char* windowModeLabels[] = {
+                "Windowed",
+                "Borderless",
+                "Fullscreen"
+            };
+            int windowMode = std::clamp(
+                Canis::GetProjectConfig().windowMode,
+                static_cast<int>(PROJECT_WINDOW_WINDOWED),
+                static_cast<int>(PROJECT_WINDOW_FULLSCREEN));
+            EditorUI::PropertyLabel("window mode");
+            if (ImGui::Combo("##windowMode", &windowMode, windowModeLabels, IM_ARRAYSIZE(windowModeLabels)))
+            {
+                Canis::GetProjectConfig().windowMode = windowMode;
+                Canis::SaveProjectConfig();
+            }
+
+            bool windowResizable = Canis::GetProjectConfig().windowResizable;
+            EditorUI::PropertyLabel("resizable");
+            if (ImGui::Checkbox("##windowResizable", &windowResizable))
+            {
+                Canis::GetProjectConfig().windowResizable = windowResizable;
+                Canis::SaveProjectConfig();
+            }
+
+            bool windowStartMaximized = Canis::GetProjectConfig().windowStartMaximized;
+            EditorUI::PropertyLabel("start maximized");
+            if (ImGui::Checkbox("##windowStartMaximized", &windowStartMaximized))
+            {
+                Canis::GetProjectConfig().windowStartMaximized = windowStartMaximized;
+                Canis::SaveProjectConfig();
+            }
+            detail("These window settings are applied only outside the editor.");
+
+            // display sync mode
+            static const char* syncLabels[] = { "VSync On", "Sync Off", "Adaptive Sync" };
+            int syncIndex = 1;
+            switch (Canis::GetProjectConfig().syncMode)
+            {
+                case PROJECT_SYNC_VSYNC: syncIndex = 0; break;
+                case PROJECT_SYNC_ADAPTIVE: syncIndex = 2; break;
+                case PROJECT_SYNC_OFF:
+                default: syncIndex = 1; break;
+            }
+
+            EditorUI::PropertyLabel("display sync");
+            if (ImGui::Combo("##displaySync", &syncIndex, syncLabels, IM_ARRAYSIZE(syncLabels)))
+            {
+                static const int indexToSyncMode[] = { PROJECT_SYNC_VSYNC, PROJECT_SYNC_OFF, PROJECT_SYNC_ADAPTIVE };
+                Canis::GetProjectConfig().syncMode = indexToSyncMode[syncIndex];
+                m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
+                Canis::SaveProjectConfig();
+            }
         }
 
-        bool windowResizable = Canis::GetProjectConfig().windowResizable;
-        ImGui::Text("resizable");
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##windowResizable", &windowResizable))
+        if (EditorUI::SectionHeader("Audio", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().windowResizable = windowResizable;
-            Canis::SaveProjectConfig();
+            bool mute = Canis::GetProjectConfig().mute;
+            EditorUI::PropertyLabel("mute audio");
+            if (ImGui::Checkbox("##muteAudio", &mute))
+            {
+                Canis::GetProjectConfig().mute = mute;
+                if (mute)
+                    AudioManager::Mute();
+                else
+                    AudioManager::UnMute();
+                Canis::SaveProjectConfig();
+            }
+
+            float masterVolume = Canis::GetProjectConfig().volume;
+            EditorUI::PropertyLabel("master volume");
+            if (ImGui::SliderFloat("##masterVolume", &masterVolume, 0.0f, 1.0f, "%.2f"))
+            {
+                Canis::GetProjectConfig().volume = std::clamp(masterVolume, 0.0f, 1.0f);
+                AudioManager::RefreshMixLevels();
+                Canis::SaveProjectConfig();
+            }
+
+            float musicVolume = Canis::GetProjectConfig().musicVolume;
+            EditorUI::PropertyLabel("music volume");
+            if (ImGui::SliderFloat("##musicVolume", &musicVolume, 0.0f, 1.0f, "%.2f"))
+            {
+                Canis::GetProjectConfig().musicVolume = std::clamp(musicVolume, 0.0f, 1.0f);
+                AudioManager::RefreshMixLevels();
+                Canis::SaveProjectConfig();
+            }
+
+            float sfxVolume = Canis::GetProjectConfig().sfxVolume;
+            EditorUI::PropertyLabel("sfx volume");
+            if (ImGui::SliderFloat("##sfxVolume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
+            {
+                Canis::GetProjectConfig().sfxVolume = std::clamp(sfxVolume, 0.0f, 1.0f);
+                AudioManager::RefreshMixLevels();
+                Canis::SaveProjectConfig();
+            }
         }
 
-        bool windowStartMaximized = Canis::GetProjectConfig().windowStartMaximized;
-        ImGui::Text("start maximized");
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##windowStartMaximized", &windowStartMaximized))
+        if (EditorUI::SectionHeader("Performance", ImGuiTreeNodeFlags_DefaultOpen))
         {
-            Canis::GetProjectConfig().windowStartMaximized = windowStartMaximized;
-            Canis::SaveProjectConfig();
-        }
-        ImGui::TextDisabled("These window settings are applied only outside the editor.");
+            // fps limit checkbox
+            EditorUI::PropertyLabel("in-game fps limit");
+            if (ImGui::Checkbox("##useFPSLimit", &Canis::GetProjectConfig().useFrameLimit) && m_mode == EditorMode::PLAY)
+            {
+                if (Canis::GetProjectConfig().useFrameLimit)
+                    Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
+                else
+                    Time::SetTargetFPS(100000.0f);
+            }
 
-        // display sync mode
-        static const char* syncLabels[] = { "VSync On", "Sync Off", "Adaptive Sync" };
-        int syncIndex = 1;
-        switch (Canis::GetProjectConfig().syncMode)
-        {
-            case PROJECT_SYNC_VSYNC: syncIndex = 0; break;
-            case PROJECT_SYNC_ADAPTIVE: syncIndex = 2; break;
-            case PROJECT_SYNC_OFF:
-            default: syncIndex = 1; break;
-        }
-
-        ImGui::Text("display sync");
-        ImGui::SameLine();
-        if (ImGui::Combo("##displaySync", &syncIndex, syncLabels, IM_ARRAYSIZE(syncLabels)))
-        {
-            static const int indexToSyncMode[] = { PROJECT_SYNC_VSYNC, PROJECT_SYNC_OFF, PROJECT_SYNC_ADAPTIVE };
-            Canis::GetProjectConfig().syncMode = indexToSyncMode[syncIndex];
-            m_window->SetSync(static_cast<Window::Sync>(Canis::GetProjectConfig().syncMode));
-            Canis::SaveProjectConfig();
-        }
-
-        bool mute = Canis::GetProjectConfig().mute;
-        ImGui::Text("mute audio");
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##muteAudio", &mute))
-        {
-            Canis::GetProjectConfig().mute = mute;
-            if (mute)
-                AudioManager::Mute();
-            else
-                AudioManager::UnMute();
-            Canis::SaveProjectConfig();
-        }
-
-        float masterVolume = Canis::GetProjectConfig().volume;
-        ImGui::Text("master volume");
-        ImGui::SameLine();
-        if (ImGui::SliderFloat("##masterVolume", &masterVolume, 0.0f, 1.0f, "%.2f"))
-        {
-            Canis::GetProjectConfig().volume = std::clamp(masterVolume, 0.0f, 1.0f);
-            AudioManager::RefreshMixLevels();
-            Canis::SaveProjectConfig();
-        }
-
-        float musicVolume = Canis::GetProjectConfig().musicVolume;
-        ImGui::Text("music volume");
-        ImGui::SameLine();
-        if (ImGui::SliderFloat("##musicVolume", &musicVolume, 0.0f, 1.0f, "%.2f"))
-        {
-            Canis::GetProjectConfig().musicVolume = std::clamp(musicVolume, 0.0f, 1.0f);
-            AudioManager::RefreshMixLevels();
-            Canis::SaveProjectConfig();
-        }
-
-        float sfxVolume = Canis::GetProjectConfig().sfxVolume;
-        ImGui::Text("sfx volume");
-        ImGui::SameLine();
-        if (ImGui::SliderFloat("##sfxVolume", &sfxVolume, 0.0f, 1.0f, "%.2f"))
-        {
-            Canis::GetProjectConfig().sfxVolume = std::clamp(sfxVolume, 0.0f, 1.0f);
-            AudioManager::RefreshMixLevels();
-            Canis::SaveProjectConfig();
-        }
-
-        // fps limit checkbox
-        ImGui::Text("in-game fps limit");
-        ImGui::SameLine();
-        if (ImGui::Checkbox("##useFPSLimit", &Canis::GetProjectConfig().useFrameLimit) && m_mode == EditorMode::PLAY)
-        {
+            // fps limit input
             if (Canis::GetProjectConfig().useFrameLimit)
-                Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
-            else
-                Time::SetTargetFPS(100000.0f);
-        }
-
-        // fps limit input
-        if (Canis::GetProjectConfig().useFrameLimit)
-        {
-            ImGui::Text("    fps limit");
-            ImGui::SameLine();
-            if (ImGui::InputInt("##frameLimit", &Canis::GetProjectConfig().frameLimit, 0) && m_mode == EditorMode::PLAY)
-                Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
-        }
-
-        // editor fps limit input
-        ImGui::Text("editor fps");
-        ImGui::SameLine();
-        if (ImGui::InputInt("##editorframeLimit", &Canis::GetProjectConfig().frameLimitEditor, 0) && m_mode == EditorMode::EDIT)
-            Time::SetTargetFPS(Canis::GetProjectConfig().frameLimitEditor + 0.0f);
-
-        // application icon
-        ImGui::Text("icon");
-        ImGui::SameLine();
-        ImGui::Button(
-            AssetManager::GetMetaFile(AssetManager::GetPath(Canis::GetProjectConfig().iconUUID))->name.c_str(),
-            ImVec2(150, 0));
-
-        if (ImGui::BeginDragDropTarget())
-        {
-            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
             {
-                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
-                std::string path = AssetManager::GetPath(dropped.uuid);
-                TextureAsset *asset = AssetManager::GetTexture(path);
-
-                if (asset) // validate that this is a texture
-                {
-                    Canis::GetProjectConfig().iconUUID = dropped.uuid;
-                    Canis::SaveProjectConfig();
-                    m_window->SetWindowIcon(path);
-                }
+                EditorUI::PropertyLabel("fps limit");
+                if (ImGui::InputInt("##frameLimit", &Canis::GetProjectConfig().frameLimit, 0) && m_mode == EditorMode::PLAY)
+                    Time::SetTargetFPS(Canis::GetProjectConfig().frameLimit + 0.0f);
             }
-            ImGui::EndDragDropTarget();
+
+            // editor fps limit input
+            EditorUI::PropertyLabel("editor fps");
+            if (ImGui::InputInt("##editorframeLimit", &Canis::GetProjectConfig().frameLimitEditor, 0) && m_mode == EditorMode::EDIT)
+                Time::SetTargetFPS(Canis::GetProjectConfig().frameLimitEditor + 0.0f);
         }
 
+        bodyFont.Reset();
         ImGui::End();
     }
 

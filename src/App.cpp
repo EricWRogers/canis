@@ -50,6 +50,7 @@
 #include <cmath>
 #include <cstdlib>
 #include <cctype>
+#include <cstdio>
 #include <filesystem>
 #include <fstream>
 #include <iomanip>
@@ -1102,6 +1103,25 @@ namespace Canis
             _collider.halfHeight = std::max(0.01f, halfExtents.y - _collider.radius);
         }
 
+        // Asset fields share the same label column as scalar and vector properties.
+        // Keep their IDs independent of the displayed asset name and reserve room
+        // for any trailing action so narrow Inspectors never overflow.
+        bool DrawInspectorAssetButton(const char *_label, const char *_id,
+                                      const std::string &_value, float _trailingWidth = 0.0f)
+        {
+            DrawInspectorFieldLabel(_label);
+            SetNextInspectorFieldItemWidth();
+            const std::string buttonLabel = _value + "###" + _id;
+            return ImGui::Button(buttonLabel.c_str(), ImVec2(EditorUI::ControlWidth(_trailingWidth), 0.0f));
+        }
+
+        void DrawInspectorReadOnlyText(const char *_label, const std::string &_value)
+        {
+            DrawInspectorFieldLabel(_label);
+            ImGui::AlignTextToFramePadding();
+            ImGui::TextWrapped("%s", _value.c_str());
+        }
+
         void DrawModelColliderAssetField(const char *_id, std::string &_modelPath, i32 &_modelId)
         {
             std::string modelLabel = "[ drop a model ]";
@@ -1119,9 +1139,8 @@ namespace Canis
             }
 
             ImGui::PushID(_id);
-            ImGui::TextUnformatted("model");
-            ImGui::SameLine();
-            ImGui::Button(modelLabel.c_str(), ImVec2(170.0f, 0.0f));
+            const float clearWidth = _modelPath.empty() ? 0.0f : EditorUI::TrailingButtonWidth("X");
+            DrawInspectorAssetButton("model", "modelAsset", modelLabel, clearWidth);
             if (ImGui::IsItemHovered() && !_modelPath.empty())
                 ImGui::SetTooltip("%s", _modelPath.c_str());
 
@@ -3506,10 +3525,6 @@ namespace Canis
                         }
                     }
 
-                    ImGui::Text("texture");
-
-                    ImGui::SameLine();
-
                     const std::string texturePath = AssetManager::GetPath(sprite->textureHandle.id);
                     std::string textureLabel = "[missing texture]";
                     if (texturePath != "Path was not found in AssetLibrary")
@@ -3520,7 +3535,7 @@ namespace Canis
                             textureLabel = texturePath;
                     }
 
-                    ImGui::Button(textureLabel.c_str(), ImVec2(150, 0));
+                    DrawInspectorAssetButton("texture", "spriteTexture", textureLabel);
 
                     if (ImGui::BeginDragDropTarget())
                     {
@@ -3654,21 +3669,9 @@ namespace Canis
 
                     if (text->assetId > -1)
                     {
-                        ImGui::Text("font");
-                        ImGui::SameLine();
                         TextAsset* textAsset = AssetManager::GetText(text->assetId);
-
-                        if (textAsset != nullptr)
-                        {
-                            if (MetaFileAsset* meta = AssetManager::GetMetaFile(textAsset->GetPath()))
-                            {
-                                ImGui::Button(meta->name.c_str(), ImVec2(150, 0));
-                            }
-                            else
-                            {
-                                ImGui::Button("Missing Font", ImVec2(150, 0));
-                            }
-                        }
+                        MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
+                        DrawInspectorAssetButton("font", "textFont", fontMeta != nullptr ? fontMeta->name : "Missing Font");
 
                         if (ImGui::BeginDragDropTarget())
                         {
@@ -4113,7 +4116,7 @@ namespace Canis
 
                     if (transform->parent != nullptr)
                     {
-                        ImGui::Text("parent: %s", transform->parent->GetName().c_str());
+                        DrawInspectorReadOnlyText("parent", transform->parent->GetName());
                         if (ImGui::Button("Unparent##Transform"))
                         {
                             transform->Unparent();
@@ -4122,7 +4125,7 @@ namespace Canis
                     }
                     else
                     {
-                        ImGui::Text("parent: [none]");
+                        DrawInspectorReadOnlyText("parent", "[ none ]");
                     }
 
                     if (beforeActive != transform->active)
@@ -4996,9 +4999,8 @@ namespace Canis
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), shape.active);
                 if (shape.meshEdited) ImGui::TextUnformatted("Editable mesh: use Tab in the Scene view.");
                 ImGui::BeginDisabled(shape.meshEdited);
-                ImGui::TextUnformatted("type");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(170.0f);
+                DrawInspectorFieldLabel("type");
+                SetNextInspectorFieldItemWidth();
                 (void)ImGui::Combo("##BlockoutShapeType", &shape.type, shapeNames, IM_ARRAYSIZE(shapeNames));
                 DrawInspectorField(_editor, "size", _conf.name.c_str(), shape.size);
                 if (shape.type == BlockoutShapeType::CYLINDER)
@@ -5013,8 +5015,9 @@ namespace Canis
                     ImGui::Separator();
                     ImGui::TextUnformatted("Topology");
                     int loopCuts[3] = {shape.loopCutsX, shape.loopCutsY, shape.loopCutsZ};
-                    ImGui::SetNextItemWidth(210.0f);
-                    if (ImGui::DragInt3("Loop Cuts X/Y/Z", loopCuts, 1.0f, 0, 32))
+                    DrawInspectorFieldLabel("Loop Cuts X/Y/Z");
+                    SetNextInspectorFieldItemWidth();
+                    if (ImGui::DragInt3("##loopCuts", loopCuts, 1.0f, 0, 32))
                     {
                         shape.loopCutsX = loopCuts[0];
                         shape.loopCutsY = loopCuts[1];
@@ -5023,12 +5026,12 @@ namespace Canis
 
                     static int loopCutAxis = 0;
                     const char *axisNames[] = {"X", "Y", "Z"};
-                    ImGui::SetNextItemWidth(80.0f);
+                    DrawInspectorFieldLabel("Cut Axis");
+                    SetNextInspectorFieldItemWidth();
                     {
                         SceneHistoryIgnoreScope toolSettings;
-                        ImGui::Combo("Cut Axis", &loopCutAxis, axisNames, IM_ARRAYSIZE(axisNames));
+                        ImGui::Combo("##cutAxis", &loopCutAxis, axisNames, IM_ARRAYSIZE(axisNames));
                     }
-                    ImGui::SameLine();
                     if (ImGui::Button("Add Loop Cut"))
                     {
                         _editor.NotifySceneChanged();
@@ -5048,15 +5051,17 @@ namespace Canis
                     static int extrudeFace = 3;
                     static float extrudeDistance = 1.0f;
                     const char *faceNames[] = {"-X Left", "+X Right", "-Y Bottom", "+Y Top", "-Z Back", "+Z Front"};
-                    ImGui::SetNextItemWidth(130.0f);
+                    DrawInspectorFieldLabel("Face");
+                    SetNextInspectorFieldItemWidth();
                     {
                         SceneHistoryIgnoreScope toolSettings;
-                        ImGui::Combo("Face", &extrudeFace, faceNames, IM_ARRAYSIZE(faceNames));
+                        ImGui::Combo("##extrudeFace", &extrudeFace, faceNames, IM_ARRAYSIZE(faceNames));
                     }
-                    ImGui::SetNextItemWidth(130.0f);
+                    DrawInspectorFieldLabel("Extrude Distance");
+                    SetNextInspectorFieldItemWidth();
                     {
                         SceneHistoryIgnoreScope toolSettings;
-                        ImGui::DragFloat("Extrude Distance", &extrudeDistance, 0.05f, 0.01f, 1000.0f, "%.2f");
+                        ImGui::DragFloat("##extrudeDistance", &extrudeDistance, 0.05f, 0.01f, 1000.0f, "%.2f");
                     }
                     if (ImGui::Button("Extrude Face"))
                     {
@@ -5222,7 +5227,8 @@ namespace Canis
 
                 SceneHistoryIgnoreScope terrainTools;
                 bool editTerrain = _editor.m_terrainToolEnabled;
-                if (ImGui::Checkbox("Edit Terrain", &editTerrain))
+                DrawInspectorFieldLabel("Edit Terrain");
+                if (ImGui::Checkbox("##TerrainComponentEdit", &editTerrain))
                 {
                     _editor.m_terrainToolEnabled = editTerrain;
                     if (!editTerrain)
@@ -5230,26 +5236,22 @@ namespace Canis
                 }
 
                 const char *tools[] = {"Raise", "Lower", "Smooth", "Flatten", "Paint"};
-                ImGui::TextUnformatted("Tool");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(170.0f);
+                DrawInspectorFieldLabel("Tool");
+                SetNextInspectorFieldItemWidth();
                 (void)ImGui::Combo("##TerrainComponentTool", &asset->selectedTool, tools, IM_ARRAYSIZE(tools));
 
-                ImGui::TextUnformatted("Radius");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(170.0f);
+                DrawInspectorFieldLabel("Radius");
+                SetNextInspectorFieldItemWidth();
                 (void)ImGui::DragFloat("##TerrainComponentRadius", &asset->brushRadius, 0.05f, 0.05f, 12.0f, "%.2f");
 
-                ImGui::TextUnformatted("Strength");
-                ImGui::SameLine();
-                ImGui::SetNextItemWidth(170.0f);
+                DrawInspectorFieldLabel("Strength");
+                SetNextInspectorFieldItemWidth();
                 (void)ImGui::DragFloat("##TerrainComponentStrength", &asset->brushStrength, 0.01f, 0.0f, 4.0f, "%.2f");
 
                 if (asset->selectedTool == 3)
                 {
-                    ImGui::TextUnformatted("Flatten Height");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(170.0f);
+                    DrawInspectorFieldLabel("Flatten Height");
+                    SetNextInspectorFieldItemWidth();
                     (void)ImGui::DragFloat("##TerrainComponentFlattenHeight", &asset->flattenHeight, 0.05f, -64.0f, 64.0f, "%.2f");
                 }
                 else if (asset->selectedTool == 4)
@@ -5268,9 +5270,8 @@ namespace Canis
                         layerItems[i] = layerLabels[i].c_str();
                     }
 
-                    ImGui::TextUnformatted("Paint Layer");
-                    ImGui::SameLine();
-                    ImGui::SetNextItemWidth(170.0f);
+                    DrawInspectorFieldLabel("Paint Layer");
+                    SetNextInspectorFieldItemWidth();
                     (void)ImGui::Combo("##TerrainComponentLayer", &asset->selectedLayer, layerItems, TerrainAsset::MaxLayers);
 
                     if (_editor.m_terrainToolEnabled)
@@ -5718,9 +5719,7 @@ namespace Canis
 
                     std::string materialLabel = getMaterialLabel(material->materialId);
 
-                    ImGui::Text("material");
-                    ImGui::SameLine();
-                    ImGui::Button(materialLabel.c_str(), ImVec2(150, 0));
+                    DrawInspectorAssetButton("material", "baseMaterial", materialLabel);
                     handleMaterialDrop(material->materialId);
 
                     Model* model = _entity.HasComponent<Model>() ? &_entity.GetComponent<Model>() : nullptr;
@@ -5729,7 +5728,7 @@ namespace Canis
                         modelAsset = AssetManager::GetModel(model->modelId);
 
                     const i32 slotCount = (modelAsset != nullptr) ? modelAsset->GetMaterialSlotCount() : 0;
-                    ImGui::Text("material slots: %d", slotCount);
+                    DrawInspectorReadOnlyText("material slots", std::to_string(slotCount));
                     if (slotCount > 0)
                     {
                         material->materialIds.resize(static_cast<size_t>(slotCount), -1);
@@ -5740,12 +5739,9 @@ namespace Canis
                             const std::string slotLabel = slotName.empty()
                                 ? ("slot " + std::to_string(slotIndex))
                                 : ("slot " + std::to_string(slotIndex) + " (" + slotName + ")");
-                            ImGui::Text("%s", slotLabel.c_str());
-                            ImGui::SameLine();
-
-                            std::string buttonLabel = getMaterialLabel(material->materialIds[static_cast<size_t>(slotIndex)]);
-                            buttonLabel += "##material_slot_" + std::to_string(slotIndex);
-                            ImGui::Button(buttonLabel.c_str(), ImVec2(180, 0));
+                            const std::string buttonId = "material_slot_" + std::to_string(slotIndex);
+                            DrawInspectorAssetButton(slotLabel.c_str(), buttonId.c_str(),
+                                getMaterialLabel(material->materialIds[static_cast<size_t>(slotIndex)]));
                             handleMaterialDrop(material->materialIds[static_cast<size_t>(slotIndex)]);
                         }
                     }
@@ -6060,7 +6056,10 @@ namespace Canis
                 DrawInspectorField(editor,"shadowBias",conf.name.c_str(),group.shadowBias);
                 DrawInspectorField(editor,"forcedLevel",conf.name.c_str(),group.forcedLevel);
                 DrawInspectorField(editor,"debugColors",conf.name.c_str(),group.debugColors);
-                ImGui::Text("Last view: LOD %d | screen height %.2f%%",group.activeLevel,group.projectedHeight*100);
+                DrawInspectorReadOnlyText("Last view", "LOD " + std::to_string(group.activeLevel));
+                char projectedHeightLabel[32];
+                std::snprintf(projectedHeightLabel, sizeof(projectedHeightLabel), "%.2f%%", group.projectedHeight * 100.0f);
+                DrawInspectorReadOnlyText("Screen height", projectedHeightLabel);
                 ImGui::TextWrapped("Force -1 selects automatically. Zero cull height keeps distant objects visible. Visual LOD never changes the collision model.");
                 auto profile=GetLODProfile(group.profilePath);
                 if(!profile)return;
@@ -6075,7 +6074,9 @@ namespace Canis
                             auto oldPath=level.modelPath;
                             DrawModelColliderAssetField("LODModel",level.modelPath,level.modelId);
                             changed|=oldPath!=level.modelPath;
-                            changed|=ImGui::DragFloat("Minimum screen height",&level.screenHeight,.001f,0,1,"%.3f");
+                            DrawInspectorFieldLabel("Minimum screen height");
+                            SetNextInspectorFieldItemWidth();
+                            changed|=ImGui::DragFloat("##screenHeight",&level.screenHeight,.001f,0,1,"%.3f");
                             ImGui::PopID();
                         }
                         ImGui::TreePop();
@@ -6225,9 +6226,7 @@ namespace Canis
                         }
                     }
 
-                    ImGui::Text("model");
-                    ImGui::SameLine();
-                    ImGui::Button(modelLabel.c_str(), ImVec2(150, 0));
+                    DrawInspectorAssetButton("model", "renderModel", modelLabel);
 
                     if (ImGui::BeginDragDropTarget())
                     {
@@ -6272,8 +6271,8 @@ namespace Canis
                         };
 
                         const std::string selectedNodeLabel = getNodeLabel(model->nodeIndex);
-                        ImGui::Text("submodel");
-                        ImGui::SameLine();
+                        DrawInspectorFieldLabel("submodel");
+                        SetNextInspectorFieldItemWidth();
                         if (ImGui::BeginCombo("##modelNode", selectedNodeLabel.c_str()))
                         {
                             if (ImGui::Selectable("Whole Model", model->nodeIndex < 0))
@@ -6292,9 +6291,7 @@ namespace Canis
 
                         if (model->nodeIndex >= 0)
                         {
-                            ImGui::Text("apply node transform");
-                            ImGui::SameLine();
-                            ImGui::Checkbox("##modelApplyNodeTransform", &model->applyNodeTransform);
+                            DrawInspectorField(_editor, "apply node transform", _conf.name.c_str(), model->applyNodeTransform);
                         }
                     }
 
@@ -6384,7 +6381,7 @@ namespace Canis
                     if (modelAsset != nullptr)
                     {
                         const i32 animationCount = modelAsset->GetAnimationCount();
-                        ImGui::Text("animations: %d", animationCount);
+                        DrawInspectorReadOnlyText("animations", std::to_string(animationCount));
 
                         if (animationCount > 0)
                         {
@@ -6392,7 +6389,7 @@ namespace Canis
                             DrawInspectorField(_editor, "animationIndex", _conf.name.c_str(), animation->animationIndex);
                             animation->animationIndex = std::clamp(animation->animationIndex, 0, animationCount - 1);
 
-                            ImGui::Text("clip: %s", modelAsset->GetAnimationName(animation->animationIndex).c_str());
+                            DrawInspectorReadOnlyText("clip", modelAsset->GetAnimationName(animation->animationIndex));
                         }
                     }
                     else
@@ -6500,8 +6497,10 @@ namespace Canis
             Animator &animator = _entity.GetComponent<Animator>();
             DrawRegisteredProperties(_editor, _conf.registry, &animator, _conf.name);
 
-            ImGui::Text("currentState: %s", animator.currentState.empty() ? "[ none ]" : animator.currentState.c_str());
-            ImGui::Text("time: %.3f", animator.time);
+            DrawInspectorReadOnlyText("currentState", animator.currentState.empty() ? "[ none ]" : animator.currentState);
+            char timeLabel[32];
+            std::snprintf(timeLabel, sizeof(timeLabel), "%.3f", animator.time);
+            DrawInspectorReadOnlyText("time", timeLabel);
 
             const std::string controllerPath = AssetManager::ResolvePath(animator.controller);
             AnimatorControllerAsset *controller = controllerPath.empty() ? nullptr : AssetManager::GetAnimatorController(controllerPath);
@@ -6572,7 +6571,8 @@ namespace Canis
                         }
                         case AnimatorParameterType::TRIGGER:
                         {
-                            if (ImGui::Button(definition.name.c_str()))
+                            DrawInspectorFieldLabel(definition.name.c_str());
+                            if (ImGui::Button("Fire##trigger"))
                             {
                                 runtimeParameter->triggerActive = true;
                                 runtimeParameter->value = AnimationValue::Bool(true);

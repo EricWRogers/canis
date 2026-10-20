@@ -1,6 +1,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/Editor.hpp>
+#include <Canis/EditorUI.hpp>
 #include <Canis/Scene.hpp>
 #include <SDL3/SDL.h>
 #include <chrono>
@@ -12,6 +13,7 @@
 namespace Canis {
 namespace {
 void DisabledWrapped(const char *text) {
+    EditorUI::ScopedFont detailFont(13.f);
     ImGui::PushStyleColor(ImGuiCol_Text, ImGui::GetStyleColorVec4(ImGuiCol_TextDisabled));
     ImGui::TextWrapped("%s", text);
     ImGui::PopStyleColor();
@@ -19,7 +21,9 @@ void DisabledWrapped(const char *text) {
 bool ScenarioCombo(const char *label, Scene &scene, std::string &id) {
     auto *selected = scene.FindLightingScenario(id);
     bool changed = false;
-    if (ImGui::BeginCombo(label, selected ? selected->name.c_str() : "Choose scenario")) {
+    EditorUI::PropertyLabel(label);
+    const std::string controlId = std::string("##") + label;
+    if (ImGui::BeginCombo(controlId.c_str(), selected ? selected->name.c_str() : "Choose scenario")) {
         for (const auto &scenario : scene.GetLightingScenarios()) {
             ImGui::PushID(scenario.id.c_str());
             if (ImGui::Selectable(scenario.name.c_str(), scenario.id == id)) {
@@ -41,29 +45,30 @@ std::string UniqueScenarioName(const Scene &scene, const std::string &base) {
 }
 } // namespace
 void Editor::DrawSurfaceWetness() {
-    ImGui::PushFont(nullptr, 18.f);
-    const bool open = ImGui::CollapsingHeader("Surface wetness", ImGuiTreeNodeFlags_DefaultOpen);
-    ImGui::PopFont();
+    const bool open = EditorUI::SectionHeader("Surface wetness", ImGuiTreeNodeFlags_DefaultOpen);
     if (!open)
         return;
     auto &wetness = m_scene->GetSurfaceWetnessSettings();
     const bool animationOwnsAmount = m_animationLightingPreview.captured;
     ImGui::BeginDisabled(m_mode != EditorMode::EDIT || m_lightingScenarioBakeRunning);
-    ImGui::PushItemWidth(std::max(100.f, ImGui::GetContentRegionAvail().x - 160.f));
-    bool changed = ImGui::Checkbox("Enable surface wetness", &wetness.enabled);
+    EditorUI::PropertyLabel("Enabled");
+    bool changed = ImGui::Checkbox("##Enable surface wetness", &wetness.enabled);
     ImGui::BeginDisabled(!wetness.enabled);
     ImGui::BeginDisabled(animationOwnsAmount);
-    changed |= ImGui::SliderFloat("Wetness amount", &wetness.amount, 0, 1, "%.2f");
+    EditorUI::PropertyLabel("Wetness amount");
+    changed |= ImGui::SliderFloat("##Wetness amount", &wetness.amount, 0, 1, "%.2f");
     ImGui::EndDisabled();
-    changed |= ImGui::SliderFloat("Dry roughness", &wetness.dryRoughness, .04f, 1, "%.2f");
-    changed |= ImGui::SliderFloat("Wet roughness", &wetness.wetRoughness, .04f, 1, "%.2f");
-    changed |= ImGui::SliderFloat("Wet darkening", &wetness.darkening, 0, 1, "%.2f");
+    EditorUI::PropertyLabel("Dry roughness");
+    changed |= ImGui::SliderFloat("##Dry roughness", &wetness.dryRoughness, .04f, 1, "%.2f");
+    EditorUI::PropertyLabel("Wet roughness");
+    changed |= ImGui::SliderFloat("##Wet roughness", &wetness.wetRoughness, .04f, 1, "%.2f");
+    EditorUI::PropertyLabel("Wet darkening");
+    changed |= ImGui::SliderFloat("##Wet darkening", &wetness.darkening, 0, 1, "%.2f");
     ImGui::EndDisabled();
     if (changed) {
         wetness.Sanitize();
         NotifySceneChanged();
     }
-    ImGui::PopItemWidth();
     ImGui::EndDisabled();
     DisabledWrapped("Only models marked Weather surface respond. Amount 0 is dry; 1 uses the wet roughness and full darkening.");
     if (animationOwnsAmount)
@@ -73,24 +78,30 @@ void Editor::DrawSurfaceWetness() {
     ImGui::Separator();
 }
 void Editor::DrawCloudVolume() {
-    ImGui::PushFont(nullptr, 18.f);
-    bool open = ImGui::CollapsingHeader("3D clouds");
-    ImGui::PopFont();
+    bool open = EditorUI::SectionHeader("3D clouds");
     if (!open)
         return;
     auto &clouds = m_scene->GetCloudVolumeSettings();
     ImGui::BeginDisabled(m_mode != EditorMode::EDIT || m_lightingScenarioBakeRunning);
-    ImGui::PushItemWidth(std::max(100.f, ImGui::GetContentRegionAvail().x - 160.f));
-    bool changed = ImGui::Checkbox("Enable 3D clouds", &clouds.enabled);
+    EditorUI::PropertyLabel("Enabled");
+    bool changed = ImGui::Checkbox("##Enable 3D clouds", &clouds.enabled);
     ImGui::BeginDisabled(!clouds.enabled);
-    changed |= ImGui::DragFloat("Base height (m)", &clouds.baseHeight, 1.f, -1000, 10000);
-    changed |= ImGui::DragFloat("Thickness (m)", &clouds.thickness, 1.f, 1, 1000);
-    changed |= ImGui::DragFloat2("Center X/Z", &clouds.center.x, 1.f);
-    changed |= ImGui::DragFloat2("Half size X/Z", &clouds.halfExtents.x, 5.f, 1, 20000);
-    changed |= ImGui::DragFloat("Noise scale", &clouds.noiseScale, .0001f, .0001f, .1f, "%.4f");
-    changed |= ImGui::DragFloat2("Wind X/Z (m/s)", &clouds.windVelocity.x, .1f, -100, 100);
-    changed |= ImGui::DragFloat("Extinction", &clouds.extinction, .001f, .001f, 1, "%.3f");
-    changed |= ImGui::SliderInt("Ray steps", &clouds.steps, 8, 64);
+    EditorUI::PropertyLabel("Base height (m)");
+    changed |= ImGui::DragFloat("##Base height (m)", &clouds.baseHeight, 1.f, -1000, 10000);
+    EditorUI::PropertyLabel("Thickness (m)");
+    changed |= ImGui::DragFloat("##Thickness (m)", &clouds.thickness, 1.f, 1, 1000);
+    EditorUI::PropertyLabel("Center X/Z");
+    changed |= ImGui::DragFloat2("##Center X/Z", &clouds.center.x, 1.f);
+    EditorUI::PropertyLabel("Half size X/Z");
+    changed |= ImGui::DragFloat2("##Half size X/Z", &clouds.halfExtents.x, 5.f, 1, 20000);
+    EditorUI::PropertyLabel("Noise scale");
+    changed |= ImGui::DragFloat("##Noise scale", &clouds.noiseScale, .0001f, .0001f, .1f, "%.4f");
+    EditorUI::PropertyLabel("Wind X/Z (m/s)");
+    changed |= ImGui::DragFloat2("##Wind X/Z (m/s)", &clouds.windVelocity.x, .1f, -100, 100);
+    EditorUI::PropertyLabel("Extinction");
+    changed |= ImGui::DragFloat("##Extinction", &clouds.extinction, .001f, .001f, 1, "%.3f");
+    EditorUI::PropertyLabel("Ray steps");
+    changed |= ImGui::SliderInt("##Ray steps", &clouds.steps, 8, 64);
     ImGui::EndDisabled();
     DisabledWrapped("Cloud coverage and density are stored with each lighting scenario below. Wind pauses "
                     "with the scene.");
@@ -103,7 +114,6 @@ void Editor::DrawCloudVolume() {
         m_lightingScenarioNextCheck = 0;
         NotifySceneChanged();
     }
-    ImGui::PopItemWidth();
     ImGui::EndDisabled();
     ImGui::Separator();
 }
@@ -196,9 +206,7 @@ void Editor::UpdateLightingScenarioBake() {
     }
 }
 void Editor::DrawLightingScenarios() {
-    ImGui::PushFont(nullptr, 18.f);
-    bool open = ImGui::CollapsingHeader("Lighting scenarios", ImGuiTreeNodeFlags_DefaultOpen);
-    ImGui::PopFont();
+    bool open = EditorUI::SectionHeader("Lighting scenarios", ImGuiTreeNodeFlags_DefaultOpen);
     if (!open)
         return;
     auto &definitions = m_scene->GetLightingScenarios();
@@ -260,8 +268,8 @@ void Editor::DrawLightingScenarios() {
             return result;
         });
     }
-    ImGui::TextWrapped("Store different lighting for the same scene. Preview blends without changing "
-                       "authored lights or geometry.");
+    DisabledWrapped("Store different lighting for the same scene. Preview blends without changing "
+                    "authored lights or geometry.");
     const bool editing = m_mode == EditorMode::EDIT && !m_lightingScenarioBakeRunning;
     ImGui::BeginDisabled(!editing);
     if (ImGui::Button("Add from current lighting")) {
@@ -295,14 +303,14 @@ void Editor::DrawLightingScenarios() {
         ImGui::Separator();
         return;
     }
-    ImGui::PushItemWidth(std::max(100.f, ImGui::GetContentRegionAvail().x - 160.f));
     ScenarioCombo("Edit scenario", *m_scene, m_selectedLightingScenario);
     selected = m_scene->FindLightingScenario(m_selectedLightingScenario);
     ImGui::BeginDisabled(!editing);
     if (selected) {
         char name[128];
         std::snprintf(name, sizeof(name), "%s", selected->name.c_str());
-        if (ImGui::InputText("Name", name, sizeof(name)) && name[0]) {
+        EditorUI::PropertyLabel("Name");
+        if (ImGui::InputText("##Name", name, sizeof(name)) && name[0]) {
             auto *same = m_scene->FindLightingScenario(name);
             if (!same || same == selected) {
                 selected->name = name;
@@ -311,25 +319,36 @@ void Editor::DrawLightingScenarios() {
                 DisabledWrapped("That name is already used. Choose a unique scenario name.");
         }
         bool changed = false;
-        changed |= ImGui::ColorEdit3("Ambient color", &selected->ambientLight.x);
-        changed |= ImGui::DragFloat("Ambient intensity", &selected->ambientIntensity, .01f, 0, 8);
-        changed |= ImGui::Checkbox("Sun enabled", &selected->sunEnabled);
-        changed |= ImGui::ColorEdit3("Sun color", &selected->sunColor.x);
-        changed |= ImGui::DragFloat("Sun intensity", &selected->sunIntensity, .01f, 0, 16);
+        EditorUI::PropertyLabel("Ambient color");
+        changed |= ImGui::ColorEdit3("##Ambient color", &selected->ambientLight.x);
+        EditorUI::PropertyLabel("Ambient intensity");
+        changed |= ImGui::DragFloat("##Ambient intensity", &selected->ambientIntensity, .01f, 0, 8);
+        EditorUI::PropertyLabel("Sun enabled");
+        changed |= ImGui::Checkbox("##Sun enabled", &selected->sunEnabled);
+        EditorUI::PropertyLabel("Sun color");
+        changed |= ImGui::ColorEdit3("##Sun color", &selected->sunColor.x);
+        EditorUI::PropertyLabel("Sun intensity");
+        changed |= ImGui::DragFloat("##Sun intensity", &selected->sunIntensity, .01f, 0, 16);
         Vector3 direction = selected->sunDirection;
-        if (ImGui::DragFloat3("Sun direction", &direction.x, .01f, -1, 1) && glm::length(direction) > .001f) {
+        EditorUI::PropertyLabel("Sun direction");
+        if (ImGui::DragFloat3("##Sun direction", &direction.x, .01f, -1, 1) && glm::length(direction) > .001f) {
             selected->sunDirection = glm::normalize(direction);
             changed = true;
         }
-        changed |= ImGui::DragFloat("Sky intensity", &selected->skyboxIntensity, .01f, 0, 8);
-        changed |= ImGui::SliderFloat("Cloud coverage", &selected->cloudCoverage, 0, 1, "%.2f");
-        changed |= ImGui::DragFloat("Cloud density", &selected->cloudDensity, .01f, 0, 4, "%.2f");
+        EditorUI::PropertyLabel("Sky intensity");
+        changed |= ImGui::DragFloat("##Sky intensity", &selected->skyboxIntensity, .01f, 0, 8);
+        EditorUI::PropertyLabel("Cloud coverage");
+        changed |= ImGui::SliderFloat("##Cloud coverage", &selected->cloudCoverage, 0, 1, "%.2f");
+        EditorUI::PropertyLabel("Cloud density");
+        changed |= ImGui::DragFloat("##Cloud density", &selected->cloudDensity, .01f, 0, 4, "%.2f");
         if (!m_scene->GetCloudVolumeSettings().enabled)
             DisabledWrapped("Enable the 3D clouds layer above to show this scenario's clouds.");
         std::string skyLabel = selected->skyboxPath.empty()
                                    ? "Drop skybox asset"
                                    : std::filesystem::path(selected->skyboxPath).stem().string();
-        ImGui::Button((skyLabel + "##ScenarioSky").c_str(), ImVec2(180, 0));
+        EditorUI::PropertyLabel("Skybox");
+        const float clearWidth = ImGui::CalcTextSize("Clear sky").x + ImGui::GetStyle().FramePadding.x * 2.f + ImGui::GetStyle().ItemSpacing.x;
+        ImGui::Button((skyLabel + "##ScenarioSky").c_str(), ImVec2(EditorUI::ControlWidth(clearWidth), 0));
         if (ImGui::BeginDragDropTarget()) {
             if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
                 auto dropped = *static_cast<const AssetDragData *>(payload->Data);
@@ -365,7 +384,8 @@ void Editor::DrawLightingScenarios() {
             !missing && m_lightingScenarioQualities.contains(selected->id) &&
             (std::abs(m_lightingScenarioQualities[selected->id].first - m_lightingScenarioSpacing) > .0001f ||
              m_lightingScenarioQualities[selected->id].second != m_lightingScenarioSamples);
-        ImGui::Text("Bake status: %s",
+        EditorUI::PropertyLabel("Bake status");
+        ImGui::TextWrapped("%s",
                     missing                                            ? "Not baked"
                     : settingsChanged                                  ? "Needs rebake (lighting changed)"
                     : geometryChanged                                  ? "Needs rebake (scene changed)"
@@ -375,10 +395,12 @@ void Editor::DrawLightingScenarios() {
                                                                                 : "Ready");
         if (!missing && m_lightingScenarioValidationErrors.contains(selected->id))
             ImGui::TextWrapped("Data status: %s", m_lightingScenarioValidationErrors[selected->id].c_str());
-        ImGui::DragFloat("Sample spacing (m)", &m_lightingScenarioSpacing, .1f, .1f, 4, "%.1f");
+        EditorUI::PropertyLabel("Sample spacing (m)");
+        ImGui::DragFloat("##Sample spacing (m)", &m_lightingScenarioSpacing, .1f, .1f, 4, "%.1f");
         if (ImGui::IsItemHovered())
             ImGui::SetTooltip("Smaller spacing adds lighting detail, vertices, bake time and memory.");
-        ImGui::SliderInt("Indirect samples", &m_lightingScenarioSamples, 0, 32);
+        EditorUI::PropertyLabel("Indirect samples");
+        ImGui::SliderInt("##Indirect samples", &m_lightingScenarioSamples, 0, 32);
         ImGui::BeginDisabled(m_environmentBakeRunning);
         if (ImGui::Button("Bake selected"))
             StartLightingScenarioBake(false);
@@ -433,7 +455,10 @@ void Editor::DrawLightingScenarios() {
             m_lightingScenarioPreviewFrom = definitions[0].id;
         if (!m_scene->FindLightingScenario(m_lightingScenarioPreviewTo))
             m_lightingScenarioPreviewTo = definitions[1].id;
-        ImGui::SeparatorText("Temporary preview");
+        {
+            EditorUI::ScopedFont sectionFont(18.f);
+            ImGui::SeparatorText("Temporary preview");
+        }
         const bool animationOwnsPreview = m_animationLightingPreview.captured;
         ImGui::BeginDisabled(!editing || animationOwnsPreview);
         bool previewChanged = ScenarioCombo("From", *m_scene, m_lightingScenarioPreviewFrom);
@@ -462,8 +487,10 @@ void Editor::DrawLightingScenarios() {
             m_scene->ClearLightingScenarioPreview();
         }
         ImGui::BeginDisabled(!editing || !previewReady || animationOwnsPreview);
-        previewChanged |= ImGui::SliderFloat("Blend", &m_lightingScenarioPreviewAmount, 0, 1, "%.2f");
-        if (ImGui::Checkbox("Preview in viewport", &m_lightingScenarioPreviewEnabled))
+        EditorUI::PropertyLabel("Blend");
+        previewChanged |= ImGui::SliderFloat("##Blend", &m_lightingScenarioPreviewAmount, 0, 1, "%.2f");
+        EditorUI::PropertyLabel("Preview in viewport");
+        if (ImGui::Checkbox("##Preview in viewport", &m_lightingScenarioPreviewEnabled))
             previewChanged = true;
         if (!animationOwnsPreview && m_lightingScenarioPreviewEnabled &&
             (previewChanged || !m_scene->HasLightingScenarioPreview()))
@@ -498,7 +525,6 @@ void Editor::DrawLightingScenarios() {
         }
         ImGui::EndDisabled();
     }
-    ImGui::PopItemWidth();
     ImGui::Separator();
 }
 } // namespace Canis

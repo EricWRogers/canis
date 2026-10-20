@@ -4,6 +4,7 @@
 #include <Canis/Components.hpp>
 #include <Canis/Scene.hpp>
 #include <Canis/Editor.hpp>
+#include <Canis/EditorUI.hpp>
 #include <Canis/Yaml.hpp>
 #include <Canis/Math.hpp>
 
@@ -269,22 +270,17 @@ inline std::string BuildInspectorFieldWidgetID(const char *_label, const char *_
 
 inline float GetInspectorFieldLabelWidth()
 {
-    const float availableWidth = ImGui::GetContentRegionAvail().x;
-    const float preferredWidth = ImGui::CalcTextSize("rotationOriginOffset").x + ImGui::GetStyle().ItemSpacing.x * 2.0f;
-    const float maxWidth = std::max(80.0f, availableWidth * 0.48f);
-    return std::clamp(preferredWidth, 110.0f, maxWidth);
+    return EditorUI::LabelWidth();
 }
 
 inline void DrawInspectorFieldLabel(const char *_label)
 {
-    ImGui::AlignTextToFramePadding();
-    ImGui::TextUnformatted((_label != nullptr) ? _label : "");
-    ImGui::SameLine(GetInspectorFieldLabelWidth());
+    EditorUI::PropertyLabel(_label);
 }
 
 inline void SetNextInspectorFieldItemWidth()
 {
-    ImGui::SetNextItemWidth(std::max(80.0f, ImGui::GetContentRegionAvail().x));
+    EditorUI::PropertyWidth();
 }
 
 inline bool DrawInspectorComboField(const char *_label, const char *_idSuffix, int *_currentItem, const char *const _items[], int _itemsCount)
