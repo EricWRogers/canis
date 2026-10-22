@@ -9,6 +9,7 @@
 
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
 #include <cstring>
 #include <filesystem>
@@ -359,7 +360,9 @@ namespace
             if (std::filesystem::is_regular_file(path, ec))
             {
                 hash = HashText(hash, std::to_string(std::filesystem::file_size(path, ec)));
-                hash = HashText(hash, std::to_string(std::filesystem::last_write_time(path, ec).time_since_epoch().count()));
+                const auto modified = std::chrono::duration_cast<std::chrono::nanoseconds>(
+                    std::filesystem::last_write_time(path, ec).time_since_epoch());
+                hash = HashText(hash, std::to_string(modified.count()));
             }
             else hash = HashText(hash, "missing");
         }

@@ -21,6 +21,7 @@ namespace Canis::Pipeline
         Gltf s;
         s.path = p;
         auto data = Bytes(p);
+        // Parse JSON as character text; libc++ has no char_traits<unsigned char>.
         if (data.size() > 12 && std::memcmp(data.data(), "glTF", 4) == 0)
         {
             size_t cursor = 12;
@@ -33,14 +34,14 @@ namespace Canis::Pipeline
                 if (cursor + length > data.size())
                     throw std::runtime_error("Invalid GLB chunk");
                 if (type == 0x4e4f534a)
-                    s.json = Json::parse(data.begin() + cursor, data.begin() + cursor + length);
+                    s.json = Json::parse(std::string(data.begin() + cursor, data.begin() + cursor + length));
                 if (type == 0x004e4942)
                     s.buffers.emplace_back(data.begin() + cursor, data.begin() + cursor + length);
                 cursor += length;
             }
         }
         else
-            s.json = Json::parse(data);
+            s.json = Json::parse(std::string(data.begin(), data.end()));
         for (auto b : s.json.value("buffers", Json::array()))
             if (b.contains("uri"))
             {

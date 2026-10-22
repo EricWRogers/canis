@@ -66,9 +66,9 @@ target_link_libraries(${CANIS_ENGINE_LIB}
     PUBLIC
     glm
     imgui
+    SDL3::SDL3
     PRIVATE
     yaml-cpp
-    SDL3::SDL3
     SDL3_net::SDL3_net
     stb
     Jolt
@@ -382,8 +382,14 @@ if(NOT CANIS_PLATFORM_WEB)
     target_link_libraries(canis-asset-tool PRIVATE CanisEngine)
 endif()
 
-find_package(ZLIB REQUIRED)
-target_link_libraries(CanisEngine PRIVATE ZLIB::ZLIB)
+if(CANIS_PLATFORM_WEB)
+    # Emscripten supplies a wasm zlib port; host libraries cannot be linked here.
+    target_compile_options(CanisEngine PRIVATE "-sUSE_ZLIB=1")
+    target_link_options(CanisEngine PUBLIC "-sUSE_ZLIB=1")
+else()
+    find_package(ZLIB REQUIRED)
+    target_link_libraries(CanisEngine PRIVATE ZLIB::ZLIB)
+endif()
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisNativeBakeTests tests/NativeBakeTests.cpp)
     target_link_libraries(CanisNativeBakeTests PRIVATE CanisEngine)
