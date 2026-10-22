@@ -17438,7 +17438,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     {
                         if (meta != nullptr)
                         {
-                            if (meta->type == MetaFileAsset::FileType::MODEL ||
+                            if (meta->type == MetaFileAsset::FileType::TEXTURE ||
+                                meta->type == MetaFileAsset::FileType::MODEL ||
                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
@@ -17464,7 +17465,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         if (entry.path().extension() == ".cs") OpenScriptDocument(entry.path());
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
                         {
-                            if (meta->type == MetaFileAsset::FileType::MODEL ||
+                            if (meta->type == MetaFileAsset::FileType::TEXTURE ||
+                                meta->type == MetaFileAsset::FileType::MODEL ||
                                 meta->type == MetaFileAsset::FileType::MATERIAL ||
                                 meta->type == MetaFileAsset::FileType::SKYBOX ||
                                 meta->type == MetaFileAsset::FileType::POSTPROCESS ||
@@ -17638,7 +17640,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             OpenSceneTab(meta->path);
                         }
-                        else if (meta->type == MetaFileAsset::FileType::MODEL ||
+                        else if (meta->type == MetaFileAsset::FileType::TEXTURE ||
+                                 meta->type == MetaFileAsset::FileType::MODEL ||
                                  meta->type == MetaFileAsset::FileType::MATERIAL ||
                                  meta->type == MetaFileAsset::FileType::SKYBOX ||
                                  meta->type == MetaFileAsset::FileType::POSTPROCESS ||

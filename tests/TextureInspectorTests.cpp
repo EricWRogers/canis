@@ -106,6 +106,7 @@ namespace Canis
             auto &rect = *entity.AddComponent<RectTransform>();
             const Vector4 originalUV(.1f, .2f, .3f, .4f);
             const Vector2 originalPivot(.5f), originalSize(320.f, 64.f);
+            sprite.textureHandle = TextureHandle{-1, {}};
             sprite.uv = originalUV; sprite.flipX = sprite.flipY = true;
             rect.pivot = originalPivot; rect.size = originalSize;
             editor.FocusEntity(entity.TryGet());
@@ -118,7 +119,8 @@ namespace Canis
             Check(texture && texture->GetGLTexture().id != 0, "Could not upload UI atlas fixture");
             const auto originalGL = texture->GetGLTexture().id;
 
-            bool showSprite = false;
+            bool showSprite = false, showAssets = true;
+            editor.m_assetSearch = "ui-atlas";
             auto frame = [&](ImVec2 mouse = ImVec2(-100, -100), bool down = false,
                              const fs::path &capture = fs::path{}) -> ImGuiID
             {
@@ -127,14 +129,17 @@ namespace Canis
                 io.AddMousePosEvent(mouse.x, mouse.y);
                 io.AddMouseButtonEvent(ImGuiMouseButton_Left, down);
                 ImGui::NewFrame();
+                if (showAssets)
+                {
+                    ImGui::SetNextWindowPos(ImVec2(640, 0), ImGuiCond_Always);
+                    ImGui::SetNextWindowSize(ImVec2(1280, 400), ImGuiCond_Always);
+                    editor.DrawAssetsPanel();
+                }
                 ImGui::SetNextWindowPos(ImVec2(0, 0), ImGuiCond_Always);
                 ImGui::SetNextWindowSize(ImVec2(620, ScreenHeight), ImGuiCond_Always);
-                ImGui::Begin("Texture Inspector", nullptr,
-                             ImGuiWindowFlags_NoSavedSettings | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoResize);
-                EditorUI::ScopedFont font(EditorUI::BodySize);
-                Check(editor.DrawTextureAssetInspector(TexturePath), "Inspector did not recognize a texture asset");
-                font.Reset();
-                ImGui::End();
+                // Exercise the same selection-dependent routing as the editor,
+                // rather than directly invoking the texture-specific drawer.
+                editor.DrawInspectorPanel(false);
                 if (showSprite)
                 {
                     // DrawSpriteEditor supplies its own first-use size hint.
@@ -166,7 +171,7 @@ namespace Canis
 
             auto inspectorID = [&](const char *label)
             {
-                auto *panel = ImGui::FindWindowByName("Texture Inspector");
+                auto *panel = ImGui::FindWindowByName("Inspector");
                 Check(panel != nullptr, "Inspector window was not created");
                 const auto seed = ImHashStr(TexturePath.c_str(), 0, panel->ID);
                 return ImHashStr(label, 0, seed);
@@ -212,10 +217,22 @@ namespace Canis
                 frame(position); frame(position, true); frame(position, false); frame();
             };
 
-            frame(); frame(); frame(ImVec2(-100, -100), false, artifacts / "texture-inspector-defaults.png");
+            frame(); frame();
+            auto *assets = ImGui::FindWindowByName("Assets");
+            Check(assets != nullptr, "Actual Assets panel was not drawn");
+            const auto cardSeed = ImHashStr(TexturePath.c_str(), 0, assets->ID);
+            const auto cardID = ImHashStr("##AssetCard", 0, cardSeed);
+            const auto card = locate("Texture thumbnail in Assets", cardID, assets->Pos.x + 30.f, 70.f, 350.f);
+            Check(editor.m_selectedAssetPath.empty(), "Texture was selected without clicking its asset card");
+            click(card);
+            Check(editor.m_selectedAssetPath == TexturePath,
+                  "Clicking a texture thumbnail in the actual Assets panel did not select it for the Inspector");
+            frame(ImVec2(-100, -100), false, artifacts / "texture-inspector-defaults.png");
             Check(Contents(TexturePath + ".meta") == original &&
                   fs::last_write_time(TexturePath + ".meta") == originalTime,
                   "Selecting a texture in the Inspector rewrote its metadata");
+            showAssets = false;
+            frame(); frame();
 
             // Toggle a real importer widget, then discard it through Revert.
             click(locate("Generate mipmaps", inspectorID("##Texture mipmaps"), 190.f));
