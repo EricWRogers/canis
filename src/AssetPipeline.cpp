@@ -3,6 +3,7 @@
 #include <fstream>
 #include <cstring>
 #include <stdexcept>
+#include <yaml-cpp/yaml.h>
 namespace Canis::Pipeline
 {
     static std::vector<uint8_t> Bytes(const std::filesystem::path& p)
@@ -295,9 +296,29 @@ namespace Canis::Pipeline
     }
     void WriteMeta(const std::filesystem::path& p, const char* kind)
     {
-        std::ofstream out(p.string() + ".meta");
+        const auto metadataPath = p.string() + ".meta";
+        // Texture import and slicing are user-authored, and survive reimport.
+        // Refuse malformed metadata rather than replacing those settings.
+        if (std::string(kind) == "TEXTURE" && std::filesystem::exists(metadataPath))
+        {
+            auto metadata = YAML::LoadFile(metadataPath);
+            if (!metadata.IsMap())
+                throw std::runtime_error("Texture metadata must be a map: " + metadataPath);
+            metadata["FileType"] = kind;
+            if (!metadata["UUID"]) metadata["UUID"] = AssetUUID(p.generic_string());
+            metadata["name"] = p.stem().string();
+            metadata["extension"] = p.extension().string().substr(1);
+            metadata["size"] = std::filesystem::file_size(p);
+            metadata["modified"] = 0;
+            std::ofstream out(metadataPath);
+            out << metadata;
+            if (!out) throw std::runtime_error("Cannot write " + metadataPath);
+            return;
+        }
+        std::ofstream out(metadataPath);
         out << "FileType: " << kind << "\nUUID: " << AssetUUID(p.generic_string())
             << "\nname: " << p.stem().string() << "\nextension: " << p.extension().string().substr(1)
             << "\nsize: " << std::filesystem::file_size(p) << "\nmodified: 0\n";
+        if (!out) throw std::runtime_error("Cannot write " + metadataPath);
     }
 } // namespace Canis::Pipeline

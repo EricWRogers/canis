@@ -782,94 +782,162 @@ namespace Canis
 
     Asset::~Asset() {}
 
+    namespace
+    {
+        DecodedImage DecodeTextureOnRenderThread(const std::string &path)
+        {
+            // The worker decoder deliberately installs a thread-local stb flip
+            // override. Do not install that override on the render thread: model
+            // preview captures still switch stb's global orientation explicitly.
+            struct RestoreFlip
+            {
+                ~RestoreFlip() { stbi_set_flip_vertically_on_load(true); }
+            } restore;
+            stbi_set_flip_vertically_on_load(false);
+            DecodedImage image;
+            size_t length = 0;
+            std::unique_ptr<void, decltype(&SDL_free)> encoded(
+                SDL_LoadFile(path.c_str(), &length), SDL_free);
+            if (!encoded || length == 0)
+            {
+                image.error = SDL_GetError();
+                if (image.error.empty()) image.error = "image read failed";
+                return image;
+            }
+            if (length > static_cast<size_t>(std::numeric_limits<int>::max()))
+            {
+                image.error = "encoded image is too large to decode";
+                return image;
+            }
+            int channels = 0;
+            std::unique_ptr<stbi_uc, decltype(&stbi_image_free)> pixels(
+                stbi_load_from_memory(static_cast<const stbi_uc *>(encoded.get()), static_cast<int>(length),
+                                      &image.width, &image.height, &channels, 4), stbi_image_free);
+            if (pixels)
+                image.pixels.assign(pixels.get(), pixels.get() + static_cast<size_t>(image.width) * image.height * 4);
+            else
+                image.error = stbi_failure_reason() ? stbi_failure_reason() : "image decode failed";
+            return image;
+        }
+
+        GLint TextureWrapParameter(TextureWrap wrap)
+        {
+            switch (wrap)
+            {
+            case TextureWrap::Clamp: return GL_CLAMP_TO_EDGE;
+            case TextureWrap::Mirror: return GL_MIRRORED_REPEAT;
+            default: return GL_REPEAT;
+            }
+        }
+
+        bool UploadImportedTexture(GLTexture &texture, const DecodedImage &source,
+                                   const TextureImportSettings &settings)
+        {
+            if (source.width <= 0 || source.height <= 0 ||
+                static_cast<size_t>(source.width) > std::numeric_limits<size_t>::max() / static_cast<size_t>(source.height) / 4 ||
+                source.pixels.size() != static_cast<size_t>(source.width) * source.height * 4)
+                return false;
+
+            DecodedImage padded;
+            const DecodedImage *image = &source;
+            if (settings.alphaBleed)
+            {
+                padded = source;
+                ApplyTextureAlphaBleed(padded);
+                image = &padded;
+            }
+
+            // Imports can happen during a frame or while an editor preview is
+            // bound. Neither pixel-store state nor the current sampler binding
+            // belongs to this asset, including an unrelated upload PBO.
+            GLint previousTexture = 0, unpackBuffer = 0, alignment = 0;
+            GLint rowLength = 0, skipRows = 0, skipPixels = 0;
+            glGetIntegerv(GL_TEXTURE_BINDING_2D, &previousTexture);
+            glGetIntegerv(GL_PIXEL_UNPACK_BUFFER_BINDING, &unpackBuffer);
+            glGetIntegerv(GL_UNPACK_ALIGNMENT, &alignment);
+            glGetIntegerv(GL_UNPACK_ROW_LENGTH, &rowLength);
+            glGetIntegerv(GL_UNPACK_SKIP_ROWS, &skipRows);
+            glGetIntegerv(GL_UNPACK_SKIP_PIXELS, &skipPixels);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, 0);
+            glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, 0);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, 0);
+
+            if (!texture.id) glGenTextures(1, &texture.id);
+            glBindTexture(GL_TEXTURE_2D, texture.id);
+            glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, image->width, image->height,
+                         0, GL_RGBA, GL_UNSIGNED_BYTE, image->pixels.data());
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, TextureWrapParameter(settings.wrapU));
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, TextureWrapParameter(settings.wrapV));
+
+            GLint minimum = settings.mipmaps ? GL_LINEAR_MIPMAP_NEAREST : GL_LINEAR;
+            GLint maximum = GL_NEAREST; // Legacy assets intentionally keep this.
+            switch (settings.filter)
+            {
+            case TextureFilter::Point:
+                minimum = settings.mipmaps ? GL_NEAREST_MIPMAP_NEAREST : GL_NEAREST;
+                break;
+            case TextureFilter::Bilinear:
+                maximum = GL_LINEAR;
+                break;
+            case TextureFilter::Trilinear:
+                minimum = settings.mipmaps ? GL_LINEAR_MIPMAP_LINEAR : GL_LINEAR;
+                maximum = GL_LINEAR;
+                break;
+            default: break;
+            }
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, minimum);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, maximum);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_BASE_LEVEL, 0);
+            glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAX_LEVEL, settings.mipmaps ? 1000 : 0);
+#if !defined(__EMSCRIPTEN__)
+            GLfloat maximumBias = 0;
+            glGetFloatv(GL_MAX_TEXTURE_LOD_BIAS, &maximumBias);
+            glTexParameterf(GL_TEXTURE_2D, GL_TEXTURE_LOD_BIAS,
+                            std::clamp(settings.mipBias, -maximumBias, maximumBias));
+#endif
+            if (settings.mipmaps) glGenerateMipmap(GL_TEXTURE_2D);
+
+            glBindTexture(GL_TEXTURE_2D, static_cast<GLuint>(previousTexture));
+            glPixelStorei(GL_UNPACK_ALIGNMENT, alignment);
+            glPixelStorei(GL_UNPACK_ROW_LENGTH, rowLength);
+            glPixelStorei(GL_UNPACK_SKIP_ROWS, skipRows);
+            glPixelStorei(GL_UNPACK_SKIP_PIXELS, skipPixels);
+            glBindBuffer(GL_PIXEL_UNPACK_BUFFER, static_cast<GLuint>(unpackBuffer));
+            texture.width = image->width;
+            texture.height = image->height;
+            return texture.id != 0;
+        }
+    }
+
     bool TextureAsset::Load(std::string _path)
     {
-        AssetLoadTimer timing{"texture",_path};
-        m_path = _path;
-        m_texture = LoadImageToGLTexture(_path, GL_RGBA, GL_RGBA);
-        return true;
+        AssetLoadTimer timing{"texture", _path};
+        return LoadDecoded(_path, DecodeTextureOnRenderThread(_path));
     }
 
     bool TextureAsset::LoadDecoded(const std::string &path, const DecodedImage &image)
     {
-        AssetLoadTimer timing{"texture-upload",path};
-        GLTexture replacement=UploadDecodedImage(image);
-        if (!replacement.id) return false;
-        if (m_texture.id) glDeleteTextures(1,&m_texture.id);
-        m_texture=replacement;m_path=path;
+        AssetLoadTimer timing{"texture-upload", path};
+        const TextureImportSettings settings = LoadTextureImportSettings(path);
+        if (!UploadImportedTexture(m_texture, image, settings))
+        {
+            Debug::Warning("Failed to load texture '%s'%s%s", path.c_str(),
+                           image.error.empty() ? "" : ": ", image.error.c_str());
+            return false;
+        }
+        // Keep the GL name: sprite handles and material slots cache that name.
+        m_path = path;
+        m_importSettings = settings;
         return true;
     }
 
     bool TextureAsset::Reload(std::string _path)
     {
-        GLTexture replacement = m_texture;
-        if (replacement.id == 0)
-            glGenTextures(1, &replacement.id);
-
-        int width = 0;
-        int height = 0;
-        int channels = 0;
-        bool loaded = false;
-
-        stbi_set_flip_vertically_on_load(false);
-        SDL_IOStream *io = SDL_IOFromFile(_path.c_str(), "rb");
-        if (io != nullptr)
-        {
-            size_t imageDataLength = 0;
-            void *imageData = SDL_LoadFile_IO(io, &imageDataLength, true);
-            if (imageData != nullptr && imageDataLength > 0)
-            {
-                stbi_uc *data = stbi_load_from_memory(static_cast<stbi_uc *>(imageData), imageDataLength, &width, &height, &channels, 4);
-                if (data != nullptr)
-                {
-                    glBindTexture(GL_TEXTURE_2D, replacement.id);
-                    glTexImage2D(GL_TEXTURE_2D, 0, GL_RGBA, width, height, 0, GL_RGBA, GL_UNSIGNED_BYTE, data);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_REPEAT);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
-                    glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST);
-                    glGenerateMipmap(GL_TEXTURE_2D);
-                    glBindTexture(GL_TEXTURE_2D, 0);
-
-                    replacement.width = width;
-                    replacement.height = height;
-                    loaded = true;
-                }
-                else
-                {
-                    const char *failureReason = stbi_failure_reason();
-                    Debug::Warning(
-                        "Failed to reload texture %s%s%s",
-                        _path.c_str(),
-                        failureReason != nullptr ? ": " : "",
-                        failureReason != nullptr ? failureReason : "");
-                }
-
-                stbi_image_free(data);
-                SDL_free(imageData);
-            }
-            else
-            {
-                Debug::Warning("Failed to read texture for reload %s: %s", _path.c_str(), SDL_GetError());
-            }
-        }
-        else
-        {
-            Debug::Warning("Failed to open texture for reload: %s", _path.c_str());
-        }
-
-        stbi_set_flip_vertically_on_load(true);
-
-        if (!loaded)
-        {
-            if (m_texture.id == 0 && replacement.id != 0)
-                glDeleteTextures(1, &replacement.id);
-            return false;
-        }
-
-        m_path = _path;
-        m_texture = replacement;
-        return true;
+        // Decode before touching the existing resource. A missing/corrupt source
+        // must not replace the currently visible texture with an empty image.
+        return LoadDecoded(_path, DecodeTextureOnRenderThread(_path));
     }
 
     bool TextureAsset::Free()
@@ -877,6 +945,7 @@ namespace Canis
         if (m_texture.id != 0)
             glDeleteTextures(1, &m_texture.id);
         m_texture = {};
+        m_importSettings = {};
         return true;
     }
 
@@ -1445,8 +1514,21 @@ namespace Canis
     void MetaFileAsset::Save()
     {
         YAML::Node node;
-        if((type==FileType::SHADERGRAPH || type==FileType::CSHARP) && std::filesystem::exists(path+".meta"))
-            node=YAML::LoadFile(path+".meta");
+        if (std::filesystem::exists(path + ".meta"))
+        {
+            try
+            {
+                node = YAML::LoadFile(path + ".meta");
+                if (!node.IsMap()) throw std::runtime_error("metadata must be a map");
+            }
+            catch (const std::exception &error)
+            {
+                // A scan/refresh must not discard authored import fields or
+                // replace damaged metadata (and its UUID) with a fresh document.
+                Debug::Warning("Cannot refresh metadata '%s': %s", (path + ".meta").c_str(), error.what());
+                return;
+            }
+        }
         node["FileType"] = FileTypeToString(type);
         node["UUID"] = std::to_string(uuid);
         node["name"] = name;
@@ -3215,7 +3297,62 @@ namespace Canis
         UpdateSkinning(_pose);
     }
 
-    static void BindSurfaceDetails(Shader& shader, i32 embeddedNormalId, const MaterialAsset* material)
+    // The 3D renderer supplies a shared smooth sampler for legacy materials.
+    // Authored texture sampling opts out per map, without changing that shared
+    // sampler or leaving an override behind for the next model. The scope spans
+    // all primitives so existing per-model texture binding caches remain valid.
+    class ImportedSamplerScope
+    {
+        struct Binding { GLint previous = 0; bool captured = false, overridden = false; };
+        Binding m_bindings[8]{};
+
+    public:
+        void Apply(GLuint unit, const TextureAsset *texture)
+        {
+            const auto *settings = texture ? &texture->GetImportSettings() : nullptr;
+            const bool custom = settings && (settings->filter != TextureFilter::Legacy ||
+                settings->wrapU != TextureWrap::Repeat || settings->wrapV != TextureWrap::Repeat ||
+                !settings->mipmaps || settings->mipBias != 0.0f);
+            auto &binding = m_bindings[unit];
+            if (custom)
+            {
+                if (!binding.captured)
+                {
+                    glGetIntegeri_v(GL_SAMPLER_BINDING, unit, &binding.previous);
+                    binding.captured = true;
+                }
+                if (binding.previous && !binding.overridden)
+                {
+                    glBindSampler(unit, 0);
+                    binding.overridden = true;
+                }
+            }
+            else if (binding.overridden)
+            {
+                glBindSampler(unit, static_cast<GLuint>(binding.previous));
+                binding.overridden = false;
+            }
+        }
+
+        void ApplyMaterial(const MaterialAsset *material)
+        {
+            if (!material) return;
+            const i32 ids[] = {material->specularId, material->roughnessId,
+                               material->metallicId, material->emissionId};
+            for (GLuint index = 0; index < 4; ++index)
+                Apply(index + 1, ids[index] >= 0 ? AssetManager::GetTexture(ids[index]) : nullptr);
+        }
+
+        ~ImportedSamplerScope()
+        {
+            for (GLuint unit = 0; unit < 8; ++unit)
+                if (m_bindings[unit].overridden)
+                    glBindSampler(unit, static_cast<GLuint>(m_bindings[unit].previous));
+        }
+    };
+
+    static void BindSurfaceDetails(Shader& shader, i32 embeddedNormalId, const MaterialAsset* material,
+                                   ImportedSamplerScope &samplers)
     {
         shader.SetInt("roughnessChannel",material?std::clamp(material->roughnessChannel,0,3):0);
         if(shader.GetUniformLocation("useNormalMap",0)<0)return;
@@ -3228,6 +3365,7 @@ namespace Canis
         shader.SetFloat("normalScale",scale);shader.SetInt("normalMap",5);
         glActiveTexture(GL_TEXTURE5);
         glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);
+        samplers.Apply(5, texture);
     }
 
     void ModelAsset::Draw(
@@ -3252,6 +3390,8 @@ namespace Canis
         Matrix4 lastMatrix(1);Color lastColor(1);
         i32 lastTexture=std::numeric_limits<i32>::min();
         i32 boundSkin = -1;
+        ImportedSamplerScope samplers;
+        samplers.ApplyMaterial(_baseMaterial);
         _shader.SetBool("useInstanceMatrix",false);_shader.SetBool("useInstanceColor",false);
         _shader.SetInt("albedoMap",0);
 
@@ -3343,6 +3483,7 @@ namespace Canis
                         ? AssetManager::GetTexture(textureIds[mapIndex]) : nullptr;
                     glBindTexture(GL_TEXTURE_2D, texture != nullptr
                         ? texture->GetGLTexture().id : 0);
+                    samplers.Apply(1 + mapIndex, texture);
                 }
                 glActiveTexture(GL_TEXTURE0);
             }
@@ -3374,6 +3515,7 @@ namespace Canis
                 _shader.SetBool("useAlbedoMap",textureId>=0);glActiveTexture(GL_TEXTURE0);
                 auto* texture=textureId>=0?AssetManager::GetTexture(textureId):nullptr;
                 glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);lastTexture=textureId;
+                samplers.Apply(0, texture);
             }
 
             unsigned int vertexArray=primitive.vao;
@@ -3387,12 +3529,14 @@ namespace Canis
                 vertexArray=PoseVertexArray(*pose,primitiveIndex);
             }
 
-            BindSurfaceDetails(_shader,primitive.normalTextureId,primitiveMaterial);
+            BindSurfaceDetails(_shader,primitive.normalTextureId,primitiveMaterial,samplers);
             if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
                 _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
+                auto* emission=primitive.emissionTextureId>=0?AssetManager::GetTexture(primitive.emissionTextureId):nullptr;
+                samplers.Apply(7,emission);
                 if(primitive.emissionTextureId>=0) {
                     _shader.SetInt("embeddedEmissionMap",7);glActiveTexture(GL_TEXTURE7);
-                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.emissionTextureId)->GetGLTexture().id);
+                    glBindTexture(GL_TEXTURE_2D,emission?emission->GetGLTexture().id:0);
                 }
                 _shader.SetVec3("embeddedEmissionFactor",primitive.emissionFactor);
             }
@@ -3449,6 +3593,8 @@ namespace Canis
         const bool applyPrimitiveNodeTransform = (_nodeIndex < 0) ? true : _applyNodeTransform;
         struct Instance { Matrix4 matrix; Color color; };
         std::vector<Instance> primitiveMatrices = {};
+        ImportedSamplerScope samplers;
+        samplers.ApplyMaterial(_baseMaterial);
 
         for (Primitive3D &primitive : m_primitives)
         {
@@ -3494,17 +3640,9 @@ namespace Canis
             _shader.SetFloat("alphaCutoff",(_baseColor * primitive.baseColor).a<.999f?0.f:.5f);
 
             glActiveTexture(GL_TEXTURE0);
-            if (textureId >= 0)
-            {
-                if (TextureAsset *texture = AssetManager::GetTexture(textureId))
-                    glBindTexture(GL_TEXTURE_2D, texture->GetGLTexture().id);
-                else
-                    glBindTexture(GL_TEXTURE_2D, 0);
-            }
-            else
-            {
-                glBindTexture(GL_TEXTURE_2D, 0);
-            }
+            auto* texture=textureId>=0?AssetManager::GetTexture(textureId):nullptr;
+            glBindTexture(GL_TEXTURE_2D,texture?texture->GetGLTexture().id:0);
+            samplers.Apply(0,texture);
 
             if (primitive.instanceVbo == 0)
                 glGenBuffers(1, &primitive.instanceVbo);
@@ -3543,12 +3681,14 @@ namespace Canis
                 glVertexAttribPointer(7,4,GL_FLOAT,GL_FALSE,sizeof(RenderVertex3D),reinterpret_cast<void*>(offsetof(RenderVertex3D,color)));
                 glVertexAttribDivisor(7,0);
             }
-            BindSurfaceDetails(_shader,primitive.normalTextureId,_baseMaterial);
+            BindSurfaceDetails(_shader,primitive.normalTextureId,_baseMaterial,samplers);
             if(_shader.GetUniformLocation("useEmbeddedEmissionMap",0)>=0) {
                 _shader.SetBool("useEmbeddedEmissionMap",primitive.emissionTextureId>=0);
+                auto* emission=primitive.emissionTextureId>=0?AssetManager::GetTexture(primitive.emissionTextureId):nullptr;
+                samplers.Apply(7,emission);
                 if(primitive.emissionTextureId>=0) {
                     _shader.SetInt("embeddedEmissionMap",7);glActiveTexture(GL_TEXTURE7);
-                    glBindTexture(GL_TEXTURE_2D,AssetManager::GetTexture(primitive.emissionTextureId)->GetGLTexture().id);
+                    glBindTexture(GL_TEXTURE_2D,emission?emission->GetGLTexture().id:0);
                 }
                 _shader.SetVec3("embeddedEmissionFactor",primitive.emissionFactor);
             }

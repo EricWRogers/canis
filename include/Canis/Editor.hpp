@@ -40,6 +40,7 @@ namespace Canis
     class Window;
     class Camera2D;
     class Entity;
+    struct SpriteEditorState;
     struct GameCodeObject;
 
     enum EditorMode
@@ -97,6 +98,7 @@ namespace Canis
         void NotifySceneChanged() { m_sceneHistoryEditWasActive = true; }
         void RevealAsset(const std::string& _path);
         void NavigateAssetReference(const std::string& _path);
+        void OpenSpriteEditor(const std::string& _texturePath);
         bool BakeBlockoutEntity(Canis::Entity* _entity);
         void RebuildPrefabInstance(Canis::Entity* _entity);
         void RebuildAllPrefabInstances();
@@ -327,6 +329,9 @@ namespace Canis
         void CommitAssetRename();
         void CommitScriptFolderRename(const std::filesystem::path &_includeRoot, const std::filesystem::path &_sourceRoot);
         bool DrawModelAssetInspector(const std::string &_modelPath);
+        bool DrawTextureAssetInspector(const std::string &_texturePath);
+        void DrawSpriteEditor();
+        std::shared_ptr<SpriteEditorState> m_spriteEditor;
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
         bool DrawSkyboxAssetInspector(const std::string &_skyboxPath);
         bool DrawPostProcessAssetInspector(const std::string &_postProcessPath);

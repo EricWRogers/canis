@@ -6407,6 +6407,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             DrawSystemPanel();
         if (m_showAssetsPanel)
             DrawAssetsPanel();
+        DrawSpriteEditor();
         if (m_showShaderGraphPanel)
             DrawShaderGraphWindow();
         if (m_showScriptsPanel)
@@ -12055,6 +12056,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (!m_selectedAssetPath.empty())
         {
+            if (DrawTextureAssetInspector(m_selectedAssetPath))
+            {
+                propertyFont.Reset();
+                ImGui::End();
+                return;
+            }
+
             if (DrawModelAssetInspector(m_selectedAssetPath))
             {
                 propertyFont.Reset();

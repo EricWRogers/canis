@@ -13,6 +13,7 @@
 #include <Canis/Data/Types.hpp>
 #include <Canis/AnimationTypes.hpp>
 #include <Canis/AssetHandle.hpp>
+#include <Canis/TextureImport.hpp>
 
 namespace Canis
 {
@@ -37,6 +38,7 @@ namespace Canis
     private:
         GLTexture m_texture{};
         std::string m_path = "";
+        TextureImportSettings m_importSettings{};
 
     public:
         bool Load(std::string _path) override;
@@ -46,6 +48,7 @@ namespace Canis
         GLTexture GetGLTexture() { return m_texture; }
         GLTexture *GetPointerToTexture() { return &m_texture; }
         std::string GetPath() { return m_path; }
+        const TextureImportSettings &GetImportSettings() const { return m_importSettings; }
     };
 
     class SkyboxAsset : public Asset
