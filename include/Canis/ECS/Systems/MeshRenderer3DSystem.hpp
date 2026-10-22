@@ -105,6 +105,8 @@ namespace Canis
         unsigned int m_debugGizmoVao = 0;
         unsigned int m_debugGizmoVbo = 0;
         unsigned int m_materialSampler = 0;
+        unsigned int m_softColorTexture = 0;
+        int m_softColorWidth = 0, m_softColorHeight = 0;
         unsigned int m_softDepthTexture = 0;
         int m_softDepthWidth = 0, m_softDepthHeight = 0;
         float m_effectTime = 0;

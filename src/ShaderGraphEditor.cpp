@@ -103,6 +103,17 @@ namespace Canis
             ShaderGraphTemplate_ToonLighting,
             ShaderGraphTemplate_Posterize,
             ShaderGraphTemplate_Fresnel,
+            ShaderGraphTemplate_Dot,
+            ShaderGraphTemplate_ObjectToWorldPosition,
+            ShaderGraphTemplate_LocalPosition,
+            ShaderGraphTemplate_ScreenUV,
+            ShaderGraphTemplate_SceneColor,
+            ShaderGraphTemplate_SceneDepthDifference,
+            ShaderGraphTemplate_Length,
+            ShaderGraphTemplate_Saturate,
+            ShaderGraphTemplate_OneMinus,
+            ShaderGraphTemplate_Divide,
+            ShaderGraphTemplate_Step,
             ShaderGraphTemplate_Count
         };
 
@@ -912,6 +923,21 @@ namespace Canis
                 return MakeShaderGraphNumericPreview(ShaderGraphValueType::FLOAT, Vector4(noise, 0.0f, 0.0f, 1.0f));
             }
 
+            if (_node.type == "Dot")
+            {
+                auto a=ResolveShaderGraphPreviewValue(_document,_node.inputA,_depth+1);
+                auto b=ResolveShaderGraphPreviewValue(_document,_node.inputB,_depth+1);
+                if (HasShaderGraphNumericPreview(a) && HasShaderGraphNumericPreview(b))
+                {
+                    auto type=GetHigherShaderGraphValueType(a.numericType,b.numericType);
+                    auto av=ConvertShaderGraphPreviewNumeric(a.numericValue,a.numericType,type);
+                    auto bv=ConvertShaderGraphPreviewNumeric(b.numericValue,b.numericType,type);
+                    int count=type==ShaderGraphValueType::VEC4?4:type==ShaderGraphValueType::VEC3?3:type==ShaderGraphValueType::VEC2?2:1;
+                    float value=0;for(int i=0;i<count;++i)value+=av[i]*bv[i];
+                    return MakeShaderGraphNumericPreview(ShaderGraphValueType::FLOAT,Vector4(value,0,0,1));
+                }
+                return {};
+            }
             if (_node.type == "Add" || _node.type == "Multiply" || _node.type == "Subtract" || _node.type == "Difference")
             {
                 const ShaderGraphPreviewValue a = ResolveShaderGraphPreviewValue(_document, _node.inputA, _depth + 1);
@@ -1187,6 +1213,28 @@ shader_graph_preview_footer:
         {
             switch (_index)
             {
+                case ShaderGraphTemplate_Dot:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 2, kMathInputNames, kMathInputColors, 1, kSingleOutputName, kSingleOutputFloatColors);
+                case ShaderGraphTemplate_ObjectToWorldPosition:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kSingleInputName, kMathInputColors, 1, kSingleOutputName, kSingleOutputVec3Colors);
+                case ShaderGraphTemplate_LocalPosition:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 0, nullptr, kMathInputColors, 1, kPositionOutputNames, kSingleOutputVec3Colors);
+                case ShaderGraphTemplate_ScreenUV:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 0, nullptr, kMathInputColors, 1, kUvOutputNames, kSingleOutputVec2Colors);
+                case ShaderGraphTemplate_SceneColor:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kTextureUvInputNames, kMathInputColors, 1, kColorOutputNames, kSingleOutputVec4Colors);
+                case ShaderGraphTemplate_SceneDepthDifference:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 0, nullptr, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
+                case ShaderGraphTemplate_Length:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kSingleInputName, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
+                case ShaderGraphTemplate_Saturate:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kSingleInputName, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
+                case ShaderGraphTemplate_OneMinus:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 1, kSingleInputName, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
+                case ShaderGraphTemplate_Divide:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 2, kMathInputNames, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
+                case ShaderGraphTemplate_Step:
+                    return MakeTemplate(IM_COL32(90, 126, 164, 255), IM_COL32(40, 62, 86, 255), IM_COL32(52, 78, 102, 255), 2, kMathInputNames, kMathInputColors, 1, kSingleOutputName, kMathOutputColors);
                 case ShaderGraphTemplate_Float:
                     return MakeTemplate(IM_COL32(108, 82, 140, 255), IM_COL32(62, 46, 90, 255), IM_COL32(76, 58, 105, 255), 0, nullptr, nullptr, 1, kSingleOutputName, kSingleOutputFloatColors);
                 case ShaderGraphTemplate_Vector2:
@@ -1261,6 +1309,17 @@ shader_graph_preview_footer:
 
         size_t GetShaderGraphTemplateIndex(const ShaderGraphNode &_node)
         {
+            if (_node.type == "Dot") return ShaderGraphTemplate_Dot;
+            if (_node.type == "ObjectToWorldPosition") return ShaderGraphTemplate_ObjectToWorldPosition;
+            if (_node.type == "LocalPosition") return ShaderGraphTemplate_LocalPosition;
+            if (_node.type == "ScreenUV") return ShaderGraphTemplate_ScreenUV;
+            if (_node.type == "SceneColor") return ShaderGraphTemplate_SceneColor;
+            if (_node.type == "SceneDepthDifference") return ShaderGraphTemplate_SceneDepthDifference;
+            if (_node.type == "Length") return ShaderGraphTemplate_Length;
+            if (_node.type == "Saturate") return ShaderGraphTemplate_Saturate;
+            if (_node.type == "OneMinus") return ShaderGraphTemplate_OneMinus;
+            if (_node.type == "Divide") return ShaderGraphTemplate_Divide;
+            if (_node.type == "Step") return ShaderGraphTemplate_Step;
             if(_node.type=="ToonLighting")return ShaderGraphTemplate_ToonLighting;
             if(_node.type=="Posterize")return ShaderGraphTemplate_Posterize;
             if(_node.type=="Fresnel")return ShaderGraphTemplate_Fresnel;
@@ -1351,6 +1410,10 @@ shader_graph_preview_footer:
 
         const char *GetShaderGraphNodeTitleTooltip(const ShaderGraphNode &_node)
         {
+            if (_node.type == "Dot")
+                return "Dot product of two vectors. Dot with an axis to extract a coordinate.";
+            if (_node.type == "ObjectToWorldPosition")
+                return "Transforms a local vertex position by this object or instance model matrix. Vertex stage only.";
             if (_node.type == "UV")
                 return "Mesh UV coordinates for sampling textures and scrolling effects.";
             if (_node.type == "Time")
@@ -3064,6 +3127,17 @@ shader_graph_preview_footer:
             {
                 addNodeMenuItem("Position (World)", "Position");
                 addNodeMenuItem("Normal (World)", "Normal");
+                addNodeMenuItem("Dot Product", "Dot");
+                addNodeMenuItem("Object To World Position", "ObjectToWorldPosition");
+                addNodeMenuItem("Local Position", "LocalPosition");
+                addNodeMenuItem("Screen UV", "ScreenUV");
+                addNodeMenuItem("Scene Color", "SceneColor");
+                addNodeMenuItem("Scene Depth Difference", "SceneDepthDifference");
+                addNodeMenuItem("Length", "Length");
+                addNodeMenuItem("Saturate", "Saturate");
+                addNodeMenuItem("One Minus", "OneMinus");
+                addNodeMenuItem("Divide", "Divide");
+                addNodeMenuItem("Step", "Step");
                 addNodeMenuItem("Toon Lighting", "ToonLighting");
                 addNodeMenuItem("Posterize", "Posterize");
                 addNodeMenuItem("Fresnel", "Fresnel");

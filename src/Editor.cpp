@@ -8725,10 +8725,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
 
+        // Clicking the game image can activate ImGui's window/item ID. That
+        // gesture still belongs to gameplay; treating every active item as
+        // editor capture produces a false focus-loss pause on the next frame.
+        // InputManager separately excludes actual editor text entry.
         m_scene->GetInputManager().SetEditorGameFocused(
             m_mode == EditorMode::PLAY &&
-            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows) &&
-            !ImGui::IsAnyItemActive());
+            ImGui::IsWindowFocused(ImGuiFocusedFlags_RootAndChildWindows));
 
         m_playViewportPosX = 0.0f;
         m_playViewportPosY = 0.0f;
@@ -13112,7 +13115,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             const bool showDistanceFogControls = shaderPath.find("distance_fog") != std::string::npos;
             const bool showSsaoControls = shaderPath.find("ssao") != std::string::npos;
 
-            auto drawPassFloat = [&](const char *_label, const char *_key, float _defaultValue, float _speed, float _min, float _max, const char *_format) -> void
+            auto drawPassFloat = [&](const char *_label, const char *_key, float _defaultValue, float _speed, float _min, float _max, const char *_format, bool _slider = false) -> void
             {
                 YAML::Node settingsNode = passNode["settings"];
                 const float currentValue = (settingsNode && settingsNode.IsMap())
@@ -13120,7 +13123,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     : _defaultValue;
 
                 float value = currentValue;
-                if (ImGui::DragFloat(_label, &value, _speed, _min, _max, _format))
+                const bool changed = _slider
+                    ? ImGui::SliderFloat(_label, &value, _min, _max, _format)
+                    : ImGui::DragFloat(_label, &value, _speed, _min, _max, _format);
+                if (changed)
                 {
                     if (!passNode["settings"] || !passNode["settings"].IsMap())
                         passNode["settings"] = YAML::Node(YAML::NodeType::Map);
@@ -13139,9 +13145,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             if (showColorControls)
             {
-                drawPassFloat("exposure", "exposure", 1.0f, 0.01f, 0.0f, 8.0f, "%.2f");
-                drawPassFloat("contrast", "contrast", 1.05f, 0.01f, 0.0f, 4.0f, "%.2f");
-                drawPassFloat("saturation", "saturation", 1.0f, 0.01f, 0.0f, 4.0f, "%.2f");
+                drawPassFloat("exposure", "exposure", 1.0f, 0.01f, 0.0f, 8.0f, "%.2f", true);
+                drawPassFloat("contrast", "contrast", 1.05f, 0.01f, 0.0f, 4.0f, "%.2f", true);
+                drawPassFloat("saturation", "saturation", 1.0f, 0.01f, 0.0f, 4.0f, "%.2f", true);
             }
 
             if (showDistanceFogControls)

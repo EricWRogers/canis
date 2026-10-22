@@ -306,6 +306,8 @@ namespace Canis
     void RegisterParticleEmitterComponent(App &_app)
     {
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, playOnStart);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, paused);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, simulationSpeed);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, looping);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, burstMode);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, destroyEntityWhenDone);
@@ -374,6 +376,8 @@ namespace Canis
             }
 
             DrawInspectorField(_editor, "playOnStart", _conf.name.c_str(), component->playOnStart);
+            DrawInspectorField(_editor, "paused", _conf.name.c_str(), component->paused);
+            DrawInspectorField(_editor, "simulationSpeed", _conf.name.c_str(), component->simulationSpeed);
             DrawInspectorField(_editor, "looping", _conf.name.c_str(), component->looping);
             DrawInspectorField(_editor, "burstMode", _conf.name.c_str(), component->burstMode);
             DrawInspectorField(_editor, "destroyEntityWhenDone", _conf.name.c_str(),
@@ -544,8 +548,13 @@ namespace Canis
                 expiredParticles.push_back(entityHandle);
                 continue;
             }
+            const auto &owner = _registry.get<ParticleEmitter>(particle.emitterHandle);
+            if (!_editorPreview && owner.paused)
+                continue;
+            const float playbackSpeed = _editorPreview ? 1.f :
+                (std::isfinite(owner.simulationSpeed) ? std::max(0.f, owner.simulationSpeed) : 0.f);
             const float step =
-                std::min(_deltaTime, std::max(0.f, particle.lifetime - particle.age));
+                std::min(_deltaTime * playbackSpeed, std::max(0.f, particle.lifetime - particle.age));
             particle.age += step;
             const Vector3 displacement = Integrate(particle, step);
 
@@ -630,6 +639,10 @@ namespace Canis
                 continue;
 
             CleanupDeadParticles(emitter, _registry);
+            const float emitterDelta = _editorPreview ? _deltaTime :
+                (emitter.paused || !std::isfinite(emitter.simulationSpeed) ? 0.f : _deltaTime * std::max(0.f, emitter.simulationSpeed));
+            if (!_editorPreview && (emitter.paused || !std::isfinite(emitter.simulationSpeed) || emitter.simulationSpeed <= 0.f))
+                continue;
             if (!emitter.entity->Active() || !transform.IsActiveInHierarchy())
                 continue;
 
@@ -684,7 +697,7 @@ namespace Canis
             if (emitter.playing)
             {
                 const float previousElapsed = emitter.elapsed;
-                emitter.elapsed += _deltaTime;
+                emitter.elapsed += emitterDelta;
 
                 if (emitter.burstMode)
                 {
@@ -727,11 +740,11 @@ namespace Canis
                 {
                     const float activeTime =
                         emitter.looping
-                            ? _deltaTime
-                            : std::min(_deltaTime,
+                            ? emitterDelta
+                            : std::min(emitterDelta,
                                        std::max(0.f, emitter.emissionDuration - previousElapsed));
                     EmitContinuous(emitter, transform, _registry, entityHandle, activeTime,
-                                   _deltaTime - activeTime);
+                                   emitterDelta - activeTime);
 
                     if (!emitter.looping &&
                         emitter.elapsed >= std::max(emitter.emissionDuration, 0.0f))

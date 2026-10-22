@@ -1458,6 +1458,28 @@ static void ParticleBudgetsTimingAndCollisions(Window& window) {
         emitter.looping=true;emitter.Play();parent.GetComponent<Transform>().active=false;system.Update(scene.GetRegistry(),.1f);
         Check(emitter.totalSpawned==0,"Inactive parent still emitted particles");
     }
+    {
+        Scene scene;scene.Init(nullptr,&window,nullptr);
+        auto e=scene.CreateEntity("Paused combat emitter");e.AddComponent<Transform>();
+        auto& emitter=configure(e);emitter.burstCount=1;emitter.particleLifetime=5;
+        emitter.spawnShape=1;emitter.minVelocity=emitter.maxVelocity={1,0,0};
+        emitter.speedMin=emitter.speedMax=2;emitter.gravity=emitter.drag=0;
+        emitter.Play();ParticleEmitterSystem system;system.scene=&scene;
+        system.Update(scene.GetRegistry(),0);
+        Check(emitter.particles.size()==1,"Zero-time Play failed to emit its burst");
+        const auto h=emitter.particles.front();
+        emitter.paused=true;system.Update(scene.GetRegistry(),1);
+        Check(scene.GetRegistry().get<Transform>(h).position.x==0&&emitter.elapsed==0,
+            "Paused particles moved or emitter time advanced");
+        emitter.paused=false;emitter.simulationSpeed=3;system.Update(scene.GetRegistry(),.25f);
+        Check(std::abs(scene.GetRegistry().get<Transform>(h).position.x-1.5f)<.001f,
+            "Per-emitter game speed did not scale particle motion");
+        emitter.simulationSpeed=0;system.Update(scene.GetRegistry(),1);
+        Check(std::abs(scene.GetRegistry().get<Transform>(h).position.x-1.5f)<.001f,
+            "Zero-speed particles moved");
+        scene.Destroy(e);system.Update(scene.GetRegistry(),0);
+        Check(!scene.GetRegistry().valid(h),"Destroyed paused emitter left orphaned particles");
+    }
     for(int collisionMode:{1,2}) {
         Scene scene;scene.Init(nullptr,&window,nullptr);
         if(collisionMode==2) {

@@ -895,6 +895,8 @@ namespace Canis
             glDeleteVertexArrays(1, &m_debugGizmoVao);
 
         DestroyShadowMap();
+        if(m_softColorTexture) glDeleteTextures(1,&m_softColorTexture);
+        m_softColorTexture=0; m_softColorWidth=m_softColorHeight=0;
         if(m_softDepthTexture) glDeleteTextures(1,&m_softDepthTexture);
         m_softDepthTexture=0; m_softDepthWidth=m_softDepthHeight=0;
         m_skyboxVbo = 0;
@@ -1903,8 +1905,9 @@ namespace Canis
         MaterialSamplerScope materialSamplers(m_materialSampler);
 
         Shader *currentShader = nullptr;
-        bool softDepthReady = false;
+        bool softDepthReady = false, softColorReady = false;
         GLint softDepthViewport[4]{};
+        glGetIntegerv(GL_VIEWPORT,softDepthViewport);
 
         auto modelView = _registry.view<Transform, Model>();
         auto& opaqueEntities=m_batchCache->opaqueScratch;
@@ -2011,10 +2014,16 @@ namespace Canis
                 currentShader->SetFloat("weatherDryRoughness", wetness.dryRoughness);
                 currentShader->SetFloat("weatherWetRoughness", wetness.wetRoughness);
                 currentShader->SetFloat("weatherDarkening", wetness.darkening);
+                // Screen UV graphs also need a viewport when no scene texture
+                // is sampled (and therefore no copy pass is requested).
+                currentShader->SetVec4("softDepthViewport",Vector4(softDepthViewport[0],softDepthViewport[1],softDepthViewport[2],softDepthViewport[3]));
+                if(currentShader->GetUniformLocation("softSceneColor",0)>=0) {
+                    currentShader->SetBool("softColorAvailable",softColorReady);
+                    currentShader->SetInt("softSceneColor",14);
+                }
                 if(currentShader->GetUniformLocation("softSceneDepth",0)>=0) {
                     currentShader->SetBool("softDepthAvailable",softDepthReady);
                     currentShader->SetInt("softSceneDepth",15);
-                    currentShader->SetVec4("softDepthViewport",Vector4(softDepthViewport[0],softDepthViewport[1],softDepthViewport[2],softDepthViewport[3]));
                     currentShader->SetMat4("softInverseProjection",glm::inverse(projection));
                 }
                 const Color ambientLight = lighting.from && lighting.to ?
@@ -2720,9 +2729,9 @@ namespace Canis
 
         {
         RenderMetrics::Scope timing("Transparent geometry");
-        // Copy opaque depth only for shaders that request soft intersections.
-        // A separate texture avoids sampling a framebuffer's attached depth image.
-        bool wantsDepth=false;
+        // Copy opaque scene textures only for shaders that request them. Separate
+        // textures avoid sampling the active framebuffer attachments.
+        bool wantsDepth=false, wantsColor=false;
         for(const auto& entry:transparentEntities) {
             auto* material=_registry.try_get<Material>(entry.entityHandle);
             if(!material || material->materialId<0) continue;
@@ -2732,19 +2741,42 @@ namespace Canis
             if(!shaderAsset) continue;
             auto* shader=shaderAsset->GetShader();
             if(!shader->IsLinked())shader->Link();
-            if(shader->GetUniformLocation("softSceneDepth",0)>=0){wantsDepth=true;break;}
+            wantsDepth |= shader->GetUniformLocation("softSceneDepth",0)>=0;
+            wantsColor |= shader->GetUniformLocation("softSceneColor",0)>=0;
         }
         GLint savedTexture=0,savedSampler=0,savedActive=GL_TEXTURE0,savedRead=0;
-        if(wantsDepth) {
+        GLint savedColorTexture=0,savedColorSampler=0;
+        if(wantsDepth || wantsColor) {
             RenderMetrics::Scope depthTiming("Soft volume depth copy");
             glGetIntegerv(GL_VIEWPORT,softDepthViewport);
             GLint samples=0,drawFramebuffer=0;glGetIntegerv(GL_SAMPLES,&samples);
             glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&drawFramebuffer);
             glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING,&savedRead);
             glGetIntegerv(GL_ACTIVE_TEXTURE,&savedActive);
+            glActiveTexture(GL_TEXTURE14);glGetIntegerv(GL_TEXTURE_BINDING_2D,&savedColorTexture);
+            glGetIntegeri_v(GL_SAMPLER_BINDING,14,&savedColorSampler);
+            if(wantsColor)glBindSampler(14,0);
             glActiveTexture(GL_TEXTURE15);glGetIntegerv(GL_TEXTURE_BINDING_2D,&savedTexture);
             glGetIntegeri_v(GL_SAMPLER_BINDING,15,&savedSampler);glBindSampler(15,0);
             if(samples<=1 && softDepthViewport[2]>0 && softDepthViewport[3]>0) {
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,drawFramebuffer);
+                if(wantsColor) {
+                    glActiveTexture(GL_TEXTURE14);
+                    if(!m_softColorTexture)glGenTextures(1,&m_softColorTexture);
+                    glBindTexture(GL_TEXTURE_2D,m_softColorTexture);
+                    if(m_softColorWidth!=softDepthViewport[2] || m_softColorHeight!=softDepthViewport[3]) {
+                        m_softColorWidth=softDepthViewport[2];m_softColorHeight=softDepthViewport[3];
+                        glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA8,m_softColorWidth,m_softColorHeight,0,GL_RGBA,GL_UNSIGNED_BYTE,nullptr);
+                        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_LINEAR);
+                        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_LINEAR);
+                        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_S,GL_CLAMP_TO_EDGE);
+                        glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_WRAP_T,GL_CLAMP_TO_EDGE);
+                    }
+                    glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,softDepthViewport[0],softDepthViewport[1],m_softColorWidth,m_softColorHeight);
+                    softColorReady=true;
+                    glActiveTexture(GL_TEXTURE15);
+                }
+                if(wantsDepth) {
                 if(!m_softDepthTexture)glGenTextures(1,&m_softDepthTexture);
                 glBindTexture(GL_TEXTURE_2D,m_softDepthTexture);
                 if(m_softDepthWidth!=softDepthViewport[2] || m_softDepthHeight!=softDepthViewport[3]) {
@@ -2757,8 +2789,9 @@ namespace Canis
                 }
                 glBindFramebuffer(GL_READ_FRAMEBUFFER,drawFramebuffer);
                 glCopyTexSubImage2D(GL_TEXTURE_2D,0,0,0,softDepthViewport[0],softDepthViewport[1],m_softDepthWidth,m_softDepthHeight);
-                glBindFramebuffer(GL_READ_FRAMEBUFFER,savedRead);
                 softDepthReady=true;
+                }
+                glBindFramebuffer(GL_READ_FRAMEBUFFER,savedRead);
             }
             glActiveTexture(GL_TEXTURE0);
             if(currentShader){currentShader->UnUse();currentShader=nullptr;}
@@ -2767,7 +2800,9 @@ namespace Canis
         for (const TransparentModelEntry &entry : transparentEntities)
             drawEntity(entry.entityHandle);
         glDepthMask(GL_TRUE);
-        if(wantsDepth) {
+        if(wantsDepth || wantsColor) {
+            glActiveTexture(GL_TEXTURE14);glBindTexture(GL_TEXTURE_2D,savedColorTexture);
+            glBindSampler(14,savedColorSampler);
             glActiveTexture(GL_TEXTURE15);glBindTexture(GL_TEXTURE_2D,savedTexture);
             glBindSampler(15,savedSampler);glActiveTexture(savedActive);
         }

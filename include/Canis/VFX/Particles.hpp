@@ -28,6 +28,8 @@ namespace Canis
 
         bool playOnStart = true;
         bool playing = false;
+        bool paused = false;
+        float simulationSpeed = 1.f;
         bool looping = false;
         bool burstMode = true;
         bool destroyEntityWhenDone = true;

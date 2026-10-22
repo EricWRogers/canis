@@ -478,6 +478,7 @@ namespace Canis
                 << "out vec3 fragmentNormal;\n"
                 << "out vec2 fragmentUV;\n"
                 << "out vec3 fragmentWorldPos;\n\n"
+                << "out vec3 fragmentLocalPos;\n"
                 << "out vec4 fragmentInstanceColor;\n"
                 << "[CANIS SKINNING]\n"
                 << "void main()\n"
@@ -494,6 +495,7 @@ namespace Canis
                 << "    vec3 sgFinalWorldNormal = normalize(" << ConvertExpression(normalExpression, ShaderGraphValueType::VEC3) << ");\n"
                 << "    fragmentNormal = sgFinalWorldNormal;\n"
                 << "    fragmentUV = vertexUV;\n"
+                << "    fragmentLocalPos = sgPosition;\n"
                 << "    fragmentWorldPos = sgFinalWorldPos;\n"
                 << "    gl_Position = P * V * vec4(sgFinalWorldPos, 1.0);\n"
                 << "}\n";
@@ -596,6 +598,55 @@ namespace Canis
                 auto steps=BuildLinkExpression(_context,_node.inputB,{ShaderGraphValueType::FLOAT,FormatFloatLiteral(_node.floatValue)});
                 auto count="max("+ConvertExpression(steps,ShaderGraphValueType::FLOAT)+", 1.0)";
                 result={value.type,"(floor(("+value.expression+") * "+count+") / "+count+")"};
+            }
+            else if (_node.type == "LocalPosition")
+            {
+                result = {ShaderGraphValueType::VEC3, _context.stage == ShaderGraphBuildStage::Vertex ? "sgPosition" : "fragmentLocalPos"};
+            }
+            else if (_node.type == "ScreenUV" || _node.type == "SceneColor" || _node.type == "SceneDepthDifference")
+            {
+                if (_context.stage != ShaderGraphBuildStage::Fragment)
+                    throw std::runtime_error(_node.type + " is only available in the fragment stage.");
+                if (_node.type == "ScreenUV")
+                    result = {ShaderGraphValueType::VEC2, "sgScreenUV()"};
+                else if (_node.type == "SceneDepthDifference")
+                    result = {ShaderGraphValueType::FLOAT, "sgSceneDepthDifference()"};
+                else {
+                    auto uv = BuildLinkExpression(_context, _node.inputUV, {ShaderGraphValueType::VEC2, "sgScreenUV()"});
+                    result = {ShaderGraphValueType::VEC4, "sgSceneColor(" + ConvertExpression(uv, ShaderGraphValueType::VEC2) + ")"};
+                }
+            }
+            else if (_node.type == "Dot")
+            {
+                auto a = BuildLinkExpression(_context, _node.inputA, {ShaderGraphValueType::VEC3, "vec3(0.0)"});
+                auto b = BuildLinkExpression(_context, _node.inputB, {ShaderGraphValueType::VEC3, "vec3(0.0)"});
+                auto type = ResolveArithmeticType(a, b);
+                result = {ShaderGraphValueType::FLOAT, type==ShaderGraphValueType::FLOAT ? "("+a.expression+" * "+b.expression+")" : "dot(" + ConvertExpression(a, type) + ", " + ConvertExpression(b, type) + ")"};
+            }
+            else if (_node.type == "ObjectToWorldPosition")
+            {
+                if (_context.stage != ShaderGraphBuildStage::Vertex)
+                    throw std::runtime_error("ObjectToWorldPosition is only available in the vertex stage.");
+                auto p = BuildLinkExpression(_context, _node.inputA, {ShaderGraphValueType::VEC3, "sgPosition"});
+                result = {ShaderGraphValueType::VEC3, "(sgModel * vec4(" + ConvertExpression(p, ShaderGraphValueType::VEC3) + ", 1.0)).xyz"};
+            }
+            else if (_node.type == "Length" || _node.type == "Saturate" || _node.type == "OneMinus")
+            {
+                auto input = BuildLinkExpression(_context, _node.inputA, {ShaderGraphValueType::FLOAT, "0.0"});
+                if (_node.type == "Length")
+                    result = {ShaderGraphValueType::FLOAT, "length(" + input.expression + ")"};
+                else if (_node.type == "Saturate")
+                    result = {input.type, "clamp(" + input.expression + ", 0.0, 1.0)"};
+                else
+                    result = {input.type, "(1.0 - (" + input.expression + "))"};
+            }
+            else if (_node.type == "Divide" || _node.type == "Step")
+            {
+                auto a = BuildLinkExpression(_context, _node.inputA, {ShaderGraphValueType::FLOAT, "0.0"});
+                auto b = BuildLinkExpression(_context, _node.inputB, {ShaderGraphValueType::FLOAT, "1.0"});
+                auto type = ResolveArithmeticType(a, b);
+                auto av = ConvertExpression(a, type), bv = ConvertExpression(b, type);
+                result = {type, _node.type == "Step" ? "step(" + av + ", " + bv + ")" : "(" + av + " / " + bv + ")"};
             }
             else if (_node.type == "Float")
             {
@@ -864,6 +915,7 @@ namespace Canis
                 << "in vec3 fragmentNormal;\n"
                 << "in vec2 fragmentUV;\n\n"
                 << "in vec3 fragmentWorldPos;\n\n"
+                << "in vec3 fragmentLocalPos;\n"
                 << "in vec4 fragmentInstanceColor;\n"
                 << "uniform vec4 albedoValue;\n"
                 << "uniform vec3 ambientLightColor;\n"
@@ -882,6 +934,35 @@ namespace Canis
                 << "    return pow(max(value, vec3(0.0)), vec3(2.2));\n"
                 << "}\n"
                 << "\n";
+
+            if (std::any_of(_document.nodes.begin(), _document.nodes.end(), [](const auto& node) {
+                    return node.type == "ScreenUV" || node.type == "SceneColor" || node.type == "SceneDepthDifference";
+                }))
+                shader << R"GLSL(
+uniform sampler2D softSceneDepth;
+uniform sampler2D softSceneColor;
+uniform bool softDepthAvailable;
+uniform bool softColorAvailable;
+uniform vec4 softDepthViewport;
+uniform mat4 softInverseProjection;
+vec2 sgScreenUV() {
+    return (gl_FragCoord.xy - softDepthViewport.xy) / max(softDepthViewport.zw, vec2(1.0));
+}
+float sgEyeDepth(vec2 uv, float depth) {
+    vec4 eye = softInverseProjection * vec4(uv * 2.0 - 1.0, depth * 2.0 - 1.0, 1.0);
+    return -eye.z / eye.w;
+}
+float sgSceneDepthDifference() {
+    if (!softDepthAvailable) return 10000.0;
+    vec2 uv = sgScreenUV();
+    return max(0.0, sgEyeDepth(uv, texture(softSceneDepth, uv).r) - sgEyeDepth(uv, gl_FragCoord.z));
+}
+vec4 sgSceneColor(vec2 uv) {
+    if (!softColorAvailable) return vec4(0.8, 0.85, 0.9, 1.0);
+    vec2 edge = 0.5 / max(softDepthViewport.zw, vec2(1.0));
+    return vec4(texture(softSceneColor, clamp(uv, edge, vec2(1.0) - edge)).rgb, 1.0);
+}
+)GLSL";
 
             WriteValueNoiseHelpers(shader);
 
@@ -1432,6 +1513,17 @@ vec3 sgToonLighting(vec3 normal,float bands) {
 
     const char *GetShaderGraphNodeDisplayName(const std::string &_type)
     {
+        if (_type == "Dot") return "Dot Product";
+        if (_type == "ObjectToWorldPosition") return "Object To World Position";
+        if (_type == "LocalPosition") return "Local Position";
+        if (_type == "ScreenUV") return "Screen UV";
+        if (_type == "SceneColor") return "Scene Color";
+        if (_type == "SceneDepthDifference") return "Scene Depth Difference";
+        if (_type == "Length") return "Length";
+        if (_type == "Saturate") return "Saturate";
+        if (_type == "OneMinus") return "One Minus";
+        if (_type == "Divide") return "Divide";
+        if (_type == "Step") return "Step";
         if (_type == "ToonLighting") return "Toon Lighting";
         if (_type == "Posterize") return "Posterize";
         if (_type == "Fresnel") return "Fresnel";
@@ -1503,6 +1595,13 @@ vec3 sgToonLighting(vec3 normal,float bands) {
 
     std::vector<ShaderGraphPinInfo> GetShaderGraphNodeInputPins(const ShaderGraphNode &_node)
     {
+        if (_node.type == "ObjectToWorldPosition") return {{"input", ShaderGraphValueType::VEC3}};
+        if (_node.type == "Dot") return {{"a", ShaderGraphValueType::UNKNOWN}, {"b", ShaderGraphValueType::UNKNOWN}};
+        if (_node.type == "SceneColor") return {{"uv", ShaderGraphValueType::VEC2}};
+        if (_node.type == "Length" || _node.type == "Saturate" || _node.type == "OneMinus")
+            return {{"input", ShaderGraphValueType::UNKNOWN}};
+        if (_node.type == "Divide" || _node.type == "Step")
+            return {{"a", ShaderGraphValueType::UNKNOWN}, {"b", ShaderGraphValueType::UNKNOWN}};
         if(_node.type=="ToonLighting")
             return {{"a",ShaderGraphValueType::VEC3},{"b",ShaderGraphValueType::FLOAT},{"pointSoftness",ShaderGraphValueType::FLOAT}};
         if(_node.type=="Fresnel")
@@ -1539,6 +1638,12 @@ vec3 sgToonLighting(vec3 normal,float bands) {
 
     std::vector<ShaderGraphPinInfo> GetShaderGraphNodeOutputPins(const ShaderGraphNode &_node)
     {
+        if (_node.type == "Dot") return {{"value", ShaderGraphValueType::FLOAT}};
+        if (_node.type == "ObjectToWorldPosition") return {{"value", ShaderGraphValueType::VEC3}};
+        if (_node.type == "LocalPosition") return {{"position", ShaderGraphValueType::VEC3}};
+        if (_node.type == "ScreenUV") return {{"uv", ShaderGraphValueType::VEC2}};
+        if (_node.type == "SceneColor") return {{"color", ShaderGraphValueType::VEC4}};
+        if (_node.type == "SceneDepthDifference" || _node.type == "Length") return {{"value", ShaderGraphValueType::FLOAT}};
         if(_node.type=="ToonLighting")return {{"value",ShaderGraphValueType::VEC3}};
         if(_node.type=="Fresnel")return {{"value",ShaderGraphValueType::FLOAT}};
         if (_node.type == "Property")

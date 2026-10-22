@@ -354,6 +354,54 @@ namespace Canis
             app.UnregisterScript(conf);
         }
 
+        static void PostProcessColorSliders(Editor& editor)
+        {
+            const std::string path="color-controls.postprocess";
+            std::ofstream(path) << R"(passes:
+- name: Color correction
+  enabled: true
+  shader: {path: assets/shaders/postprocess_color_correction.vs}
+  settings: {exposure: 1.2, contrast: 0.46, saturation: 0.82}
+)";
+            auto contents=[&]{std::ifstream in(path);return std::string(std::istreambuf_iterator<char>(in),{});};
+            const auto original=contents();
+            const std::array<const char*,3> names={"exposure","contrast","saturation"};
+            std::array<ImGuiID,3> ids{};std::array<float,3> rows{};
+            auto frame=[&](float x=-100,float y=-100,bool down=false)
+            {
+                auto& io=ImGui::GetIO();io.AddMousePosEvent(x,y);io.AddMouseButtonEvent(0,down);
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(0,0));ImGui::SetNextWindowSize(ImVec2(700,580));
+                ImGui::Begin("Post-process slider test",nullptr,ImGuiWindowFlags_NoSavedSettings|ImGuiWindowFlags_NoTitleBar);
+                ImGui::PushID(0);for(size_t i=0;i<names.size();++i)ids[i]=ImGui::GetID(names[i]);ImGui::PopID();
+                Check(editor.DrawPostProcessAssetInspector(path),"Post-process Inspector did not recognize the asset");
+                const auto hovered=ImGui::GetCurrentContext()->HoveredId;
+                ImGui::End();ImGui::Render();return hovered;
+            };
+            frame();frame();frame();
+            for(float y=10;y<550;y+=3)
+            {
+                const auto hovered=frame(120,y);
+                for(size_t i=0;i<ids.size();++i)if(hovered==ids[i])rows[i]=y;
+            }
+            Check(contents()==original,"Opening the post-process Inspector changed its settings");
+            for(size_t i=0;i<names.size();++i)
+            {
+                Check(rows[i]>0,"Color correction slider was not exposed in the Inspector");
+                const float before=YAML::LoadFile(path)["passes"][0]["settings"][names[i]].as<float>();
+                frame(180,rows[i]);frame(180,rows[i],true);frame(180,rows[i]);
+                const float after=YAML::LoadFile(path)["passes"][0]["settings"][names[i]].as<float>();
+                Check(std::abs(after-before)>.01f,"Clicking a color correction slider did not save its value");
+                auto* loaded=AssetManager::Get<PostProcessAsset>(AssetManager::GetID(path));
+                Check(loaded && loaded->GetPasses().size()==1,"Slider edit did not reload the post-process asset");
+                const auto& pass=loaded->GetPasses()[0];
+                const float live=i==0?pass.exposure:i==1?pass.contrast:pass.saturation;
+                Check(std::abs(live-after)<.00001f,"Saved slider value did not reach the live post-process pass");
+            }
+            frame();
+            std::cout<<"Color correction Inspector sliders expose, save and reload exposure/contrast/saturation\n";
+        }
+
         static void Run(App& app, Editor& editor, Window& window, const fs::path& executable)
         {
             InputManager input;
@@ -362,6 +410,7 @@ namespace Canis
             editor.m_app = &app;
             editor.m_window = &window;
             MaterialAndModelPreviews(editor);
+            PostProcessColorSliders(editor);
             LightingAnimationPreview(app, editor);
             auto seed = [&](const char* path) {
                 std::ofstream(path) << "Entities:\n- Entity: 101\n  Name: Original\n";
