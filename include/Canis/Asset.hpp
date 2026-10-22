@@ -564,6 +564,11 @@ namespace Canis
             Vector3 emissionFactor{0};
         };
 
+        // CPU-only import shared by runtime rendering and offline baking. No GL context required.
+        static bool ReadOBJGeometry(const std::string& path,
+                                    std::vector<PrimitiveBuild3D>& primitives,
+                                    std::vector<std::string>& materialSlotNames);
+
         // A source keeps its own visibility range inside a shared static buffer.
         struct IndexRange3D { unsigned int first = 0, count = 0; };
         using DrawRanges3D = std::vector<std::vector<IndexRange3D>>;

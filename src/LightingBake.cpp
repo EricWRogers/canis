@@ -476,9 +476,8 @@ namespace Canis
                 auto key = path + "#" + std::to_string(model["nodeIndex"].as<int>(-1)) + "#" +
                            std::to_string(model["applyNodeTransform"].as<bool>(true));
                 if (!meshCache.contains(key))
-                    meshCache[key] =
-                        Pipeline::Flatten(Pipeline::ReadGltf(path), model["nodeIndex"].as<int>(-1),
-                                          model["applyNodeTransform"].as<bool>(true));
+                    meshCache[key] = Pipeline::ReadMesh(path, model["nodeIndex"].as<int>(-1),
+                                                       model["applyNodeTransform"].as<bool>(true));
                 Instance instance{id, meshCache[key], transform, n};
                 std::erase_if(instance.mesh.primitives, [](const auto& primitive)
                               { return primitive.vertices.empty() || primitive.indices.size() < 3; });
@@ -494,6 +493,8 @@ namespace Canis
                     {
                         materialPath = Path(slots[i]);
                     }
+                    if (materialPath.empty())
+                        materialPath = Path(n["Canis::Material"]["MaterialAsset"]);
                     if (materialPath.empty())
                         continue;
                     auto m = YAML::LoadFile(materialPath);

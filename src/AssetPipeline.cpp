@@ -1,4 +1,7 @@
 #include <Canis/AssetPipeline.hpp>
+#include <Canis/Asset.hpp>
+#include <algorithm>
+#include <cctype>
 #include <Canis/Math.hpp>
 #include <fstream>
 #include <cstring>
@@ -199,6 +202,46 @@ namespace Canis::Pipeline
         for (auto root : s.json["scenes"][s.json.value("scene", 0)]["nodes"])
             visit(visit, root, Matrix4(1));
         return out;
+    }
+    Mesh ReadMesh(const std::filesystem::path& path, int node, bool applyNode)
+    {
+        try
+        {
+            auto extension = path.extension().string();
+            std::transform(extension.begin(), extension.end(), extension.begin(),
+                           [](unsigned char c) { return std::tolower(c); });
+            if (extension == ".gltf" || extension == ".glb")
+                return Flatten(ReadGltf(path), node, applyNode);
+            if (extension != ".obj")
+                throw std::runtime_error("Unsupported static model format: " + extension);
+
+            std::vector<ModelAsset::PrimitiveBuild3D> primitives;
+            std::vector<std::string> slots;
+            if (!ModelAsset::ReadOBJGeometry(path.string(), primitives, slots))
+                throw std::runtime_error("Cannot load OBJ triangle geometry");
+            Mesh mesh;
+            // OBJ has no selectable scene nodes; material names define its submesh slots.
+            for (const auto& slot : slots)
+                mesh.materials.push_back({{"name", slot}});
+            if (slots.empty())
+                mesh.materials.push_back(Json::object());
+            if (node >= 0)
+                return mesh;
+            for (const auto& source : primitives)
+            {
+                Primitive primitive;
+                primitive.material = std::max(0, source.materialSlot);
+                primitive.indices.assign(source.indices.begin(), source.indices.end());
+                for (const auto& v : source.vertices)
+                    primitive.vertices.push_back({v.position, v.normal, v.uv, v.color});
+                mesh.primitives.push_back(std::move(primitive));
+            }
+            return mesh;
+        }
+        catch (const std::exception& error)
+        {
+            throw std::runtime_error("Cannot import static model '" + path.string() + "': " + error.what());
+        }
     }
     void WriteGltf(const Mesh& mesh, const std::filesystem::path& path, bool baked)
     {

@@ -36,6 +36,8 @@ namespace Canis::Pipeline
     std::vector<uint32_t> Indices(const Gltf& _source, int _accessor);
     Matrix4 NodeMatrix(const Json& _node);
     Mesh Flatten(const Gltf& _source, int _node = -1, bool _applyNode = true);
+    // CPU-only static geometry import for all native model formats (OBJ, glTF, GLB).
+    Mesh ReadMesh(const std::filesystem::path& _path, int _node = -1, bool _applyNode = true);
     void WriteGltf(const Mesh& _mesh, const std::filesystem::path& _path, bool _bakedLighting = false);
     uint64_t AssetUUID(const std::string& _key);
     void WriteMeta(const std::filesystem::path& _path, const char* _kind);

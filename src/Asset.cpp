@@ -779,6 +779,15 @@ namespace Canis
         }
     } // namespace
 
+    bool ModelAsset::ReadOBJGeometry(const std::string& path,
+                                     std::vector<PrimitiveBuild3D>& primitives,
+                                     std::vector<std::string>& materialSlotNames)
+    {
+        primitives.clear();
+        materialSlotNames.clear();
+        return LoadOBJPrimitives(path, primitives, materialSlotNames);
+    }
+
     Asset::Asset() {}
 
     Asset::~Asset() {}

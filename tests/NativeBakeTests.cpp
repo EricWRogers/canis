@@ -152,6 +152,48 @@ int main()
         auto json = Pipeline::ReadGltf(baked.models[0]).json;
         Check(json["meshes"][0]["primitives"][0]["extras"]["canisBakedLighting"].get<bool>(),
               "Baked geometry lacks shader metadata");
+        // Forest assets are OBJ files beginning with '#', not glTF JSON. Import through
+        // the same CPU parser as rendering so triangulation, normals, UVs and slots agree.
+        {
+            const auto objPath = directory / "forest-floor.OBJ";
+            std::ofstream(objPath) << "# Blender OBJ export\n"
+                "v -1 0 -1\nv -1 0 1\nv 1 0 1\nv 1 0 -1\n"
+                "vt 0 0\nvt 0 1\nvt 1 1\nvt 1 0\n"
+                "usemtl Grass\nf -4/-4 -3/-3 -2/-2 -1/-1\n"
+                "usemtl Path\nf 1/1 2/2 3/3\n";
+            auto obj = Pipeline::ReadMesh(objPath);
+            Check(obj.primitives.size() == 2 && obj.primitives[0].indices.size() == 6 &&
+                      obj.primitives[1].indices.size() == 3 &&
+                      obj.primitives[0].material == 0 && obj.primitives[1].material == 1,
+                  "OBJ bake import lost quads, negative indices or material slots");
+            Check(obj.primitives[0].vertices[0].uv == Vector2(0, 1) &&
+                      obj.primitives[0].vertices[0].normal == Vector3(0, 1, 0),
+                  "OBJ bake UV orientation or generated normals differ from rendering");
+            const auto materialPath = directory / "obj.material";
+            std::ofstream(materialPath) << "color: [0.2, 0.6, 0.1, 1]\n";
+            auto objScene = YAML::Clone(scene);
+            objScene["Entities"][0]["Canis::Model"]["ModelAsset"]["path"] = objPath.string();
+            objScene["Entities"][0]["Canis::Material"]["MaterialAsset"]["path"] = materialPath.string();
+            objScene["Entities"][0]["Canis::MeshCollider"]["useAttachedModel"] = true;
+            auto objBake = BakeSceneLighting(objScene, directory / "obj-baked", options);
+            Check(objBake.models.size() == 1 && objBake.lights == 1 && objBake.vertices > 9,
+                  "Native lighting bake omitted OBJ geometry or lighting");
+            auto objGltf = Pipeline::ReadGltf(objBake.models[0]);
+            auto objGeometry = Pipeline::Flatten(objGltf);
+            Check(objGeometry.primitives.size() == 2 &&
+                      objGeometry.materials[1]["pbrMetallicRoughness"]["baseColorFactor"][1] == .6f &&
+                      objGeometry.primitives[0].vertices[0].color.x >
+                          objGeometry.primitives[0].vertices[0].color.y,
+                  "OBJ bake lost material fallback or warm irradiance");
+            Check(objBake.scene["Entities"][0]["Canis::MeshCollider"]["modelPath"].as<std::string>() ==
+                      objPath.string(), "OBJ bake replaced authored collision geometry");
+            std::ofstream(directory / "broken.gltf") << "# not glTF\n";
+            bool diagnostic = false;
+            try { Pipeline::ReadMesh(directory / "broken.gltf"); }
+            catch (const std::exception& error)
+            { diagnostic = std::string(error.what()).find("broken.gltf") != std::string::npos; }
+            Check(diagnostic, "Bake model errors omit the asset path");
+        }
         // Realtime lamps must never be frozen into the offline result.
         auto realtime = YAML::Clone(scene);
         realtime["Entities"][1]["Canis::PointLight"]["mode"] = 0;

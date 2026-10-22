@@ -71,6 +71,7 @@ public:
     bool DispatchAnimationEvent(Entity& _targetEntity, const std::string& _scriptName, const std::string& _eventName, const AnimationEventContext& _context);
 
     Editor& GetEditor() { return *m_editor; }
+    Editor* TryGetEditor() { return m_editor; }
 
     void RegisterInspectorItem(InspectorItemRightClick& _item);
     void UnregisterInspectorItem(InspectorItemRightClick& _item);
@@ -94,7 +95,7 @@ private:
 #endif
 
     void ProcessPendingSceneLoad();
-    Editor* m_editor;
+    Editor* m_editor = nullptr;
     mutable std::unique_ptr<NetworkSession> m_network = nullptr;
     RuntimeContext* m_runtime = nullptr;
     float m_updateTimeMs = 0.0f;

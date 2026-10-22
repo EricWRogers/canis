@@ -16,7 +16,8 @@ namespace Canis
         if (!scene.app) return false;
         if (!IsEditorRuntimeEnabled()) return true;
 #if CANIS_EDITOR
-        return scene.app->GetEditor().GetMode() != EditorMode::EDIT;
+        auto* editor = scene.app->TryGetEditor();
+        return editor && editor->GetMode() != EditorMode::EDIT;
 #else
         return true;
 #endif
