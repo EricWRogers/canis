@@ -9,6 +9,7 @@
 #include <Canis/LightingBake.hpp>
 #include <Canis/WeatherTransition.hpp>
 #include <Canis/RenderMetrics.hpp>
+#include <Canis/CombineModel.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/VR/VRSystem.hpp>
 #include <Canis/VR/VRMath.hpp>
@@ -2654,6 +2655,7 @@ namespace Canis
 
         Uint64 renderStart = SDL_GetTicksNS();
         RenderMetrics::BeginFrame();
+        RenderMetrics::SetEntityCount(scene.GetRegistry().storage<EntityMetadata>().size());
         unsigned int captureFramebuffer = 0u;
         int captureWidth = 0;
         int captureHeight = 0;
@@ -3302,6 +3304,7 @@ namespace Canis
 
         RegisterParticleEmitterComponent(*this);
         RegisterCombineMeshCollider(*this);
+        RegisterCombineModel(*this);
         RegisterWheeledVehicle(*this);
         RegisterRagdoll(*this);
         RegisterTrailComponents(*this);

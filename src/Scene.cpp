@@ -11,6 +11,7 @@
 #include <Canis/Editor.hpp>
 #include <Canis/Debug.hpp>
 #include <Canis/Components.hpp>
+#include <Canis/CombineModelLoad.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/System.hpp>
 #include <Canis/Time.hpp>
@@ -31,6 +32,7 @@
 #include <cmath>
 #include <cctype>
 #include <filesystem>
+#include <cstdlib>
 #include <unordered_set>
 #include <SDL3/SDL_timer.h>
 
@@ -770,8 +772,18 @@ namespace Canis
 
     std::vector<Entity*> Scene::LoadEntityNodes(YAML::Node &_entities, bool _copyUUID)
     {
+        const auto loadStart = SDL_GetTicksNS();
+        const size_t authoredCount = _entities ? _entities.size() : 0;
+        std::vector<CombinedModelLoad> combinedGroups;
+        YAML::Node entities;
+        if (ShouldLoadCombinedModels(*this))
+        {
+            const char* build = std::getenv("CANIS_BUILD_COMBINE_MODELS");
+            entities.reset(PrepareCombinedModelNodes(_entities, build && std::string(build) == "1", combinedGroups));
+        }
+        else entities.reset(_entities);
         std::unordered_set<UUID> sourceIDs;
-        if (_entities) for (auto node : _entities) {
+        if (entities) for (auto node : entities) {
             if (!sourceIDs.insert(node["Entity"].as<UUID>(0)).second)
                 throw std::runtime_error("Duplicate entity UUID in scene/prefab");
         }
@@ -779,17 +791,17 @@ namespace Canis
         m_isLoadingEntityNodes = true;
         std::vector<Canis::Entity*> newEntitys = {};
 
-        if (_entities)
+        if (entities)
         {
             // Allocate all targets before decoding any reference fields.
-            for (auto node : _entities) {
+            for (auto node : entities) {
                 const UUID sourceUUID = node["Entity"].as<UUID>(0);
                 auto created = CreateEntity();
                 if (_copyUUID) created.SetUUID(sourceUUID);
                 m_loadingEntities.emplace(sourceUUID, created);
                 newEntitys.push_back(created.TryGet());
             }
-            for (auto node : _entities) DecodeEntity(node, _copyUUID);
+            for (auto node : entities) DecodeEntity(node, _copyUUID);
             // Keep bidirectional hierarchy links in sync after pointer remapping.
             for (Canis::Entity* entity : newEntitys)
             {
@@ -874,6 +886,8 @@ namespace Canis
             }
         }
 
+        FinishCombinedModelLoad(*this, combinedGroups, authoredCount, newEntitys.size(),
+            double(SDL_GetTicksNS() - loadStart) / 1e6);
         m_loadingEntities.clear();
         m_isLoadingEntityNodes = false;
         FlushRetiredScripts();

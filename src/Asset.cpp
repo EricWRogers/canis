@@ -1,4 +1,5 @@
 #include <Canis/Asset.hpp>
+#include <Canis/CombineModel.hpp>
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/SkinningGLSL.hpp>
 #include <Canis/Audio.hpp>
@@ -2039,11 +2040,12 @@ namespace Canis
         m_bindLocalMatrices.clear();
 
         const std::string extension = ToLower(GetFileExtension(_path));
-        if (extension == "obj")
+        if (extension == "obj" || extension == "cmodel")
         {
             std::vector<PrimitiveBuild3D> primitives = {};
             std::vector<std::string> materialSlotNames = {};
-            if (!LoadOBJPrimitives(_path, primitives, materialSlotNames))
+            if (!(extension == "obj" ? LoadOBJPrimitives(_path, primitives, materialSlotNames)
+                                     : ReadCombinedModelGeometry(_path, primitives, materialSlotNames)))
                 return false;
 
             if (!SetRuntimePrimitives(primitives, materialSlotNames))
@@ -2569,6 +2571,50 @@ namespace Canis
 
         ++m_geometryRevision;
         return true;
+    }
+
+    bool ModelAsset::ExportStaticPrimitives(std::vector<PrimitiveBuild3D>& output,
+                                             i32 nodeIndex, bool applyNodeTransform) const
+    {
+        output.clear();
+        if (HasDeformingGeometry()) return false;
+        for (const auto& source : m_primitives)
+        {
+            if (!PrimitiveMatchesNodeFilter(source, nodeIndex)) continue;
+            if (source.dynamicVertices || source.hasSkinning || source.baseColor.a < .999f)
+                return false;
+            PrimitiveBuild3D primitive;
+            primitive.vertices = source.bindVertices;
+            primitive.indices = source.indices;
+            primitive.materialSlot = source.materialSlot;
+            primitive.textureId = source.textureId;
+            primitive.baseColor = source.baseColor;
+            primitive.bakedLighting = source.bakedLighting;
+            primitive.lightingScenarios = source.lightingScenarios;
+            primitive.normalTextureId = source.normalTextureId;
+            primitive.emissionTextureId = source.emissionTextureId;
+            primitive.emissionFactor = source.emissionFactor;
+            if ((nodeIndex < 0 || applyNodeTransform) && source.nodeIndex >= 0 &&
+                source.nodeIndex < static_cast<i32>(m_nodes.size()))
+            {
+                const auto& matrix = m_nodes[source.nodeIndex].globalMatrix;
+                const float determinant = glm::determinant(glm::mat3(matrix));
+                if (!std::isfinite(determinant) || std::abs(determinant) < 1e-8f)
+                    return false;
+                const auto normalMatrix = glm::transpose(glm::inverse(glm::mat3(matrix)));
+                for (auto& vertex : primitive.vertices)
+                {
+                    vertex.position = Vector3(matrix * Vector4(vertex.position, 1));
+                    const auto normal = normalMatrix * vertex.normal;
+                    if (glm::dot(normal, normal) > 1e-12f) vertex.normal = glm::normalize(normal);
+                }
+                if (determinant < 0)
+                    for (size_t i = 0; i + 2 < primitive.indices.size(); i += 3)
+                        std::swap(primitive.indices[i + 1], primitive.indices[i + 2]);
+            }
+            output.push_back(std::move(primitive));
+        }
+        return !output.empty();
     }
 
     bool ModelAsset::BuildStaticBatch(const std::vector<StaticSource3D>& sources,

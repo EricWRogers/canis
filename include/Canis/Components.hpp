@@ -960,6 +960,23 @@ namespace Canis
         std::vector<Entity> stayed = {};
     };
 
+    struct CombineModel
+    {
+        static constexpr const char* ScriptName = "Canis::CombineModel";
+        CombineModel() = default;
+        explicit CombineModel(Entity& owner) : entity(&owner) {}
+        Entity* entity = nullptr;
+        bool active = true;
+        std::string cachePath;
+        // Zero combines the full hierarchy by material. Positive values keep
+        // independent root-local cells for useful frustum-culling granularity.
+        float cellSize = 0.0f;
+        int sourceModels = 0, combinedModels = 0, triangleCount = 0;
+        std::string status;
+        void Create() {}
+    };
+    void RegisterCombineModel(class App& app);
+
     struct CombineMeshCollider
     {
         static constexpr const char* ScriptName = "Canis::CombineMeshCollider";

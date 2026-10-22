@@ -690,6 +690,10 @@ namespace Canis
         bool SetRuntimePrimitives(
             const std::vector<PrimitiveBuild3D> &_primitives,
             const std::vector<std::string> &_materialSlotNames = {});
+        // Rigid CPU geometry for authoring caches; imported node transforms are
+        // optionally flattened without uploading or changing the source model.
+        bool ExportStaticPrimitives(std::vector<PrimitiveBuild3D>& primitives,
+                                    i32 nodeIndex = -1, bool applyNodeTransform = true) const;
 
         bool UpdateAnimation(i32 _clipIndex, float _timeSeconds);
         bool UpdateAnimation(

@@ -9727,6 +9727,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
+        m_scene->ActivateCombinedModelsForPlay();
         m_showGamePanel = true;
         m_focusGamePanelNextFrame = true;
         m_mode = EditorMode::PLAY;

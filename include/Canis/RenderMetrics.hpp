@@ -9,6 +9,7 @@ namespace Canis::RenderMetrics
 {
     struct Frame {
         uint64_t id=0, gpuFrame=0, draws=0, shadowDraws=0, instances=0, triangles=0, culled=0, shadowCulled=0;
+        uint64_t entities=0;
         double cpuSubmitMs=0, presentMs=0, gpuMs=-1;
         uint64_t instanceUploadBytes=0, instanceCacheHits=0, batchBuilds=0;
         uint64_t skinUploadBytes=0, skinCacheHits=0;
@@ -34,6 +35,7 @@ namespace Canis::RenderMetrics
         Scope& operator=(const Scope&)=delete;
     };
     void BeginFrame();
+    void SetEntityCount(uint64_t count);
     void EndSubmit();
     void EndPresent();
     void Shutdown();

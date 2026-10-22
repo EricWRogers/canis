@@ -96,6 +96,8 @@ namespace Canis
         void Load(std::string _path);
         void LoadSceneNode(YAML::Node &_root);
         std::vector<Entity*> LoadEntityNodes(YAML::Node &_entities, bool _copyUUID = true);
+        // Editor keeps authored children until Play; Stop restores its snapshot.
+        bool ActivateCombinedModelsForPlay();
         Canis::Entity& DecodeEntity(YAML::Node _node, bool _copyUUID = true);
         void GetEntityAfterLoad(Canis::UUID uuid, Entity& variable);
         std::vector<Entity*> Instantiate(const SceneAssetHandle &_sceneAssetHandle);
