@@ -12,6 +12,7 @@
 #include <Canis/Debug.hpp>
 #include <Canis/Components.hpp>
 #include <Canis/CombineModelLoad.hpp>
+#include <Canis/GraphicsSettings.hpp>
 #include <Canis/AssetManager.hpp>
 #include <Canis/System.hpp>
 #include <Canis/Time.hpp>
@@ -430,19 +431,59 @@ namespace Canis
 
     void Scene::Render(float _deltaTime, bool _deferScreenSpaceUI)
     {
+        if (!m_window) return;
         Profiler::Scope frameScope("Scene.Render", RenderMetrics::ProfileCategory());
+        const int width = m_window->GetScreenWidth(), height = m_window->GetScreenHeight();
+        const auto [renderWidth, renderHeight] = GraphicsRenderSize(width, height, GetGraphicsSettings());
+        const bool scaled = !HasEditorCamera3DOverride() && !GetVRCamera().enabled &&
+            (renderWidth != width || renderHeight != height);
+        GLint draw = 0, read = 0, viewport[4] = {};
+        if (scaled)
+        {
+            if (m_qualityRenderTarget.width != renderWidth || m_qualityRenderTarget.height != renderHeight)
+                Debug::Log("GRAPHICS_RENDER_SIZE world=%dx%d ui=%dx%d", renderWidth, renderHeight, width, height);
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+            glGetIntegerv(GL_VIEWPORT, viewport);
+            EnsureRenderTarget(m_qualityRenderTarget, renderWidth, renderHeight);
+            glBindFramebuffer(GL_FRAMEBUFFER, m_qualityRenderTarget.framebuffer);
+            glViewport(0, 0, renderWidth, renderHeight);
+            m_window->SetRenderSize(renderWidth, renderHeight);
+            const auto clear = m_window->GetClearColor();
+            glClearColor(clear.r, clear.g, clear.b, clear.a);
+            glClear(GL_COLOR_BUFFER_BIT | GL_DEPTH_BUFFER_BIT);
+        }
         //Canis::Debug::Log("Render Update %i", m_renderSystems.size());
         for (System* renderer : m_renderSystems)
         {
             Profiler::Scope scope(renderer->GetName(), RenderMetrics::ProfileCategory());
             const Uint64 start = SDL_GetTicksNS();
-            if (auto* ui=dynamic_cast<SpriteRenderer2DSystem*>(renderer); ui && _deferScreenSpaceUI)
+            if (auto* ui=dynamic_cast<SpriteRenderer2DSystem*>(renderer); ui && (_deferScreenSpaceUI || scaled))
+            {
+                // 2D scene coordinates retain their native logical layout even
+                // when their world pass uses a smaller framebuffer viewport.
+                if (scaled) m_window->SetRenderSize(width, height);
                 ui->RenderWorldUI(m_registry, _deltaTime);
+                if (scaled) m_window->SetRenderSize(renderWidth, renderHeight);
+            }
             else
                 renderer->Update(m_registry, _deltaTime);
             const float elapsedMs = static_cast<float>(SDL_GetTicksNS() - start) / 1000000.0f;
             if (SystemTiming* timing = GetSystemTiming(renderer))
                 timing->renderMs = elapsedMs;
+        }
+        if (scaled)
+        {
+            m_window->SetRenderSize(width, height);
+            BlitFramebuffer(m_qualityRenderTarget.framebuffer, renderWidth, renderHeight, draw, width, height);
+            // Keep native-resolution depth consumers (post effects/world UI) aligned.
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, m_qualityRenderTarget.framebuffer);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
+            glBlitFramebuffer(0, 0, renderWidth, renderHeight, 0, 0, width, height, GL_DEPTH_BUFFER_BIT, GL_NEAREST);
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, read);
+            glViewport(viewport[0], viewport[1], viewport[2], viewport[3]);
+            if (!_deferScreenSpaceUI) CompositeScreenSpaceUI(draw, width, height);
         }
     }
 
@@ -528,6 +569,7 @@ namespace Canis
     }
     void Scene::Unload()
     {
+        DestroyRenderTarget(m_qualityRenderTarget);
         Audio::SetScenePaused(false);
         Audio::SetListener(Vector3(0),Quaternion(1,0,0,0),1,false);
         tweens.Clear();

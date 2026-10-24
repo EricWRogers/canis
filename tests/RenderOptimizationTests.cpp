@@ -1,4 +1,5 @@
 #include <Canis/StaticVisibility.hpp>
+#include <Canis/GraphicsSettings.hpp>
 #include <Canis/AssetPipeline.hpp>
 #include <Canis/LightingBake.hpp>
 #include <Canis/Asset.hpp>
@@ -1111,9 +1112,60 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     Check(pixel(160)[0]<10 && pixel(160)[2]<10 && pixel(240)[0]<10 && pixel(240)[1]<10,
           "World-space UI or ordinary sprites incorrectly bypassed postprocessing");
     Check(glGetError()==GL_NO_ERROR,"Post UI composition produced an OpenGL error");
+    const auto graphics = GetGraphicsSettings();
+    const auto clear = window.GetClearColor();
+    window.SetClearColor({1,0,0,1});
+    GetGraphicsSettings().renderScale = .5f;
+    glBindFramebuffer(GL_FRAMEBUFFER,raw.framebuffer);glViewport(0,0,320,240);
+    glDepthMask(GL_TRUE);glClearColor(1,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+    scene.Render(1.f/60,true);
+    Check(window.GetScreenWidth()==320 && window.GetScreenHeight()==240,
+          "Reduced world rendering leaked its dimensions into UI/input");
+    Check(pixel(160)[2]>240 && pixel(240)[0]>240,
+          "Reduced world target lost world UI or ordinary sprites");
+    output=ApplyPostProcessChain(&effect,raw.framebuffer,raw.colorTexture,raw.depthTexture,320,240,projection,&processed);
+    scene.CompositeScreenSpaceUI(output.framebuffer,320,240);
+    glBindFramebuffer(GL_FRAMEBUFFER,output.framebuffer);
+    Check(pixel(69)[1]<10 && pixel(70)[1]>240 && pixel(89)[1]>240 && pixel(90)[1]<10,
+          "Screen UI was filtered through the lower-resolution world target");
+    GetGraphicsSettings().postEffects=false;
+    auto bypass=ApplyPostProcessChain(&effect,raw.framebuffer,raw.colorTexture,raw.depthTexture,320,240,projection,&processed);
+    Check(bypass.framebuffer==raw.framebuffer,"Runtime post-effect switch did not bypass the chain");
+    Check(glGetError()==GL_NO_ERROR,"World scaling/depth upsampling or native UI introduced a GL error");
+    GetGraphicsSettings()=graphics;window.SetClearColor(clear);
     glBindFramebuffer(GL_FRAMEBUFFER,0);scene.Unload();glDeleteTextures(1,&texture);
     DestroyRenderTarget(raw);DestroyRenderTarget(processed);effect.Free();std::filesystem::remove_all(root);
     std::cout << "Screen canvases bypass postprocessing; world UI and 2D scene sprites retain it\n";
+}
+
+static void GraphicsShadowQuality(Window& window) {
+    const auto graphics=GetGraphicsSettings();
+    Scene scene;scene.Init(nullptr,&window,nullptr);window.SetRenderSize(320,240);
+    auto camera=scene.CreateEntity("Camera");camera.AddComponent<Transform>();
+    auto& lens=*camera.AddComponent<Camera>();lens.primary=true;lens.fovDegrees=70;
+    auto sun=scene.CreateEntity("Sun");sun.AddComponent<Transform>();
+    sun.AddComponent<DirectionalLight>()->direction=glm::normalize(Vector3(.7f,-.3f,-1));
+    ModelAsset::PrimitiveBuild3D quad;
+    quad.vertices={{{-1,-1,0},{0,0,1},{}},{{1,-1,0},{0,0,1},{}},{{1,1,0},{0,0,1},{}},{{-1,1,0},{0,0,1},{}}};
+    quad.indices={0,1,2,0,2,3};int id=AssetManager::CreateModel();
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({quad}),"Quality shadow fixture failed");
+    auto mesh=scene.CreateEntity("Caster");mesh.AddComponent<Transform>()->position={0,0,-3};
+    mesh.AddComponent<Model>()->modelId=id;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    RenderTarget target;EnsureRenderTarget(target,320,240);
+    for (int size:{0,512,2048,0,2048}) {
+        GetGraphicsSettings().shadowMapSize=size;
+        glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
+        RenderMetrics::BeginFrame();renderer.Update(scene.GetRegistry(),1.f/60);RenderMetrics::EndSubmit();RenderMetrics::EndPresent();
+        GLint binding=0;glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING,&binding);
+        Check(binding==int(target.framebuffer),"Resizing shadows lost the world framebuffer");
+        Check((RenderMetrics::Latest().shadowDraws>0)==(size>0),"Shadow quality did not enable/disable shadow draws");
+        Check(glGetError()==GL_NO_ERROR,"Changing shadow quality introduced a GL error");
+    }
+    renderer.OnDestroy();glBindFramebuffer(GL_FRAMEBUFFER,0);DestroyRenderTarget(target);
+    AssetManager::FreeModel(id);GetGraphicsSettings()=graphics;
+    std::cout<<"Runtime shadow off/low/high transitions preserve framebuffer state\n";
 }
 
 static void CombinedColliderAndVehicle(Window& window) {
@@ -2342,6 +2394,7 @@ int main(int argc,char** argv) {
         MaterialSlotCulling(window);
         OverlayDepthIsolation(window);
         ScreenUiAfterPostProcessing(window);
+        GraphicsShadowQuality(window);
         StaticShadowBaking(window);
         ShadowTextureIsolation(window);
         ParticleSpawnShapes(window);

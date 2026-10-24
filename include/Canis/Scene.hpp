@@ -8,6 +8,7 @@
 #include <Canis/LightingScenario.hpp>
 #include <Canis/CloudVolume.hpp>
 #include <Canis/SurfaceWetness.hpp>
+#include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Tweening/TweenWorld.hpp>
 #include <Canis/External/entt.hpp>
 
@@ -59,6 +60,7 @@ namespace Canis
     class Scene
     {
         friend class Entity;
+        RenderTarget m_qualityRenderTarget;
         #if CANIS_EDITOR
             friend class Editor;
         #endif

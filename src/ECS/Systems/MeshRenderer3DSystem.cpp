@@ -1,4 +1,5 @@
 #include <Canis/StaticVisibility.hpp>
+#include <Canis/GraphicsSettings.hpp>
 #include <Canis/ECS/Systems/MeshRenderer3DSystem.hpp>
 #include <Canis/VFX/Trails.hpp>
 #include <Canis/Frustum.hpp>
@@ -33,7 +34,6 @@ namespace Canis
     namespace
     {
         constexpr int kMaxPointLights = 8;
-        constexpr int kDirectionalShadowMapSize = 4096;
 
         static const float kSkyboxVertices[] = {
             -1.0f,  1.0f, -1.0f,
@@ -1170,8 +1170,8 @@ namespace Canis
             GL_TEXTURE_2D,
             0,
             GL_DEPTH_COMPONENT24,
-            kDirectionalShadowMapSize,
-            kDirectionalShadowMapSize,
+            m_shadowMapSize,
+            m_shadowMapSize,
             0,
             GL_DEPTH_COMPONENT,
             GL_UNSIGNED_INT,
@@ -1261,7 +1261,7 @@ namespace Canis
         // world-space shadow texels stationary during sub-texel camera motion.
         const Matrix4 lightOrientation = glm::lookAt(Vector3(0.0f), _directionalLightDirection, lightUp);
         Vector3 centerInLight = Vector3(lightOrientation * Vector4(_cameraPosition, 1.0f));
-        const float worldUnitsPerTexel = (shadowExtent * 2.0f) / kDirectionalShadowMapSize;
+        const float worldUnitsPerTexel = (shadowExtent * 2.0f) / m_shadowMapSize;
         // Integral texel blocks keep world-space texels aligned while allowing a
         // static shadow bake to survive normal head motion inside an 8m region.
         const float stableStep=std::max(1.f,std::floor(8.f/worldUnitsPerTexel))*worldUnitsPerTexel;
@@ -1297,7 +1297,7 @@ namespace Canis
         const bool scissorWasEnabled = glIsEnabled(GL_SCISSOR_TEST);
         glDisable(GL_SCISSOR_TEST);
         glBindFramebuffer(GL_FRAMEBUFFER, m_shadowFramebuffer);
-        glViewport(0, 0, kDirectionalShadowMapSize, kDirectionalShadowMapSize);
+        glViewport(0, 0, m_shadowMapSize, m_shadowMapSize);
         glClear(GL_DEPTH_BUFFER_BIT);
 
         glEnable(GL_DEPTH_TEST);
@@ -1334,7 +1334,7 @@ namespace Canis
         }
         if(cacheEnabled && !m_staticShadowTexture) {
             glGenTextures(1,&m_staticShadowTexture);glBindTexture(GL_TEXTURE_2D,m_staticShadowTexture);
-            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
+            glTexImage2D(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT24,m_shadowMapSize,m_shadowMapSize,0,GL_DEPTH_COMPONENT,GL_UNSIGNED_INT,nullptr);
             glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
             glGenFramebuffers(1,&m_staticShadowFramebuffer);glBindFramebuffer(GL_FRAMEBUFFER,m_staticShadowFramebuffer);
             glFramebufferTexture2D(GL_FRAMEBUFFER,GL_DEPTH_ATTACHMENT,GL_TEXTURE_2D,m_staticShadowTexture,0);
@@ -1357,7 +1357,7 @@ namespace Canis
         if(cacheHit) {
             glBindFramebuffer(GL_READ_FRAMEBUFFER,m_staticShadowFramebuffer);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,m_shadowFramebuffer);
-            glBlitFramebuffer(0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
+            glBlitFramebuffer(0,0,m_shadowMapSize,m_shadowMapSize,0,0,m_shadowMapSize,m_shadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
             glBindFramebuffer(GL_FRAMEBUFFER,m_shadowFramebuffer);
         }
         m_batchCache->visibility.Query(m_shadowLightSpaceMatrix,m_batchCache->candidates.size(),m_batchCache->hiddenCandidates);
@@ -1418,7 +1418,7 @@ namespace Canis
         if(phase==0 && cacheEnabled) {
             glBindFramebuffer(GL_READ_FRAMEBUFFER,m_shadowFramebuffer);
             glBindFramebuffer(GL_DRAW_FRAMEBUFFER,m_staticShadowFramebuffer);
-            glBlitFramebuffer(0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,0,0,kDirectionalShadowMapSize,kDirectionalShadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
+            glBlitFramebuffer(0,0,m_shadowMapSize,m_shadowMapSize,0,0,m_shadowMapSize,m_shadowMapSize,GL_DEPTH_BUFFER_BIT,GL_NEAREST);
             glBindFramebuffer(GL_FRAMEBUFFER,m_shadowFramebuffer);
             m_staticShadowCasters=staticCasters;m_staticShadowMatrix=m_shadowLightSpaceMatrix;
             m_staticShadowProgram=m_shadowShader->GetProgramID();m_staticShadowValid=true;
@@ -1873,7 +1873,21 @@ namespace Canis
             directionalLight.mode=LightMode::Baked;
         }
         std::vector<PointLightState> pointLights = GatherPointLights(_registry);
-        const bool directionalShadows=directionalLight.enabled && directionalLight.mode!=LightMode::Baked;
+        const int requestedShadowSize = scene->GetVRCamera().enabled
+            ? 2048 : std::clamp(GetGraphicsSettings().shadowMapSize, 0, 2048);
+        if (requestedShadowSize != m_shadowMapSize)
+        {
+            GLint draw = 0, read = 0;
+            glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &draw);
+            glGetIntegerv(GL_READ_FRAMEBUFFER_BINDING, &read);
+            DestroyShadowMap();
+            m_shadowMapSize = requestedShadowSize;
+            if (m_shadowMapSize > 0) CreateShadowMap();
+            glBindFramebuffer(GL_DRAW_FRAMEBUFFER, draw);
+            glBindFramebuffer(GL_READ_FRAMEBUFFER, read);
+        }
+        const bool directionalShadows = m_shadowMapSize > 0 && directionalLight.enabled &&
+            directionalLight.mode != LightMode::Baked;
 
         const bool stereo = m_stereoFrame && scene->GetVRCamera().enabled;
         if (!stereo || !m_stereoShadowReady)

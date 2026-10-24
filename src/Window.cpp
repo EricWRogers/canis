@@ -5,12 +5,22 @@
 #include <SDL3/SDL.h>
 #include <SDL3/SDL_log.h>
 #include <algorithm>
+#include <cmath>
 #include <cstdlib>
 
 #include <stb_image.h>
 
 namespace Canis
 {
+    float Window::GetDisplayRefreshRate() const
+    {
+        const auto display = SDL_GetDisplayForWindow(static_cast<SDL_Window*>(m_window));
+        const auto* mode = display ? SDL_GetCurrentDisplayMode(display) : nullptr;
+        if (!mode) return 0;
+        const float rate = mode->refresh_rate_numerator > 0 && mode->refresh_rate_denominator > 0
+            ? float(mode->refresh_rate_numerator) / mode->refresh_rate_denominator : mode->refresh_rate;
+        return std::isfinite(rate) && rate > 0 ? rate : 0;
+    }
     Window::Window(
         const char *title,
         int width,

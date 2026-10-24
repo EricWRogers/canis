@@ -1,6 +1,7 @@
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/RenderMetrics.hpp>
+#include <Canis/GraphicsSettings.hpp>
 
 #include <Canis/Asset.hpp>
 #include <Canis/AssetManager.hpp>
@@ -215,7 +216,7 @@ namespace Canis
 
         RenderMetrics::Scope scope("Post Processing");
 
-        if (_sourceColorTexture == 0 || _width <= 0 || _height <= 0)
+        if (!GetGraphicsSettings().postEffects || _sourceColorTexture == 0 || _width <= 0 || _height <= 0)
             return result;
 
         if (_asset != nullptr)

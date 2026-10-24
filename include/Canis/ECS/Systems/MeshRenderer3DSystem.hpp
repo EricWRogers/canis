@@ -88,7 +88,7 @@ namespace Canis
         Color LODColor(entt::entity handle, Color color) const;
         void SelectLODs(entt::registry& registry, const Matrix4& view, const Matrix4& projection, uint64_t viewKey);
         static constexpr int kMaxPointLights = 8;
-        static constexpr int kDirectionalShadowMapSize = 2048;
+        int m_shadowMapSize = 2048;
 
         Shader *m_shader = nullptr;
         Shader *m_trailShader = nullptr;

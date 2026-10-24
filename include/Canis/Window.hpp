@@ -74,6 +74,7 @@ namespace Canis
 
         Sync GetSync();
         void SetSync(Sync _type);
+        float GetDisplayRefreshRate() const;
 
     private:
         void* m_window = nullptr;

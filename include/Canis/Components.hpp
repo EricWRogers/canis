@@ -463,6 +463,8 @@ namespace Canis
         }
 
         bool active = true;
+        // Runtime quality visibility never overwrites authored activation.
+        bool qualityActive = true;
         Vector3 position = Vector3(0.0f);
         Quaternion rotation = Quaternion(Vector3(0.0f));
         Vector3 scale = Vector3(1.0f);
@@ -581,7 +583,7 @@ namespace Canis
 
         bool IsActiveInHierarchy() const
         {
-            if (!active || (entity != nullptr && !entity->Active()))
+            if (!active || !qualityActive || (entity != nullptr && !entity->Active()))
                 return false;
 
             if (parent != nullptr && parent->HasComponent<Transform>())
