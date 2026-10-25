@@ -4,6 +4,14 @@ set(CANIS_STEAM_AUDIO_ROOT "" CACHE PATH "Existing extracted Steam Audio SDK (co
 if(CANIS_PLATFORM_WEB)
     set(CANIS_ENABLE_STEAM_AUDIO OFF)
 endif()
+if(APPLE AND CMAKE_OSX_DEPLOYMENT_TARGET AND CMAKE_OSX_DEPLOYMENT_TARGET VERSION_LESS "11.0")
+    # The shipped SDK imports libc++ symbols unavailable on Catalina even though
+    # its Mach-O deployment target passes the minimum-version check.
+    if(CANIS_ENABLE_STEAM_AUDIO)
+        message(STATUS "Steam Audio disabled for macOS 10.15 compatibility; using stereo spatial panning")
+    endif()
+    set(CANIS_ENABLE_STEAM_AUDIO OFF CACHE BOOL "Use Steam Audio HRTF spatialization" FORCE)
+endif()
 if(CANIS_ENABLE_STEAM_AUDIO)
     if(NOT CANIS_STEAM_AUDIO_ROOT)
         include(FetchContent)

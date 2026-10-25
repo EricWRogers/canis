@@ -44,7 +44,11 @@ namespace Canis
         int m_jobs = 8;
         bool m_development = false;
         bool m_csharp = true;
+#ifdef __APPLE__
+        bool m_steamAudio = false;
+#else
         bool m_steamAudio = true;
+#endif
         bool m_open = false;
         bool m_finished = false;
         bool m_succeeded = false;

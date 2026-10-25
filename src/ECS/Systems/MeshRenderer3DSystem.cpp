@@ -2445,7 +2445,12 @@ namespace Canis
             // tiled surface (for example, the dining floor's uvScale) cannot
             // leak into models rendered afterward.
             currentShader->SetVec2("uvScale", Vector2(1.0f));
-            int nextCustomTextureUnit = 6;
+            // Graphs use direct lighting, with the comparison shadow sampler on 6.
+            // Their 2D textures must not alias that sampler (invalid on GL/WebGL).
+            auto* graphShader = materialAsset && materialAsset->shaderId >= 0
+                ? AssetManager::Get<ShaderAsset>(materialAsset->shaderId) : nullptr;
+            const bool graphMaterial = graphShader && graphShader->IsShaderGraph();
+            int nextCustomTextureUnit = graphMaterial ? 8 : 6;
             if (materialAsset != nullptr)
             {
                 if ((materialAsset->info & MATERIAL_HAS_COLOR) != 0u)
@@ -2588,7 +2593,7 @@ namespace Canis
 
             model->SetLightingScenarioBlend(lighting.from ? lighting.from->id : "", lighting.to ? lighting.to->id : "", lighting.blend);
             useShaderForMaterial(materialAsset);
-            if (_batch.graph && materialAsset) materialAsset->materialFields.Use(*currentShader,6);
+            if (_batch.graph && materialAsset) materialAsset->materialFields.Use(*currentShader,8);
 
             Color baseColor = Color(
                 _batch.key.modelColorR,

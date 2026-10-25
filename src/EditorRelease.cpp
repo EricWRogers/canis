@@ -48,9 +48,9 @@ namespace Canis
         m_error.clear();
         m_output.clear();
         m_finished = m_succeeded = false;
-        if (m_root.empty() || !fs::is_regular_file(m_root / "scripts/build-release.py"))
+        if (m_root.empty() || !fs::is_regular_file(m_root / "scripts/build-release.cmake"))
         {
-            m_error = "Cannot find scripts/build-release.py in this project's source folder.";
+            m_error = "Cannot find scripts/build-release.cmake in this project's source folder.";
             return;
         }
         if (m_folder.empty() || m_scene.empty())
@@ -67,18 +67,14 @@ namespace Canis
         m_logPath = job / ("release-" + std::to_string(SDL_GetTicksNS()) + ".log");
         auto* log = SDL_IOFromFile(m_logPath.string().c_str(), "wb");
         if (!log) { m_error = SDL_GetError(); return; }
-#ifdef _WIN32
-        const char* python = "python";
-#else
-        const char* python = "python3";
-#endif
-        std::vector<std::string> storage = {python, "-u", (m_root / "scripts/build-release.py").string(),
-            "--project", m_project.string(),
-            "--platform", platforms[m_platform], "--output", m_folder, "--scene", m_scene,
-            "--jobs", std::to_string(std::clamp(m_jobs, 1, 64)),
-            m_csharp ? "--csharp" : "--no-csharp",
-            m_steamAudio ? "--steam-audio" : "--no-steam-audio"};
-        if (m_development) storage.emplace_back("--development");
+        std::vector<std::string> storage = {"cmake",
+            "-DPROJECT=" + m_project.string(),
+            std::string("-DPLATFORM=") + platforms[m_platform], "-DOUTPUT=" + m_folder, "-DSCENE=" + m_scene,
+            "-DJOBS=" + std::to_string(std::clamp(m_jobs, 1, 64)),
+            m_csharp ? "-DCSHARP=ON" : "-DCSHARP=OFF",
+            m_steamAudio ? "-DSTEAM_AUDIO=ON" : "-DSTEAM_AUDIO=OFF",
+            m_development ? "-DDEVELOPMENT=ON" : "-DDEVELOPMENT=OFF",
+            "-P", (m_root / "scripts/build-release.cmake").string()};
         std::vector<const char*> args;
         for (const auto& argument : storage) args.push_back(argument.c_str());
         args.push_back(nullptr);
@@ -90,7 +86,7 @@ namespace Canis
         SDL_SetPointerProperty(props, SDL_PROP_PROCESS_CREATE_STDOUT_POINTER, log);
         SDL_SetBooleanProperty(props, SDL_PROP_PROCESS_CREATE_STDERR_TO_STDOUT_BOOLEAN, true);
         m_process = SDL_CreateProcessWithProperties(props);
-        if (!m_process) m_error = std::string("Unable to start Python 3: ") + SDL_GetError();
+        if (!m_process) m_error = std::string("Unable to start CMake: ") + SDL_GetError();
         else m_builtFolder = m_folder;
         SDL_DestroyProperties(props);
         SDL_CloseIO(log);
@@ -163,9 +159,16 @@ namespace Canis
         }
         ImGui::Checkbox("Development build (native debug symbols)", &m_development);
         ImGui::Checkbox("C# scripting (precompile saved scripts)", &m_csharp);
+#ifdef __APPLE__
+        ImGui::BeginDisabled(true);
+#else
         ImGui::BeginDisabled(m_platform == 1);
+#endif
         ImGui::Checkbox("Steam Audio spatial sound (desktop only)", &m_steamAudio);
         ImGui::EndDisabled();
+#ifdef __APPLE__
+        ImGui::TextWrapped("macOS 10.15 releases use stereo spatial panning. The Steam Audio SDK requires C++ runtime symbols unavailable on Catalina.");
+#endif
         ImGui::SetNextItemWidth(110);
         ImGui::InputInt("Parallel compile jobs", &m_jobs);
         m_jobs = std::clamp(m_jobs, 1, 64);

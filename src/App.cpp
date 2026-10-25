@@ -1079,7 +1079,13 @@ namespace Canis
 
             std::vector<fs::path> candidates = {};
             if (const char *basePath = SDL_GetBasePath())
+            {
                 candidates.emplace_back(fs::path(basePath) / libraryName);
+#if defined(__APPLE__)
+                // SDL returns Contents/Resources for a Finder-launched bundle.
+                candidates.emplace_back(fs::path(basePath) / "../Frameworks" / libraryName);
+#endif
+            }
 
             candidates.emplace_back(fs::current_path() / libraryName);
 

@@ -5,8 +5,13 @@
 
 #include <algorithm>
 #include <cmath>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#if defined(__APPLE__)
+#include <SDL3/SDL_filesystem.h>
+#include <SDL3/SDL_stdinc.h>
+#endif
 
 namespace Canis
 {
@@ -19,6 +24,32 @@ namespace Canis
         constexpr const char* kEditorConfigPath = "user_settings/editor.conf";
         constexpr const char* kDefaultEditorConfigPath = "project_settings/editor.conf";
         bool g_editorRuntimeEnabled = true;
+
+        fs::path BundledMacUserConfigPath()
+        {
+#if defined(__APPLE__)
+            if (const char* overridePath = std::getenv("CANIS_RUNTIME_CONFIG_PATH");
+                overridePath != nullptr && *overridePath != '\0')
+                return fs::path(overridePath);
+            const char* base = SDL_GetBasePath();
+            if (base != nullptr)
+            {
+                const fs::path resources = fs::path(base).lexically_normal().parent_path();
+                const fs::path bundle = resources.parent_path().parent_path();
+                if (resources.filename() == "Resources" && bundle.extension() == ".app")
+                {
+                    const std::string name = bundle.stem().string();
+                    if (char* directory = SDL_GetPrefPath("Canis", name.c_str()))
+                    {
+                        fs::path result = fs::path(directory) / "runtime.canis";
+                        SDL_free(directory);
+                        return result;
+                    }
+                }
+            }
+#endif
+            return {};
+        }
 
         int NormalizeProjectSyncMode(int _value)
         {
@@ -319,7 +350,8 @@ namespace Canis
         node["windowResizable"] = projectConfig.windowResizable;
         node["windowStartMaximized"] = projectConfig.windowStartMaximized;
 
-        const fs::path runtimeConfigPath = kProjectConfigPath;
+        const fs::path userConfigPath = BundledMacUserConfigPath();
+        const fs::path runtimeConfigPath = userConfigPath.empty() ? fs::path(kProjectConfigPath) : userConfigPath;
         if (!WriteProjectConfigNode(runtimeConfigPath, node))
             return false;
 
@@ -436,6 +468,25 @@ namespace Canis
         const std::string projectConfigPath = GetReadableProjectConfigPath();
         if (FileExists(projectConfigPath.c_str()))
             node = YAML::LoadFile(projectConfigPath);
+
+        // A signed app's resources remain immutable. Restore only player-facing
+        // preferences; each release still owns its startup scene and game data.
+        const fs::path userConfigPath = BundledMacUserConfigPath();
+        if (!userConfigPath.empty() && FileExists(userConfigPath.string().c_str()))
+        {
+            try
+            {
+                const YAML::Node preferences = YAML::LoadFile(userConfigPath.string());
+                for (const char* key : {"volume", "musicVolume", "sfxVolume", "mute",
+                     "useFrameLimit", "frameLimit", "syncMode", "targetGameWidth", "targetGameHeight",
+                     "windowMode", "windowResizable", "windowStartMaximized"})
+                    if (preferences[key]) node[key] = preferences[key];
+            }
+            catch (const YAML::Exception& error)
+            {
+                Debug::Warning("Unable to restore macOS runtime preferences: %s", error.what());
+            }
+        }
 
         YAML::Node editorNode;
         const std::string editorConfigPath = GetReadableEditorConfigPath();

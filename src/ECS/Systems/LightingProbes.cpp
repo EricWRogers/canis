@@ -25,6 +25,10 @@ namespace Canis
     }
     void MeshRenderer3DSystem::DestroyLightingProbes()
     {
+#if defined(__APPLE__)
+        if (m_emptyProbeArray) glDeleteTextures(1, &m_emptyProbeArray);
+        m_emptyProbeArray = 0;
+#endif
         if (!m_probeTextures.empty())
             glDeleteTextures(static_cast<GLsizei>(m_probeTextures.size()), m_probeTextures.data());
         m_probeTextures.clear();
@@ -808,7 +812,26 @@ namespace Canis
 #if !defined(__EMSCRIPTEN__)
         if(ProbeArraysAvailable()) {
             glActiveTexture(GL_TEXTURE8);glBindSampler(8,0);
-            glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY,m_capturingProbe ? 0 : m_scenarioProbeArray);
+            unsigned int texture = m_capturingProbe ? 0 : m_scenarioProbeArray;
+#if defined(__APPLE__)
+            // Avoid Apple's software fragment fallback for an incomplete
+            // samplerCubeArray, including scenes with no reflection probes.
+            if (!texture)
+            {
+                if (!m_emptyProbeArray)
+                {
+                    const unsigned char black[24] = {};
+                    glGenTextures(1, &m_emptyProbeArray);
+                    glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, m_emptyProbeArray);
+                    glTexImage3D(GL_TEXTURE_CUBE_MAP_ARRAY, 0, GL_RGBA8, 1, 1, 6,
+                                 0, GL_RGBA, GL_UNSIGNED_BYTE, black);
+                    glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+                    glTexParameteri(GL_TEXTURE_CUBE_MAP_ARRAY, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+                }
+                texture = m_emptyProbeArray;
+            }
+#endif
+            glBindTexture(GL_TEXTURE_CUBE_MAP_ARRAY, texture);
         } else
 #endif
         {

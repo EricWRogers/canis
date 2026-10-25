@@ -95,7 +95,7 @@ namespace Canis
     {
     private:
         Canis::Shader *m_shader;
-        bool m_graphInstancing=false, m_vertexDeformation=true;
+        bool m_graphInstancing=false, m_vertexDeformation=true, m_shaderGraph=false;
 
     public:
         ShaderAsset() { m_shader = new Canis::Shader(); }
@@ -105,6 +105,7 @@ namespace Canis
 
         Canis::Shader *GetShader() { return m_shader; }
         bool SupportsGraphInstancing() const { return m_graphInstancing; }
+        bool IsShaderGraph() const { return m_shaderGraph; }
         bool HasVertexDeformation() const { return m_vertexDeformation; }
     };
 

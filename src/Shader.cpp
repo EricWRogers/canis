@@ -71,6 +71,10 @@ namespace Canis
 
     Shader::~Shader()
     {
+#if defined(__APPLE__)
+        if (m_defaultScenarioTexture) glDeleteTextures(1, &m_defaultScenarioTexture);
+        if (m_defaultScenarioBuffer) glDeleteBuffers(1, &m_defaultScenarioBuffer);
+#endif
         if (m_defaultSkinPalette) glDeleteBuffers(1, &m_defaultSkinPalette);
         if (m_programId != 0)
             glDeleteProgram(m_programId);
@@ -349,6 +353,28 @@ namespace Canis
     void Shader::Use()
     {
         glUseProgram(m_programId);
+#if defined(__APPLE__)
+        // Apple's driver needs complete active sampler resources even when a
+        // uniform disables their branch. Actual scenario draws override this.
+        if (GetUniformLocation("canisLightingScenarioData", 0) >= 0)
+        {
+            glActiveTexture(GL_TEXTURE14);
+            glBindSampler(14, 0);
+            if (!m_defaultScenarioTexture)
+            {
+                const float white[4] = {1, 1, 1, 1};
+                glGenBuffers(1, &m_defaultScenarioBuffer);
+                glBindBuffer(GL_TEXTURE_BUFFER, m_defaultScenarioBuffer);
+                glBufferData(GL_TEXTURE_BUFFER, sizeof(white), white, GL_STATIC_DRAW);
+                glGenTextures(1, &m_defaultScenarioTexture);
+                glBindTexture(GL_TEXTURE_BUFFER, m_defaultScenarioTexture);
+                glTexBuffer(GL_TEXTURE_BUFFER, GL_RGBA32F, m_defaultScenarioBuffer);
+                glBindBuffer(GL_TEXTURE_BUFFER, 0);
+            }
+            else glBindTexture(GL_TEXTURE_BUFFER, m_defaultScenarioTexture);
+            glActiveTexture(GL_TEXTURE0);
+        }
+#endif
         if (m_gpuSkinning)
         {
             glBindBufferBase(GL_UNIFORM_BUFFER, SkinningBufferBinding, m_defaultSkinPalette);

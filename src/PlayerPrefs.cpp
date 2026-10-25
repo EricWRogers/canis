@@ -1,4 +1,5 @@
 #include <Canis/PlayerPrefs.hpp>
+#include <Canis/FloatConversion.hpp>
 #include <SDL3/SDL.h>
 #include <yaml-cpp/yaml.h>
 #include <charconv>
@@ -53,8 +54,7 @@ namespace Canis::PlayerPrefs
     {
         const auto text = GetString(key);
         float value;
-        const auto result = std::from_chars(text.data(), text.data() + text.size(), value);
-        return result.ec == std::errc{} && result.ptr == text.data() + text.size() && std::isfinite(value) ? value : fallback;
+        return ParseFiniteFloat(text, value) ? value : fallback;
     }
     bool GetBool(const std::string& key, bool fallback)
     {
@@ -74,9 +74,7 @@ namespace Canis::PlayerPrefs
     {
         if (!std::isfinite(value))
             throw std::invalid_argument("PlayerPrefs float must be finite");
-        char buffer[64];
-        const auto result = std::to_chars(buffer, buffer + sizeof(buffer), value, std::chars_format::general, std::numeric_limits<float>::max_digits10);
-        SetString(key, std::string(buffer, result.ptr));
+        SetString(key, FormatFiniteFloat(value));
     }
     void SetBool(const std::string& key, bool value) { SetString(key, value ? "true" : "false"); }
     void DeleteKey(const std::string& key) { dirty = values.erase(key) != 0 || dirty; }

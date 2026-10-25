@@ -60,6 +60,9 @@ namespace Canis
         float m_probeNear=.1f, m_probeFar=100;
         std::vector<LightingProbe> m_probeSettings;
         unsigned int m_scenarioProbeArray=0;
+#if defined(__APPLE__)
+        unsigned int m_emptyProbeArray=0;
+#endif
         bool m_scenariosReady=false;
         bool m_scenarioProbeRepairable=false;
         std::string m_scenarioError, m_scenarioProbeSignature;

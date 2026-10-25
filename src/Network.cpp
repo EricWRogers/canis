@@ -2,6 +2,7 @@
 
 #include <Canis/App.hpp>
 #include <Canis/Debug.hpp>
+#include <Canis/FloatConversion.hpp>
 
 #include <SDL3/SDL.h>
 #include <SDL3_net/SDL_net.h>
@@ -11,6 +12,7 @@
 #include <cstdint>
 #include <sstream>
 #include <utility>
+#include <type_traits>
 
 namespace Canis
 {
@@ -64,13 +66,17 @@ namespace Canis
         T ParseNumber(const std::string &_text, T _fallback)
         {
             T value = _fallback;
-            std::from_chars(_text.data(), _text.data() + _text.size(), value);
+            if constexpr (std::is_floating_point_v<T>)
+                ParseFiniteFloat(_text, value);
+            else
+                std::from_chars(_text.data(), _text.data() + _text.size(), value);
             return value;
         }
 
         std::string FormatFloat(float _value)
         {
             std::ostringstream stream;
+            stream.imbue(std::locale::classic());
             stream << _value;
             return stream.str();
         }

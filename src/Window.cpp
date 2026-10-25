@@ -47,6 +47,15 @@ namespace Canis
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 0);
         SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_ES);
+#elif defined(__APPLE__)
+        SDL_GL_SetAttribute(SDL_GL_ACCELERATED_VISUAL, 1);
+        // Apple's core profile provides OpenGL 4.1 on these Intel/AMD Macs.
+        // GLSL 330 remains usable; macOS cannot create the VR 4.5 context.
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, 4);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, 1);
+        SDL_GL_SetAttribute(SDL_GL_STENCIL_SIZE, 8);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_PROFILE_MASK, SDL_GL_CONTEXT_PROFILE_CORE);
+        SDL_GL_SetAttribute(SDL_GL_CONTEXT_FLAGS, SDL_GL_CONTEXT_FORWARD_COMPATIBLE_FLAG);
 #else
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MAJOR_VERSION, _options.vrContext ? 4 : 3);
         SDL_GL_SetAttribute(SDL_GL_CONTEXT_MINOR_VERSION, _options.vrContext ? 5 : 3);

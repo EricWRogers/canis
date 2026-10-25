@@ -4,6 +4,7 @@
 #include <fstream>
 #include <iostream>
 #include <limits>
+#include <locale>
 #include <stdexcept>
 
 namespace P = Canis::PlayerPrefs;
@@ -36,6 +37,24 @@ int main()
         }
         P::SetString("bad", "nan");
         Check(P::GetFloat("bad", .5f) == .5f && P::GetBool("bad", true), "Malformed scalar did not return default");
+        for (auto text : {"", "1.25x", " 1.25", "1.25 ", "+1.25", "1e1000", "inf", "1,25"})
+        {
+            P::SetString("bad-float", text);
+            Check(P::GetFloat("bad-float", 17.f) == 17.f, "Malformed float did not return default");
+        }
+        struct CommaDecimal : std::numpunct<char>
+        {
+            char do_decimal_point() const override { return ','; }
+        };
+        const auto originalLocale = std::locale();
+        std::locale::global(std::locale(originalLocale, new CommaDecimal));
+        for (float value : {0.f, -0.f, .0031234567f, std::numeric_limits<float>::max(),
+                            std::numeric_limits<float>::min(), std::numeric_limits<float>::denorm_min()})
+        {
+            P::SetFloat("locale-float", value);
+            Check(P::GetFloat("locale-float", -1.f) == value, "Locale-independent float roundtrip failed");
+        }
+        std::locale::global(originalLocale);
         bool rejected = false;
         try { P::SetFloat("bad", std::numeric_limits<float>::infinity()); }
         catch (const std::invalid_argument&) { rejected = true; }

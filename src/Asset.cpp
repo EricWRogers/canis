@@ -1080,7 +1080,8 @@ namespace Canis
     bool ShaderAsset::Load(std::string _path)
     {
         m_graphInstancing=false;m_vertexDeformation=true;
-        if(std::filesystem::path(_path).extension()==".shadergraph") try {
+        m_shaderGraph=std::filesystem::path(_path).extension()==".shadergraph";
+        if(m_shaderGraph) try {
             ShaderGraphDocument document;
             if(!LoadShaderGraphDocument(_path,document))return false;
             std::string vertex,fragment;
@@ -1088,7 +1089,9 @@ namespace Canis
             m_graphInstancing=document.outputAlpha.nodeId<=0;
             m_vertexDeformation=document.vertexPosition.nodeId>0;
             m_shader->CompileSource(vertex,fragment,_path);
+#if CANIS_EDITOR
             (void)CacheShaderGraphSources(_path,vertex,fragment);
+#endif
             return true;
         } catch(const std::exception& error) {
             Debug::Warning("Shader graph '%s': %s",_path.c_str(),error.what());

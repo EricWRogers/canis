@@ -75,6 +75,10 @@ namespace Canis
         bool m_gpuSkinning = false;
         bool m_staticBatching = false;
         unsigned int m_defaultSkinPalette = 0;
+#if defined(__APPLE__)
+        unsigned int m_defaultScenarioBuffer = 0;
+        unsigned int m_defaultScenarioTexture = 0;
+#endif
         std::unique_ptr<Shader> m_stereoVariant;
 
         void CompileShaderSource(std::string source, const std::string &name, unsigned int &id);
