@@ -29,6 +29,18 @@ namespace Canis
 
     inline const Vector2 VECTOR2_ZERO = Vector2(0.0f);
 
+    template <typename T>
+    constexpr T Min(T _a, T _b)
+    {
+        return _b < _a ? _b : _a;
+    }
+
+    template <typename T>
+    constexpr T Max(T _a, T _b)
+    {
+        return _a < _b ? _b : _a;
+    }
+
     size_t HashCombine(size_t _seed, size_t _value);
     size_t HashVector(const Vector2 &_v);
     size_t HashVector(const Vector3 &_v);
