@@ -41,6 +41,9 @@ namespace Canis
         return _a < _b ? _b : _a;
     }
 
+    // Reset NaN and infinity to zero; preserve finite values.
+    void Validate(float &_ref);
+
     size_t HashCombine(size_t _seed, size_t _value);
     size_t HashVector(const Vector2 &_v);
     size_t HashVector(const Vector3 &_v);
