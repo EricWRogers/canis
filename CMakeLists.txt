@@ -9,6 +9,8 @@ file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
 file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/Signal.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/SignalEditor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/LOD.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/CombineMeshCollider.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Blockout.cpp"
@@ -331,6 +333,9 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisEntityLifetimeTests tests/EntityLifetimeTests.cpp)
     target_link_libraries(CanisEntityLifetimeTests PRIVATE CanisEngine)
     add_test(NAME CanisEntityLifetimeTests COMMAND CanisEntityLifetimeTests)
+    add_executable(CanisSignalTests tests/SignalTests.cpp)
+    target_link_libraries(CanisSignalTests PRIVATE CanisEngine)
+    add_test(NAME CanisSignalTests COMMAND CanisSignalTests)
     add_executable(CanisConfigHelperTests tests/ConfigHelperTests.cpp)
     target_link_libraries(CanisConfigHelperTests PRIVATE CanisEngine)
     add_test(NAME CanisConfigHelperTests COMMAND CanisConfigHelperTests)

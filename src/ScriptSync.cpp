@@ -166,6 +166,11 @@ namespace Canis::ScriptEditing
             "Canis::Vector2", "Canis::Vector3", "Canis::Vector4", "Canis::Quaternion", "Canis::Color", "Canis::Mask", "Canis::Entity",
             "AudioAssetHandle", "SceneAssetHandle", "ShaderGraphAssetHandle", "AnimationClipAssetHandle", "AnimatorControllerAssetHandle", "TerrainAssetHandle",
             "Canis::AudioAssetHandle", "Canis::SceneAssetHandle", "Canis::ShaderGraphAssetHandle", "Canis::AnimationClipAssetHandle", "Canis::AnimatorControllerAssetHandle", "Canis::TerrainAssetHandle"};
+        bool IsPropertyType(const std::string& type)
+        {
+            return propertyTypes.count(type) ||
+                ((type.starts_with("Canis::Signal<") || type.starts_with("Signal<")) && type.ends_with(">"));
+        }
     }
 
     SyncResult SynchronizeHeader(const std::string& header, const std::string& original)
@@ -291,12 +296,12 @@ namespace Canis::ScriptEditing
                         if (field == 0)
                         {
                             type = Compact(Join(declaration, 0, stop - 1));
-                            if (stop > 2 && !propertyTypes.count(type) && propertyTypes.count(declaration.front().value) &&
+                            if (stop > 2 && !IsPropertyType(type) && IsPropertyType(declaration.front().value) &&
                                 !Contains(declaration, "*") && !Contains(declaration, "&") && !Contains(declaration, "["))
                                 throw std::runtime_error("Cannot parse public field; check its type and semicolon.");
                         }
                         const auto name = declaration[stop - 1].value;
-                        if (propertyTypes.count(type) && (field == 0 || stop == 1)) properties.push_back(name);
+                        if (IsPropertyType(type) && (field == 0 || stop == 1)) properties.push_back(name);
                         else result.notes.push_back("Inspector sync skipped unsupported member " + name + ".");
                     }
                 }

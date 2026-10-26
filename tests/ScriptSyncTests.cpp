@@ -55,6 +55,11 @@ void Stove::Existing(float oldName) { (void)oldName; /* KEEP THIS BODY */ }
         Check(sync.source.find("KEEP THIS BODY") != std::string::npos, "preserve implementation");
         Check(sync.source.find("Stove::Start(int count)") != std::string::npos, "strip default argument");
         Check(sync.source.find("throw std::logic_error") != std::string::npos, "safe nonvoid placeholder");
+        auto signalHeader = header;
+        signalHeader.insert(signalHeader.find("float temperature"), "Canis::Signal<> dead; Signal<float> healed; Canis::Signal<Demo::Payload> changed;\n");
+        const auto signalSync = SynchronizeHeader(signalHeader, source);
+        Check(signalSync.error.empty() && signalSync.properties == 6 && signalSync.source.find("Stove, changed)") != std::string::npos,
+              "Script sync omitted serializable signals or structured payloads");
         auto repeat = SynchronizeHeader(header, sync.source);
         Check(repeat.error.empty() && repeat.source == sync.source && repeat.methods == 0, "repeat save must be byte-idempotent");
         auto changed = header;

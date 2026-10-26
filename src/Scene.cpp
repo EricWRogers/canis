@@ -534,6 +534,22 @@ namespace Canis
         }
     }
 
+    void Scene::InvokeScriptAction(ScriptableEntity& script, const std::function<void()>& action)
+    {
+        ScriptHandle<ScriptableEntity> alive(&script);
+        if (!alive) return;
+        ++m_scriptCallbackDepth;
+        try { action(); }
+        catch (...)
+        {
+            --m_scriptCallbackDepth;
+            if (!m_isUpdating && !m_isLoadingEntityNodes && m_scriptCallbackDepth == 0) FlushRetiredScripts();
+            throw;
+        }
+        --m_scriptCallbackDepth;
+        if (!m_isUpdating && !m_isLoadingEntityNodes && m_scriptCallbackDepth == 0) FlushRetiredScripts();
+    }
+
     ScriptableEntity* Scene::InvokeScriptCallback(ScriptableEntity* script, bool ready)
     {
         ScriptHandle<ScriptableEntity> handle(script);

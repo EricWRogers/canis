@@ -8,6 +8,7 @@
 #include <yaml-cpp/yaml.h>
 #include <Canis/Math.hpp>
 #include <Canis/AnimationTypes.hpp>
+#include <Canis/Signal.hpp>
 
 namespace Canis
 {
@@ -85,6 +86,7 @@ struct ScriptConf {
     std::function<void(Editor&, Entity&, const ScriptConf&)> DrawInspector = nullptr;
     std::unordered_map<std::string, UIActionInvoker> uiActions = {};
     std::unordered_map<std::string, AnimationEventInvoker> animationEvents = {};
+    std::map<std::string, SignalAction> signalActions = {};
 };
 
 using ComponentConf = ScriptConf;

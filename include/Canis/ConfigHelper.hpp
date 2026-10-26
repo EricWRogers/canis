@@ -71,6 +71,28 @@ inline void RegisterAnimationEvent(ScriptConf& _conf, const std::string& _name, 
     };
 }
 
+// Explicit registration is the editor-visible callable surface.
+template<class ScriptType>
+inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(ScriptType::*method)())
+{
+    conf.signalActions[name] = {typeid(void), "", [method](ScriptableEntity& script, const void*)
+    {
+        if (auto* instance = dynamic_cast<ScriptType*>(&script)) (instance->*method)();
+    }};
+}
+
+template<class ScriptType, class Argument>
+inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(ScriptType::*method)(Argument))
+{
+    using Value = std::remove_cvref_t<Argument>;
+    static_assert(!std::is_reference_v<Argument> || std::is_const_v<std::remove_reference_t<Argument>>,
+                  "Signal actions take values or const references");
+    conf.signalActions[name] = {typeid(Value), SignalArgumentName<Value>(), [method](ScriptableEntity& script, const void* value)
+    {
+        if (value) if (auto* instance = dynamic_cast<ScriptType*>(&script)) (instance->*method)(*static_cast<const Value*>(value));
+    }};
+}
+
 template <typename Component>
 inline Entity& GetRegisteredPropertyOwnerEntity(Component& _component)
 {
@@ -79,6 +101,14 @@ inline Entity& GetRegisteredPropertyOwnerEntity(Component& _component)
     else
         return _component.entity;
 }
+
+template<class Component, class T> requires std::is_base_of_v<Canis::SignalBase, T>
+inline void SetRegisteredProperty(YAML::Node& node, Component& component, T& signal)
+{
+    Canis::DecodeSignal(node, GetRegisteredPropertyOwnerEntity(component).scene, signal);
+}
+template<class T> requires std::is_base_of_v<Canis::SignalBase, T>
+inline YAML::Node GetRegisteredProperty(const T& signal) { return Canis::EncodeSignal(signal); }
 
 template <typename Component, typename PropertyType>
 inline void SetRegisteredProperty(YAML::Node& _node, Component& _component, PropertyType& _value)
@@ -323,7 +353,9 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
     const std::string widgetId = BuildInspectorFieldWidgetID(_label, _idSuffix);
     const char *fullLabel = widgetId.c_str();
 
-    if constexpr (IsInspectorVector<T>)
+    if constexpr (std::is_base_of_v<Canis::SignalBase, T>)
+        Canis::DrawSignalInspector(_editor, _label, _idSuffix, _value);
+    else if constexpr (IsInspectorVector<T>)
     {
         ImGui::PushID(fullLabel);
         if (ImGui::TreeNode("Array", "%s (%zu)", _label, _value.size()))
