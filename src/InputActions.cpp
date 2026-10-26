@@ -181,6 +181,8 @@ void InputActionSystem::UnregisterSchema()
     m_schema = {}; m_document = {}; m_defaults = {}; m_pendingDocument.reset(); m_indices.clear(); m_states.clear();
     m_enabled.clear(); m_thresholdDown.clear(); m_controllers.clear(); m_registered = false;
     SetNativeInput(false); CancelCapture();
+    m_actionOverrides.clear();
+    RemoveSource(UINT64_MAX - 1, InputCancellation::Reload);
     // Keep physical samples across module reload so held controls can be gated.
 }
 bool InputActionSystem::QueueDocument(const InputDocument& document, std::string& error)
@@ -363,6 +365,17 @@ void InputActionSystem::RecordNative(ActionId action, Vector2 value)
 {
     Record("Native/" + std::to_string(action.value), value, UINT64_MAX);
 }
+void InputActionSystem::OverrideAction(ActionId action, std::optional<Vector2> value)
+{
+    const auto index = m_indices.find(action.value);
+    if (index == m_indices.end())
+        return;
+    const bool changed =
+        value ? m_actionOverrides.insert(action.value).second : m_actionOverrides.erase(action.value) != 0;
+    if (changed)
+        Cancel(action, InputCancellation::BackendChanged);
+    Record("Override/" + std::to_string(action.value), value.value_or(Vector2(0)), UINT64_MAX - 1);
+}
 void InputActionSystem::Record(const std::string& path, Vector2 value, uint64_t source)
 {
     if (!std::isfinite(value.x) || !std::isfinite(value.y)) value = Vector2(0.0f);
@@ -394,6 +407,17 @@ void InputActionSystem::DiscardSourceEvents(uint64_t source)
 {
     std::erase_if(m_events, [&](const auto& e){ return e.source == source; });
     m_recorded.erase(source);
+}
+void InputActionSystem::Cancel(ActionId action, InputCancellation reason)
+{
+    const auto index = m_indices.find(action.value);
+    if (index == m_indices.end())
+        return;
+    auto &state = m_states[index->second];
+    state.pending = reason;
+    state.blocked = true;
+    if (reason == InputCancellation::BackendChanged || reason == InputCancellation::Disconnected)
+        state.reactivating = true;
 }
 void InputActionSystem::Cancel(InputCancellation reason)
 {
@@ -456,6 +480,8 @@ void InputActionSystem::Step(bool active)
             auto native = Control("Native/" + std::to_string(action.id));
             if (glm::dot(native,native) > glm::dot(value,value)) value = native;
         }
+        if (!m_controllerSource && m_actionOverrides.contains(action.id))
+            value = Control("Override/" + std::to_string(action.id));
         if (state.reactivating) continue;
         if (!active || !IsMapEnabled({action.map})) state.blocked = true;
         else if (glm::dot(value,value) == 0.0f) state.blocked = false;
@@ -538,7 +564,10 @@ void InputActionSystem::EvaluateCurrent(bool active)
         auto& previous = m_sources[event.source].controls[event.path];
         if (!m_controllerSource && event.path != "Mouse/Delta" && event.path != "Mouse/Wheel" &&
             glm::length(event.value) > 0.25f && glm::length(event.value-previous) > 0.15f)
-            m_promptScheme = (event.path.starts_with("Gamepad/") || event.path.starts_with("Native/")) ? InputScheme::Gamepad : InputScheme::KeyboardMouse;
+            m_promptScheme = (event.path.starts_with("Gamepad/") || event.path.starts_with("Native/") ||
+                              event.path.starts_with("Override/"))
+                                 ? InputScheme::Gamepad
+                                 : InputScheme::KeyboardMouse;
         // Intentional pointer motion/scroll also selects keyboard/mouse prompts.
         // Ignore subpixel noise so a resting mouse cannot steal controller UI.
         if (!m_controllerSource && ((event.path == "Mouse/Delta" && glm::length(event.value) >= 2.0f) ||

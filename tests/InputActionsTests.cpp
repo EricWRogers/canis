@@ -30,6 +30,99 @@ static void Setup(InputActionSystem& input)
     Check(input.RegisterSchema(schema,error),error.c_str()); Check(input.QueueDocument(d,error),error.c_str());
     input.EnableMap({100}); input.Evaluate(true);
 }
+static void DeviceActionOverrides()
+{
+    InputActionSystem input;
+    Setup(input);
+    input.TrackController(10, "xbox");
+    input.Evaluate(true);
+    input.Record("Keyboard/Space", {1, 0});
+    input.Record("Gamepad/South", {1, 0}, 10);
+    input.Evaluate(true);
+    input.OverrideAction({1001}, Vector2(0));
+    input.OverrideAction({1002}, Vector2(0));
+    input.Evaluate(true);
+    Check(input.Action({1001}).canceled && !input.Action({1001}).down && input.Action({1001}, 10).down,
+          "Device override did not mask desktop input independently of controller queries");
+    input.OverrideAction({1001}, Vector2(1, 0));
+    input.OverrideAction({1002}, Vector2(.25f, -.5f));
+    input.Evaluate(true);
+    Check(input.Action({1001}).pressed && input.Action({1001}).down &&
+              input.Action({1002}).value == Vector2(.25f, -.5f),
+          "Device samples did not publish shared action values and edges");
+    input.Evaluate(true);
+    Check(!input.Action({1001}).pressed, "Held device input repeated a press edge");
+    // Independent menu controls can produce a fresh pulse on consecutive frames.
+    for (int frame = 0; frame < 2; ++frame)
+    {
+        input.OverrideAction({1001}, Vector2(0));
+        input.OverrideAction({1001}, Vector2(1, 0));
+        input.Evaluate(true);
+        Check(input.Action({1001}).pressed && input.Action({1001}).released,
+              "Ordered device pulses were lost");
+    }
+    input.Cancel({1001}, InputCancellation::Disconnected);
+    input.OverrideAction({1001}, Vector2(0));
+    input.Evaluate(true);
+    Check(input.Action({1001}).canceled && !input.Action({1001}).released &&
+              input.Action({1001}).cancellation == InputCancellation::Disconnected &&
+              input.Action({1002}).value == Vector2(.25f, -.5f) && input.Action({1001}, 10).down,
+          "Lost tracking released an action or canceled an independent action/controller");
+    input.OverrideAction({1001}, Vector2(1, 0));
+    input.Evaluate(true);
+    input.Evaluate(false);
+    Check(input.Action({1001}).canceled && !input.Action({1001}).released,
+          "Device focus/capture loss did not cancel actions");
+    input.Evaluate(true);
+    Check(!input.Action({1001}).down, "Held device fired after focus recovery");
+    input.OverrideAction({1001}, Vector2(0));
+    input.Evaluate(true);
+    input.OverrideAction({1001}, Vector2(1, 0));
+    input.Evaluate(true);
+    Check(input.Action({1001}).pressed, "Device release did not reopen the neutral gate");
+    input.DisableMap({100});
+    input.Evaluate(true);
+    Check(input.Action({1001}).canceled, "Device bypassed a disabled action map");
+    input.EnableMap({100});
+    input.Evaluate(true);
+    Check(!input.Action({1001}).down, "Held device bypassed map reactivation safety");
+    input.OverrideAction({1001}, Vector2(0));
+    input.Evaluate(true);
+    input.OverrideAction({1001}, Vector2(1, 0));
+    input.Evaluate(true);
+    input.BeginCapture(InputScheme::KeyboardMouse, ActionType::Button);
+    input.Evaluate(true);
+    Check(input.Action({1001}).canceled, "Device bypassed binding capture");
+    input.CancelCapture();
+    input.Evaluate(true);
+    Check(!input.Action({1001}).down, "Held device bypassed capture recovery safety");
+    // Steam/native input owns a separate source and keeps independent snapshots.
+    input.SetNativeInput(true);
+    input.TrackController(20, "unknown", true);
+    input.RecordNative({1002}, {0, 0});
+    input.OverrideAction({1002}, Vector2(0));
+    input.Evaluate(true);
+    input.OverrideAction({1002}, Vector2(.25f, -.5f));
+    input.RecordNative({1002}, {1, 0});
+    input.Evaluate(true);
+    Check(input.Action({1002}).value == Vector2(.25f, -.5f) &&
+              input.Action({1002}, 20).value == Vector2(1, 0),
+          "Device override interfered with the native controller source");
+    input.OverrideAction({1001}, std::nullopt);
+    input.Evaluate(true);
+    Check(!input.Action({1001}).down, "Returning to desktop fired a held key");
+    input.Record("Keyboard/Space", {0, 0});
+    input.Record("Gamepad/South", {0, 0}, 10);
+    input.Evaluate(true);
+    input.Record("Keyboard/Space", {1, 0});
+    input.Evaluate(true);
+    Check(input.Action({1001}).pressed, "Desktop binding did not recover after override removal");
+    input.UnregisterSchema();
+    Setup(input);
+    input.Record("Keyboard/W", {1, 0});
+    input.Evaluate(true);
+    Check(input.Action({1002}).value == Vector2(0, 1), "Reload retained a device action override");
+}
 static void ControllerQueries()
 {
     InputActionSystem input; Setup(input);
@@ -97,6 +190,7 @@ int main()
         input.Record("Mouse/Delta", {3,0}); input.Evaluate(true);
         Check(input.PromptScheme() == InputScheme::KeyboardMouse, "Mouse motion restores keyboard/mouse prompts");
     }
+    DeviceActionOverrides();
     ControllerQueries();
     InputActionSystem input; Setup(input);
     auto jump=[&](){return input.Action({1001});};
