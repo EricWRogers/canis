@@ -531,6 +531,14 @@ namespace Canis
             return Vector3(world.x, world.y, world.z);
         }
 
+        // Convert world-space gameplay positions to the editable local offset.
+        void SetGlobalPosition(const Vector3 &worldPosition)
+        {
+            position = parent ? Vector3(glm::inverse(parent.GetComponent<Transform>().GetModelMatrix()) *
+                                        Vector4(worldPosition, 1))
+                              : worldPosition;
+        }
+
         Quaternion GetGlobalRotation() const
         {
             const Matrix4 model = GetModelMatrix();
@@ -544,6 +552,14 @@ namespace Canis
             if (glm::determinant(rotationMatrix) < 0.0f)
                 rotationMatrix[0] = -rotationMatrix[0];
             return glm::normalize(glm::quat_cast(rotationMatrix));
+        }
+
+        void SetGlobalRotation(const Quaternion &worldRotation)
+        {
+            rotation =
+                parent ? glm::normalize(glm::inverse(parent.GetComponent<Transform>().GetGlobalRotation()) *
+                                        worldRotation)
+                       : glm::normalize(worldRotation);
         }
 
         Vector3 GetGlobalScale() const
@@ -696,6 +712,23 @@ namespace Canis
             else
             {
                 Unparent();
+            }
+        }
+
+        // Use preserveWorld=false to attach authored local offsets, such as a
+        // magazine pouch on a holster. The one-argument API preserves world TRS.
+        void SetParent(Entity *newParent, bool preserveWorld)
+        {
+            if (parent == newParent)
+                return;
+            const Vector3 localPosition = position, localScale = scale;
+            const Quaternion localRotation = rotation;
+            SetParent(newParent);
+            if (!preserveWorld)
+            {
+                position = localPosition;
+                rotation = localRotation;
+                scale = localScale;
             }
         }
 
