@@ -13,6 +13,7 @@
 #include <type_traits>
 #include <utility>
 #include <cmath>
+#include <vector>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -98,6 +99,8 @@ inline YAML::Node GetRegisteredProperty(const Entity& value) { return YAML::Node
 template<typename Component>
 inline void SetRegisteredProperty(YAML::Node& node,Component& component,std::vector<Entity>& values)
 {
+    if (!node.IsSequence())
+        return;
     values.clear();values.resize(node.size());
     for(size_t i=0;i<values.size();i++)
         GetRegisteredPropertyOwnerEntity(component).scene.GetEntityAfterLoad(node[i].as<UUID>(UUID(0)),values[i]);
@@ -306,6 +309,11 @@ inline void InvokeRegisteredDestroy(Component& _component)
 }
 
 template <typename T>
+inline constexpr bool IsInspectorVector = false;
+template <typename T, typename Allocator>
+inline constexpr bool IsInspectorVector<std::vector<T, Allocator>> = true;
+
+template <typename T>
 inline void DrawInspectorField(Editor *_editor, const char *_label, const char *_idSuffix, T &_value)
 {
 #if CANIS_EDITOR
@@ -315,7 +323,39 @@ inline void DrawInspectorField(Editor *_editor, const char *_label, const char *
     const std::string widgetId = BuildInspectorFieldWidgetID(_label, _idSuffix);
     const char *fullLabel = widgetId.c_str();
 
-    if constexpr (std::is_same_v<T, bool>)
+    if constexpr (IsInspectorVector<T>)
+    {
+        ImGui::PushID(fullLabel);
+        if (ImGui::TreeNode("Array", "%s (%zu)", _label, _value.size()))
+        {
+            for (size_t i = 0; i < _value.size(); ++i)
+            {
+                ImGui::PushID(static_cast<int>(i));
+                const std::string label = std::to_string(i);
+                // vector<bool> exposes a proxy rather than a bool reference.
+                if constexpr (std::is_same_v<typename T::value_type, bool>)
+                {
+                    bool value = _value[i];
+                    DrawInspectorField<bool>(_editor, label.c_str(), nullptr, value);
+                    _value[i] = value;
+                }
+                else
+                    DrawInspectorField<typename T::value_type>(_editor, label.c_str(), nullptr, _value[i]);
+                if (ImGui::Button("Remove"))
+                {
+                    _value.erase(_value.begin() + i);
+                    ImGui::PopID();
+                    break;
+                }
+                ImGui::PopID();
+            }
+            if (ImGui::Button("Add"))
+                _value.emplace_back();
+            ImGui::TreePop();
+        }
+        ImGui::PopID();
+    }
+    else if constexpr (std::is_same_v<T, bool>)
     {
         DrawInspectorFieldLabel(_label);
         ImGui::Checkbox(fullLabel, &_value);
@@ -618,10 +658,10 @@ void UnRegister##type##System(Canis::App& _app)       \
                                                                                                     \
     config.registry.drawers[#property] = [](Editor &_editor, const std::string &propertyName, void *componentPtr, const std::string &idSuffix) { \
         auto *typedComponent = static_cast<component *>(componentPtr);                              \
-        const PropertyType beforeValue = typedComponent->property;                                  \
-        DrawInspectorField<PropertyType>(_editor, propertyName.c_str(), idSuffix.c_str(), typedComponent->property); \
         if constexpr (CanAnimateRegisteredProperty<PropertyType>())                                 \
         {                                                                                           \
+            const PropertyType beforeValue = typedComponent->property;                              \
+            DrawInspectorField<PropertyType>(_editor, propertyName.c_str(), idSuffix.c_str(), typedComponent->property); \
             if (RegisteredAnimationValuesDiffer(beforeValue, typedComponent->property))             \
             {                                                                                       \
                 _editor.NotifyAnimationPropertyEdited(                                              \
@@ -633,6 +673,8 @@ void UnRegister##type##System(Canis::App& _app)       \
                     GetRegisteredAnimationValue(typedComponent->property));                         \
             }                                                                                       \
         }                                                                                           \
+        else                                                                                        \
+            DrawInspectorField<PropertyType>(_editor, propertyName.c_str(), idSuffix.c_str(), typedComponent->property); \
     };                                                                                               \
     if constexpr (CanAnimateRegisteredProperty<PropertyType>())                                     \
     {                                                                                               \
