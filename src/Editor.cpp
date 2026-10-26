@@ -14744,6 +14744,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawAnimationWindow(float _deltaTime)
     {
+        Profiler::Scope timing("Editor animation", Profiler::Category::Editor);
+        if (!m_panelMaximizer.Begin("Animation", &m_showAnimationPanel))
+        {
+            ImGui::End();
+            return;
+        }
         namespace fs = std::filesystem;
 
         if (m_animationClipStatePath.empty())
@@ -14871,8 +14877,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_animationTime = 0.0f;
             RememberLastAnimationClipAssetPath(m_animationClipStatePath);
         };
-
-        m_panelMaximizer.Begin("Animation", &m_showAnimationPanel);
 
         std::string clipLabel = "[ none ]";
         if (clipMeta != nullptr)
@@ -18270,13 +18274,34 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
     }
 
+    namespace
+    {
+        template <typename Handle>
+        std::string RememberedEditorAssetPath(const Handle &handle)
+        {
+            if (handle.uuid != UUID(0))
+            {
+                auto &paths = AssetManager::GetAssetLibrary().uuidAssetPath;
+                if (auto found = paths.find(handle.uuid); found != paths.end())
+                    return found->second;
+            }
+            // Metadata is preloaded at editor startup and refreshed by the asset
+            // watcher. Keep path fallback, but never scan the asset tree for a
+            // stale remembered tab (for example after removing an asset pack).
+            std::error_code error;
+            if (!handle.path.empty() && std::filesystem::is_regular_file(handle.path, error))
+                return handle.path;
+            return {};
+        }
+    }
+
     std::string Editor::ResolveRememberedShaderGraphPath() const
     {
         const ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
         if (remembered.Empty())
             return {};
 
-        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        const std::string resolvedPath = RememberedEditorAssetPath(remembered);
         if (resolvedPath.empty())
             return {};
 
@@ -18295,7 +18320,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (remembered.Empty())
             return {};
 
-        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        const std::string resolvedPath = RememberedEditorAssetPath(remembered);
         if (!resolvedPath.empty())
         {
             if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))

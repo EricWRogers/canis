@@ -1,5 +1,6 @@
 #include <Canis/App.hpp>
 #include <Canis/Editor.hpp>
+#include <Canis/Canis.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/AssetManager.hpp>
@@ -329,6 +330,29 @@ namespace Canis
             track.keys = {{0, AnimationValue::Float(0)}, {40, AnimationValue::Float(1)}};
             clip.tracks = {track};
             Check(clip.Save("assets/weather-preview.animclip"), "Preview clip could not save");
+            // Deleted remembered tabs must not discover every unrelated asset
+            // again on each editor frame. UUID moves and path fallback still work.
+            auto &remembered = GetEditorConfig().lastAnimationClip;
+            const auto savedRemembered = remembered;
+            Check(clip.Save("assets/unindexed-preview.animclip"), "Unindexed fixture could not save");
+            remembered.uuid = UUID(991234567890123456ULL);
+            remembered.path = "assets/deleted-pack/missing.animclip";
+            const auto assetCount = AssetManager::GetAssetLibrary().assets.size();
+            for (int i = 0; i < 20; ++i)
+                Check(editor.ResolveRememberedAnimationClipPath().empty(), "Deleted remembered clip resolved");
+            Check(AssetManager::GetAssetLibrary().assets.size() == assetCount &&
+                  !fs::exists("assets/unindexed-preview.animclip.meta") &&
+                  !fs::exists("assets/deleted-pack/missing.animclip.meta"),
+                  "Remembered clip searched or registered unrelated/missing assets");
+            auto *previewMeta = AssetManager::GetMetaFile("assets/weather-preview.animclip");
+            remembered.uuid = previewMeta->uuid;
+            Check(editor.ResolveRememberedAnimationClipPath() == previewMeta->path,
+                  "Remembered UUID did not follow its indexed path after a move");
+            remembered.uuid = UUID(0);
+            remembered.path = "assets/weather-preview.animclip";
+            Check(editor.ResolveRememberedAnimationClipPath() == previewMeta->path,
+                  "Remembered path-only clip no longer resolves");
+            remembered = savedRemembered;
             editor.m_animationClipStatePath = "assets/weather-preview.animclip";
             editor.m_animationTargetUUID = root.GetUUID();
             editor.m_animationTime = 40;
