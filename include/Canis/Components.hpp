@@ -1888,8 +1888,6 @@ namespace Canis
         void Create();
         void Destroy();
 
-        void Update(float _dt);
-
         void SetPosition(const Vector2 &newPosition)
         {
             m_position = newPosition;

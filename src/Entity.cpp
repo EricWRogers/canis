@@ -467,8 +467,6 @@ void Camera2D::Destroy() {
     Debug::Log("DestroyCamera");
 }
 
-void Camera2D::Update(float _dt) {}
-
 void Camera2D::UpdateMatrix()
 {
     if (entity == nullptr)
