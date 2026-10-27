@@ -33,7 +33,7 @@ namespace Canis
     {
         std::type_index argumentType = typeid(void);
         std::string argumentName;
-        std::function<void(ScriptableEntity&, const void*)> invoke;
+        std::function<void(void*, const void*)> invoke;
     };
 
     template<class T> std::string SignalArgumentName()

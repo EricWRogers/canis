@@ -106,6 +106,7 @@ namespace Canis
         void ForceReady(Entity& _entity);
         // Keeps self-removing scripts alive until their signal action returns.
         void InvokeScriptAction(ScriptableEntity& script, const std::function<void()>& action);
+        void InvokeComponentAction(const std::function<void()>& action);
 
         Window& GetWindow() { return *m_window; }
         InputManager& GetInputManager() { return *m_inputManager; }

@@ -33,7 +33,7 @@ namespace Canis
                 if (listener.target && listener.target.scene.app)
                     for (auto& conf : listener.target.scene.app->GetScriptRegistry())
                     {
-                        if (conf.kind != RegistryEntryKind::Script || !conf.Has || !conf.Get) continue;
+                        if (!conf.Has || !conf.Get) continue;
                         auto target = listener.target;
                         if (!conf.Has(target) || !conf.Get(target)) continue;
                         for (const auto& [name, action] : conf.signalActions)

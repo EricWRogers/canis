@@ -71,25 +71,26 @@ inline void RegisterAnimationEvent(ScriptConf& _conf, const std::string& _name, 
     };
 }
 
-// Explicit registration is the editor-visible callable surface.
-template<class ScriptType>
-inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(ScriptType::*method)())
+// Explicit registration is the editor-visible callable surface for both
+// script instances and native ECS components. The registry's Get supplies T*.
+template<class Component>
+inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(Component::*method)())
 {
-    conf.signalActions[name] = {typeid(void), "", [method](ScriptableEntity& script, const void*)
+    conf.signalActions[name] = {typeid(void), "", [method](void* component, const void*)
     {
-        if (auto* instance = dynamic_cast<ScriptType*>(&script)) (instance->*method)();
+        if (component) (static_cast<Component*>(component)->*method)();
     }};
 }
 
-template<class ScriptType, class Argument>
-inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(ScriptType::*method)(Argument))
+template<class Component, class Argument>
+inline void RegisterSignalAction(ScriptConf& conf, const std::string& name, void(Component::*method)(Argument))
 {
     using Value = std::remove_cvref_t<Argument>;
     static_assert(!std::is_reference_v<Argument> || std::is_const_v<std::remove_reference_t<Argument>>,
                   "Signal actions take values or const references");
-    conf.signalActions[name] = {typeid(Value), SignalArgumentName<Value>(), [method](ScriptableEntity& script, const void* value)
+    conf.signalActions[name] = {typeid(Value), SignalArgumentName<Value>(), [method](void* component, const void* value)
     {
-        if (value) if (auto* instance = dynamic_cast<ScriptType*>(&script)) (instance->*method)(*static_cast<const Value*>(value));
+        if (component && value) (static_cast<Component*>(component)->*method)(*static_cast<const Value*>(value));
     }};
 }
 

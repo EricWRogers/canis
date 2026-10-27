@@ -538,6 +538,11 @@ namespace Canis
     {
         ScriptHandle<ScriptableEntity> alive(&script);
         if (!alive) return;
+        InvokeComponentAction(action);
+    }
+
+    void Scene::InvokeComponentAction(const std::function<void()>& action)
+    {
         ++m_scriptCallbackDepth;
         try { action(); }
         catch (...)

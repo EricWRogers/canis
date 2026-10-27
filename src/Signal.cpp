@@ -22,17 +22,17 @@ namespace Canis
             return action.argumentType == typeid(void) || action.argumentType ==
                 (listener.argumentMode == SignalArgumentMode::Dynamic ? type : ConstantType(listener.constant));
         }
-        const SignalAction* FindAction(const SignalListener& listener, ScriptableEntity*& script)
+        const SignalAction* FindAction(const SignalListener& listener, void*& component)
         {
-            script = nullptr;
+            component = nullptr;
             if (!listener.target || !listener.target.scene.app || listener.script.empty() || listener.method.empty()) return nullptr;
             const auto* conf = listener.target.scene.app->GetScriptConf(listener.script);
-            if (!conf || conf->kind != RegistryEntryKind::Script || !conf->Get) return nullptr;
+            if (!conf || !conf->Get) return nullptr;
             const auto it = conf->signalActions.find(listener.method);
             if (it == conf->signalActions.end() || !it->second.invoke) return nullptr;
             auto target = listener.target;
-            script = static_cast<ScriptableEntity*>(conf->Get(target));
-            return script ? &it->second : nullptr;
+            component = conf->Get(target);
+            return component ? &it->second : nullptr;
         }
     }
     void InvokeSignalAction(ScriptableEntity& script, const std::function<void()>& action)
@@ -45,8 +45,8 @@ namespace Canis
     }
     bool SignalBase::IsListenerValid(const SignalListener& listener) const
     {
-        ScriptableEntity* script;
-        const auto* action = FindAction(listener, script);
+        void* component;
+        const auto* action = FindAction(listener, component);
         return action && CanInvoke(listener, *action);
     }
     void SignalBase::EmitPersistent(const std::vector<SignalListener>& listeners, std::type_index type, const void* value)
@@ -54,14 +54,14 @@ namespace Canis
         for (const auto& listener : listeners)
         {
             if (!listener.enabled) continue;
-            ScriptableEntity* script;
-            const auto* registered = FindAction(listener, script);
+            void* component;
+            const auto* registered = FindAction(listener, component);
             if (!registered || !Compatible(listener, *registered, type)) continue;
             // A callback may change registrations or remove itself.
             const auto action = *registered;
             auto call = [&](const void* argument)
             {
-                listener.target.scene.InvokeScriptAction(*script, [&] { action.invoke(*script, argument); });
+                listener.target.scene.InvokeComponentAction([&] { action.invoke(component, argument); });
             };
             if (action.argumentType == typeid(void)) call(nullptr);
             else if (listener.argumentMode == SignalArgumentMode::Dynamic) call(value);

@@ -28,10 +28,25 @@ struct Emitter : ScriptableEntity
     Signal<> pulse;
     Signal<Payload> changed;
 };
+struct NativeReceiver
+{
+    static constexpr const char* ScriptName = "SignalTest::NativeReceiver";
+    Entity* entity = nullptr;
+    float value = 0;
+    void TakeFloat(float v) { value = v; }
+    void TakePayload(const Payload& p) { value = p.delta; }
+    void RemoveSelf() { entity->RemoveComponent<NativeReceiver>(); }
+};
+static ComponentConf nativeConf;
 static ScriptConf receiverConf, emitterConf;
 static void Register(App& app)
 {
-    receiverConf = {}; emitterConf = {};
+    receiverConf = {}; emitterConf = {}; nativeConf = {};
+    RegisterSignalAction(nativeConf, "TakeFloat", &NativeReceiver::TakeFloat);
+    RegisterSignalAction(nativeConf, "TakePayload", &NativeReceiver::TakePayload);
+    RegisterSignalAction(nativeConf, "RemoveSelf", &NativeReceiver::RemoveSelf);
+    DEFAULT_COMPONENT_CONFIG(nativeConf, NativeReceiver);
+    app.RegisterComponent(nativeConf);
     RegisterSignalAction(receiverConf, "TakeFloat", &Receiver::TakeFloat);
     RegisterSignalAction(receiverConf, "TakePayload", &Receiver::TakePayload);
     RegisterSignalAction(receiverConf, "Ping", &Receiver::Ping);
@@ -95,6 +110,22 @@ static void RuntimeAndPersistence()
     target.RemoveScript<Receiver>(); sender->value.Emit(1);
     receiver = target.AddScript<Receiver>(); sender->value.Emit(4.5f);
     Check(receiver->value == 4.5f, "Signal retained a stale script instance after reattachment");
+}
+static void NativeComponents()
+{
+    App app; Register(app); auto target = app.scene.CreateEntity("Native receiver");
+    auto* receiver = target.AddComponent<NativeReceiver>(); Signal<float> signal;
+    auto listener = Listener(target, "TakeFloat"); listener.script = NativeReceiver::ScriptName;
+    signal.listeners.push_back(listener);
+    Check(signal.IsListenerValid(listener), "Native action was filtered out"); signal.Emit(3.5f);
+    Check(receiver->value == 3.5f && target.GetScripts().empty(), "Native action required a script");
+    Signal<Payload> payload; listener.method = "TakePayload"; payload.listeners.push_back(listener); payload.Emit({100, 80, -20});
+    Check(receiver->value == -20, "Structured payload did not reach native component");
+    target.RemoveComponent<NativeReceiver>(); signal.Emit(1);
+    receiver = target.AddComponent<NativeReceiver>(); signal.Emit(7.5f);
+    Check(receiver->value == 7.5f, "Native action retained stale component pointer");
+    Signal<> remove; listener.method = "RemoveSelf"; remove.listeners.push_back(listener); remove.Emit();
+    Check(!target.HasComponent<NativeReceiver>(), "Native action could not remove itself");
 }
 static void PrefabRemapping()
 {
@@ -174,7 +205,7 @@ static void InspectorControls()
 #endif
 int main()
 {
-    try { RuntimeAndPersistence(); PrefabRemapping(); CallbackMutationAndLifetime();
+    try { RuntimeAndPersistence(); NativeComponents(); PrefabRemapping(); CallbackMutationAndLifetime();
 #if CANIS_EDITOR
         InspectorControls();
 #endif

@@ -21,7 +21,7 @@ healed.Emit(12.5f);
 outOfHealth.Emit();
 ```
 
-Register action methods explicitly with `RegisterSignalAction`. Actions return void
+Register action methods on scripts or native ECS components explicitly with `RegisterSignalAction`. Actions return void
 and take either no argument, a value, or a const reference. Overloaded methods need
 an explicit member-function pointer cast or a small named wrapper. A signal may
 call a no-argument action regardless of its emitted value. Typed actions require an
@@ -34,8 +34,8 @@ value field. Structured payloads use the event value. Every listener has an enab
 checkbox and a remove button. Missing bindings remain authored, show a warning,
 and are skipped at runtime. `None` clears the selected method.
 
-Bindings save the entity UUID, script name, method name, enabled state, argument
-mode, and any constant. They resolve the current script at emission time. Prefab
+Bindings save the entity UUID, registered script/component name, method name, enabled state, argument
+mode, and any constant. They resolve the current script or component at emission time. Prefab
 copies remap internal entity targets using the scene reference resolver. Unknown
 UUIDs are preserved for diagnosis. Function addresses, live script pointers, RTTI
 identifiers, and native callbacks are not saved. Changing a registered method name
@@ -55,7 +55,9 @@ Persistent callbacks run first in authored order, followed by native callbacks i
 connection order. Emission snapshots listeners and copies the typed payload;
 connections added or removed during a callback affect the next emission. Lambdas
 that capture raw objects retain normal C++ lifetime responsibilities. ScriptHandle
-connections and persistent actions defer script deletion until their method returns.
+connections and persistent actions defer script deletion and entity destruction until
+safe cleanup. Native component removal itself is immediate, so a method that removes
+its own component must avoid accessing its members afterwards.
 Do not retain signals or entity references beyond their scene's lifetime. Emission
 and editing run on the scene/main thread.
 
@@ -63,3 +65,8 @@ This is a native C++ action API; UI actions and animation events remain separate
 The script editor's property sync recognizes Signal fields and keeps their property
 registrations when saving a header. Scene undo/redo, prefab serialization, and game
 code reload use the same property codecs as other fields.
+
+Native component registration uses the same Signal fields and RegisterSignalAction
+calls, with DEFAULT_COMPONENT_CONFIG, DEFAULT_DRAW_COMPONENT_INSPECTOR, and
+App::RegisterComponent. The saved listener field named `script` remains unchanged
+for compatibility; it stores the registered type name for either kind of target.
