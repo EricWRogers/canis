@@ -10,6 +10,8 @@ file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
     "${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentPicker.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/RectLayoutEditor.cpp"
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/RectLayoutSerialization.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Signal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SignalEditor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/LOD.cpp"
@@ -328,6 +330,15 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisSpatialAudioTests tests/SpatialAudioTests.cpp)
     target_link_libraries(CanisSpatialAudioTests PRIVATE CanisEngine)
     add_test(NAME CanisSpatialAudioTests COMMAND CanisSpatialAudioTests)
+    add_executable(CanisRectLayoutTests tests/RectLayoutTests.cpp)
+    target_link_libraries(CanisRectLayoutTests PRIVATE CanisEngine)
+    add_test(NAME CanisRectLayoutTests COMMAND CanisRectLayoutTests)
+    add_executable(CanisRectAnchorTests tests/RectAnchorTests.cpp)
+    target_link_libraries(CanisRectAnchorTests PRIVATE CanisEngine libglew_static stb)
+    add_test(NAME CanisRectAnchorTests COMMAND CanisRectAnchorTests)
+    add_executable(CanisComponentLifecycleTests tests/ComponentLifecycleTests.cpp)
+    target_link_libraries(CanisComponentLifecycleTests PRIVATE CanisEngine)
+    add_test(NAME CanisComponentLifecycleTests COMMAND CanisComponentLifecycleTests)
     add_executable(CanisComponentPickerTests tests/ComponentPickerTests.cpp)
     target_link_libraries(CanisComponentPickerTests PRIVATE CanisEngine)
     add_test(NAME CanisComponentPickerTests COMMAND CanisComponentPickerTests)

@@ -25,7 +25,7 @@ inline const std::map<std::string,std::set<std::string>> NativeSerializedFields 
     {"Canis::NetworkIdentity", {"localOwned", "netId", "ownerClientId", "prefab", "replicateTransform", "serverOwned"}},
     {"Canis::PointLight", {"color", "enabled", "intensity", "range"}},
     {"Canis::PrefabInstance", {"firstEntity", "prefab"}},
-    {"Canis::RectTransform", {"active", "anchorMax", "anchorMin", "children", "depth", "originOffset", "parent", "pivot", "position", "rotation", "rotationOriginOffset", "scale", "size"}},
+    {"Canis::RectLayout", {"active", "anchorMax", "anchorMin", "originOffset", "pivot", "rotationOriginOffset", "size"}},
     {"Canis::Rigidbody", {"active", "allowSleeping", "angularDamping", "angularVelocity", "collisionLayer", "collisionMask", "friction", "gravityFactor", "isSensor", "layer", "linearDamping", "linearVelocity", "lockRotationX", "lockRotationY", "lockRotationZ", "mask", "mass", "motionType", "raycastMask", "restitution", "useGravity"}},
     {"Canis::SphereCollider", {"active", "offset", "radius"}},
     {"Canis::Sprite2D", {"TextureAsset", "color", "flipX", "flipY", "uv"}},

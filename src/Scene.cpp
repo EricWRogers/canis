@@ -3,6 +3,8 @@
 #include <Canis/Audio.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include <Canis/Scene.hpp>
+#include <exception>
+#include <Canis/RectLayoutSerialization.hpp>
 #include <Canis/Profiler.hpp>
 #include <Canis/RenderMetrics.hpp>
 #include <Canis/OpenGL.hpp>
@@ -90,9 +92,6 @@ namespace Canis
         {
             if (_entity == nullptr)
                 return false;
-
-            if (_entity->HasComponent<RectTransform>() && _entity->GetComponent<RectTransform>().parent != nullptr)
-                return true;
 
             if (_entity->HasComponent<Transform>() && _entity->GetComponent<Transform>().parent != nullptr)
                 return true;
@@ -541,6 +540,64 @@ namespace Canis
         InvokeComponentAction(action);
     }
 
+    ComponentCreateScope::ComponentCreateScope(Scene& scene, bool callCreate)
+        : m_scene(&scene), m_callCreate(callCreate), m_exceptions(std::uncaught_exceptions())
+    {
+        ++scene.m_componentCreateScopeDepth;
+    }
+    ComponentCreateScope::~ComponentCreateScope() noexcept(false)
+    {
+        if (!m_scene) return;
+        if (std::uncaught_exceptions() > m_exceptions)
+            m_scene->EndComponentCreateScope(false, true);
+        else Finish();
+    }
+    void ComponentCreateScope::Finish()
+    {
+        Scene* scene = m_scene;
+        m_scene = nullptr;
+        if (scene) scene->EndComponentCreateScope(m_callCreate, false);
+    }
+    void Scene::RequestComponentCreate(entt::entity owner, entt::id_type type, std::function<void()> callback)
+    {
+        if (!m_componentCreateScopeDepth) { InvokeComponentAction(callback); return; }
+        const ComponentCreateKey key{owner, type};
+        if (auto found = m_componentCreateIndex.find(key); found != m_componentCreateIndex.end())
+            found->second->callback = std::move(callback);
+        else {
+            m_componentCreates.push_back({key, std::move(callback)});
+            m_componentCreateIndex.emplace(key, std::prev(m_componentCreates.end()));
+        }
+    }
+    void Scene::CancelComponentCreate(entt::entity owner, entt::id_type type)
+    {
+        if (auto found = m_componentCreateIndex.find({owner, type}); found != m_componentCreateIndex.end()) {
+            m_componentCreates.erase(found->second);
+            m_componentCreateIndex.erase(found);
+        }
+    }
+    void Scene::FlushComponentCreates()
+    {
+        try {
+            while (!m_componentCreates.empty()) {
+                auto pending = std::move(m_componentCreates.front());
+                m_componentCreateIndex.erase(pending.key);
+                m_componentCreates.pop_front();
+                InvokeComponentAction(pending.callback);
+            }
+        } catch (...) {
+            m_componentCreateIndex.clear();
+            m_componentCreates.clear();
+            throw;
+        }
+    }
+    void Scene::EndComponentCreateScope(bool callCreate, bool failed)
+    {
+        if (m_componentCreateScopeDepth) --m_componentCreateScopeDepth;
+        if (failed) { m_componentCreateIndex.clear(); m_componentCreates.clear(); }
+        else if (callCreate && !m_componentCreateScopeDepth) FlushComponentCreates();
+    }
+
     void Scene::InvokeComponentAction(const std::function<void()>& action)
     {
         ++m_scriptCallbackDepth;
@@ -593,6 +650,9 @@ namespace Canis
         DestroyRenderTarget(m_qualityRenderTarget);
         Audio::SetScenePaused(false);
         Audio::SetListener(Vector3(0),Quaternion(1,0,0,0),1,false);
+        m_componentCreateIndex.clear();
+        m_componentCreates.clear();
+        m_componentCreateScopeDepth = 0;
         tweens.Clear();
         if (managedStop) managedStop();
         tweens.Clear();
@@ -835,6 +895,16 @@ namespace Canis
 
     std::vector<Entity*> Scene::LoadEntityNodes(YAML::Node &_entities, bool _copyUUID)
     {
+        ComponentCreateScope componentCreates(*this);
+        bool legacyLayout = false;
+        if (_entities) for (const auto node : _entities)
+            legacyLayout |= bool(node["Canis::RectTransform"]);
+        YAML::Node upgraded;
+        if (legacyLayout) {
+            upgraded = YAML::Clone(_entities);
+            for (auto node : upgraded) MigrateRectLayoutEntity(node);
+        }
+        const YAML::Node& authored = legacyLayout ? upgraded : _entities;
         const auto loadStart = SDL_GetTicksNS();
         const size_t authoredCount = _entities ? _entities.size() : 0;
         std::vector<CombinedModelLoad> combinedGroups;
@@ -842,9 +912,9 @@ namespace Canis
         if (ShouldLoadCombinedModels(*this))
         {
             const char* build = std::getenv("CANIS_BUILD_COMBINE_MODELS");
-            entities.reset(PrepareCombinedModelNodes(_entities, build && std::string(build) == "1", combinedGroups));
+            entities.reset(PrepareCombinedModelNodes(authored, build && std::string(build) == "1", combinedGroups));
         }
-        else entities.reset(_entities);
+        else entities.reset(authored);
         std::unordered_set<UUID> sourceIDs;
         if (entities) for (auto node : entities) {
             if (!sourceIDs.insert(node["Entity"].as<UUID>(0)).second)
@@ -871,42 +941,7 @@ namespace Canis
                 if (entity == nullptr)
                     continue;
 
-                if (entity->HasComponent<RectTransform>())
-                {
-                    RectTransform& transform = entity->GetComponent<RectTransform>();
-                    if (transform.parent != nullptr)
-                    {
-                        if (transform.parent->HasComponent<RectTransform>())
-                        {
-                            RectTransform& parentTransform = transform.parent->GetComponent<RectTransform>();
-                            auto& siblings = parentTransform.children;
-                            if (std::find(siblings.begin(), siblings.end(), entity) == siblings.end())
-                                siblings.push_back(entity);
-                        }
-                        else
-                        {
-                            transform.parent = nullptr;
-                        }
-                    }
 
-                    auto& rectChildren = transform.children;
-                    std::unordered_set<Canis::Entity*> seenRectChildren = {};
-                    rectChildren.erase(std::remove_if(rectChildren.begin(), rectChildren.end(),
-                        [entity, &seenRectChildren](Canis::Entity* child) -> bool
-                        {
-                            if (child == nullptr || !child->HasComponent<RectTransform>())
-                                return true;
-
-                            RectTransform& childTransform = child->GetComponent<RectTransform>();
-                            // The child's encoded parent is authoritative. Only
-                            // infer it from a children list for legacy data that
-                            // did not encode a parent.
-                            if (childTransform.parent == nullptr)
-                                childTransform.parent = entity;
-                            return childTransform.parent != entity ||
-                                !seenRectChildren.insert(child).second;
-                        }), rectChildren.end());
-                }
 
                 if (entity->HasComponent<Transform>())
                 {
@@ -943,10 +978,14 @@ namespace Canis
                 }
             }
 
+            std::vector<ScriptHandle<ScriptableEntity>> scriptsToCreate;
             for (auto* e : newEntitys) {
                 const auto scripts = e->GetScripts();
-                for (const auto& handle : scripts) if (auto* script = handle.TryGet()) script->Create();
+                scriptsToCreate.insert(scriptsToCreate.end(), scripts.begin(), scripts.end());
             }
+            componentCreates.Finish();
+            for (const auto& handle : scriptsToCreate)
+                if (auto* script = handle.TryGet()) InvokeScriptCallback(script, false);
         }
 
         FinishCombinedModelLoad(*this, combinedGroups, authoredCount, newEntitys.size(),
@@ -968,6 +1007,8 @@ namespace Canis
 
     Canis::Entity& Scene::DecodeEntity(YAML::Node _node, bool _copyUUID)
     {
+        ComponentCreateScope componentCreates(*this);
+        MigrateRectLayoutEntity(_node);
         const UUID sourceUUID = _node["Entity"].as<UUID>(0);
         const auto prepared = m_loadingEntities.find(sourceUUID);
         Entity& entity = m_isLoadingEntityNodes && prepared != m_loadingEntities.end()
@@ -1350,8 +1391,6 @@ namespace Canis
         entity->Active() = false;
         if (auto* transform = m_registry.try_get<Transform>(entity->GetHandle()))
             for (const auto& child : transform->children) MarkPendingDestroy(child.ResolveIncludingPending());
-        if (auto* transform = m_registry.try_get<RectTransform>(entity->GetHandle()))
-            for (const auto& child : transform->children) MarkPendingDestroy(child.ResolveIncludingPending());
     }
 
     void Scene::DestroyNow(const Entity& handle)
@@ -1390,23 +1429,7 @@ namespace Canis
                 childIdsToDestroy.emplace_back(_child);
         };
 
-        if (entity->HasComponent<RectTransform>())
-        {
-            RectTransform& rectTransform = entity->GetComponent<RectTransform>();
-            if (rectTransform.parent != nullptr)
-            {
-                if (rectTransform.parent->HasComponent<RectTransform>())
-                {
-                    RectTransform& parentTransform = rectTransform.parent->GetComponent<RectTransform>();
-                    auto& siblings = parentTransform.children;
-                    siblings.erase(std::remove(siblings.begin(), siblings.end(), entity), siblings.end());
-                }
-                rectTransform.parent = nullptr;
-            }
 
-            for (const auto& child : rectTransform.children)
-                queueChildForDestroy(child.ResolveIncludingPending());
-        }
 
         if (entity->HasComponent<Transform>())
         {

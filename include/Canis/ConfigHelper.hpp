@@ -32,8 +32,7 @@ using namespace Canis;
 #define DEFAULT_COMPONENT_ADD(type)                                                \
     Add = [](Entity &_entity) -> void                                             \
     {                                                                             \
-        if (type* component = _entity.AddComponent<type>())                       \
-            InvokeRegisteredCreate(*component);                                   \
+        (void)_entity.AddComponent<type>();                                      \
     }                                                                             \
 
 #define DEFAULT_CONSTRUCT(type) \
@@ -326,13 +325,6 @@ inline bool DrawInspectorComboField(const char *_label, const char *_idSuffix, i
 }
 
 template <typename Component>
-inline void InvokeRegisteredCreate(Component& _component)
-{
-    if constexpr (requires(Component& component) { component.Create(); })
-        _component.Create();
-}
-
-template <typename Component>
 inline void InvokeRegisteredDestroy(Component& _component)
 {
     if constexpr (requires(Component& component) { component.Destroy(); })
@@ -597,8 +589,7 @@ inline void DrawRegisteredProperties(Editor &_editor, const PropertyRegistry &_r
     Add = [](Entity &_entity) -> void                                     \
     {                                                                     \
         AddRequiredComponents<__VA_ARGS__>(_entity);                      \
-        if (type* component = _entity.AddComponent<type>())               \
-            InvokeRegisteredCreate(*component);                           \
+        (void)_entity.AddComponent<type>();                               \
     }                                                                     \
 
 #define DEFAULT_HAS(type) \
@@ -886,6 +877,7 @@ inline void DecodeNativeComponent(PropertyRegistry& _registry, YAML::Node &_node
 {
     if (auto componentNode = _node[_componentName])
     {
+        ComponentCreateScope creates(_entity.scene, _callCreate);
         T* component = _entity.AddComponent<T>();
         if (component == nullptr)
             return;
@@ -899,8 +891,7 @@ inline void DecodeNativeComponent(PropertyRegistry& _registry, YAML::Node &_node
             }
         }
 
-        if (_callCreate)
-            InvokeRegisteredCreate(*component);
+
     }
 }
 

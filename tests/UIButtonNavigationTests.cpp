@@ -31,8 +31,8 @@ int main()
     auto* listener = owner.AddScript<Receiver>();
     auto makeButton = [&](const char* name) {
         auto e = app.scene.CreateEntity(name);
-        auto& rect = *e.AddComponent<RectTransform>();
-        rect.position = Vector2(1000); // Keep the pointer outside the fixture.
+        auto& rect = *e.AddComponent<RectLayout>();
+        rect.SetLocalPosition(Vector2(1000)); // Keep the pointer outside the fixture.
         rect.size = Vector2(40);
         auto& button = *e.AddComponent<UIButton>();
         button.targetEntity = owner;
@@ -83,7 +83,7 @@ int main()
     second.GetComponent<UIButton>().targetScript = "CSharp:test.buttons";
     key(Key::RETURN, true); key(Key::RETURN, false);
     Check(managedClicks == 1, "Keyboard activation did not route to C#");
-    auto& rect = second.GetComponent<RectTransform>();
+    auto& rect = second.GetComponent<RectLayout>();
     input.mouse = rect.GetRectMin() + rect.originOffset + rect.GetResolvedSize() * .5f + Vector2(160, 120);
     input.mouseRel = Vector2(1);
     input.SetSyntheticMouseButton(1, true); frame();
@@ -91,7 +91,7 @@ int main()
     input.SetSyntheticMouseButton(1, false); frame();
     Check(managedClicks == 2, "Mouse activation did not route to C#");
     auto hit = app.scene.CreateEntity("Full button hit area");
-    hit.AddComponent<RectTransform>()->size = Vector2(100);
+    hit.AddComponent<RectLayout>()->size = Vector2(100);
     second.GetComponent<UIButton>().hitRect = hit;
     input.mouse = Vector2(160, 120); input.mouseRel = Vector2(1);
     input.SetSyntheticMouseButton(1, true); frame();
@@ -100,12 +100,12 @@ int main()
     input.mouse = Vector2(0);
 
     auto canvasEntity = app.scene.CreateEntity("Action-mapped menu");
-    canvasEntity.AddComponent<RectTransform>();
+    canvasEntity.AddComponent<RectLayout>();
     auto& canvas = *canvasEntity.AddComponent<Canvas>();
     canvas.navigateAction = 11; canvas.confirmAction = 12;
-    second.GetComponent<RectTransform>().parent = canvasEntity;
+    second.GetComponent<RectLayout>().Spatial().parent = canvasEntity;
     Entity third = makeButton("Third");
-    third.GetComponent<RectTransform>().parent = canvasEntity;
+    third.GetComponent<RectLayout>().Spatial().parent = canvasEntity;
     third.GetComponent<UIButton>().targetScript = "CSharp:test.buttons";
     second.GetComponent<UIButton>().down = third;
     third.GetComponent<UIButton>().down = second;
@@ -147,8 +147,8 @@ int main()
     vrCanvas.renderMode = CanvasRenderMode::WORLD_SPACE;
     vrCanvas.interactionDistance = 6;
     vrCanvas.navigationEnabled = false;
-    auto& vrRect = vrButton.GetComponent<RectTransform>();
-    vrRect.position = Vector2(0); vrRect.size = Vector2(1);
+    auto& vrRect = vrButton.GetComponent<RectLayout>();
+    vrRect.SetLocalPosition(Vector2(0)); vrRect.size = Vector2(1);
     auto& pointer = input.worldUIPointer;
     pointer.enabled = pointer.active = pointer.moved = true;
     frame();
@@ -171,7 +171,7 @@ int main()
 
     // UIInputField owns SDL text entry for native and managed focus requests.
     auto fieldEntity = app.scene.CreateEntity("Editable text");
-    fieldEntity.AddComponent<RectTransform>()->position = Vector2(1000);
+    fieldEntity.AddComponent<RectLayout>()->SetLocalPosition(Vector2(1000));
     auto& field = *fieldEntity.AddComponent<UIInputField>();
     field.maxLength = 3;
     Check(system.FocusInputField(fieldEntity), "Programmatic field focus failed");
@@ -201,7 +201,7 @@ int main()
     frame();
     Check(!SDL_TextInputActive(static_cast<SDL_Window*>(window.GetSDLWindow())), "Destroyed field left platform text input active");
     auto otherField = app.scene.CreateEntity("Unload text focus");
-    otherField.AddComponent<RectTransform>()->position = Vector2(1000);
+    otherField.AddComponent<RectLayout>()->SetLocalPosition(Vector2(1000));
     otherField.AddComponent<UIInputField>();
     Check(system.FocusInputField(otherField), "Second field did not focus");
     system.OnDestroy();

@@ -150,7 +150,7 @@ Components are plain structs stored in the `entt` registry. Most engine componen
 
 Examples of built-in components:
 
-- 2D: `RectTransform`, `Sprite2D`, `Text`, `Camera2D`, `SpriteAnimation`
+- 2D: `RectLayout`, `Sprite2D`, `Text`, `Camera2D`, `SpriteAnimation`
 - 3D: `Transform`, `Camera`, `Model`, `ModelAnimation`
 - Physics: `Rigidbody`, `BoxCollider`, `SphereCollider`, `CapsuleCollider`
 - Lighting: `DirectionalLight`, `PointLight`
@@ -861,3 +861,15 @@ positions outside an editor Game viewport are converted from SDL window coordina
 to drawable pixels before UI projection, matching fractional/high-DPI menu layouts.
 `CanisInputFocusTests` checks Enter/click after focused occlusion, focus/minimize
 recovery and 2×/1.25× coordinate scaling through the same input implementation.
+
+### UI spatial data and layout
+
+UI entities use one `Transform` for position (including Z depth), quaternion rotation, scale, parent, and children. `RectLayout` contains size, anchors, pivot and visual offsets; adding it ensures a Transform exists. Its convenience methods forward spatial changes to that Transform. Anchoring is part of the Transform matrix, so world-position queries and UI rendering agree. World-space Canvas roots use Transform for the physical plane; layout inside the canvas starts at its local origin.
+
+Legacy `Canis::RectTransform` scene/prefab nodes upgrade during loading. Saving emits only `Canis::Transform` and `Canis::RectLayout`. To migrate files without changing unrelated components, run `python3 canis/tools/migrate-rect-layout.py --write project/assets`. Old 2D position/rotation/scale/depth move to Transform, and hierarchy links merge into its single parent/children graph.
+
+### Native component Create
+
+`Entity::AddComponent<T>()` binds the canonical entity, ensures required dependencies, and calls an available public `Create()` once for a new component. Re-adding an existing component returns it without calling Create again; `AddOrReplaceComponent<T>()` initializes the replacement. Components without Create keep their normal data-only behavior.
+
+Scene/prefab decoding defers native Create until all saved fields, entity references and hierarchy links are ready, before script Create/Ready. Editor attachment and registered native components use the same path; registration macros must not invoke Create separately. `ComponentCreateScope` can defer initialization while constructing a group of components or assigning their initial fields. Removing/replacing a pending component cancels its old initializer. A failed initialization scope or scene unload clears pending callbacks.

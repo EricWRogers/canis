@@ -4188,16 +4188,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             SpotLight,
         };
 
-        struct RectTransformRenderBounds
+        struct RectLayoutRenderBounds
         {
             Vector2 min = Vector2(0.0f);
             Vector2 size = Vector2(0.0f);
             Vector2 rotationPivot = Vector2(0.0f);
         };
 
-        RectTransformRenderBounds GetRenderBounds(const Entity& _entity, const RectTransform& _transform)
+        RectLayoutRenderBounds GetRenderBounds(const Entity& _entity, const RectLayout& _transform)
         {
-            RectTransformRenderBounds bounds = {};
+            RectLayoutRenderBounds bounds = {};
             bounds.min = _transform.GetRectMin() + _transform.originOffset;
             bounds.size = _transform.GetResolvedSize();
             bounds.rotationPivot = _transform.GetPosition();
@@ -4237,11 +4237,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (_entity == nullptr || _parent == nullptr)
                 return;
 
-            if (_entity->HasComponent<RectTransform>() && _parent->HasComponent<RectTransform>())
+            if (_entity->HasComponent<RectLayout>() && _parent->HasComponent<RectLayout>())
             {
-                RectTransform &rect = _entity->GetComponent<RectTransform>();
-                rect.SetParent(_parent);
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = _entity->GetComponent<RectLayout>();
+                rect.Spatial().SetParent(_parent, false);
+                rect.SetLocalPosition(Vector2(0.0f));
                 return;
             }
 
@@ -4330,8 +4330,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 if (_parent != nullptr)
                 {
-                    if (_parent->HasComponent<RectTransform>())
-                        addRequired(*entity, RectTransform::ScriptName);
+                    if (_parent->HasComponent<RectLayout>())
+                        addRequired(*entity, RectLayout::ScriptName);
                     else if (_parent->HasComponent<Transform>())
                         addRequired(*entity, Transform::ScriptName);
                 }
@@ -4344,14 +4344,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
             case HierarchyCreateType::Empty2D:
             {
-                addRequired(*entity, RectTransform::ScriptName);
+                addRequired(*entity, RectLayout::ScriptName);
                 break;
             }
             case HierarchyCreateType::Canvas:
             {
                 addRequired(*entity, Canvas::ScriptName);
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(0.0f);
                 rect.anchorMin = Vector2(0.0f);
                 rect.anchorMax = Vector2(1.0f);
@@ -4361,8 +4361,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             case HierarchyCreateType::Text:
             {
                 addRequired(*entity, Text::ScriptName);
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(0.0f);
                 Text &text = entity->GetComponent<Text>();
                 text.SetText("Text");
@@ -4374,8 +4374,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 addRequired(*entity, UIButton::ScriptName);
                 addRequired(*entity, Sprite2D::ScriptName);
 
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(160.0f, 48.0f);
 
                 const Color baseColor = Color(0.14f, 0.18f, 0.24f, 0.98f);
@@ -4397,13 +4397,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     addRequired(*label, Text::ScriptName);
 
-                    RectTransform &labelRect = label->GetComponent<RectTransform>();
-                    labelRect.position = Vector2(0.0f);
+                    RectLayout &labelRect = label->GetComponent<RectLayout>();
+                    labelRect.SetLocalPosition(Vector2(0.0f));
                     labelRect.size = Vector2(0.0f);
                     labelRect.anchorMin = Vector2(0.5f);
                     labelRect.anchorMax = Vector2(0.5f);
                     labelRect.pivot = Vector2(0.5f);
-                    labelRect.depth = rect.depth - 0.0001f;
+                    labelRect.Spatial().position.z = rect.Spatial().position.z - 0.0001f;
 
                     Text &labelText = label->GetComponent<Text>();
                     labelText.SetText("Button");
@@ -4417,11 +4417,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
             case HierarchyCreateType::Image:
             {
-                addRequired(*entity, RectTransform::ScriptName);
+                addRequired(*entity, RectLayout::ScriptName);
                 addRequired(*entity, Sprite2D::ScriptName);
 
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(96.0f, 96.0f);
                 break;
             }
@@ -6478,7 +6478,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 camera2D = camera;
             }
 
-            if (entity.HasComponent<RectTransform>() && camera2D)
+            if (entity.HasComponent<RectLayout>() && camera2D)
             {
                 m_debugDraw = DebugDraw::RECT;
             }
@@ -6693,7 +6693,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_index >= 0 && m_index < m_scene->GetEntities().size() && m_scene->GetEntities()[m_index] != nullptr)
         {
             Entity &selected = *m_scene->GetEntities()[m_index];
-            if (selected.HasComponent<RectTransform>())
+            if (selected.HasComponent<RectLayout>())
                 DrawBoundingBox(camera2D);
         }
         
@@ -9016,6 +9016,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
                 if (transform3D->useLocalMatrixPrefix)
                     localSpace *= transform3D->localMatrixPrefix;
+                if (auto* layout = selected->TryGetComponent<RectLayout>())
+                    localSpace *= layout->GetPlacementMatrix();
 
                 const Matrix4 manipulatedWorld = ComposeTransformMatrix(
                     worldPosition,
@@ -9053,6 +9055,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         otherLocalSpace = otherTransform.parent->GetComponent<Transform>().GetModelMatrix();
                     if (otherTransform.useLocalMatrixPrefix)
                         otherLocalSpace *= otherTransform.localMatrixPrefix;
+                    if (auto* layout = other->TryGetComponent<RectLayout>())
+                        otherLocalSpace *= layout->GetPlacementMatrix();
 
                     const Matrix4 otherWorld = deltaModel * otherTransform.GetModelMatrix();
                     const Matrix4 otherLocal = glm::inverse(otherLocalSpace) * otherWorld;
@@ -9086,7 +9090,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ResetVertexSnapDrag();
 
-        RectTransform *rtc = (selected != nullptr && selected->HasComponent<RectTransform>() ? &selected->GetComponent<RectTransform>() : nullptr);
+        RectLayout *rtc = (selected != nullptr && selected->HasComponent<RectLayout>() ? &selected->GetComponent<RectLayout>() : nullptr);
         if (!rtc)
             return;
 
@@ -9111,8 +9115,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         Matrix4 model = Matrix4(1.0f);
         model = glm::translate(model, Vector3(pos.x, pos.y, 0.0f));
-        model = glm::rotate(model, rtc->rotation, Vector3(0.0f, 0.0f, 1.0f));
-        model = glm::scale(model, Vector3(rtc->size.x * globalScale.x, rtc->size.y * globalScale.y, 1.0f));
+        model = glm::rotate(model, rtc->GetRotation(), Vector3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, Vector3(rtc->GetLogicalSize().x * globalScale.x, rtc->GetLogicalSize().y * globalScale.y, 1.0f));
 
         Matrix4 view = Matrix4(1.0f);
         view = glm::translate(view, Vector3(-m_editorCamera2DPosition.x + renderWidth * 0.5f,
@@ -9148,9 +9152,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Vector2 newPos(t[0], t[1]);
             rtc->SetPosition(newPos);
 
-            rtc->rotation = DEG2RAD * r[2];
-
-            rtc->SetScale(Vector2(s[0] / rtc->size.x, s[1] / rtc->size.y));
+            float parentAngle = 0;
+            if (auto parent = rtc->GetParent(); parent && parent.HasComponent<RectLayout>())
+                parentAngle = parent.GetComponent<RectLayout>().GetRotation();
+            rtc->SetLocalRotation(DEG2RAD * r[2] - parentAngle);
+            const auto logicalSize = rtc->GetLogicalSize();
+            auto scale = rtc->GetScale();
+            if (logicalSize.x != 0) scale.x = s[0] / logicalSize.x;
+            if (logicalSize.y != 0) scale.y = s[1] / logicalSize.y;
+            rtc->SetScale(scale);
         }
     }
 
@@ -9841,18 +9851,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Vector3 scale = Vector3(1.0f);
         };
 
-        struct SavedRectTransformState
+        struct SavedRectLayoutState
         {
             bool valid = false;
-            Vector2 position = Vector2(0.0f);
             Vector2 size = Vector2(0.0f);
-            Vector2 scale = Vector2(1.0f);
             Vector2 anchorMin = Vector2(0.5f);
             Vector2 anchorMax = Vector2(0.5f);
             Vector2 pivot = Vector2(0.5f);
             Vector2 originOffset = Vector2(0.0f);
-            float depth = 0.0f;
-            float rotation = 0.0f;
             Vector2 rotationOriginOffset = Vector2(0.0f);
         };
 
@@ -9870,23 +9876,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return state;
         };
 
-        auto saveRectTransformState = [](Canis::Entity *_target) -> SavedRectTransformState
+        auto saveRectLayoutState = [](Canis::Entity *_target) -> SavedRectLayoutState
         {
-            SavedRectTransformState state = {};
-            if (_target == nullptr || !_target->HasComponent<RectTransform>())
+            SavedRectLayoutState state = {};
+            if (_target == nullptr || !_target->HasComponent<RectLayout>())
                 return state;
 
-            const RectTransform &transform = _target->GetComponent<RectTransform>();
+            const RectLayout &transform = _target->GetComponent<RectLayout>();
             state.valid = true;
-            state.position = transform.position;
             state.size = transform.size;
-            state.scale = transform.scale;
             state.anchorMin = transform.anchorMin;
             state.anchorMax = transform.anchorMax;
             state.pivot = transform.pivot;
             state.originOffset = transform.originOffset;
-            state.depth = transform.depth;
-            state.rotation = transform.rotation;
             state.rotationOriginOffset = transform.rotationOriginOffset;
             return state;
         };
@@ -9902,21 +9904,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             transform.scale = _state.scale;
         };
 
-        auto applyRectTransformState = [](Canis::Entity *_target, const SavedRectTransformState &_state) -> void
+        auto applyRectLayoutState = [](Canis::Entity *_target, const SavedRectLayoutState &_state) -> void
         {
-            if (_target == nullptr || !_state.valid || !_target->HasComponent<RectTransform>())
+            if (_target == nullptr || !_state.valid || !_target->HasComponent<RectLayout>())
                 return;
 
-            RectTransform &transform = _target->GetComponent<RectTransform>();
-            transform.position = _state.position;
+            RectLayout &transform = _target->GetComponent<RectLayout>();
             transform.size = _state.size;
-            transform.scale = _state.scale;
             transform.anchorMin = _state.anchorMin;
             transform.anchorMax = _state.anchorMax;
             transform.pivot = _state.pivot;
             transform.originOffset = _state.originOffset;
-            transform.depth = _state.depth;
-            transform.rotation = _state.rotation;
             transform.rotationOriginOffset = _state.rotationOriginOffset;
         };
 
@@ -9946,9 +9944,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const TagId instanceTag = _entity->GetTag();
         const bool instanceActive = _entity->Active();
         const SavedTransformState rootTransformState = saveTransformState(_entity);
-        const SavedRectTransformState rootRectState = saveRectTransformState(_entity);
+        const SavedRectLayoutState rootRectState = saveRectLayoutState(_entity);
         const SavedTransformState firstTransformState = saveTransformState(prefabInstance.firstEntity);
-        const SavedRectTransformState firstRectState = saveRectTransformState(prefabInstance.firstEntity);
+        const SavedRectLayoutState firstRectState = saveRectLayoutState(prefabInstance.firstEntity);
         const SceneAssetHandle prefabHandle = prefabInstance.prefab;
 
         std::vector<Canis::UUID> updatedRootOrder = m_hierarchyRootOrder;
@@ -9989,13 +9987,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         applyTransformState(newTopLevel, rootTransformState);
-        applyRectTransformState(newTopLevel, rootRectState);
+        applyRectLayoutState(newTopLevel, rootRectState);
 
         if (newTopLevel->HasComponent<PrefabInstance>())
         {
             PrefabInstance &newPrefabInstance = newTopLevel->GetComponent<PrefabInstance>();
             applyTransformState(newPrefabInstance.firstEntity, firstTransformState);
-            applyRectTransformState(newPrefabInstance.firstEntity, firstRectState);
+            applyRectLayoutState(newPrefabInstance.firstEntity, firstRectState);
         }
 
         if (_focusSelection)
@@ -10637,11 +10635,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!_parent || !_potentialChild)
             return false;
 
-        std::vector<Canis::Entity>* children = nullptr;
-        if (auto *parentRT = (_parent != nullptr && _parent->HasComponent<RectTransform>() ? &_parent->GetComponent<RectTransform>() : nullptr))
-            children = &parentRT->children;
-        else if (auto *parentTransform = (_parent != nullptr && _parent->HasComponent<Transform>() ? &_parent->GetComponent<Transform>() : nullptr))
-            children = &parentTransform->children;
+        auto* spatial = _parent->TryGetComponent<Transform>();
+        auto* children = spatial ? &spatial->children : nullptr;
 
         if (children == nullptr)
             return false;
@@ -10659,148 +10654,31 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return false;
     }
 
-    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity *_entity)
+    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity* entity)
     {
-        if (_entity == nullptr)
-            return nullptr;
-
-        Canis::RectTransform* rectTransform = _entity->HasComponent<RectTransform>()
-            ? &_entity->GetComponent<RectTransform>()
-            : nullptr;
-        Canis::Transform* transform = _entity->HasComponent<Transform>()
-            ? &_entity->GetComponent<Transform>()
-            : nullptr;
-
-        // An entity may have both components (for example, a world-space canvas).
-        // Follow the hierarchy that is actually connected instead of always
-        // treating RectTransform as authoritative.
-        if (rectTransform != nullptr && transform != nullptr)
-        {
-            if (transform->parent != nullptr && rectTransform->parent == nullptr)
-                return &transform->children;
-            if (rectTransform->parent != nullptr && transform->parent == nullptr)
-                return &rectTransform->children;
-            if (!transform->children.empty() && rectTransform->children.empty())
-                return &transform->children;
-        }
-
-        if (rectTransform != nullptr)
-            return &rectTransform->children;
-
-        if (transform != nullptr)
-            return &transform->children;
-
-        return nullptr;
+        auto* spatial = entity ? entity->TryGetComponent<Transform>() : nullptr;
+        return spatial ? &spatial->children : nullptr;
     }
-
-    static Canis::Entity* GetHierarchyParent(Canis::Entity *_entity)
+    static Canis::Entity* GetHierarchyParent(Canis::Entity* entity)
     {
-        if (_entity == nullptr)
-            return nullptr;
-
-        if (_entity->HasComponent<RectTransform>())
-        {
-            Canis::Entity* parent = _entity->GetComponent<RectTransform>().parent;
-            if (parent != nullptr)
-                return parent;
-        }
-
-        if (_entity->HasComponent<Transform>())
-            return _entity->GetComponent<Transform>().parent;
-
-        return nullptr;
+        auto* spatial = entity ? entity->TryGetComponent<Transform>() : nullptr;
+        return spatial ? spatial->parent.TryGet() : nullptr;
     }
-
-    static bool SetHierarchyParent(Canis::Entity *_child, Canis::Entity *_parent)
+    static bool SetHierarchyParent(Canis::Entity* child, Canis::Entity* parent)
     {
-        if (_child == nullptr)
-            return false;
-
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
-
-                childTransform->SetParent(_parent);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
-        {
-            if (_parent != nullptr && !_parent->HasComponent<Transform>())
-                return false;
-
-            childTransform->SetParent(_parent);
-            return true;
-        }
-
-        return false;
+        auto* spatial = child ? child->TryGetComponent<Transform>() : nullptr;
+        if (!spatial || (parent && !parent->HasComponent<Transform>())) return false;
+        spatial->SetParent(parent);
+        return true;
     }
-
-    static bool SetHierarchyParentAtIndex(Canis::Entity *_child, Canis::Entity *_parent, std::size_t _index)
+    static bool SetHierarchyParentAtIndex(Canis::Entity* child, Canis::Entity* parent, std::size_t index)
     {
-        if (_child == nullptr)
-            return false;
-
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
-
-                childTransform->SetParentAtIndex(_parent, _index);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
-        {
-            if (_parent != nullptr && !_parent->HasComponent<Transform>())
-                return false;
-
-            childTransform->SetParentAtIndex(_parent, _index);
-            return true;
-        }
-
-        return false;
+        auto* spatial = child ? child->TryGetComponent<Transform>() : nullptr;
+        if (!spatial || (parent && !parent->HasComponent<Transform>())) return false;
+        spatial->SetParentAtIndex(parent, index);
+        return true;
     }
-
-    static bool UnparentHierarchyEntity(Canis::Entity *_entity)
-    {
-        if (_entity == nullptr)
-            return false;
-
-        if (_entity->HasComponent<RectTransform>())
-        {
-            Canis::RectTransform& transform = _entity->GetComponent<RectTransform>();
-            if (transform.parent != nullptr)
-            {
-                transform.SetParent(nullptr);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* transform = (_entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
-        {
-            if (transform->parent == nullptr)
-                return false;
-
-            transform->SetParent(nullptr);
-            return true;
-        }
-
-        return false;
-    }
+    static bool UnparentHierarchyEntity(Canis::Entity* entity) { return SetHierarchyParent(entity, nullptr); }
 
     static void GetHierarchyChildrenRecursive(Canis::Entity* _entity, std::vector<Canis::Entity*> &_entities)
     {
@@ -10915,18 +10793,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return HierarchyEntityKind::None;
 
-        if (_entity->HasComponent<Transform>() && _entity->HasComponent<RectTransform>())
-        {
-            const Canis::Transform& transform = _entity->GetComponent<Transform>();
-            const Canis::RectTransform& rectTransform = _entity->GetComponent<RectTransform>();
-            if ((transform.parent != nullptr && rectTransform.parent == nullptr) ||
-                (!transform.children.empty() && rectTransform.children.empty()))
-            {
-                return HierarchyEntityKind::Transform;
-            }
-        }
 
-        if (_entity->HasComponent<RectTransform>())
+
+        if (_entity->HasComponent<RectLayout>())
             return HierarchyEntityKind::Rect;
 
         if (_entity->HasComponent<Transform>())
@@ -10963,22 +10832,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_child == nullptr)
             return false;
 
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
 
-                const Vector2 localPosition = childTransform->position;
-                childTransform->SetParentAtIndex(_parent, _index);
-                childTransform->position = localPosition;
-                return true;
-            }
-        }
 
         if (Canis::Transform* childTransform = (_child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
         {
@@ -11019,7 +10873,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return nullptr;
 
         if (_kind == HierarchyEntityKind::Rect)
-            wrapper->AddComponent<RectTransform>();
+            wrapper->AddComponent<RectLayout>();
         else
             wrapper->AddComponent<Transform>();
 
@@ -11185,9 +11039,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (YAML::Node transformNode = _rootNode[Transform::ScriptName])
             transformNode["parent"] = static_cast<uint64_t>(0);
-
-        if (YAML::Node rectTransformNode = _rootNode[RectTransform::ScriptName])
-            rectTransformNode["parent"] = static_cast<uint64_t>(0);
 
         if (YAML::Node networkIdentityNode = _rootNode[NetworkIdentity::ScriptName])
             networkIdentityNode.remove("prefab");
@@ -12144,7 +11995,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
-            for (ScriptConf &conf : m_app->GetScriptRegistry())
+            auto drawComponent = [&](ScriptConf& conf)
             {
                 if (conf.Has(entity))
                 {
@@ -12186,7 +12037,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             ImGui::TextDisabled("No inspector available.");
                     }
                 }
-            }
+            };
+
+            // Inspector presentation is independent of registration/serialization order.
+            if (auto* spatial = m_app->GetScriptConf(Transform::ScriptName))
+                drawComponent(*spatial);
+            for (ScriptConf& conf : m_app->GetScriptRegistry())
+                if (conf.name != Transform::ScriptName)
+                    drawComponent(conf);
+
 
             Scripting::DrawManagedInspector(*this, entity);
             DrawAddComponentDropDown(_refresh);
@@ -20062,8 +19921,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 continue;
 
             Entity* candidate = m_scene->GetEntities()[i];
-            RectTransform *transform = (candidate != nullptr && candidate->HasComponent<RectTransform>())
-                ? &candidate->GetComponent<RectTransform>()
+            RectLayout *transform = (candidate != nullptr && candidate->HasComponent<RectLayout>())
+                ? &candidate->GetComponent<RectLayout>()
                 : nullptr;
 
             if (transform == nullptr)
@@ -20073,7 +19932,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 transform->GetCanvasRenderMode() == CanvasRenderMode::WORLD_SPACE)
                 continue;
 
-            const RectTransformRenderBounds bounds = GetRenderBounds(*candidate, *transform);
+            const RectLayoutRenderBounds bounds = GetRenderBounds(*candidate, *transform);
             float globalRotation = transform->GetRotation();
             Vector2 selectionMouse = mouse;
 
@@ -20294,9 +20153,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         Canis::Shader &debugLineShader = GetDebugLineShader();
-        Entity &debugRectTransformEntity = *m_scene->GetEntities()[m_index];
-        RectTransform &rtc = debugRectTransformEntity.GetComponent<RectTransform>();
-        const RectTransformRenderBounds bounds = GetRenderBounds(debugRectTransformEntity, rtc);
+        Entity &debugRectLayoutEntity = *m_scene->GetEntities()[m_index];
+        RectLayout &rtc = debugRectLayoutEntity.GetComponent<RectLayout>();
+        const RectLayoutRenderBounds bounds = GetRenderBounds(debugRectLayoutEntity, rtc);
         Vector2 vertices[4];
 
         vertices[0] = {bounds.min.x, bounds.min.y};

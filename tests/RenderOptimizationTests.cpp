@@ -1014,18 +1014,18 @@ static void OverlayDepthIsolation(Window& window) {
     GLuint texture=0;glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);
     const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-    auto canvas=scene.CreateEntity("Overlay");auto& canvasRect=*canvas.AddComponent<RectTransform>();
-    canvasRect.anchorMin={0,0};canvasRect.anchorMax={1,1};canvasRect.size={0,0};canvasRect.depth=0;
+    auto canvas=scene.CreateEntity("Overlay");auto& canvasRect=*canvas.AddComponent<RectLayout>();
+    canvasRect.anchorMin={0,0};canvasRect.anchorMax={1,1};canvasRect.size={0,0};canvasRect.Spatial().position.z=0;
     auto& settings=*canvas.AddComponent<Canvas>();settings.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;settings.screenSize={320,240};
     auto sprite=[&](const char* name,Entity parent,Vector2 size,Vector2 position,float depth,Color color) {
-        auto e=scene.CreateEntity(name);auto& rect=*e.AddComponent<RectTransform>();rect.SetParent(&parent);
-        rect.position=position;rect.size=size;rect.depth=depth;
+        auto e=scene.CreateEntity(name);auto& rect=*e.AddComponent<RectLayout>();rect.Spatial().SetParent(&parent, false);
+        rect.SetLocalPosition(position);rect.size=size;rect.Spatial().position.z=depth;
         auto& image=*e.AddComponent<Sprite2D>();image.textureHandle.texture.id=texture;image.color=color;return e;
     };
     sprite("Menu background",canvas,{60,60},{-80,0},.1f,{1,0,0,1});
     sprite("Menu foreground",canvas,{20,20},{-80,0},.2f,{0,1,0,1});
     auto world=scene.CreateEntity("World canvas");world.AddComponent<Transform>()->position={.08f,0,-.3f};
-    world.AddComponent<RectTransform>()->depth=0;world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
+    world.AddComponent<RectLayout>()->Spatial().position.z=0;world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
     sprite("World label behind wall",world,{.04f,.04f},{0,0},0,{0,0,1,1});
     MeshRenderer3DSystem meshes;meshes.scene=&scene;meshes.window=&window;meshes.Create();
     SpriteRenderer2DSystem ui;ui.scene=&scene;ui.window=&window;ui.Create();
@@ -1081,13 +1081,13 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     auto canvas=[&](unsigned mode) {
-        auto e=scene.CreateEntity("Canvas");auto& rect=*e.AddComponent<RectTransform>();
+        auto e=scene.CreateEntity("Canvas");auto& rect=*e.AddComponent<RectLayout>();
         rect.anchorMin={0,0};rect.anchorMax={1,1};rect.size={0,0};
         auto& c=*e.AddComponent<Canvas>();c.renderMode=mode;c.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;c.screenSize={320,240};return e;
     };
     auto sprite=[&](Entity parent,Vector2 position,Vector2 size,Color color) {
-        auto e=scene.CreateEntity("Sprite");auto& rect=*e.AddComponent<RectTransform>();
-        if(parent)rect.SetParent(parent.TryGet());rect.position=position;rect.size=size;
+        auto e=scene.CreateEntity("Sprite");auto& rect=*e.AddComponent<RectLayout>();
+        if(parent)rect.Spatial().SetParent(parent.TryGet(), false);rect.SetLocalPosition(position);rect.size=size;
         auto& s=*e.AddComponent<Sprite2D>();s.textureHandle.texture.id=texture;s.color=color;return e;
     };
     auto overlay=canvas(CanvasRenderMode::SCREEN_SPACE_OVERLAY);sprite(overlay,{-80,0},{20,20},{0,1,0,1});

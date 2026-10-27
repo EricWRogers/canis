@@ -378,16 +378,16 @@ namespace Canis
                 ImGui::Checkbox("Set native pixel size", &state.nativeSize);
                 const auto selection = GetSelectedEntities();
                 const bool canApply = m_mode == EditorMode::EDIT && std::any_of(selection.begin(), selection.end(),
-                    [](Entity *entity) { return entity && entity->HasComponent<Sprite2D>() && entity->HasComponent<RectTransform>(); });
+                    [](Entity *entity) { return entity && entity->HasComponent<Sprite2D>() && entity->HasComponent<RectLayout>(); });
                 ImGui::BeginDisabled(!canApply);
                 if (ImGui::Button("Apply region to selected Sprite2D", ImVec2(-1, 0)))
                 {
                     const auto handle = AssetManager::GetTextureHandle(state.path);
                     for (auto *entity : selection)
-                        if (entity && entity->HasComponent<Sprite2D>() && entity->HasComponent<RectTransform>())
+                        if (entity && entity->HasComponent<Sprite2D>() && entity->HasComponent<RectLayout>())
                         {
                             auto &sprite = entity->GetComponent<Sprite2D>();
-                            auto &rect = entity->GetComponent<RectTransform>();
+                            auto &rect = entity->GetComponent<RectLayout>();
                             sprite.textureHandle = handle; sprite.uv = uv;
                             sprite.flipX = false; sprite.flipY = false;
                             rect.pivot = region.pivot;
@@ -397,7 +397,7 @@ namespace Canis
                     state.status = "Region applied to the selected scene sprites. Scene Undo is available.";
                 }
                 ImGui::EndDisabled();
-                if (!canApply) ImGui::TextWrapped("Select a scene entity with Sprite2D and RectTransform to use this region.");
+                if (!canApply) ImGui::TextWrapped("Select a scene entity with Sprite2D and RectLayout to use this region.");
             }
             if (EditorUI::SectionHeader("Grid slicing"))
             {

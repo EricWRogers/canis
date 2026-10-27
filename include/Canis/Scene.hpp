@@ -3,6 +3,9 @@
 #include <Canis/UUID.hpp>
 #include <Canis/Tag.hpp>
 #include <Canis/Entity.hpp>
+#include <Canis/ComponentLifecycle.hpp>
+#include <list>
+#include <map>
 #include <Canis/Math.hpp>
 #include <Canis/LightingProbe.hpp>
 #include <Canis/LightingScenario.hpp>
@@ -60,6 +63,7 @@ namespace Canis
     class Scene
     {
         friend class Entity;
+        friend class ComponentCreateScope;
         RenderTarget m_qualityRenderTarget;
         #if CANIS_EDITOR
             friend class Editor;
@@ -109,6 +113,7 @@ namespace Canis
         void InvokeComponentAction(const std::function<void()>& action);
 
         Window& GetWindow() { return *m_window; }
+        Window* TryGetWindow() const { return m_window; }
         InputManager& GetInputManager() { return *m_inputManager; }
         entt::registry& GetRegistry() { return m_registry; }
         const entt::registry& GetRegistry() const { return m_registry; }
@@ -309,6 +314,16 @@ namespace Canis
         void FlushRetiredScripts();
         ScriptableEntity* InvokeScriptCallback(ScriptableEntity* script, bool ready);
         unsigned m_scriptCallbackDepth = 0;
+        using ComponentCreateKey = std::pair<entt::entity, entt::id_type>;
+        struct PendingComponentCreate { ComponentCreateKey key; std::function<void()> callback; };
+        std::list<PendingComponentCreate> m_componentCreates;
+        std::map<ComponentCreateKey, std::list<PendingComponentCreate>::iterator> m_componentCreateIndex;
+        unsigned m_componentCreateScopeDepth = 0;
+        void RequestComponentCreate(entt::entity owner, entt::id_type type, std::function<void()> callback);
+        void CancelComponentCreate(entt::entity owner, entt::id_type type);
+        void FlushComponentCreates();
+        void EndComponentCreateScope(bool callCreate, bool failed);
+
         std::vector<Entity> m_entitiesToDestroy = {};
         bool m_isUpdating = false;
         bool m_isLoadingEntityNodes = false;

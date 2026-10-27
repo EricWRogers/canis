@@ -103,7 +103,7 @@ namespace Canis
             auto entity = app.scene.CreateEntity("HUD fixture");
             entity.AddComponent<Transform>();
             auto &sprite = *entity.AddComponent<Sprite2D>();
-            auto &rect = *entity.AddComponent<RectTransform>();
+            auto &rect = *entity.AddComponent<RectLayout>();
             const Vector4 originalUV(.1f, .2f, .3f, .4f);
             const Vector2 originalPivot(.5f), originalSize(320.f, 64.f);
             sprite.textureHandle = TextureHandle{-1, {}};

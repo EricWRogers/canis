@@ -45,20 +45,20 @@ namespace Canis
             return centeredMouse;
         }
 
-        bool IsPointInsideRect(const RectTransform& _rect, const Vector2& _point)
+        bool IsPointInsideRect(const RectLayout& _rect, const Vector2& _point)
         {
-            const Vector2 min = _rect.GetRectMin() + _rect.originOffset;
-            const Vector2 size = _rect.GetResolvedSize();
-            return _point.x >= min.x &&
-                _point.x <= (min.x + size.x) &&
-                _point.y >= min.y &&
-                _point.y <= (min.y + size.y);
+            const auto matrix = _rect.GetCanvasLocalMatrix();
+            if (const float determinant = glm::determinant(matrix); !std::isfinite(determinant) || determinant == 0) return false;
+            const Vector2 local = Vector2(glm::inverse(matrix) * Vector4(_point, _rect.GetDepth(), 1));
+            const Vector2 min = -_rect.pivot * _rect.GetLogicalSize() + _rect.originOffset;
+            const Vector2 size = _rect.GetLogicalSize();
+            return local.x >= min.x && local.x <= min.x + size.x && local.y >= min.y && local.y <= min.y + size.y;
         }
 
         bool TryGetWorldCanvasPointer(
             entt::registry &_registry,
             Scene &_scene,
-            const RectTransform &_rect,
+            const RectLayout &_rect,
             Vector2 &_pointerPosition)
         {
             const Canvas *canvas = _rect.GetCanvas();
@@ -111,7 +111,7 @@ namespace Canis
 
             }
             const Matrix4 model =
-                canvas->entity->GetComponent<Transform>().GetModelMatrix();
+                _rect.Spatial().GetModelMatrix();
             const Vector3 planePoint = Vector3(model * Vector4(0.0f, 0.0f, 0.0f, 1.0f));
             const Vector3 planeNormal = glm::normalize(
                 Vector3(model * Vector4(0.0f, 0.0f, 1.0f, 0.0f)));
@@ -130,17 +130,17 @@ namespace Canis
 
             const Vector3 hitPoint = ray.origin + ray.direction * distance;
             const Vector4 localPoint = glm::inverse(model) * Vector4(hitPoint, 1.0f);
-            _pointerPosition = Vector2(localPoint.x, localPoint.y);
+            _pointerPosition = Vector2(_rect.GetCanvasLocalMatrix() * localPoint);
             return true;
         }
 
-        void SetRectUniformScale(RectTransform& _rect, float _scale)
+        void SetRectUniformScale(RectLayout& _rect, float _scale)
         {
-            _rect.scale.x = (_rect.scale.x < 0.0f) ? -_scale : _scale;
-            _rect.scale.y = (_rect.scale.y < 0.0f) ? -_scale : _scale;
+            _rect.Spatial().scale.x = (_rect.Spatial().scale.x < 0.0f) ? -_scale : _scale;
+            _rect.Spatial().scale.y = (_rect.Spatial().scale.y < 0.0f) ? -_scale : _scale;
         }
 
-        void ApplyButtonVisual(Entity& _entity, UIButton& _button, RectTransform& _rect)
+        void ApplyButtonVisual(Entity& _entity, UIButton& _button, RectLayout& _rect)
         {
             const bool pressed = _button.pressed;
             const bool hovered = _button.hovered;
@@ -267,11 +267,11 @@ namespace Canis
             return false;
         if (entity != nullptr)
         {
-            if (!entity->IsValid() || !entity->Active() || !entity->HasComponents<RectTransform, UIInputField>() ||
-                !entity->GetComponent<UIInputField>().active || !entity->GetComponent<RectTransform>().IsActiveInHierarchy() ||
+            if (!entity->IsValid() || !entity->Active() || !entity->HasComponents<RectLayout, UIInputField>() ||
+                !entity->GetComponent<UIInputField>().active || !entity->GetComponent<RectLayout>().IsActiveInHierarchy() ||
                 window->IsMouseLocked() || (inputManager && !inputManager->active))
                 return false;
-            const auto* canvas = entity->GetComponent<RectTransform>().GetCanvas();
+            const auto* canvas = entity->GetComponent<RectLayout>().GetCanvas();
             if (canvas && (!canvas->active || !canvas->receivesEvents))
                 return false;
         }
@@ -372,39 +372,39 @@ namespace Canis
 
         auto resetDragSourceState = [](Entity* _entity) -> void
         {
-            if (_entity == nullptr || !_entity->HasComponents<RectTransform, UIDragSource>())
+            if (_entity == nullptr || !_entity->HasComponents<RectLayout, UIDragSource>())
                 return;
 
             UIDragSource& dragSource = _entity->GetComponent<UIDragSource>();
-            RectTransform& dragRect = _entity->GetComponent<RectTransform>();
-            dragRect.position = dragSource.originalPosition;
-            dragRect.depth = dragSource.originalDepth;
+            RectLayout& dragRect = _entity->GetComponent<RectLayout>();
+            dragRect.SetLocalPosition(dragSource.originalPosition);
+            dragRect.Spatial().position.z = dragSource.originalDepth;
             dragSource.dragging = false;
         };
 
         if (m_pressedButton != nullptr &&
             (!m_pressedButton->Active() ||
-             !m_pressedButton->HasComponents<RectTransform, UIButton>() ||
+             !m_pressedButton->HasComponents<RectLayout, UIButton>() ||
              !m_pressedButton->GetComponent<UIButton>().active ||
-             !m_pressedButton->GetComponent<RectTransform>().IsActiveInHierarchy()))
+             !m_pressedButton->GetComponent<RectLayout>().IsActiveInHierarchy()))
         {
             m_pressedButton = nullptr;
         }
 
         if (m_focusedInputField != nullptr &&
             (!m_focusedInputField->Active() ||
-             !m_focusedInputField->HasComponents<RectTransform, UIInputField>() ||
+             !m_focusedInputField->HasComponents<RectLayout, UIInputField>() ||
              !m_focusedInputField->GetComponent<UIInputField>().active ||
-             !m_focusedInputField->GetComponent<RectTransform>().IsActiveInHierarchy()))
+             !m_focusedInputField->GetComponent<RectLayout>().IsActiveInHierarchy()))
         {
             FocusInputField(nullptr);
         }
 
         if (m_dragSource != nullptr &&
             (!m_dragSource->Active() ||
-             !m_dragSource->HasComponents<RectTransform, UIDragSource>() ||
+             !m_dragSource->HasComponents<RectLayout, UIDragSource>() ||
              !m_dragSource->GetComponent<UIDragSource>().active ||
-             !m_dragSource->GetComponent<RectTransform>().IsActiveInHierarchy()))
+             !m_dragSource->GetComponent<RectLayout>().IsActiveInHierarchy()))
         {
             resetDragSourceState(m_dragSource);
             m_dragSource = nullptr;
@@ -413,7 +413,7 @@ namespace Canis
 
         if (window->IsMouseLocked())
         {
-            auto buttonView = _registry.view<RectTransform, UIButton>();
+            auto buttonView = _registry.view<RectLayout, UIButton>();
             for (auto [entityHandle, rect, button] : buttonView.each())
             {
                 (void)entityHandle;
@@ -426,7 +426,7 @@ namespace Canis
                 ApplyButtonVisual(*entity, button, rect);
             }
 
-            auto inputFieldView = _registry.view<RectTransform, UIInputField>();
+            auto inputFieldView = _registry.view<RectLayout, UIInputField>();
             for (auto [entityHandle, rect, inputField] : inputFieldView.each())
             {
                 (void)entityHandle;
@@ -439,7 +439,7 @@ namespace Canis
                 ApplyInputFieldVisual(*entity, inputField);
             }
 
-            auto dropView = _registry.view<RectTransform, UIDropTarget>();
+            auto dropView = _registry.view<RectLayout, UIDropTarget>();
             for (auto [entityHandle, rect, dropTarget] : dropView.each())
             {
                 (void)entityHandle;
@@ -456,7 +456,7 @@ namespace Canis
             m_hoveredDropTarget = nullptr;
         }
 
-        for (auto [entityHandle, rect, button] : _registry.view<RectTransform, UIButton>().each())
+        for (auto [entityHandle, rect, button] : _registry.view<RectLayout, UIButton>().each())
         {
             (void)entityHandle;
             Entity* entity = button.entity;
@@ -466,7 +466,7 @@ namespace Canis
             if (button.baseValuesSaved == false)
             {
                 button.baseValuesSaved = true;
-                button.baseScale = rect.scale.x;
+                button.baseScale = rect.Spatial().scale.x;
 
                 if (entity->HasComponent<Sprite2D>())
                     button.baseColor = entity->GetComponent<Sprite2D>().color;
@@ -480,7 +480,7 @@ namespace Canis
             ApplyButtonVisual(*entity, button, rect);
         }
 
-        for (auto [entityHandle, rect, inputField] : _registry.view<RectTransform, UIInputField>().each())
+        for (auto [entityHandle, rect, inputField] : _registry.view<RectLayout, UIInputField>().each())
         {
             (void)entityHandle;
             (void)rect;
@@ -511,7 +511,7 @@ namespace Canis
             ApplyInputFieldVisual(*entity, inputField);
         }
 
-        for (auto [entityHandle, rect, dropTarget] : _registry.view<RectTransform, UIDropTarget>().each())
+        for (auto [entityHandle, rect, dropTarget] : _registry.view<RectLayout, UIDropTarget>().each())
         {
             (void)entityHandle;
             (void)rect;
@@ -532,7 +532,7 @@ namespace Canis
         float hoveredDragDepth = FLT_MAX;
         float hoveredDropDepth = FLT_MAX;
 
-        auto evaluateRectEntity = [&](Entity* _entity, RectTransform& _rect, float& _bestDepth, Entity*& _bestEntity) -> void
+        auto evaluateRectEntity = [&](Entity* _entity, RectLayout& _rect, float& _bestDepth, Entity*& _bestEntity) -> void
         {
             if (_entity == nullptr || !_rect.IsActiveInHierarchy())
                 return;
@@ -570,18 +570,18 @@ namespace Canis
 
         if (m_dragSource == nullptr)
         {
-            auto buttonView = _registry.view<RectTransform, UIButton>();
+            auto buttonView = _registry.view<RectLayout, UIButton>();
             for (auto [entityHandle, rect, button] : buttonView.each())
             {
                 (void)entityHandle;
                 if (!button.active || !rect.IsActiveInHierarchy()) continue;
                 auto* hitEntity = button.hitRect.TryGet();
-                auto& hitRect = hitEntity && hitEntity->HasComponent<RectTransform>()
-                    ? hitEntity->GetComponent<RectTransform>() : rect;
+                auto& hitRect = hitEntity && hitEntity->HasComponent<RectLayout>()
+                    ? hitEntity->GetComponent<RectLayout>() : rect;
                 evaluateRectEntity(button.entity, hitRect, hoveredButtonDepth, hoveredButton);
             }
 
-            auto inputFieldView = _registry.view<RectTransform, UIInputField>();
+            auto inputFieldView = _registry.view<RectLayout, UIInputField>();
             for (auto [entityHandle, rect, inputField] : inputFieldView.each())
             {
                 (void)entityHandle;
@@ -589,7 +589,7 @@ namespace Canis
                     evaluateRectEntity(inputField.entity, rect, hoveredInputFieldDepth, hoveredInputField);
             }
 
-            auto dragView = _registry.view<RectTransform, UIDragSource>();
+            auto dragView = _registry.view<RectLayout, UIDragSource>();
             for (auto [entityHandle, rect, dragSource] : dragView.each())
             {
                 (void)entityHandle;
@@ -599,13 +599,13 @@ namespace Canis
         }
         else
         {
-            auto& dragRect = m_dragSource->GetComponent<RectTransform>();
+            auto& dragRect = m_dragSource->GetComponent<RectLayout>();
             auto& dragSource = m_dragSource->GetComponent<UIDragSource>();
 
             if (dragSource.dragging && pointerDown)
                 dragRect.SetPosition(GetCenteredMousePosition(*scene) - dragSource.dragOffset);
 
-            auto dropView = _registry.view<RectTransform, UIDropTarget>();
+            auto dropView = _registry.view<RectLayout, UIDropTarget>();
             for (auto [entityHandle, rect, dropTarget] : dropView.each())
             {
                 (void)entityHandle;
@@ -626,16 +626,16 @@ namespace Canis
             m_navigationFocus = false;
             m_navigationPressedButton = nullptr;
         }
-        if (hoveredButton != nullptr && hoveredButton->HasComponents<RectTransform, UIButton>())
+        if (hoveredButton != nullptr && hoveredButton->HasComponents<RectLayout, UIButton>())
         {
             UIButton& button = hoveredButton->GetComponent<UIButton>();
-            RectTransform& rect = hoveredButton->GetComponent<RectTransform>();
+            RectLayout& rect = hoveredButton->GetComponent<RectLayout>();
             button.hovered = !m_navigationFocus;
             if (!m_navigationFocus) m_selectedButton = hoveredButton;
             ApplyButtonVisual(*hoveredButton, button, rect);
         }
 
-        if (hoveredInputField != nullptr && hoveredInputField->HasComponents<RectTransform, UIInputField>())
+        if (hoveredInputField != nullptr && hoveredInputField->HasComponents<RectLayout, UIInputField>())
         {
             UIInputField& inputField = hoveredInputField->GetComponent<UIInputField>();
             inputField.hovered = true;
@@ -655,13 +655,13 @@ namespace Canis
             {
                 FocusInputField(hoveredInputField);
 
-                if (hoveredDragSource != nullptr && hoveredDragSource->HasComponents<RectTransform, UIDragSource>())
+                if (hoveredDragSource != nullptr && hoveredDragSource->HasComponents<RectLayout, UIDragSource>())
                 {
                     UIDragSource& dragSource = hoveredDragSource->GetComponent<UIDragSource>();
-                    RectTransform& dragRect = hoveredDragSource->GetComponent<RectTransform>();
+                    RectLayout& dragRect = hoveredDragSource->GetComponent<RectLayout>();
                     dragSource.dragging = true;
-                    dragSource.originalPosition = dragRect.position;
-                    dragSource.originalDepth = dragRect.depth;
+                    dragSource.originalPosition = dragRect.GetLocalPosition();
+                    dragSource.originalDepth = dragRect.Spatial().position.z;
                     dragSource.dragOffset = GetCenteredMousePosition(*scene) - dragRect.GetPosition();
                     m_dragSource = hoveredDragSource;
                 }
@@ -686,10 +686,10 @@ namespace Canis
                 m_pressedButton = nullptr;
             }
         }
-        else if (m_dragSource->HasComponents<RectTransform, UIDragSource>() && pointerReleased)
+        else if (m_dragSource->HasComponents<RectLayout, UIDragSource>() && pointerReleased)
         {
             UIDragSource& dragSource = m_dragSource->GetComponent<UIDragSource>();
-            RectTransform& dragRect = m_dragSource->GetComponent<RectTransform>();
+            RectLayout& dragRect = m_dragSource->GetComponent<RectLayout>();
 
             if (hoveredDropTarget != nullptr && hoveredDropTarget->HasComponent<UIDropTarget>())
             {
@@ -705,8 +705,8 @@ namespace Canis
                 scene->app->DispatchUIAction(*receiver, dropTarget.targetScript, dropTarget.actionName, context);
             }
 
-            dragRect.position = dragSource.originalPosition;
-            dragRect.depth = dragSource.originalDepth;
+            dragRect.SetLocalPosition(dragSource.originalPosition);
+            dragRect.Spatial().position.z = dragSource.originalDepth;
             dragSource.dragging = false;
             m_dragSource = nullptr;
             m_hoveredDropTarget = nullptr;
@@ -740,8 +740,8 @@ namespace Canis
         // World canvases remain pointer-driven while the mouse is captured.
         auto selectable = [&](Entity candidate) {
             if (!candidate || !candidate->Active() ||
-                !candidate->HasComponents<RectTransform, UIButton>()) return false;
-            const auto& rect = candidate->GetComponent<RectTransform>();
+                !candidate->HasComponents<RectLayout, UIButton>()) return false;
+            const auto& rect = candidate->GetComponent<RectLayout>();
             const auto* canvas = rect.GetCanvas();
             return candidate->GetComponent<UIButton>().active && rect.IsActiveInHierarchy() &&
                 (canvas == nullptr || (canvas->active && canvas->receivesEvents));
@@ -765,10 +765,10 @@ namespace Canis
             inputManager->JustReleasedKey(Key::SPACE) || inputManager->JustReleasedButton(ControllerButton::A);
         Entity defaultButton = nullptr;
         if (!m_selectedButton)
-            for (auto [handle, rect, button] : _registry.view<RectTransform, UIButton>().each())
+            for (auto [handle, rect, button] : _registry.view<RectLayout, UIButton>().each())
                 if (button.defaultSelected && selectable(button.entity)) { defaultButton = button.entity; break; }
         Entity inputButton = m_selectedButton ? m_selectedButton : defaultButton;
-        const Canvas* canvas = inputButton ? inputButton->GetComponent<RectTransform>().GetCanvas() : nullptr;
+        const Canvas* canvas = inputButton ? inputButton->GetComponent<RectLayout>().GetCanvas() : nullptr;
         Entity canvasEntity = canvas ? canvas->entity : nullptr;
         if (canvasEntity != m_navigationCanvas)
         {
@@ -807,7 +807,7 @@ namespace Canis
         bool acquired = false;
         if (!m_selectedButton)
         {
-            for (auto [handle, rect, button] : _registry.view<RectTransform, UIButton>().each())
+            for (auto [handle, rect, button] : _registry.view<RectLayout, UIButton>().each())
             {
                 if (button.defaultSelected && selectable(button.entity))
                 {
@@ -835,16 +835,16 @@ namespace Canis
         }
         if (confirm) m_navigationPressedButton = m_selectedButton;
         if (navigationPointerButton && navigationPointerButton != m_selectedButton &&
-            navigationPointerButton->HasComponents<UIButton, RectTransform>())
+            navigationPointerButton->HasComponents<UIButton, RectLayout>())
         {
             auto& hovered = navigationPointerButton->GetComponent<UIButton>();
             hovered.hovered = false;
-            ApplyButtonVisual(*navigationPointerButton, hovered, navigationPointerButton->GetComponent<RectTransform>());
+            ApplyButtonVisual(*navigationPointerButton, hovered, navigationPointerButton->GetComponent<RectLayout>());
         }
         auto& button = m_selectedButton->GetComponent<UIButton>();
         button.hovered = true;
         button.pressed = m_navigationPressedButton == m_selectedButton && held;
-        ApplyButtonVisual(*m_selectedButton, button, m_selectedButton->GetComponent<RectTransform>());
+        ApplyButtonVisual(*m_selectedButton, button, m_selectedButton->GetComponent<RectLayout>());
         if (released && !held && m_navigationPressedButton)
         {
             Entity source = m_navigationPressedButton;
@@ -855,7 +855,7 @@ namespace Canis
             UIActionContext context = {};
             context.sourceEntity = source;
             context.targetEntity = receiver;
-            context.pointerPosition = source->GetComponent<RectTransform>().GetPosition();
+            context.pointerPosition = source->GetComponent<RectLayout>().GetPosition();
             scene->app->DispatchUIAction(*receiver, button.targetScript, button.actionName, context);
         }
     }

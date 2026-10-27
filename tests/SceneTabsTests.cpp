@@ -625,15 +625,15 @@ namespace Canis
             app.scene.Unload();
             auto canvas=app.scene.CreateEntity("Menu");
             canvas.AddComponent<Transform>();
-            auto& root=*canvas.AddComponent<RectTransform>();root.anchorMin={0,0};root.anchorMax={1,1};root.size={0,0};root.depth=0;
+            auto& root=*canvas.AddComponent<RectLayout>();root.anchorMin={0,0};root.anchorMax={1,1};root.size={0,0};root.Spatial().position.z=0;
             canvas.AddComponent<Canvas>()->screenSize={800,600};
             auto label=app.scene.CreateEntity("Menu item");
             label.AddComponent<Transform>();
-            auto& rect=*label.AddComponent<RectTransform>();rect.SetParent(&canvas);rect.position={-200,0};rect.size={120,60};rect.depth=.3f;
+            auto& rect=*label.AddComponent<RectLayout>();rect.Spatial().SetParent(&canvas, false);rect.SetLocalPosition({-200,0});rect.size={120,60};rect.Spatial().position.z=.3f;
             label.AddComponent<Text>()->text="Caption";
             auto group=app.scene.CreateEntity("Stretched grouping rect");
-            auto& container=*group.AddComponent<RectTransform>();container.SetParent(&canvas);
-            container.position={0,0};container.anchorMin={0,0};container.anchorMax={1,1};container.size={0,0};
+            auto& container=*group.AddComponent<RectLayout>();container.Spatial().SetParent(&canvas, false);
+            container.SetLocalPosition({0,0});container.anchorMin={0,0};container.anchorMax={1,1};container.size={0,0};
             editor.m_sceneCameraMode=Editor::SceneCameraMode::SCENE_CAMERA_2D;
             editor.m_mode=EditorMode::EDIT;editor.m_editorCamera2DPosition={0,0};editor.m_editorCamera2DScale=1;
             editor.m_gameViewportWidth=editor.m_gameTextureWidth=800;
@@ -665,9 +665,9 @@ namespace Canis
                 editor.DrawSceneViewGizmo();bool usingGizmo=ImGuizmo::IsUsing();ImGui::End();ImGui::Render();return usingGizmo;
             };
             gizmoFrame(363,false);gizmoFrame(363,false);
-            Check(gizmoFrame(363,true),"UI with both Transform and RectTransform did not expose its 2D gizmo");
+            Check(gizmoFrame(363,true),"UI with both Transform and RectLayout did not expose its 2D gizmo");
             gizmoFrame(383,true);gizmoFrame(383,false);
-            Check(rect.position.x>-180 && std::abs(rect.position.y)<.01f,
+            Check(rect.Spatial().position.x>-180 && std::abs(rect.Spatial().position.y)<.01f,
                   "Dragging the selected UI gizmo did not update its reference-canvas position");
             Check(window.GetScreenWidth()==800 && window.GetScreenHeight()==600 && !app.scene.HasEditorCamera2DOverride(),
                   "Scene UI picking leaked preview dimensions/camera into the Game view");

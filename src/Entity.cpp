@@ -23,6 +23,12 @@ Entity& Entity::operator=(const Entity& other) {
     return *this;
 }
 entt::registry& Entity::Registry() const { return scene.GetRegistry(); }
+void Entity::RequestComponentCreate(entt::id_type type, std::function<void()> callback)
+{
+    scene.RequestComponentCreate(m_entityHandle, type, std::move(callback));
+}
+void Entity::CancelComponentCreate(entt::id_type type) { scene.CancelComponentCreate(m_entityHandle, type); }
+
 ScriptableEntity* Entity::InvokeScriptCreate(ScriptableEntity* script) { return scene.InvokeScriptCallback(script, false); }
 Entity* Entity::ResolveIncludingPending() const {
     return m_entityHandle != entt::null && Registry().valid(m_entityHandle)
@@ -183,110 +189,219 @@ void Entity::Destroy() {
     scene.Destroy(*this);
 }
 
-RectTransform::LayoutData RectTransform::GetLayout() const
+void Transform::BeforeRemove()
 {
-    LayoutData layout = {};
+    Destroy();
+    if (entity) entity->RemoveComponent<RectLayout>();
+}
 
-    if (entity == nullptr)
-        return layout;
+void RectLayout::EnsureDependencies()
+{
+    if (entity && !entity->HasComponent<Transform>())
+        entity->AddComponent<Transform>()->position.z = .001f;
+}
+Transform& RectLayout::Spatial() const { return entity->GetComponent<Transform>(); }
+Entity RectLayout::GetParent() const { return Spatial().parent; }
+std::vector<Entity>& RectLayout::GetChildren() const { return Spatial().children; }
+Vector2 RectLayout::GetLocalPosition() const { return Vector2(Spatial().position); }
+void RectLayout::SetLocalPosition(Vector2 value) { Spatial().position.x = value.x; Spatial().position.y = value.y; }
+Vector2 RectLayout::GetLocalScale() const { return Vector2(Spatial().scale); }
+void RectLayout::SetLocalScale(Vector2 value) { Spatial().scale.x = value.x; Spatial().scale.y = value.y; }
+float RectLayout::GetLocalRotation() const { return glm::eulerAngles(Spatial().rotation).z; }
+void RectLayout::SetLocalRotation(float value) { Spatial().rotation = Quaternion(Vector3(0, 0, value)); }
+float RectLayout::GetLocalDepth() const { return Spatial().position.z; }
+void RectLayout::SetLocalDepth(float value) { Spatial().position.z = value; }
+bool RectLayout::IsWorldCanvasRoot() const
+{
+    auto* canvas = entity ? entity->TryGetComponent<Canvas>() : nullptr;
+    return canvas && canvas->renderMode == CanvasRenderMode::WORLD_SPACE;
+}
 
-    const bool hasParentRect = parent != nullptr && parent->HasComponent<RectTransform>();
-    const unsigned int renderMode = GetCanvasRenderMode();
+Vector2 RectLayout::GetLogicalSize() const
+{
+    if (!entity || IsWorldCanvasRoot()) return size;
+    if (!entity->scene.TryGetWindow() && !GetParent()) return size;
+    Vector2 extent(0);
+    const auto parent = GetParent();
+    if (parent && parent.HasComponent<RectLayout>()) extent = parent.GetComponent<RectLayout>().GetLogicalSize();
+    else if (!parent && GetCanvasRenderMode() != CanvasRenderMode::WORLD_SPACE)
+        extent = GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY ? GetCanvasOverlayLogicalSize()
+            : Vector2(entity->scene.GetWindow().GetScreenWidth(), entity->scene.GetWindow().GetScreenHeight());
+    return size + extent * (anchorMax - anchorMin);
+}
 
-    Vector2 parentMin = Vector2(0.0f);
-    Vector2 parentActualSize = Vector2(0.0f);
-    Vector2 parentLogicalSize = Vector2(0.0f);
-    Vector2 parentPivot = Vector2(0.0f);
-    Vector2 parentScale = Vector2(1.0f);
-    float parentRotation = 0.0f;
-
-    if (hasParentRect)
+Matrix4 RectLayout::GetPlacementMatrix() const
+{
+    Matrix4 placement(1);
+    if (!entity || IsWorldCanvasRoot()) return placement;
+    if (!entity->scene.TryGetWindow() && !GetParent()) return placement;
+    Vector2 extent(0), parentPivot(.5f), origin(0);
+    const auto parent = GetParent();
+    const auto mode = GetCanvasRenderMode();
+    if (parent && parent.HasComponent<RectLayout>())
     {
-        const RectTransform& parentRect = parent->GetComponent<RectTransform>();
-        parentMin = parentRect.GetRectMin();
-        parentActualSize = parentRect.GetResolvedSize();
-        parentPivot = parentRect.GetPosition();
-        parentScale = AbsVector2(parentRect.GetScale());
-        parentRotation = parentRect.GetRotation();
-
-        parentLogicalSize = parentActualSize;
-        if (parentScale.x != 0.0f)
-            parentLogicalSize.x /= parentScale.x;
-        if (parentScale.y != 0.0f)
-            parentLogicalSize.y /= parentScale.y;
+        const auto& layout = parent.GetComponent<RectLayout>();
+        extent = layout.GetLogicalSize(); parentPivot = layout.pivot;
     }
-    else if (renderMode != CanvasRenderMode::WORLD_SPACE)
+    else if (!parent && mode != CanvasRenderMode::WORLD_SPACE)
     {
-        const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
-        const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
-
-        parentActualSize = Vector2(screenWidth, screenHeight);
-        parentLogicalSize = parentActualSize;
-        if (renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+        if (mode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
         {
-            const float canvasScale = GetCanvasOverlayScaleFactor();
-            parentScale = Vector2(canvasScale);
-            parentLogicalSize = GetCanvasOverlayLogicalSize();
-            if (entity->scene.HasEditorCamera2DOverride() && FindCanvas())
-                parentActualSize = parentLogicalSize * canvasScale;
-            parentMin = -parentActualSize * .5f;
-            parentPivot = Vector2(0.0f);
+            extent = GetCanvasOverlayLogicalSize();
+            const float factor = GetCanvasOverlayScaleFactor();
+            placement = glm::scale(placement, Vector3(factor, factor, 1));
         }
         else
         {
-            parentMin = GetActiveCamera2DPosition(entity->scene) - (parentActualSize * 0.5f);
-            parentPivot = parentMin + (parentActualSize * 0.5f);
+            extent = Vector2(entity->scene.GetWindow().GetScreenWidth(), entity->scene.GetWindow().GetScreenHeight());
+            origin = GetActiveCamera2DPosition(entity->scene);
         }
     }
-
-    Vector2 resolvedSize = size;
-    if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
-        resolvedSize += parentLogicalSize * (anchorMax - anchorMin);
-
-    resolvedSize.x *= parentScale.x * std::abs(scale.x);
-    resolvedSize.y *= parentScale.y * std::abs(scale.y);
-
-    Vector2 pivotPosition = position;
-
-    if (hasParentRect || renderMode != CanvasRenderMode::WORLD_SPACE)
-    {
-        const Vector2 anchorRectMin = parentMin + parentActualSize * anchorMin;
-        const Vector2 anchorRectMax = parentMin + parentActualSize * anchorMax;
-        const Vector2 scaledPosition = Vector2(position.x * parentScale.x, position.y * parentScale.y);
-
-        pivotPosition = anchorRectMin + ((anchorRectMax - anchorRectMin) * pivot) + scaledPosition;
-
-        if (hasParentRect && parentRotation != 0.0f)
-            pivotPosition = parentPivot + RotatePoint(pivotPosition - parentPivot, parentRotation);
-    }
-
-    layout.size = resolvedSize;
-    layout.pivotPosition = pivotPosition;
-    layout.min = pivotPosition - Vector2(layout.size.x * pivot.x, layout.size.y * pivot.y);
-    return layout;
+    const Vector2 anchor = anchorMin + (anchorMax - anchorMin) * pivot;
+    return glm::translate(placement, Vector3(origin + extent * (anchor - parentPivot), 0));
 }
 
-const Canvas* RectTransform::FindCanvas() const
+Matrix4 Transform::GetLocalMatrix() const
 {
-    const Entity* current = entity;
-
-    while (current != nullptr)
+    Matrix4 matrix(1);
+    if (entity)
+        if (auto* layout = entity->TryGetComponent<RectLayout>()) matrix = layout->GetPlacementMatrix();
+    matrix = glm::translate(matrix, position);
+    matrix *= glm::mat4_cast(glm::normalize(rotation));
+    matrix = glm::scale(matrix, scale);
+    return useLocalMatrixPrefix ? localMatrixPrefix * matrix : matrix;
+}
+void Transform::SetGlobalPosition(const Vector3& worldPosition)
+{
+    Matrix4 basis = parent && parent.HasComponent<Transform>() ? parent.GetComponent<Transform>().GetModelMatrix() : Matrix4(1);
+    if (useLocalMatrixPrefix) basis *= localMatrixPrefix;
+    if (entity)
+        if (auto* layout = entity->TryGetComponent<RectLayout>()) basis *= layout->GetPlacementMatrix();
+    if (const float determinant = glm::determinant(basis); std::isfinite(determinant) && determinant != 0)
+        position = Vector3(glm::inverse(basis) * Vector4(worldPosition, 1));
+}
+Matrix4 RectLayout::GetCanvasLocalMatrix() const
+{
+    if (!entity) return Matrix4(1);
+    if (const auto* canvas = FindCanvas(); canvas && canvas->renderMode == CanvasRenderMode::WORLD_SPACE && canvas->entity)
     {
-        if (current->HasComponent<Canvas>())
-            return &current->GetComponent<Canvas>();
-
-        if (!current->HasComponent<RectTransform>())
-            break;
-
-        current = current->GetComponent<RectTransform>().parent;
+        Matrix4 relative(1);
+        for (Entity current = entity; current && current != canvas->entity;)
+        {
+            const auto& spatial = current.GetComponent<Transform>();
+            relative = spatial.GetLocalMatrix() * relative;
+            current = spatial.parent;
+        }
+        return relative;
     }
-
+    return Spatial().GetModelMatrix();
+}
+RectLayout::LayoutData RectLayout::GetLayout() const
+{
+    LayoutData data;
+    if (!entity) return data;
+    const auto matrix = GetCanvasLocalMatrix();
+    data.pivotPosition = Vector2(matrix[3]);
+    data.size = GetLogicalSize() * Vector2(glm::length(Vector3(matrix[0])), glm::length(Vector3(matrix[1])));
+    data.min = data.pivotPosition - data.size * pivot;
+    return data;
+}
+const Canvas* RectLayout::FindCanvas() const
+{
+    for (Entity current = entity; current;)
+    {
+        if (auto* canvas = current.TryGetComponent<Canvas>()) return canvas;
+        auto* transform = current.TryGetComponent<Transform>();
+        current = transform ? transform->parent : Entity(nullptr);
+    }
     return nullptr;
 }
-
-float RectTransform::GetCanvasOverlayScaleFactor() const
+Vector2 RectLayout::GetPosition() const { return GetLayout().pivotPosition; }
+void RectLayout::SetPosition(Vector2 value)
 {
-    if (entity == nullptr)
+    if (IsWorldCanvasRoot())
+    {
+        const auto model = Spatial().GetModelMatrix();
+        Spatial().SetGlobalPosition(Spatial().GetGlobalPosition() + Vector3(model * Vector4(value, 0, 0)));
+        return;
+    }
+    Matrix4 basis(1);
+    const auto parent = GetParent();
+    if (const auto* canvas = FindCanvas(); canvas && canvas->renderMode == CanvasRenderMode::WORLD_SPACE)
+    {
+        for (Entity current = parent; current && current != canvas->entity;)
+        {
+            const auto& spatial = current.GetComponent<Transform>();
+            basis = spatial.GetLocalMatrix() * basis;
+            current = spatial.parent;
+        }
+    }
+    else if (parent) basis = parent.GetComponent<Transform>().GetModelMatrix();
+    if (Spatial().useLocalMatrixPrefix) basis *= Spatial().localMatrixPrefix;
+    basis *= GetPlacementMatrix();
+    const float determinant = glm::determinant(basis);
+    if (std::isfinite(determinant) && determinant != 0)
+        Spatial().position += Vector3(glm::inverse(basis) * Vector4(value - GetPosition(), 0, 0));
+}
+Vector2 RectLayout::GetScale() const
+{
+    const Matrix4 matrix = GetCanvasLocalMatrix();
+    return {glm::length(Vector3(matrix[0])), glm::length(Vector3(matrix[1]))};
+}
+void RectLayout::SetScale(const Vector2& value)
+{
+    SetLocalScale(Vector2(1));
+    const Vector2 parentScale = GetScale();
+    SetLocalScale({parentScale.x != 0 ? value.x / parentScale.x : value.x, parentScale.y != 0 ? value.y / parentScale.y : value.y});
+}
+float RectLayout::GetRotation() const
+{
+    const auto matrix = GetCanvasLocalMatrix();
+    return std::atan2(matrix[0].y, matrix[0].x);
+}
+float RectLayout::GetDepth() const { return GetCanvasLocalMatrix()[3].z; }
+Vector2 RectLayout::GetRight() const { const float a = GetRotation(); return {std::cos(a), std::sin(a)}; }
+Vector2 RectLayout::GetUp() const { const float a = GetRotation(); return {-std::sin(a), std::cos(a)}; }
+Vector2 RectLayout::GetResolvedSize() const { return GetLayout().size; }
+Vector2 RectLayout::GetRectMin() const { return GetLayout().min; }
+unsigned int RectLayout::GetCanvasRenderMode() const
+{
+    const auto* canvas = FindCanvas();
+    return canvas ? canvas->renderMode : CanvasRenderMode::SCREEN_SPACE_CAMERA;
+}
+bool RectLayout::IsActiveInHierarchy() const
+{
+    if (!entity || !active || !Spatial().IsActiveInHierarchy()) return false;
+    for (Entity current = entity; current;)
+    {
+        if (auto* canvas = current.TryGetComponent<Canvas>(); canvas && !canvas->active) return false;
+        if (auto* layout = current.TryGetComponent<RectLayout>(); layout && !layout->active) return false;
+        auto* transform = current.TryGetComponent<Transform>();
+        current = transform ? transform->parent : Entity(nullptr);
+    }
+    return true;
+}
+void RectLayout::SetAnchorPreset(RectAnchor anchor) { anchorMin = anchorMax = pivot = GetNormalizedAnchor(anchor); }
+int RectLayout::GetAnchorPreset() const
+{
+    if (anchorMin != anchorMax || pivot != anchorMin) return -1;
+    for (int i = 0; i < 9; ++i) if (anchorMin == GetNormalizedAnchor(RectAnchor(i))) return i;
+    return -1;
+}
+Vector2 RectLayout::GetAnchor(const RectAnchor& anchor, float width, float height) { return GetNormalizedAnchor(anchor) * Vector2(width, height); }
+void RectLayout::SetParentAtIndex(Entity* parent, std::size_t index) { Spatial().SetParentAtIndex(parent, index); }
+void RectLayout::SetParent(Entity* parent) { Spatial().SetParent(parent); }
+void RectLayout::Unparent() { Spatial().Unparent(); }
+bool RectLayout::HasParent() const { return Spatial().HasParent(); }
+bool RectLayout::HasChildren() const { return Spatial().HasChildren(); }
+bool RectLayout::IsChildOf(Entity* parent) const { return Spatial().IsChildOf(parent); }
+void RectLayout::AddChild(Entity* child) { Spatial().AddChild(child); }
+void RectLayout::RemoveChild(Entity* child) { Spatial().RemoveChild(child); }
+void RectLayout::RemoveAllChildren() { Spatial().RemoveAllChildren(); }
+
+float RectLayout::GetCanvasOverlayScaleFactor() const
+{
+    if (entity == nullptr || !entity->scene.TryGetWindow())
         return 1.0f;
 
     const Canvas* canvas = FindCanvas();
@@ -314,9 +429,9 @@ float RectTransform::GetCanvasOverlayScaleFactor() const
     }
 }
 
-Vector2 RectTransform::GetCanvasOverlayLogicalSize() const
+Vector2 RectLayout::GetCanvasOverlayLogicalSize() const
 {
-    if (entity == nullptr)
+    if (entity == nullptr || !entity->scene.TryGetWindow())
         return Vector2(0.0f);
 
     if (entity->scene.HasEditorCamera2DOverride())
@@ -333,7 +448,7 @@ Vector2 RectTransform::GetCanvasOverlayLogicalSize() const
     return Vector2(screenWidth / canvasScale, screenHeight / canvasScale);
 }
 
-Vector2 RectTransform::GetNormalizedAnchor(const RectAnchor &_anchor)
+Vector2 RectLayout::GetNormalizedAnchor(const RectAnchor &_anchor)
 {
     switch (_anchor)
     {
@@ -360,108 +475,7 @@ Vector2 RectTransform::GetNormalizedAnchor(const RectAnchor &_anchor)
     }
 }
 
-Vector2 RectTransform::GetPosition() const
-{
-    return GetLayout().pivotPosition;
-}
-
-void RectTransform::SetPosition(Vector2 _globalPos)
-{
-    Vector2 delta = _globalPos - GetPosition();
-
-    if (parent != nullptr && parent->HasComponent<RectTransform>())
-    {
-        const RectTransform& parentRect = parent->GetComponent<RectTransform>();
-        const Vector2 parentScale = AbsVector2(parentRect.GetScale());
-        const float parentRotation = parentRect.GetRotation();
-
-        if (parentRotation != 0.0f)
-            delta = RotatePoint(delta, -parentRotation);
-
-        if (parentScale.x != 0.0f)
-            delta.x /= parentScale.x;
-        if (parentScale.y != 0.0f)
-            delta.y /= parentScale.y;
-    }
-    else if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
-    {
-        const float canvasScale = GetCanvasOverlayScaleFactor();
-        if (canvasScale != 0.0f)
-        {
-            delta.x /= canvasScale;
-            delta.y /= canvasScale;
-        }
-    }
-
-    position += delta;
-}
-
-Vector2 RectTransform::GetResolvedSize() const
-{
-    return GetLayout().size;
-}
-
-Vector2 RectTransform::GetRectMin() const
-{
-    return GetLayout().min;
-}
-
-unsigned int RectTransform::GetCanvasRenderMode() const
-{
-    if (const Canvas* canvas = FindCanvas())
-        return canvas->renderMode;
-
-    return CanvasRenderMode::SCREEN_SPACE_CAMERA;
-}
-
-bool RectTransform::IsActiveInHierarchy() const
-{
-    if (entity == nullptr || !entity->Active() || !active)
-        return false;
-
-    if (entity->HasComponent<Canvas>() && !entity->GetComponent<Canvas>().active)
-        return false;
-
-    if (parent != nullptr && parent->HasComponent<RectTransform>())
-        return parent->GetComponent<RectTransform>().IsActiveInHierarchy();
-
-    return true;
-}
-
-void RectTransform::SetAnchorPreset(RectAnchor _anchor)
-{
-    const Vector2 normalizedAnchor = GetNormalizedAnchor(_anchor);
-    anchorMin = normalizedAnchor;
-    anchorMax = normalizedAnchor;
-    pivot = normalizedAnchor;
-}
-
-int RectTransform::GetAnchorPreset() const
-{
-    if (anchorMin != anchorMax || pivot != anchorMin)
-        return -1;
-
-    for (int i = 0; i < 9; i++)
-    {
-        if (anchorMin == GetNormalizedAnchor(static_cast<RectAnchor>(i)))
-            return i;
-    }
-
-    return -1;
-}
-
-void Camera2D::Create() {
-    if (entity == nullptr)
-        return;
-
-    m_screenWidth = entity->scene.GetWindow().GetScreenWidth();
-    m_screenHeight = entity->scene.GetWindow().GetScreenHeight();
-    m_projection = glm::ortho(0.0f, (float)m_screenWidth, 0.0f,
-                                      (float)m_screenHeight, -100.0f, 100.0f);
-    SetPosition(Vector2(0.0f)); // Vector2((float)m_screenWidth / 2,
-                                // (float)m_screenHeight / 2));
-    SetScale(1.0f);
-}
+void Camera2D::Create() { UpdateMatrix(); }
 
 void Camera2D::Destroy() {
     Debug::Log("DestroyCamera");
@@ -469,7 +483,7 @@ void Camera2D::Destroy() {
 
 void Camera2D::UpdateMatrix()
 {
-    if (entity == nullptr)
+    if (entity == nullptr || !entity->scene.TryGetWindow())
         return;
 
     m_screenWidth = entity->scene.GetWindow().GetScreenWidth();

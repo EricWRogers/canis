@@ -70,378 +70,68 @@ namespace Canis
         float interactionDistance = 3.0f;
     };
 
-    struct RectTransform
+    struct Transform;
+    // Layout constraints only. Transform owns all spatial data and hierarchy.
+    struct RectLayout
     {
-    public:
-        static constexpr const char* ScriptName = "Canis::RectTransform";
-
-        RectTransform() = default;
-
-
-        explicit RectTransform(Canis::Entity& _entity) : entity(&_entity) {}
-
-        void Create() {}
+        static constexpr const char* ScriptName = "Canis::RectLayout";
         Entity* entity = nullptr;
-
         bool active = true;
-        Vector2 position = Vector2(0.0f);
         Vector2 size = Vector2(32.0f);
-        Vector2 scale = Vector2(1.0f);
-        Vector2 anchorMin = Vector2(0.5f, 0.5f);
-        Vector2 anchorMax = Vector2(0.5f, 0.5f);
-        Vector2 pivot = Vector2(0.5f, 0.5f);
-        Vector2 originOffset = Vector2(0.0f);
-        float   depth = 0.001f;
-        float   rotation = 0.0f;
-        Vector2 rotationOriginOffset = Vector2(0.0f);
-        Entity parent = nullptr;
-		std::vector<Entity> children;
+        Vector2 anchorMin = Vector2(.5f), anchorMax = Vector2(.5f), pivot = Vector2(.5f);
+        Vector2 originOffset = Vector2(0);
+        Vector2 rotationOriginOffset = Vector2(0);
 
+        void EnsureDependencies();
+        void Create() { EnsureDependencies(); }
+        Transform& Spatial() const;
+        Entity GetParent() const;
+        std::vector<Entity>& GetChildren() const;
+        Vector2 GetLocalPosition() const;
+        void SetLocalPosition(Vector2 value);
+        Vector2 GetLocalScale() const;
+        void SetLocalScale(Vector2 value);
+        float GetLocalRotation() const;
+        void SetLocalRotation(float radians);
+        float GetLocalDepth() const;
+        void SetLocalDepth(float value);
         Vector2 GetPosition() const;
-
-        void SetPosition(Vector2 _globalPos);
-
+        void SetPosition(Vector2 globalPosition);
+        Vector2 GetScale() const;
+        void SetScale(const Vector2& globalScale);
+        float GetRotation() const;
+        float GetDepth() const;
+        Vector2 GetRight() const;
+        Vector2 GetUp() const;
+        Vector2 GetLogicalSize() const;
         Vector2 GetResolvedSize() const;
-
         Vector2 GetRectMin() const;
-
+        Matrix4 GetPlacementMatrix() const;
+        Matrix4 GetCanvasLocalMatrix() const;
         unsigned int GetCanvasRenderMode() const;
         const Canvas* GetCanvas() const { return FindCanvas(); }
-
         bool IsActiveInHierarchy() const;
-
-        void SetAnchorPreset(RectAnchor _anchor);
-
+        void SetAnchorPreset(RectAnchor anchor);
         int GetAnchorPreset() const;
-
-        void Move(Vector2 _delta)
-        {
-            position = position + _delta;
-        }
-
-        float GetRotation() const
-		{
-            if (parent)
-			{
-                if (parent->HasComponent<RectTransform>())
-                {
-                    const RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                    return rotation + parentRT.GetRotation();
-                }
-			}
-
-			return rotation;
-		}
-
-        float GetDepth() const
-		{
-            if (parent)
-			{
-                if (parent->HasComponent<RectTransform>())
-                {
-                    const RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                    return depth + parentRT.GetDepth();
-                }
-			}
-
-			return depth;
-		}
-
-        void SetDepth(Vector2 _globalDepth)
-        {
-            if (parent)
-            {
-                if (parent->HasComponent<RectTransform>())
-                {
-                    RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                    Vector2 parentDepth = parentRT.GetPosition();
-                    
-                    position = _globalDepth - parentDepth;
-                    return;
-                }
-            }
-
-            position = _globalDepth;
-        }
-    
-        Vector2 GetScale() const
-        {
-            if (!parent)
-            {
-                if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
-                {
-                    const float canvasScale = GetCanvasOverlayScaleFactor();
-                    return Vector2(scale.x * canvasScale, scale.y * canvasScale);
-                }
-
-                return scale;
-            }
-
-            if (parent->HasComponent<RectTransform>())
-            {
-                const RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                Vector2 p = parentRT.GetScale();
-                return Vector2(p.x * scale.x, p.y * scale.y);
-            }
-
-            return scale;
-        }
-
-        void SetScale(const Vector2& _globalScale)
-        {
-            if (parent)
-            {
-                if (parent->HasComponent<RectTransform>())
-                {
-                    RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                    Vector2 parentScale = parentRT.GetScale();
-
-                    // avoid divide-by-zero
-                    scale.x = (parentScale.x != 0.0f) ? (_globalScale.x / parentScale.x) : _globalScale.x;
-                    scale.y = (parentScale.y != 0.0f) ? (_globalScale.y / parentScale.y) : _globalScale.y;
-                    return;
-                }
-            }
-
-            if (GetCanvasRenderMode() == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
-            {
-                const float canvasScale = GetCanvasOverlayScaleFactor();
-                scale.x = (canvasScale != 0.0f) ? (_globalScale.x / canvasScale) : _globalScale.x;
-                scale.y = (canvasScale != 0.0f) ? (_globalScale.y / canvasScale) : _globalScale.y;
-                return;
-            }
-
-            scale = _globalScale;
-        }
-
-        Vector2 GetRight() const
-        {
-            const float a = GetRotation();
-
-            Vector2 right(std::cos(a), std::sin(a));
-
-            return glm::normalize(right);
-        }
-
-        Vector2 GetUp() const
-        {
-            const float a = GetRotation();
-
-            Vector2 up(-std::sin(a), std::cos(a));
-
-            return glm::normalize(up);
-        }
-
-        bool HasParent() const {
-            return parent != nullptr;
-        }
-
-        struct LayoutData
-        {
-            Vector2 min = Vector2(0.0f);
-            Vector2 size = Vector2(0.0f);
-            Vector2 pivotPosition = Vector2(0.0f);
-        };
-
+        void Move(Vector2 delta) { SetLocalPosition(GetLocalPosition() + delta); }
+        void SetParentAtIndex(Entity* parent, std::size_t index);
+        void SetParent(Entity* parent);
+        void Unparent();
+        bool HasParent() const;
+        bool HasChildren() const;
+        bool IsChildOf(Entity* parent) const;
+        void AddChild(Entity* child);
+        void RemoveChild(Entity* child);
+        void RemoveAllChildren();
+        struct LayoutData { Vector2 min{0}, size{0}, pivotPosition{0}; };
         LayoutData GetLayout() const;
-
-        void SetParentAtIndex(Entity* newParent, std::size_t index)
-        {
-            Entity* self = entity;
-            if (self == nullptr)
-                return;
-
-            if (newParent && &newParent->scene != &self->scene)
-                throw std::runtime_error("Cannot parent entities from different scenes");
-            std::vector<Entity*> visited;
-            for (Entity* ancestor = newParent; ancestor;) {
-                if (ancestor == self || std::find(visited.begin(), visited.end(), ancestor) != visited.end())
-                    throw std::runtime_error("Entity hierarchy cycle rejected");
-                visited.push_back(ancestor);
-                auto* transform = ancestor->TryGetComponent<RectTransform>();
-                ancestor = transform ? transform->parent.TryGet() : nullptr;
-            }
-
-            // same parent: just reorder within the same children list
-            if (parent == newParent)
-            {
-                if (!parent)
-                    return;
-
-                if (parent->HasComponent<RectTransform>())
-                {
-                    RectTransform& parentRT = parent->GetComponent<RectTransform>();
-                    auto& list = parentRT.children;
-                    auto it = std::find(list.begin(), list.end(), self);
-                    if (it == list.end())
-                        return;
-
-                    std::size_t currentIndex = std::distance(list.begin(), it);
-                    if (currentIndex == index)
-                        return; // nothing to do
-
-                    list.erase(it);
-
-                    index = std::clamp(index, static_cast<size_t>(0), list.size());
-
-                    list.insert(list.begin() + index, self);
-                }
-                return;
-            }
-
-            Vector2 oldPos = GetPosition();
-
-            // different parent: remove from old parent
-            if (parent)
-            {
-                if (parent->HasComponent<RectTransform>())
-                {
-                    RectTransform& oldParentRT = parent->GetComponent<RectTransform>();
-                    auto& list = oldParentRT.children;
-                    list.erase(std::remove(list.begin(), list.end(), self), list.end());
-                }
-            }
-
-            // set new parent pointer
-            parent = newParent;
-
-            // insert into new parent's children list at index
-            if (newParent)
-            {
-                if (newParent->HasComponent<RectTransform>())
-                {
-                    RectTransform& newParentRT = newParent->GetComponent<RectTransform>();
-                    auto& list = newParentRT.children;
-                    index = std::clamp(index, static_cast<size_t>(0), list.size());
-
-                    list.insert(list.begin() + index, self);
-                }
-            }
-
-            SetPosition(oldPos);
-        }
-
-        void SetParent(Entity* newParent)
-        {
-            if (newParent && newParent->HasComponent<RectTransform>())
-            {
-                RectTransform& parentRT = newParent->GetComponent<RectTransform>();
-                SetParentAtIndex(newParent, parentRT.children.size());
-            }
-            else
-            {
-                // unparent
-                Unparent();
-            }
-        }
-
-        void Unparent()
-        {
-            SetParentAtIndex(nullptr, 0);
-        }
-
-        bool IsChildOf(Entity* potentialParent) const
-        {
-            return parent == potentialParent;
-        }
-
-        bool HasChildren() const {
-            return !children.empty();
-        }
-
-        void AddChild(Entity* child)
-        {
-            if (!child) return;
-            if (!child->HasComponent<RectTransform>()) return;
-
-            if (entity != nullptr)
-            {
-                RectTransform& childRT = child->GetComponent<RectTransform>();
-                childRT.SetParent(entity);
-            }
-        }
-
-        void RemoveChild(Entity* child)
-        {
-            if (!child) return;
-
-            // remove from children list
-            children.erase(std::remove(children.begin(), children.end(), child), children.end());
-
-            // clear child's parent
-            if (child->HasComponent<RectTransform>())
-            {
-                RectTransform& childRT = child->GetComponent<RectTransform>();
-                childRT.parent = nullptr;
-            }
-        }
-
-        void RemoveAllChildren()
-        {
-            for (Entity* child : children)
-            {
-                if (child != nullptr && child->HasComponent<RectTransform>())
-                {
-                    RectTransform& childRT = child->GetComponent<RectTransform>();
-                    childRT.parent = nullptr;
-                }
-            }
-            
-            children.clear();
-        }
-
-        Vector2 static GetAnchor(const RectAnchor &_anchor, const float &_windowWidth, const float &_windowHeight)
-        {
-            switch (_anchor)
-            {
-            case RectAnchor::TOPLEFT:
-            {
-                return Vector2(0.0f, _windowHeight);
-            }
-            case RectAnchor::TOPCENTER:
-            {
-                return Vector2(_windowWidth / 2.0f, _windowHeight);
-            }
-            case RectAnchor::TOPRIGHT:
-            {
-                return Vector2(_windowWidth, _windowHeight);
-            }
-            case RectAnchor::CENTERLEFT:
-            {
-                return Vector2(0.0f, _windowHeight / 2.0f);
-            }
-            case RectAnchor::CENTER:
-            {
-                return Vector2(_windowWidth / 2.0f, _windowHeight / 2.0f);
-            }
-            case RectAnchor::CENTERRIGHT:
-            {
-                return Vector2(_windowWidth, _windowHeight / 2.0f);
-            }
-            case RectAnchor::BOTTOMLEFT:
-            {
-                return Vector2(0.0f, 0.0f);
-            }
-            case RectAnchor::BOTTOMCENTER:
-            {
-                return Vector2(_windowWidth / 2.0f, 0.0f);
-            }
-            case RectAnchor::BOTTOMRIGHT:
-            {
-                return Vector2(_windowWidth, 0.0f);
-            }
-            default:
-            {
-                return Vector2(0.0f);
-            }
-            }
-        }
-
+        static Vector2 GetAnchor(const RectAnchor& anchor, float width, float height);
     private:
+        bool IsWorldCanvasRoot() const;
         const Canvas* FindCanvas() const;
         float GetCanvasOverlayScaleFactor() const;
         Vector2 GetCanvasOverlayLogicalSize() const;
-        static Vector2 GetNormalizedAnchor(const RectAnchor &_anchor);
+        static Vector2 GetNormalizedAnchor(const RectAnchor& anchor);
     };
 
     struct Transform
@@ -461,6 +151,8 @@ namespace Canis
             Unparent();
             RemoveAllChildren();
         }
+
+        void BeforeRemove();
 
         bool active = true;
         // Runtime quality visibility never overwrites authored activation.
@@ -499,14 +191,7 @@ namespace Canis
             Canis::LookAt(*this, _target, _up);
         }
 
-        Matrix4 GetLocalMatrix() const
-        {
-            Matrix4 matrix = Matrix4(1.0f);
-            matrix = glm::translate(matrix, position);
-            matrix *= glm::mat4_cast(glm::normalize(rotation));
-            matrix = glm::scale(matrix, scale);
-            return useLocalMatrixPrefix ? localMatrixPrefix * matrix : matrix;
-        }
+        Matrix4 GetLocalMatrix() const;
 
         Matrix4 GetModelMatrix() const
         {
@@ -532,12 +217,7 @@ namespace Canis
         }
 
         // Convert world-space gameplay positions to the editable local offset.
-        void SetGlobalPosition(const Vector3 &worldPosition)
-        {
-            position = parent ? Vector3(glm::inverse(parent.GetComponent<Transform>().GetModelMatrix()) *
-                                        Vector4(worldPosition, 1))
-                              : worldPosition;
-        }
+        void SetGlobalPosition(const Vector3 &worldPosition);
 
         Quaternion GetGlobalRotation() const
         {
@@ -674,21 +354,9 @@ namespace Canis
                     index = std::clamp(index, static_cast<size_t>(0), list.size());
                     list.insert(list.begin() + index, self);
 
-                    const Vector3 parentWorldPosition = newParentTransform.GetGlobalPosition();
                     const Quaternion parentWorldRotation = newParentTransform.GetGlobalRotation();
                     const Vector3 parentWorldScale = newParentTransform.GetGlobalScale();
-
-                    Vector3 parentSpacePosition = oldWorldPosition - parentWorldPosition;
-                    const Matrix4 inverseParentRotation = glm::mat4_cast(glm::inverse(parentWorldRotation));
-                    Vector4 localPosition4 = inverseParentRotation * Vector4(
-                        parentSpacePosition.x,
-                        parentSpacePosition.y,
-                        parentSpacePosition.z,
-                        0.0f);
-
-                    position.x = (parentWorldScale.x != 0.0f) ? (localPosition4.x / parentWorldScale.x) : localPosition4.x;
-                    position.y = (parentWorldScale.y != 0.0f) ? (localPosition4.y / parentWorldScale.y) : localPosition4.y;
-                    position.z = (parentWorldScale.z != 0.0f) ? (localPosition4.z / parentWorldScale.z) : localPosition4.z;
+                    SetGlobalPosition(oldWorldPosition);
                     rotation = glm::normalize(glm::inverse(parentWorldRotation) * oldWorldRotation);
                     scale.x = (parentWorldScale.x != 0.0f) ? (oldWorldScale.x / parentWorldScale.x) : oldWorldScale.x;
                     scale.y = (parentWorldScale.y != 0.0f) ? (oldWorldScale.y / parentWorldScale.y) : oldWorldScale.y;
@@ -697,9 +365,16 @@ namespace Canis
                 }
             }
 
-            position = oldWorldPosition;
+            SetGlobalPosition(oldWorldPosition);
             rotation = oldWorldRotation;
             scale = oldWorldScale;
+            if (entity) if (auto* layout = entity->TryGetComponent<RectLayout>()) {
+                const Matrix4 placement = layout->GetPlacementMatrix();
+                for (int axis = 0; axis < 3; ++axis) {
+                    const float factor = glm::length(Vector3(placement[axis]));
+                    if (factor > 0) scale[axis] /= factor;
+                }
+            }
         }
 
         void SetParent(Entity* newParent)

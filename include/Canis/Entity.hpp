@@ -1,5 +1,6 @@
 #pragma once
 #include <vector>
+#include <functional>
 #include <algorithm>
 #include <stdexcept>
 
@@ -48,6 +49,15 @@ namespace Canis
         entt::registry& Registry() const;
         ScriptableEntity* InvokeScriptCreate(ScriptableEntity* script);
         Entity* CanonicalEntity() const;
+        void RequestComponentCreate(entt::id_type type, std::function<void()> callback);
+        void CancelComponentCreate(entt::id_type type);
+        template<class T> void CreateComponent()
+        {
+            if constexpr (requires(T& component) { component.Create(); })
+                RequestComponentCreate(entt::type_hash<T>::value(), [owner = *this]() mutable {
+                    if (auto* component = owner.TryGetComponent<T>()) component->Create();
+                });
+        }
         const std::vector<ScriptableEntity*>& ScriptInstances() const;
         void StoreScriptInstance(ScriptableEntity* script);
         entt::entity m_entityHandle = entt::null;
@@ -131,7 +141,9 @@ namespace Canis
 
             T& component = Registry().emplace<T>(m_entityHandle, std::forward<Args>(_args)...);
             if constexpr (requires { component.entity = this; }) component.entity = CanonicalEntity();
-            return &component;
+            if constexpr (requires { component.EnsureDependencies(); }) component.EnsureDependencies();
+            CreateComponent<T>();
+            return TryGetComponent<T>();
         }
 
         template <typename T, typename... Args>
@@ -142,9 +154,12 @@ namespace Canis
             if (m_entityHandle == entt::null || !Registry().valid(m_entityHandle))
                 throw std::runtime_error("Entity::AddOrReplaceComponent called on invalid entity.");
 
+            CancelComponentCreate(entt::type_hash<T>::value());
             T& component = Registry().emplace_or_replace<T>(m_entityHandle, std::forward<Args>(_args)...);
             if constexpr (requires { component.entity = this; }) component.entity = CanonicalEntity();
-            return component;
+            if constexpr (requires { component.EnsureDependencies(); }) component.EnsureDependencies();
+            CreateComponent<T>();
+            return GetComponent<T>();
         }
 
         template <typename T>
@@ -199,8 +214,12 @@ namespace Canis
             if (m_entityHandle == entt::null || !Registry().valid(m_entityHandle))
                 return;
 
-            if (HasComponent<T>())
+            if (HasComponent<T>()) {
+                CancelComponentCreate(entt::type_hash<T>::value());
+                if constexpr (requires(T& component) { component.BeforeRemove(); })
+                    GetComponent<T>().BeforeRemove();
                 Registry().remove<T>(m_entityHandle);
+            }
         }
 
         template <typename T>

@@ -21,7 +21,7 @@ namespace Canis
 {
     void SpriteRenderer2DSystem::DrawText(
         Entity* _entity,
-        RectTransform* _transform,
+        RectLayout* _transform,
         Text* _text,
         const Vector2& _position,
         const Vector2& _size,
@@ -559,7 +559,7 @@ namespace Canis
     {
         RenderMetrics::Scope timing("Sprites and UI");
         m_time += _deltaTime;
-        if (_registry.view<RectTransform>().empty()) return;
+        if (_registry.view<RectLayout>().empty()) return;
         
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
@@ -608,7 +608,7 @@ namespace Canis
             // first, then foregrounds, independently of the scene depth buffer.
             Begin(overlay ? GlyphSortType::BACK_TO_FRONT : glyphSortType);
 
-            auto renderView = _registry.view<RectTransform>();
+            auto renderView = _registry.view<RectLayout>();
             const std::vector<Entity*>& sceneEntities = scene->GetEntities();
             std::vector<bool> visited(sceneEntities.size(), false);
 
@@ -627,12 +627,18 @@ namespace Canis
 
             auto renderTree = [&](auto&& _self, Entity* _entity) -> void
             {
-                if (_entity == nullptr || !_entity->HasComponent<RectTransform>() || wasVisited(_entity))
+                if (_entity == nullptr || wasVisited(_entity))
                     return;
 
+                if (!_entity->HasComponent<RectLayout>()) {
+                    markVisited(_entity);
+                    if (auto* spatial = _entity->TryGetComponent<Transform>(); spatial && spatial->IsActiveInHierarchy())
+                        for (auto child : spatial->children) _self(_self, child.TryGet());
+                    return;
+                }
                 markVisited(_entity);
 
-                RectTransform &transform = _entity->GetComponent<RectTransform>();
+                RectLayout &transform = _entity->GetComponent<RectLayout>();
                 const bool screenCanvas = transform.GetCanvas() != nullptr &&
                                           transform.GetCanvasRenderMode() != CanvasRenderMode::WORLD_SPACE;
                 const bool shouldRender = transform.IsActiveInHierarchy() &&
@@ -643,41 +649,36 @@ namespace Canis
                 {
                     Sprite2D* sprite = _registry.try_get<Sprite2D>(_entity->GetHandle());
                     Text* text = _registry.try_get<Text>(_entity->GetHandle());
-                    const RectTransform::LayoutData layout = transform.GetLayout();
-                    const Vector2 position = layout.pivotPosition;
-                    const Vector2 size = layout.size;
-                    const Vector2 rectMin = layout.min;
-                    const Vector2 scale = transform.GetScale();
-                    const float depth = transform.GetDepth();
-                    const float rotation = transform.GetRotation();
-
-                    if (sprite != nullptr &&
-                        (_renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
-                         _renderMode == CanvasRenderMode::WORLD_SPACE ||
-                         (position.x > camPos.x - size.x - halfWidth  &&
-                          position.x < camPos.x + size.x + halfWidth  &&
-                          position.y > camPos.y - size.y - halfHeight &&
-                          position.y < camPos.y + size.y + halfHeight)))
+                    const auto resolved = transform.GetLayout();
+                    const Vector2 localSize = transform.GetLogicalSize();
+                    const unsigned int firstGlyph = glyphsCurrentIndex;
+                    if (sprite && (_renderMode != CanvasRenderMode::SCREEN_SPACE_CAMERA ||
+                        (resolved.pivotPosition.x > camPos.x - resolved.size.x - halfWidth &&
+                         resolved.pivotPosition.x < camPos.x + resolved.size.x + halfWidth &&
+                         resolved.pivotPosition.y > camPos.y - resolved.size.y - halfHeight &&
+                         resolved.pivotPosition.y < camPos.y + resolved.size.y + halfHeight)))
                     {
-                        const Vector2 pivotOffset(
-                            ((0.5f - transform.pivot.x) * size.x) + transform.originOffset.x,
-                            ((0.5f - transform.pivot.y) * size.y) + transform.originOffset.y);
-
-                        Draw(
-                            Vector4(position.x, position.y, size.x, size.y),
-                            sprite->uv,
-                            sprite->textureHandle.texture,
-                            depth,
-                            sprite->color,
-                            rotation,
-                            pivotOffset);
+                        Draw(Vector4(0, 0, localSize.x, localSize.y), sprite->uv,
+                             sprite->textureHandle.texture, 0, sprite->color, 0,
+                             (Vector2(.5f) - transform.pivot) * localSize + transform.originOffset);
+                    }
+                    if (text)
+                        DrawText(_entity, &transform, text, Vector2(0), localSize, -transform.pivot * localSize,
+                                 Vector2(1), 0, 0);
+                    // Sprites and glyphs share the exact Transform matrix used by
+                    // 3D components, including anchors, rotation and world canvases.
+                    const Matrix4 model = transform.Spatial().GetModelMatrix();
+                    for (unsigned int index = firstGlyph; index < glyphsCurrentIndex; ++index)
+                    {
+                        auto* glyph = glyphs[index];
+                        glyph->depth = model[3].z;
+                        for (auto* vertex : {&glyph->topLeft, &glyph->bottomLeft, &glyph->bottomRight, &glyph->topRight})
+                            vertex->position = Vector3(model * Vector4(vertex->position, 1));
                     }
 
-                    if (text != nullptr)
-                        DrawText(_entity, &transform, text, position, size, rectMin, scale, depth, rotation);
                 }
 
-                for (Entity* child : transform.children)
+                for (Entity* child : transform.Spatial().children)
                     _self(_self, child);
             };
 
@@ -686,55 +687,32 @@ namespace Canis
                 renderTree(renderTree, _entity);
             };
 
-            auto canvasView = _registry.view<Canvas, RectTransform>();
+            auto canvasView = _registry.view<Canvas, RectLayout>();
             for (const entt::entity entityHandle : canvasView)
             {
                 Canvas &canvas = canvasView.get<Canvas>(entityHandle);
-                RectTransform &transform = canvasView.get<RectTransform>(entityHandle);
+                RectLayout &transform = canvasView.get<RectLayout>(entityHandle);
                 Entity *entity = transform.entity;
                 if (entity == nullptr || wasVisited(entity))
                     continue;
 
-                if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
+                if (transform.GetParent() && transform.GetParent().HasComponent<RectLayout>() && transform.GetParent().GetComponent<RectLayout>().GetCanvas() == &canvas)
                     continue;
 
-                const unsigned int firstCanvasGlyph = glyphsCurrentIndex;
                 renderRootTree(entity);
 
-                if (_renderMode == CanvasRenderMode::WORLD_SPACE &&
-                    canvas.renderMode == CanvasRenderMode::WORLD_SPACE &&
-                    entity->HasComponent<Transform>())
-                {
-                    const Matrix4 model = entity->GetComponent<Transform>().GetModelMatrix();
-                    auto transformVertex = [&](SpriteVertex &_vertex)
-                    {
-                        const Vector4 world = model * Vector4(_vertex.position, 1.0f);
-                        _vertex.position = Vector3(world);
-                    };
-
-                    for (unsigned int glyphIndex = firstCanvasGlyph;
-                         glyphIndex < glyphsCurrentIndex;
-                         ++glyphIndex)
-                    {
-                        Glyph *glyph = glyphs[glyphIndex];
-                        transformVertex(glyph->topLeft);
-                        transformVertex(glyph->bottomLeft);
-                        transformVertex(glyph->bottomRight);
-                        transformVertex(glyph->topRight);
-                    }
-                }
             }
 
             if (_renderMode != CanvasRenderMode::WORLD_SPACE)
             {
                 for (const entt::entity entityHandle : renderView)
                 {
-                    RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                    RectLayout &transform = renderView.get<RectLayout>(entityHandle);
                     Entity *entity = transform.entity;
                     if (entity == nullptr || wasVisited(entity))
                         continue;
 
-                    if (transform.parent != nullptr && transform.parent->HasComponent<RectTransform>())
+                    if (transform.GetParent() && transform.GetParent().HasComponent<RectLayout>() && transform.GetParent().GetComponent<RectLayout>().GetCanvas() == transform.GetCanvas())
                         continue;
 
                     renderRootTree(entity);
@@ -742,7 +720,7 @@ namespace Canis
 
                 for (const entt::entity entityHandle : renderView)
                 {
-                    RectTransform &transform = renderView.get<RectTransform>(entityHandle);
+                    RectLayout &transform = renderView.get<RectLayout>(entityHandle);
                     Entity *entity = transform.entity;
                     if (entity == nullptr || wasVisited(entity))
                         continue;
