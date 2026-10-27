@@ -1,6 +1,7 @@
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/ComponentPicker.hpp>
 #include <Canis/EditorUI.hpp>
 #include <Canis/Profiler.hpp>
 #include "EditorHistoryEvent.hpp"
@@ -4187,26 +4188,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             SpotLight,
         };
 
-        struct AddComponentEntry
-        {
-            std::string componentName = "";
-            std::string displayName = "";
-        };
-
-        std::string GetAddComponentDisplayName(const std::string &_componentName)
-        {
-            if (_componentName == DirectionalLight::ScriptName)
-                return "3D/Directional Light";
-
-            if (_componentName == SpotLight::ScriptName)
-                return "3D/Spot Light";
-
-            if (_componentName == PointLight::ScriptName)
-                return "3D/Point Light";
-
-            return _componentName;
-        }
-
         struct RectTransformRenderBounds
         {
             Vector2 min = Vector2(0.0f);
@@ -5747,25 +5728,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             _material->info |= MATERIAL_FRONT_FACE_CULLING;
 
         ReadMaterialUniformsFromNode(_root, _material->materialFields);
-    }
-
-    std::vector<AddComponentEntry> BuildAddComponentEntries(App &_app, Entity &_entity)
-    {
-        std::vector<AddComponentEntry> entries = {};
-        for (ScriptConf &conf : _app.GetScriptRegistry())
-        {
-            if (conf.name == PrefabInstance::ScriptName)
-                continue;
-
-            if (conf.Has(_entity))
-                continue;
-
-            entries.push_back({
-                .componentName = conf.name,
-                .displayName = GetAddComponentDisplayName(conf.name),
-            });
-        }
-        return entries;
     }
 
     void Editor::Init(Window *_window)
@@ -15582,7 +15544,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_focusAddComponentSearch = false;
         }
 
-        std::vector<AddComponentEntry> componentEntries = BuildAddComponentEntries(*m_app, entity);
+        std::vector<ComponentPickerEntry> componentEntries = BuildComponentPickerEntries(*m_app, entity);
         const bool hasAvailableComponents = !componentEntries.empty();
 
         if (!hasAvailableComponents)
@@ -15599,6 +15561,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_addComponentSearch.clear();
             m_focusAddComponentSearch = true;
             ImGui::OpenPopup("Add Component");
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const auto* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const auto& asset = *static_cast<const AssetDragData*>(payload->Data);
+                if (Scripting::AddManagedComponentsFromAsset(entity, asset.path)) NotifySceneChanged();
+            }
+            ImGui::EndDragDropTarget();
         }
 
         ImGuiViewport *viewport = ImGui::GetMainViewport();
@@ -15618,21 +15590,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (_filteredIndices.empty())
                     return false;
 
-                const std::string componentName = componentEntries[_filteredIndices[m_addComponentSelection]].componentName;
-                for (ScriptConf &conf : m_app->GetScriptRegistry())
-                {
-                    if (conf.name == componentName)
-                    {
-                        conf.Add(entity);
-                        NotifySceneChanged();
-                        ImGui::CloseCurrentPopup();
-                        m_addComponentSelection = 0;
-                        m_addComponentSearch.clear();
-                        return true;
-                    }
-                }
-
-                return false;
+                const auto entry = componentEntries[_filteredIndices[m_addComponentSelection]];
+                if (!AddPickedComponent(*m_app, entity, entry)) return false;
+                NotifySceneChanged();
+                ImGui::CloseCurrentPopup();
+                m_addComponentSelection = 0;
+                m_addComponentSearch.clear();
+                return true;
             };
 
             auto cancelAddComponent = [&]() -> void
@@ -15642,7 +15606,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::CloseCurrentPopup();
             };
 
-            auto matchesSearch = [&](const AddComponentEntry &_entry) -> bool
+            auto matchesSearch = [&](const ComponentPickerEntry &_entry) -> bool
             {
                 if (m_addComponentSearch.empty())
                     return true;
@@ -15688,8 +15652,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     const int componentIndex = filteredIndices[filteredIndex];
                     const bool selected = (filteredIndex == m_addComponentSelection);
-                    const AddComponentEntry &entry = componentEntries[componentIndex];
+                    const ComponentPickerEntry &entry = componentEntries[componentIndex];
 
+                    const auto entryID = std::string(entry.managed ? "managed:" : "native:") + entry.componentName;
+                    ImGui::PushID(entryID.c_str());
                     if (ImGui::Selectable(entry.displayName.c_str(), selected))
                         m_addComponentSelection = filteredIndex;
 
@@ -15698,6 +15664,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                         addSelectedComponent(filteredIndices);
+                    ImGui::PopID();
                 }
                 ImGui::EndChild();
             }

@@ -9,6 +9,7 @@ file(GLOB_RECURSE CANIS_SOURCES src/*.c*)
 file(GLOB_RECURSE CANIS_HEADERS include/Canis/*.h*)
 
 list(APPEND CANIS_SOURCES
+    "${CMAKE_CURRENT_SOURCE_DIR}/src/ComponentPicker.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/Signal.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/SignalEditor.cpp"
     "${CMAKE_CURRENT_SOURCE_DIR}/src/LOD.cpp"
@@ -327,6 +328,9 @@ if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisSpatialAudioTests tests/SpatialAudioTests.cpp)
     target_link_libraries(CanisSpatialAudioTests PRIVATE CanisEngine)
     add_test(NAME CanisSpatialAudioTests COMMAND CanisSpatialAudioTests)
+    add_executable(CanisComponentPickerTests tests/ComponentPickerTests.cpp)
+    target_link_libraries(CanisComponentPickerTests PRIVATE CanisEngine)
+    add_test(NAME CanisComponentPickerTests COMMAND CanisComponentPickerTests)
     add_executable(CanisNativeBindingsTests tests/NativeBindingsTests.cpp)
     target_link_libraries(CanisNativeBindingsTests PRIVATE CanisEngine)
     add_test(NAME CanisNativeBindingsTests COMMAND CanisNativeBindingsTests)

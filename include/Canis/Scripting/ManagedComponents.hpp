@@ -22,6 +22,14 @@ struct ManagedComponents {
     static constexpr bool in_place_delete = true;
     std::vector<std::unique_ptr<ManagedAttachment>> items;
 };
+struct ManagedComponentOption {
+    std::string type;
+    std::string name;
+    std::string source;
+};
+std::vector<ManagedComponentOption> GetAvailableManagedComponents(Entity& entity);
+bool AddManagedComponent(Entity& entity, const std::string& type);
+bool AddManagedComponentsFromAsset(Entity& entity, const std::string& path);
 struct ManagedUIActionOption {
     std::string script; // CSharp:<stable script identity>
     std::string name;

@@ -8,6 +8,8 @@
 #include <Canis/Debug.hpp>
 #include <cctype>
 #include <charconv>
+#include <algorithm>
+#include <filesystem>
 #if CANIS_EDITOR
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -69,6 +71,50 @@ ManagedAttachment& Add(Entity& entity, const std::string& type) {
     auto a=std::make_unique<ManagedAttachment>();a->type=type;a->token=NextManagedToken();
     data.items.push_back(std::move(a));return *data.items.back();
 }
+}
+std::vector<ManagedComponentOption> GetAvailableManagedComponents(Entity& entity) {
+    std::vector<ManagedComponentOption> result;
+    if (!entity.IsValid()) return result;
+    const auto* attached = entity.TryGetComponent<ManagedComponents>();
+    for (const auto& description : manifest) {
+        const auto id = description.value("id", "");
+        if (id.empty()) continue;
+        const bool exists = attached && std::any_of(attached->items.begin(), attached->items.end(), [&](const auto& item) {
+            return Canonical(item->type) == id;
+        });
+        if (!exists) result.push_back({id, description.value("name", id), description.value("source", "")});
+    }
+    std::sort(result.begin(), result.end(), [](const auto& a, const auto& b) {
+        return a.name == b.name ? a.type < b.type : a.name < b.name;
+    });
+    return result;
+}
+bool AddManagedComponent(Entity& entity, const std::string& type) {
+    if (!entity.IsValid()) return false;
+    const auto id = Canonical(type);
+    const auto options = GetAvailableManagedComponents(entity);
+    if (std::none_of(options.begin(), options.end(), [&](const auto& option) { return option.type == id; })) return false;
+    for (const auto& description : manifest) {
+        if (description.value("id", "") != id) continue;
+        ManagedJson defaults = ManagedJson::object();
+        for (const auto& field : description.value("fields", ManagedJson::array()))
+            defaults[field.at("name").get<std::string>()] = field.at("default");
+        auto& attachment = Add(entity, id);
+        attachment.fields = std::move(defaults);
+        return true;
+    }
+    return false;
+}
+bool AddManagedComponentsFromAsset(Entity& entity, const std::string& path) {
+    if (path.empty()) return false;
+    const auto dropped = std::filesystem::absolute(path).lexically_normal();
+    const auto options = GetAvailableManagedComponents(entity);
+    bool added = false;
+    for (const auto& option : options) {
+        if (option.source.empty() || std::filesystem::absolute(option.source).lexically_normal() != dropped) continue;
+        added = AddManagedComponent(entity, option.type) || added;
+    }
+    return added;
 }
 std::vector<ManagedUIActionOption> GetManagedUIActionOptions(Entity& entity) {
     std::vector<ManagedUIActionOption> result;
@@ -368,28 +414,6 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
             }
             ImGui::PopID();++i;
         }
-    }
-    ImGui::Button("Drop C# script to attach");
-    if(ImGui::BeginDragDropTarget()) {
-        if(auto* payload=ImGui::AcceptDragDropPayload("ASSET_DRAG")) {
-            auto& data=*static_cast<const AssetDragData*>(payload->Data);
-            const auto dropped=std::filesystem::path(data.path).lexically_normal();
-            for(auto& d:manifest) {
-                const auto source=std::filesystem::path(d.value("source","")).lexically_normal();
-                if(source.empty() || std::filesystem::absolute(source)!=std::filesystem::absolute(dropped))continue;
-                auto id=d["id"].get<std::string>();bool exists=false;if(auto* components=entity.TryGetComponent<ManagedComponents>())for(auto& a:components->items)if(Canonical(a->type)==Canonical(id))exists=true;
-                if(!exists){editor.NotifySceneChanged();auto& a=Add(entity,id);for(auto& f:d["fields"])a.fields[f["name"].get<std::string>()]=f["default"];}
-            }
-        }
-        ImGui::EndDragDropTarget();
-    }
-    ImGui::TextUnformatted("Add C# Component");
-    ImGui::SetNextItemWidth(-1);
-    if(ImGui::BeginCombo("##AddManagedComponent","Choose script")) {
-        for(auto& d:manifest) {auto id=d["id"].get<std::string>();bool exists=false;if(auto* data=entity.TryGetComponent<ManagedComponents>())for(auto& a:data->items)if(Canonical(a->type)==Canonical(id))exists=true;
-            if(!exists && ImGui::Selectable(d["name"].get<std::string>().c_str())) {editor.NotifySceneChanged();auto& a=Add(entity,id);for(auto& f:d["fields"])a.fields[f["name"].get<std::string>()]=f["default"];}
-        }
-        ImGui::EndCombo();
     }
 #endif
 }
