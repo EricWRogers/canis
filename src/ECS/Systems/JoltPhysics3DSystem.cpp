@@ -1849,9 +1849,11 @@ namespace Canis
                 const JPH::EMotionType motionType = ToMotionType(rigidbody->motionType);
                 if(motionType!=JPH::EMotionType::Static)movingBodies.push_back(entityHandle);
 
-                const bool transformEdited = !runtimeData.hasSyncedTransform
-                    || !NearlyEqual(transform->position, runtimeData.syncedLocalPosition)
+                const bool positionEdited = !runtimeData.hasSyncedTransform
+                    || !NearlyEqual(transform->position, runtimeData.syncedLocalPosition);
+                const bool rotationEdited = !runtimeData.hasSyncedTransform
                     || !NearlyEqual(transform->rotation, runtimeData.syncedLocalRotation);
+                const bool transformEdited = positionEdited || rotationEdited;
 
                 // Kinematic bodies are advanced by MoveKinematic. Reapplying the
                 // interpolated Transform every pre-step resets that motion before
@@ -1870,18 +1872,32 @@ namespace Canis
                     const JPH::EActivation activation = (motionType == JPH::EMotionType::Static)
                         ? JPH::EActivation::DontActivate
                         : JPH::EActivation::Activate;
-                    bodyInterface->SetPositionAndRotation(
-                        runtimeData.bodyID,
-                        ToJoltPosition(world.position),
-                        ToJoltRotation(world.rotation),
-                        activation);
+                    const bool rotatedInPlace = motionType == JPH::EMotionType::Dynamic &&
+                        rotationEdited && !positionEdited && runtimeData.hasPhysicsPose &&
+                        runtimeData.syncedParentRevision == world.parentRevision;
+                    if (rotatedInPlace)
+                    {
+                        // Transform.position is an interpolated render pose, behind
+                        // Jolt's simulated position. Aiming must not teleport the
+                        // body backwards or discard its position history each frame.
+                        bodyInterface->SetRotation(runtimeData.bodyID,
+                            ToJoltRotation(world.rotation), activation);
+                    }
+                    else
+                    {
+                        bodyInterface->SetPositionAndRotation(
+                            runtimeData.bodyID,
+                            ToJoltPosition(world.position),
+                            ToJoltRotation(world.rotation),
+                            activation);
+                        runtimeData.previousWorldPosition = world.position;
+                        runtimeData.currentWorldPosition = world.position;
+                    }
 
                     runtimeData.syncedLocalPosition = transform->position;
                     runtimeData.syncedLocalRotation = transform->rotation;
                     runtimeData.hasSyncedTransform = true;
-                    runtimeData.previousWorldPosition = world.position;
                     runtimeData.previousWorldRotation = world.rotation;
-                    runtimeData.currentWorldPosition = runtimeData.previousWorldPosition;
                     runtimeData.currentWorldRotation = runtimeData.previousWorldRotation;
                     runtimeData.hasPhysicsPose = true;
                     runtimeData.syncedWorldRevision = world.revision;

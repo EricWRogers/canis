@@ -3332,6 +3332,7 @@ namespace Canis
                     comp["scaleMode"] = canvas.scaleMode;
                     comp["screenSize"] = canvas.screenSize;
                     comp["receivesEvents"] = canvas.receivesEvents;
+                    comp["depthTest"] = canvas.depthTest;
                     comp["navigationEnabled"] = canvas.navigationEnabled;
                     comp["navigateAction"] = canvas.navigateAction;
                     comp["confirmAction"] = canvas.confirmAction;
@@ -3349,6 +3350,7 @@ namespace Canis
                     canvas.scaleMode = canvasNode["scaleMode"].as<unsigned int>(CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH);
                     canvas.screenSize = canvasNode["screenSize"].as<Vector2>(defaultScreenSize);
                     canvas.receivesEvents = canvasNode["receivesEvents"].as<bool>(true);
+                    canvas.depthTest = canvasNode["depthTest"].as<bool>(true);
                     canvas.navigationEnabled = canvasNode["navigationEnabled"].as<bool>(true);
                     canvas.navigateAction = canvasNode["navigateAction"].as<unsigned int>(0);
                     canvas.confirmAction = canvasNode["confirmAction"].as<unsigned int>(0);
@@ -3385,6 +3387,7 @@ namespace Canis
                     }
                     else if (canvas->renderMode == CanvasRenderMode::WORLD_SPACE)
                     {
+                        DrawInspectorField(_editor, "depthTest", _conf.name.c_str(), canvas->depthTest);
                         DrawInspectorField(_editor, "receivesEvents", _conf.name.c_str(), canvas->receivesEvents);
                         DrawInspectorField(_editor, "interactionDistance", _conf.name.c_str(), canvas->interactionDistance);
                         canvas->interactionDistance = std::max(0.0f, canvas->interactionDistance);
@@ -3713,27 +3716,34 @@ namespace Canis
                         text->_status |= BIT::ONE;
                     }
 
-                    if (text->assetId > -1)
-                    {
-                        TextAsset* textAsset = AssetManager::GetText(text->assetId);
-                        MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
-                        DrawInspectorAssetButton(_editor, "font", "textFont",
-                            fontMeta != nullptr ? fontMeta->name : "Missing Font",
-                            textAsset != nullptr ? textAsset->GetPath() : "");
+                    TextAsset* textAsset = AssetManager::GetText(text->assetId);
+                    MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
+                    DrawInspectorAssetButton(_editor, "font", "textFont",
+                        fontMeta != nullptr ? fontMeta->name : "Missing Font",
+                        textAsset != nullptr ? textAsset->GetPath() : "");
 
-                        if (ImGui::BeginDragDropTarget())
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
                         {
-                            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                            const AssetDragData dropped = *static_cast<const AssetDragData*>(payload->Data);
+                            const std::string path = AssetManager::GetPath(dropped.uuid);
+                            const std::string extension = ToLower(std::filesystem::path(path).extension().string());
+                            if (extension == ".ttf" || extension == ".otf")
                             {
-                                const AssetDragData dropped = *static_cast<const AssetDragData*>(payload->Data);
-                                std::string path = AssetManager::GetPath(dropped.uuid);
-                                const unsigned int fontSize = (textAsset == nullptr) ? 32u : textAsset->GetFontSize();
-                                text->assetId = AssetManager::LoadText(path, fontSize);
-                                text->_status |= BIT::ONE;
+                                const unsigned int fontSize = textAsset != nullptr ? textAsset->GetFontSize() : 32u;
+                                const int fontId = AssetManager::LoadText(path, fontSize);
+                                if (fontId >= 0)
+                                {
+                                    text->assetId = fontId;
+                                    text->_status |= BIT::ONE;
+                                }
                             }
-                            ImGui::EndDragDropTarget();
                         }
+                        ImGui::EndDragDropTarget();
                     }
+                    if (textAsset == nullptr)
+                        ImGui::TextWrapped("No font assigned. Drag a .ttf or .otf font into the font field.");
                 }
             },
         };
@@ -3778,15 +3788,15 @@ namespace Canis
                     UIButton& button = *_entity.AddComponent<UIButton>();
                     button.active = comp["active"].as<bool>(true);
                     button.defaultSelected = comp["defaultSelected"].as<bool>(false);
-                    if (comp["hitRect"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["hitRect"])
                         _entity.scene.GetEntityAfterLoad(comp["hitRect"].as<Canis::UUID>(0), button.hitRect);
-                    if (comp["up"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["up"])
                         _entity.scene.GetEntityAfterLoad(comp["up"].as<Canis::UUID>(0), button.up);
-                    if (comp["down"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["down"])
                         _entity.scene.GetEntityAfterLoad(comp["down"].as<Canis::UUID>(0), button.down);
-                    if (comp["left"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["left"])
                         _entity.scene.GetEntityAfterLoad(comp["left"].as<Canis::UUID>(0), button.left);
-                    if (comp["right"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["right"])
                         _entity.scene.GetEntityAfterLoad(comp["right"].as<Canis::UUID>(0), button.right);
                     button.targetScript = comp["targetScript"].as<std::string>("");
                     button.actionName = comp["actionName"].as<std::string>("");
@@ -3795,7 +3805,7 @@ namespace Canis
                     button.hoverScale = comp["hoverScale"].as<float>(1.03f);
                     button.pressedScale = comp["pressedScale"].as<float>(0.98f);
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), button.targetEntity);
 
 
@@ -3881,10 +3891,10 @@ namespace Canis
                     inputField.textColor = comp["textColor"].as<Vector4>(Color(1.0f));
                     inputField.placeholderColor = comp["placeholderColor"].as<Vector4>(Color(0.7f, 0.7f, 0.7f, 1.0f));
 
-                    if (comp["displayEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["displayEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["displayEntity"].as<Canis::UUID>(0), inputField.displayEntity);
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), inputField.targetEntity);
 
 
@@ -3996,7 +4006,7 @@ namespace Canis
                     dropTarget.baseColor = comp["baseColor"].as<Vector4>(Color(1.0f));
                     dropTarget.hoverColor = comp["hoverColor"].as<Vector4>(Color(1.0f));
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), dropTarget.targetEntity);
 
 

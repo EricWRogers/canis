@@ -11,9 +11,10 @@ namespace Canis::ScriptEditing
         std::vector<std::string> notes;
         int properties = 0;
         int methods = 0;
+        int actions = 0;
     };
 
     // Conservatively synchronizes a Canis template header and its paired source.
     // No file I/O; callers retain ownership of unsaved buffers and conflict checks.
-    SyncResult SynchronizeHeader(const std::string& header, const std::string& source);
+    SyncResult SynchronizeHeader(const std::string& header, const std::string& source, bool generateMethodStubs = true);
 }

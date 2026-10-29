@@ -14,6 +14,8 @@
 #include <utility>
 #include <cmath>
 #include <vector>
+#include <array>
+#include <tuple>
 
 #include <imgui.h>
 #include <imgui_stdlib.h>
@@ -576,6 +578,85 @@ inline void DrawRegisteredProperties(Editor &_editor, const PropertyRegistry &_r
     (void)_component;
     (void)_idSuffix;
 #endif
+}
+
+namespace Canis::SignalActionDetail
+{
+    template<class Value> Value ReadArgument(const YAML::Node& node, Scene& scene)
+    {
+        Value value{};
+        if (!node || node.IsNull()) return value;
+        if constexpr (std::is_base_of_v<SignalBase, Value>) {
+            if (!DecodeSignal(node, scene, value)) throw std::invalid_argument("Invalid callback signal");
+        }
+        else value = node.as<Value>();
+        return value;
+    }
+    template<class Value> YAML::Node WriteArgument(const Value& value)
+    {
+        if constexpr (std::is_base_of_v<SignalBase, Value>) return EncodeSignal(value);
+        else return YAML::Node(value);
+    }
+    template<class Tuple, size_t... I>
+    Tuple ReadArguments(const YAML::Node& node, Scene& scene,
+                        const std::array<std::string, sizeof...(I)>& names, std::index_sequence<I...>)
+    {
+        if (node && !node.IsNull() && !node.IsMap()) throw std::invalid_argument("Expected method arguments map");
+        return Tuple{ReadArgument<std::tuple_element_t<I, Tuple>>(node && node.IsMap() ? node[names[I]] : YAML::Node{}, scene)...};
+    }
+    template<class Tuple, size_t... I>
+    YAML::Node WriteArguments(const Tuple& values, const std::array<std::string, sizeof...(I)>& names, std::index_sequence<I...>)
+    {
+        YAML::Node node(YAML::NodeType::Map);
+        ((node[names[I]] = WriteArgument(std::get<I>(values))), ...);
+        return node;
+    }
+    template<class Value> void DrawArgument(Editor* editor, const char* name, Value& value)
+    {
+        if constexpr (std::is_base_of_v<SignalBase, Value>) DrawSignalInspector(editor, name, nullptr, value);
+        else DrawInspectorField(editor, name, nullptr, value);
+    }
+    template<class Tuple, size_t... I>
+    void DrawArguments(Editor* editor, Tuple& values, const std::array<std::string, sizeof...(I)>& names, std::index_sequence<I...>)
+    {
+        (DrawArgument(editor, names[I].c_str(), std::get<I>(values)), ...);
+    }
+}
+
+// Multiple-argument actions expose named, serialized settings in the Signal
+// inspector. Their callback Signals use the same listener editor and remapping.
+template<class Component, class... Arguments> requires(sizeof...(Arguments) > 1)
+inline void RegisterSignalAction(ScriptConf& conf, const std::string& name,
+                                void(Component::*method)(Arguments...),
+                                std::array<std::string, sizeof...(Arguments)> names)
+{
+    using Values = std::tuple<std::remove_cvref_t<Arguments>...>;
+    static_assert(((!std::is_reference_v<Arguments> || std::is_const_v<std::remove_reference_t<Arguments>>) && ...),
+                  "Signal actions take values or const references");
+    constexpr auto indices = std::index_sequence_for<Arguments...>{};
+    SignalAction action;
+    action.argumentType = typeid(Values);
+    action.argumentName = "parameters";
+    action.defaultArguments = Canis::SignalActionDetail::WriteArguments(Values{}, names, indices);
+    action.prepareArguments = [names](Scene& scene, YAML::Node& node) {
+        try {
+            auto values = Canis::SignalActionDetail::ReadArguments<Values>(node, scene, names, std::index_sequence_for<Arguments...>{});
+            node = Canis::SignalActionDetail::WriteArguments(values, names, std::index_sequence_for<Arguments...>{});
+            return true;
+        } catch (const YAML::Exception&) { return false; }
+          catch (const std::invalid_argument&) { return false; }
+    };
+    action.invokeConfigured = [names, method](void* component, Scene& scene, const YAML::Node& node) {
+        if (!component) return;
+        auto values = Canis::SignalActionDetail::ReadArguments<Values>(node, scene, names, std::index_sequence_for<Arguments...>{});
+        std::apply([&](auto&&... args) { (static_cast<Component*>(component)->*method)(std::forward<decltype(args)>(args)...); }, std::move(values));
+    };
+    action.drawArguments = [names](Editor* editor, Scene& scene, YAML::Node& node) {
+        auto values = Canis::SignalActionDetail::ReadArguments<Values>(node, scene, names, std::index_sequence_for<Arguments...>{});
+        Canis::SignalActionDetail::DrawArguments(editor, values, names, std::index_sequence_for<Arguments...>{});
+        node = Canis::SignalActionDetail::WriteArguments(values, names, std::index_sequence_for<Arguments...>{});
+    };
+    conf.signalActions[name] = std::move(action);
 }
 
 #define DEFAULT_ADD_AND_REQUIRED(type, ...)                               \

@@ -600,13 +600,15 @@ namespace Canis
         else
             camPos = Vector2(0.0f);
 
-        auto renderPass = [&](unsigned int _renderMode, const Matrix4* _projectionOverride, bool _useCameraProjection) -> void
+        auto renderPass = [&](unsigned int _renderMode, const Matrix4* _projectionOverride,
+                              bool _useCameraProjection, bool _depthTest = true) -> void
         {
             const bool overlay = _renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY ||
                                  (_screenOnly && _renderMode == CanvasRenderMode::SCREEN_SPACE_CAMERA);
+            const bool ignoreDepth = overlay || !_depthTest;
             // Positive UI depth is closer to the viewer. Paint distant layers
             // first, then foregrounds, independently of the scene depth buffer.
-            Begin(overlay ? GlyphSortType::BACK_TO_FRONT : glyphSortType);
+            Begin(ignoreDepth ? GlyphSortType::BACK_TO_FRONT : glyphSortType);
 
             auto renderView = _registry.view<RectLayout>();
             const std::vector<Entity*>& sceneEntities = scene->GetEntities();
@@ -641,8 +643,12 @@ namespace Canis
                 RectLayout &transform = _entity->GetComponent<RectLayout>();
                 const bool screenCanvas = transform.GetCanvas() != nullptr &&
                                           transform.GetCanvasRenderMode() != CanvasRenderMode::WORLD_SPACE;
+                const auto* canvas = transform.GetCanvas();
+                const bool matchingDepth = _renderMode != CanvasRenderMode::WORLD_SPACE ||
+                    !canvas || canvas->depthTest == _depthTest;
                 const bool shouldRender = transform.IsActiveInHierarchy() &&
                     transform.GetCanvasRenderMode() == _renderMode &&
+                    matchingDepth &&
                     (!_worldOnly || !screenCanvas) && (!_screenOnly || screenCanvas);
 
                 if (shouldRender)
@@ -732,14 +738,14 @@ namespace Canis
             End();
             GLboolean previousDepthMask = GL_TRUE;
             const bool previousDepthTest = glIsEnabled(GL_DEPTH_TEST);
-            if (overlay)
+            if (ignoreDepth)
             {
                 glGetBooleanv(GL_DEPTH_WRITEMASK, &previousDepthMask);
                 glDisable(GL_DEPTH_TEST);
                 glDepthMask(GL_FALSE);
             }
             SpriteRenderBatch(_useCameraProjection, _projectionOverride);
-            if (overlay)
+            if (ignoreDepth)
             {
                 glDepthMask(previousDepthMask);
                 if (previousDepthTest) glEnable(GL_DEPTH_TEST);
@@ -787,7 +793,17 @@ namespace Canis
             }
 
             if (hasWorldProjection)
+            {
                 renderPass(Canis::CanvasRenderMode::WORLD_SPACE, &worldProjection, false);
+                bool hasWorldOverlay = false;
+                for (auto handle : _registry.view<Canvas>())
+                {
+                    const auto& canvas = _registry.get<Canvas>(handle);
+                    hasWorldOverlay |= canvas.active && canvas.renderMode == CanvasRenderMode::WORLD_SPACE && !canvas.depthTest;
+                }
+                if (hasWorldOverlay)
+                    renderPass(Canis::CanvasRenderMode::WORLD_SPACE, &worldProjection, false, false);
+            }
         }
 
         // World-space UI uses scene depth; overlays paint afterward without touching it.

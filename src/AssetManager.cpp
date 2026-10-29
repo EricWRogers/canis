@@ -731,11 +731,15 @@ namespace Canis
                 return it->second;
             }
 
-            Asset *text = new TextAsset(_fontSize);
-            text->Load(_path);
+            auto text = std::make_unique<TextAsset>(_fontSize);
+            if (!text->Load(_path))
+            {
+                text->Free();
+                return -1;
+            }
             int id = assetLibrary.nextId;
 
-            assetLibrary.assets[id] = text;
+            assetLibrary.assets[id] = text.release();
             assetLibrary.assetPath[key] = id;
             assetLibrary.nextId++;
 

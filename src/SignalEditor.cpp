@@ -28,7 +28,7 @@ namespace Canis
                 if (listener.target != previousTarget) changed();
                 // Keep authored names when a target changes: compatible methods
                 // remain selected; missing ones are shown instead of discarded.
-                struct Option { std::string label, script, method; SignalArgumentMode mode; SignalConstant constant; };
+                struct Option { std::string label, script, method; SignalArgumentMode mode; SignalConstant constant; YAML::Node defaults; };
                 std::vector<Option> options;
                 if (listener.target && listener.target.scene.app)
                     for (auto& conf : listener.target.scene.app->GetScriptRegistry())
@@ -39,7 +39,9 @@ namespace Canis
                         for (const auto& [name, action] : conf.signalActions)
                         {
                             const auto display = shortName(conf.name) + " / " + name;
-                            if (action.argumentType == typeid(void) || action.argumentType == signal.ArgumentType())
+                            if (action.invokeConfigured)
+                                options.push_back({display + " (parameters)", conf.name, name, SignalArgumentMode::Configured, {}, action.defaultArguments});
+                            if (action.invoke && (action.argumentType == typeid(void) || action.argumentType == signal.ArgumentType()))
                                 options.push_back({display + (action.argumentType == typeid(void) ? " ()" : " (event value)"),
                                     conf.name, name, SignalArgumentMode::Dynamic, {}});
                             SignalConstant constant;
@@ -54,7 +56,7 @@ namespace Canis
                     }
                 std::sort(options.begin(), options.end(), [](const auto& a, const auto& b) { return a.label < b.label; });
                 auto preview = listener.method.empty() ? "Choose a method..." : shortName(listener.script) + " / " + listener.method +
-                    (listener.argumentMode == SignalArgumentMode::Constant ? " (constant)" : " (event)");
+                    (listener.argumentMode == SignalArgumentMode::Configured ? " (parameters)" : listener.argumentMode == SignalArgumentMode::Constant ? " (constant)" : " (event)");
                 for (const auto& option : options)
                     if (option.script == listener.script && option.method == listener.method && option.mode == listener.argumentMode)
                         preview = option.label;
@@ -70,6 +72,9 @@ namespace Canis
                         const bool selected = option.script == listener.script && option.method == listener.method && option.mode == listener.argumentMode;
                         if (ImGui::Selectable(option.label.c_str(), selected))
                         {
+                            const bool sameMethod = listener.script == option.script && listener.method == option.method && listener.argumentMode == option.mode;
+                            if (option.mode == SignalArgumentMode::Configured && (!sameMethod || !listener.arguments.IsMap()))
+                                listener.arguments = YAML::Clone(option.defaults);
                             listener.script = option.script;
                             listener.method = option.method;
                             listener.argumentMode = option.mode;
@@ -93,6 +98,20 @@ namespace Canis
                             if (ImGui::IsItemEdited()) changed();
                         }
                     }, listener.constant);
+                if (listener.argumentMode == SignalArgumentMode::Configured && listener.target && listener.target.scene.app)
+                    if (auto* conf = listener.target.scene.app->GetScriptConf(listener.script))
+                        if (auto entry = conf->signalActions.find(listener.method); entry != conf->signalActions.end()) {
+                            const auto action = entry->second;
+                            auto arguments = YAML::Clone(listener.arguments);
+                            if (action.prepareArguments && action.prepareArguments(listener.target.scene, arguments) && action.drawArguments) {
+                                const auto before = YAML::Dump(arguments);
+                                action.drawArguments(editor, listener.target.scene, arguments);
+                                if (YAML::Dump(arguments) != before) {
+                                    listener.arguments = arguments;
+                                    changed();
+                                }
+                            }
+                        }
                 if (!listener.method.empty() && !signal.IsListenerValid(listener))
                     ImGui::TextColored(ImVec4(1, .65f, .25f, 1), "Missing target, method, or incompatible argument.");
                 if (ImGui::Button("Remove listener"))

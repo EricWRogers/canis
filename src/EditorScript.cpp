@@ -443,7 +443,7 @@ namespace Canis
                     sourceIt->text = sync.source;
                     savePaths.insert(sourcePath.string());
                     summary += " Synced " + sourcePath.filename().string() + ": " + std::to_string(sync.properties) +
-                        " auto properties, " + std::to_string(sync.methods) + " new methods.";
+                        " exported fields, " + std::to_string(sync.actions) + " Signal actions, " + std::to_string(sync.methods) + " new methods.";
                 }
                 for (const auto& note : sync.notes) summary += " " + note;
             }
@@ -653,7 +653,7 @@ namespace Canis
         {
             ImGui::PushTextWrapPos(ImGui::GetCursorPosX() + 560);
             ImGui::TextUnformatted("Create: initialize state. Ready: scene is ready. Update(float _dt): advance using seconds. Destroy: release resources.");
-            ImGui::TextUnformatted("Sync headers on save registers supported public fields and creates missing public/private method definitions. Existing implementations are preserved; non-void stubs throw until implemented.");
+            ImGui::TextUnformatted("CANIS_EDITOR_EXPORT registers supported fields and Signal methods, including private members. Unmarked public fields stay hidden. Header sync can create missing method definitions; existing implementations are preserved.");
             ImGui::TextUnformatted("Save + Build / Reload, then Play to test. Stop Play mode before rebuilding. Ctrl+Space completes words; compiler diagnostics appear in Build Output.");
             ImGui::PopTextWrapPos();
             ImGui::EndPopup();

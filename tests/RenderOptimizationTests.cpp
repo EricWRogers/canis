@@ -1025,7 +1025,7 @@ static void OverlayDepthIsolation(Window& window) {
     sprite("Menu background",canvas,{60,60},{-80,0},.1f,{1,0,0,1});
     sprite("Menu foreground",canvas,{20,20},{-80,0},.2f,{0,1,0,1});
     auto world=scene.CreateEntity("World canvas");world.AddComponent<Transform>()->position={.08f,0,-.3f};
-    world.AddComponent<RectLayout>()->Spatial().position.z=0;world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
+    world.AddComponent<RectLayout>();world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
     sprite("World label behind wall",world,{.04f,.04f},{0,0},0,{0,0,1,1});
     MeshRenderer3DSystem meshes;meshes.scene=&scene;meshes.window=&window;meshes.Create();
     SpriteRenderer2DSystem ui;ui.scene=&scene;ui.window=&window;ui.Create();
@@ -1047,6 +1047,22 @@ static void OverlayDepthIsolation(Window& window) {
             Check(!(pixel[2]>240 && pixel[0]<10 && pixel[1]<10),"World-space UI lost occlusion behind scene geometry");
         }
     }
+    scene.ClearEditorCameraOverrides();
+    world.GetComponent<Canvas>().depthTest=false;
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);meshes.Update(scene.GetRegistry(),1.f/60);
+    const auto clip=scene.GetLastRenderProjection()*scene.GetLastRenderView()*
+        Vector4(world.GetComponent<Transform>().GetGlobalPosition(),1);
+    const int sampleX=int((clip.x/clip.w*.5f+.5f)*320);
+    float beforeSprite=0,afterSprite=0;
+    glReadPixels(sampleX,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&beforeSprite);
+    ui.Update(scene.GetRegistry(),1.f/60);
+    std::array<unsigned char,4> spritePixel{};
+    glReadPixels(sampleX,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,spritePixel.data());
+    glReadPixels(sampleX,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&afterSprite);
+    Check(spritePixel[2]>240 && spritePixel[0]<10 && spritePixel[1]<10,
+          "World sprite with depthTest=false was hidden by scene geometry");
+    Check(std::abs(beforeSprite-afterSprite)<.000001f,"World sprite overlay changed scene depth");
+    world.GetComponent<Canvas>().depthTest=true;
     window.SetRenderSize(320,120);
     scene.SetEditorCamera2DOverride(glm::ortho(-160.f,160.f,-60.f,60.f,-100.f,100.f),{0,0});
     Check(glm::distance(canvasRect.GetResolvedSize(),Vector2(160,120))<.001f,

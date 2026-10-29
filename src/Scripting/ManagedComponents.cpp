@@ -163,6 +163,34 @@ void EncodeManagedComponents(YAML::Node& node, Entity& entity) {
     auto list=EncodeAttachments(entity);for(auto& a:list){a.erase("token");a["type"]=Canonical(a["type"].get<std::string>());}
     node["Canis::ManagedScripts"]=ToYaml(list);
 }
+YAML::Node GetManagedComponentValues(Entity& entity, uint64_t token) {
+    if(entity)for(auto item:EncodeAttachments(entity))if(item["token"]==std::to_string(token)) {
+        item.erase("token");item["type"]=Canonical(item["type"].get<std::string>());
+        return ToYaml(item);
+    }
+    return YAML::Node(YAML::NodeType::Undefined);
+}
+bool SetManagedComponentValues(Entity& entity,uint64_t token,const YAML::Node& values) {
+    auto* data=entity.TryGetComponent<ManagedComponents>();if(!data || !values.IsMap())return false;
+    auto item=FromYaml(values);
+    for(auto& attached:data->items)if(attached->token==token) {
+        if(Canonical(attached->type)!=Canonical(item.at("type").get<std::string>()))return false;
+        auto fields=item.at("fields");
+        if(!fields.is_object())throw std::invalid_argument("C# component fields must be an object");
+        const bool enabled=item.value("enabled",true);
+        std::map<std::string,Entity> references;
+        std::function<void(const ManagedJson&,const std::string&)> collect;
+        collect=[&](const ManagedJson& value,const std::string& path) {
+            if(value.is_object() && value.contains("entity"))
+                entity.scene.GetEntityAfterLoad(UUID(ReferenceId(value["entity"])),references[path]);
+            else if(value.is_array())for(size_t i=0;i<value.size();++i)collect(value[i],path+"/"+std::to_string(i));
+        };
+        for(auto& [name,value]:fields.items())collect(value,"/"+name);
+        attached->fields=std::move(fields);attached->references=std::move(references);attached->enabled=enabled;
+        return true;
+    }
+    return false;
+}
 void DecodeManagedComponents(const YAML::Node& node, Entity& entity) {
     const auto scripts = node["Canis::ManagedScripts"];
     if (!scripts) return;
@@ -240,6 +268,7 @@ void DrawManagedInspector(Editor& editor, Entity& entity) {
             bool open=ImGui::CollapsingHeader(title.c_str(),ImGuiTreeNodeFlags_DefaultOpen);
             if(ImGui::BeginPopupContextItem("script")) {
                 if(description && description->contains("source") && ImGui::MenuItem("Open C# script"))editor.OpenScriptDocument((*description)["source"].get<std::string>());
+                editor.DrawManagedComponentValueMenu(entity,a.token);
                 if(ImGui::MenuItem("Remove")){editor.NotifySceneChanged();data->items.erase(data->items.begin()+i);ImGui::EndPopup();ImGui::PopID();continue;}
                 ImGui::EndPopup();
             }

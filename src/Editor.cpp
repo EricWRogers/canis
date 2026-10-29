@@ -1,6 +1,7 @@
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/ScriptSync.hpp>
 #include <Canis/ComponentPicker.hpp>
 #include <Canis/EditorUI.hpp>
 #include <Canis/Profiler.hpp>
@@ -1890,24 +1891,14 @@ namespace Canis
 
         void AppendNamespaceOpens(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
         {
-            int indentLevel = 0;
-            for (const std::string &namespaceName : _namespaceParts)
-            {
-                const std::string indent = MakeIndent(indentLevel);
-                _stream << indent << "namespace " << namespaceName << "\n";
-                _stream << indent << "{\n";
-                indentLevel += 4;
-            }
+            if (!_namespaceParts.empty())
+                _stream << "namespace " << JoinStringParts(_namespaceParts, "::") << "\n{\n";
         }
 
         void AppendNamespaceCloses(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
         {
-            int indentLevel = static_cast<int>(_namespaceParts.size()) * 4;
-            for (size_t index = _namespaceParts.size(); index > 0; --index)
-            {
-                indentLevel -= 4;
-                _stream << MakeIndent(indentLevel) << "}\n";
-            }
+            if (!_namespaceParts.empty())
+                _stream << "}\n";
         }
 
         enum class GameScriptType
@@ -2018,7 +2009,7 @@ namespace Canis
 
             AppendNamespaceOpens(header, pathParts);
 
-            const int classIndentLevel = static_cast<int>(pathParts.size()) * 4;
+            const int classIndentLevel = pathParts.empty() ? 0 : 4;
             const std::string classIndent = MakeIndent(classIndentLevel);
             const std::string bodyIndent = MakeIndent(classIndentLevel + 4);
 
@@ -2029,6 +2020,8 @@ namespace Canis
                 header << classIndent << "public:\n";
                 header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
                 header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : Canis::ScriptableEntity(_entity) {}\n\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT float exampleValue = 1.0f;\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT void OnExample();\n\n";
                 header << bodyIndent << "void Create() override;\n";
                 header << bodyIndent << "void Ready() override;\n";
                 header << bodyIndent << "void Destroy() override;\n";
@@ -2047,7 +2040,7 @@ namespace Canis
                 header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : entity(&_entity) {}\n\n";
                 header << bodyIndent << "void Create() {}\n";
                 header << bodyIndent << "Canis::Entity* entity = nullptr;\n";
-                header << bodyIndent << "bool active = true;\n";
+                header << bodyIndent << "CANIS_EDITOR_EXPORT bool active = true;\n";
                 header << classIndent << "};\n\n";
                 header << classIndent << "void Register" << className << "Component(Canis::App& _app);\n";
                 header << classIndent << "void UnRegister" << className << "Component(Canis::App& _app);\n";
@@ -2059,6 +2052,8 @@ namespace Canis
                 header << classIndent << "public:\n";
                 header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
                 header << bodyIndent << className << "() : Canis::System() { m_name = type_name<" << className << ">(); }\n\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT float exampleValue = 1.0f;\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT void OnExample();\n\n";
                 header << bodyIndent << "void Create() override;\n";
                 header << bodyIndent << "void Ready() override;\n";
                 header << bodyIndent << "void Update(entt::registry &_registry, float _deltaTime) override;\n";
@@ -2081,6 +2076,21 @@ namespace Canis
             const std::string sourceIndent = MakeIndent(classIndentLevel);
             const std::string blockIndent = MakeIndent(classIndentLevel + 4);
 
+            if (_scriptType == GameScriptType::ScriptableEntity)
+            {
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(float _dt) {}\n\n";
+            }
+            else if (_scriptType == GameScriptType::System)
+            {
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(entt::registry &, float) {}\n\n";
+                source << sourceIndent << "void " << className << "::OnDestroy() {}\n\n";
+            }
+
             source << sourceIndent << "namespace\n";
             source << sourceIndent << "{\n";
             if (_scriptType == GameScriptType::ScriptableEntity)
@@ -2098,16 +2108,12 @@ namespace Canis
 
                 source << sourceIndent << "void Register" << className << "Script(Canis::App& _app)\n";
                 source << sourceIndent << "{\n";
-                source << blockIndent << "// REGISTER_PROPERTY(scriptConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << "// Mark editor fields and Signal actions with CANIS_EDITOR_EXPORT in the header.\n\n";
                 source << blockIndent << configMacro << "\n\n";
                 source << blockIndent << "scriptConf.DEFAULT_DRAW_INSPECTOR(" << scriptSymbolName << ");\n\n";
                 source << blockIndent << "_app.RegisterScript(scriptConf);\n";
                 source << sourceIndent << "}\n\n";
                 source << sourceIndent << "DEFAULT_UNREGISTER_SCRIPT(scriptConf, " << className << ")\n\n";
-                source << sourceIndent << "void " << className << "::Create() {}\n\n";
-                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
-                source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
-                source << sourceIndent << "void " << className << "::Update(float _dt) {}\n";
             }
             else if (_scriptType == GameScriptType::Component)
             {
@@ -2117,7 +2123,7 @@ namespace Canis
 
                 source << sourceIndent << "void Register" << className << "Component(Canis::App& _app)\n";
                 source << sourceIndent << "{\n";
-                source << blockIndent << "// REGISTER_PROPERTY(componentConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << "// Mark editor fields and Signal actions with CANIS_EDITOR_EXPORT in the header.\n\n";
                 source << blockIndent << configMacro << "\n\n";
                 source << blockIndent << "componentConf.DEFAULT_DRAW_COMPONENT_INSPECTOR(" << scriptSymbolName << ");\n\n";
                 source << blockIndent << "_app.RegisterComponent(componentConf);\n";
@@ -2132,14 +2138,18 @@ namespace Canis
                 source << blockIndent << "_app.RegisterSystem(systemConf);\n";
                 source << sourceIndent << "}\n\n";
                 source << sourceIndent << "DEFAULT_UNREGISTER_SYSTEM(systemConf, " << className << ")\n\n";
-                source << sourceIndent << "void " << className << "::Create() {}\n\n";
-                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
-                source << sourceIndent << "void " << className << "::Update(entt::registry &, float) {}\n\n";
-                source << sourceIndent << "void " << className << "::OnDestroy() {}\n";
             }
 
             if (!pathParts.empty())
                 AppendNamespaceCloses(source, pathParts);
+
+            const auto exports = ScriptEditing::SynchronizeHeader(header.str(), source.str(), false);
+            if (!exports.error.empty())
+            {
+                _outError = exports.error;
+                return false;
+            }
+            source.str(exports.source);
 
             {
                 std::ofstream headerFile(headerPath);
@@ -12018,6 +12028,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             }
                         }
 
+                        DrawComponentValueMenu(entity, conf);
                         if (ImGui::MenuItem(std::string("Remove##" + conf.name).c_str()))
                         {
                             conf.Remove(entity);

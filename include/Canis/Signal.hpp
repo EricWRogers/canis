@@ -8,6 +8,7 @@
 #include <type_traits>
 #include <variant>
 #include <vector>
+#include <yaml-cpp/yaml.h>
 
 namespace YAML { class Node; }
 
@@ -15,7 +16,7 @@ namespace Canis
 {
     class Editor;
     using SignalConstant = std::variant<std::monostate, float, int, bool, std::string>;
-    enum class SignalArgumentMode { Dynamic, Constant };
+    enum class SignalArgumentMode { Dynamic, Constant, Configured };
 
     // Only stable names, entity references and constants are saved. Script
     // instances and native function pointers are resolved when the signal fires.
@@ -27,6 +28,7 @@ namespace Canis
         bool enabled = true;
         SignalArgumentMode argumentMode = SignalArgumentMode::Dynamic;
         SignalConstant constant;
+        YAML::Node arguments;
     };
 
     struct SignalAction
@@ -34,6 +36,10 @@ namespace Canis
         std::type_index argumentType = typeid(void);
         std::string argumentName;
         std::function<void(void*, const void*)> invoke;
+        YAML::Node defaultArguments;
+        std::function<bool(Scene&, YAML::Node&)> prepareArguments;
+        std::function<void(void*, Scene&, const YAML::Node&)> invokeConfigured;
+        std::function<void(Editor*, Scene&, YAML::Node&)> drawArguments;
     };
 
     template<class T> std::string SignalArgumentName()
@@ -46,9 +52,15 @@ namespace Canis
         else return std::string(type_name<T>());
     }
 
+    std::vector<SignalListener> SnapshotSignalListeners(const std::vector<SignalListener>& listeners);
+
     class SignalBase
     {
     public:
+        SignalBase(const SignalBase& other);
+        SignalBase& operator=(const SignalBase& other);
+        SignalBase(SignalBase&&) = default;
+        SignalBase& operator=(SignalBase&&) = default;
         std::vector<SignalListener> listeners;
         std::type_index ArgumentType() const { return m_argumentType; }
         const std::string& ArgumentName() const { return m_argumentName; }
@@ -91,7 +103,7 @@ namespace Canis
         {
             // Snapshot before invoking: listeners may edit the list or destroy
             // the emitter. Changes to connections take effect on the next Emit.
-            const auto persistent = listeners;
+            const auto persistent = SnapshotSignalListeners(listeners);
             const auto callbacks = m_callbacks;
             EmitPersistent(persistent, typeid(T), &value);
             for (const auto& [id, callback] : callbacks) if (callback) callback(value);
@@ -120,7 +132,7 @@ namespace Canis
         bool Disconnect(Connection id) { return std::erase_if(m_callbacks, [id](const auto& item) { return item.first == id; }) != 0; }
         void Emit() const
         {
-            const auto persistent = listeners;
+            const auto persistent = SnapshotSignalListeners(listeners);
             const auto callbacks = m_callbacks;
             EmitPersistent(persistent, typeid(void), nullptr);
             for (const auto& [id, callback] : callbacks) if (callback) callback();

@@ -19,8 +19,9 @@ namespace Canis
         }
         bool Compatible(const SignalListener& listener, const SignalAction& action, std::type_index type)
         {
-            return action.argumentType == typeid(void) || action.argumentType ==
-                (listener.argumentMode == SignalArgumentMode::Dynamic ? type : ConstantType(listener.constant));
+            if (listener.argumentMode == SignalArgumentMode::Configured) return bool(action.invokeConfigured);
+            return bool(action.invoke) && (action.argumentType == typeid(void) || action.argumentType ==
+                (listener.argumentMode == SignalArgumentMode::Dynamic ? type : ConstantType(listener.constant)));
         }
         const SignalAction* FindAction(const SignalListener& listener, void*& component)
         {
@@ -29,7 +30,7 @@ namespace Canis
             const auto* conf = listener.target.scene.app->GetScriptConf(listener.script);
             if (!conf || !conf->Get) return nullptr;
             const auto it = conf->signalActions.find(listener.method);
-            if (it == conf->signalActions.end() || !it->second.invoke) return nullptr;
+            if (it == conf->signalActions.end() || (!it->second.invoke && !it->second.invokeConfigured)) return nullptr;
             auto target = listener.target;
             component = conf->Get(target);
             return component ? &it->second : nullptr;
@@ -41,7 +42,11 @@ namespace Canis
     }
     bool SignalBase::CanInvoke(const SignalListener& listener, const SignalAction& action) const
     {
-        return Compatible(listener, action, ArgumentType());
+        if (!Compatible(listener, action, ArgumentType())) return false;
+        if (listener.argumentMode != SignalArgumentMode::Configured) return true;
+        if (!listener.target || !action.prepareArguments) return false;
+        auto args = YAML::Clone(listener.arguments);
+        return action.prepareArguments(listener.target.scene, args);
     }
     bool SignalBase::IsListenerValid(const SignalListener& listener) const
     {
@@ -59,6 +64,12 @@ namespace Canis
             if (!registered || !Compatible(listener, *registered, type)) continue;
             // A callback may change registrations or remove itself.
             const auto action = *registered;
+            if (listener.argumentMode == SignalArgumentMode::Configured) {
+                auto args = YAML::Clone(listener.arguments);
+                if (!action.prepareArguments || !action.prepareArguments(listener.target.scene, args)) continue;
+                listener.target.scene.InvokeComponentAction([&] { action.invokeConfigured(component, listener.target.scene, args); });
+                continue;
+            }
             auto call = [&](const void* argument)
             {
                 listener.target.scene.InvokeComponentAction([&] { action.invoke(component, argument); });
@@ -72,6 +83,26 @@ namespace Canis
 
 namespace Canis
 {
+    std::vector<SignalListener> SnapshotSignalListeners(const std::vector<SignalListener>& listeners)
+    {
+        auto snapshot = listeners;
+        for (auto& listener : snapshot)
+            if (listener.arguments && !listener.arguments.IsNull()) listener.arguments.reset(YAML::Clone(listener.arguments));
+        return snapshot;
+    }
+
+    SignalBase::SignalBase(const SignalBase& other)
+        : listeners(SnapshotSignalListeners(other.listeners)), m_argumentType(other.m_argumentType), m_argumentName(other.m_argumentName) {}
+    SignalBase& SignalBase::operator=(const SignalBase& other)
+    {
+        if (this != &other) {
+            listeners = SnapshotSignalListeners(other.listeners);
+            m_argumentType = other.m_argumentType;
+            m_argumentName = other.m_argumentName;
+        }
+        return *this;
+    }
+
     YAML::Node EncodeSignal(const SignalBase& signal)
     {
         YAML::Node node(YAML::NodeType::Sequence);
@@ -82,7 +113,10 @@ namespace Canis
             item["script"] = listener.script;
             item["method"] = listener.method;
             item["enabled"] = listener.enabled;
-            item["mode"] = listener.argumentMode == SignalArgumentMode::Dynamic ? "Dynamic" : "Constant";
+            item["mode"] = listener.argumentMode == SignalArgumentMode::Configured ? "Configured" :
+                listener.argumentMode == SignalArgumentMode::Dynamic ? "Dynamic" : "Constant";
+            if (listener.argumentMode == SignalArgumentMode::Configured)
+                item["arguments"] = listener.arguments && !listener.arguments.IsNull() ? YAML::Clone(listener.arguments) : YAML::Node(YAML::NodeType::Map);
             if (listener.argumentMode == SignalArgumentMode::Constant)
                 std::visit([&](const auto& value)
                 {
@@ -114,8 +148,14 @@ namespace Canis
                 listener.method = item["method"].as<std::string>("");
                 listener.enabled = item["enabled"].as<bool>(true);
                 const auto mode = item["mode"].as<std::string>("Dynamic");
-                if (mode != "Dynamic" && mode != "Constant") return false;
-                listener.argumentMode = mode == "Dynamic" ? SignalArgumentMode::Dynamic : SignalArgumentMode::Constant;
+                if (mode != "Dynamic" && mode != "Constant" && mode != "Configured") return false;
+                listener.argumentMode = mode == "Configured" ? SignalArgumentMode::Configured :
+                    mode == "Dynamic" ? SignalArgumentMode::Dynamic : SignalArgumentMode::Constant;
+                if (listener.argumentMode == SignalArgumentMode::Configured) {
+                    const auto args = item["arguments"];
+                    if (args && !args.IsNull() && !args.IsMap()) return false;
+                    listener.arguments = args ? YAML::Clone(args) : YAML::Node(YAML::NodeType::Map);
+                }
                 if (listener.argumentMode == SignalArgumentMode::Constant)
                 {
                     const auto constant = item["constant"];
@@ -139,8 +179,17 @@ namespace Canis
             }
         }
         catch (const YAML::Exception&) { return false; }
-        for (size_t i = 0; i < decoded.size(); ++i)
-            scene.GetEntityAfterLoad(targets[i], decoded[i].target);
+        for (size_t i = 0; i < decoded.size(); ++i) {
+            auto& listener = decoded[i];
+            scene.GetEntityAfterLoad(targets[i], listener.target);
+            // Action metadata is available even when its target's components
+            // have not decoded yet. Remap nested callback targets now, while
+            // the prefab source-to-instance UUID table is still available.
+            if (listener.argumentMode == SignalArgumentMode::Configured && scene.app)
+                if (auto* conf = scene.app->GetScriptConf(listener.script))
+                    if (auto action = conf->signalActions.find(listener.method); action != conf->signalActions.end() && action->second.prepareArguments)
+                        if (!action->second.prepareArguments(scene, listener.arguments)) return false;
+        }
         signal.listeners = std::move(decoded);
         return true;
     }

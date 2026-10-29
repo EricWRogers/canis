@@ -67,23 +67,22 @@ namespace Canis
         std::string materialPath = "assets/defaults/materials/default.material";
         bool castShadow = false;
 
-        void Play()
-        {
-            playing = true;
-            initialized = true;
-            elapsed = 0.0f;
-            spawnAccumulator = 0.0f;
-            hasTriggeredBurst = false;
-            pendingDestroy = false;
-            randomState = 0;
-            totalSpawned = totalDropped = totalImpacts = 0;
-        }
+        // A stationary animated sprite burst on the emitter entity. Mesh
+        // particles retain their existing simulation and allocation path.
+        bool spriteBurst = false;
+        std::string spriteTexturePath;
+        int spriteColumns = 1;
+        int spriteRows = 1;
+        int spriteFrameCount = 1;
+        float spriteFrameRate = 30.0f;
+        bool spriteBlankLastFrame = false;
+        bool spriteDepthTest = true;
+        Vector2 spriteSize = Vector2(1.0f);
+        Vector2 spriteScaleRange = Vector2(1.0f);
+        Vector2 spriteRotationRange = Vector2(0.0f);
 
-        void Stop()
-        {
-            playing = false;
-            pendingDestroy = destroyEntityWhenDone;
-        }
+        void Play();
+        void Stop();
 
         // Runtime-only registry handles. Individual particles deliberately do
         // not have Canis::Entity wrappers, UUIDs, hierarchy rows, or scene
@@ -102,6 +101,10 @@ namespace Canis
         uint32_t randomState = 0;
         uint64_t totalSpawned = 0, totalDropped = 0, totalImpacts = 0;
         int spawnedThisFrame = 0;
+        std::string cachedSpritePath;
+        float spriteScale = 1.0f;
+        float appliedSpriteRotation = 0.0f;
+        bool spriteInitialized = false;
     };
 
     class ParticleEmitterSystem : public System

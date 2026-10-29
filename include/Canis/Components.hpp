@@ -64,6 +64,8 @@ namespace Canis
         unsigned int scaleMode = CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
         Vector2 screenSize = Vector2(1280.0f, 800.0f);
         bool receivesEvents = true;
+        // World canvases normally use scene depth. Sprite effects may opt out.
+        bool depthTest = true;
         bool navigationEnabled = true;
         unsigned int navigateAction = 0;
         unsigned int confirmAction = 0;

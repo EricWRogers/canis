@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/EditorExport.hpp>
 #include <vector>
 #include <functional>
 #include <algorithm>

@@ -27,6 +27,7 @@
 #include <Canis/AssetHandle.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Blockout.hpp>
+#include <Canis/ComponentClipboard.hpp>
 #if CANIS_EDITOR
 #include <Canis/EditorRelease.hpp>
 #endif
@@ -40,6 +41,7 @@ namespace Canis
     class Window;
     class Camera2D;
     class Entity;
+    struct ScriptConf;
     struct SpriteEditorState;
     struct GameCodeObject;
 
@@ -96,6 +98,8 @@ namespace Canis
         void FocusEntity(Canis::Entity* _entity);
         // Call after a scene command that does not use an edited property widget.
         void NotifySceneChanged() { m_sceneHistoryEditWasActive = true; }
+        void DrawComponentValueMenu(Entity& entity, const ScriptConf& conf);
+        void DrawManagedComponentValueMenu(Entity& entity, uint64_t token);
         void RevealAsset(const std::string& _path);
         void NavigateAssetReference(const std::string& _path);
         void OpenSpriteEditor(const std::string& _texturePath);
@@ -159,6 +163,7 @@ namespace Canis
             return true;
         }
     private:
+        ComponentClipboard m_componentClipboard;
         using InspectorFieldDrawer = std::function<void(Editor&, const char*, const char*, void*)>;
 
         struct AnimationRestoreBinding

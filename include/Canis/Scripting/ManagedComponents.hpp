@@ -40,6 +40,8 @@ bool DispatchManagedUIAction(Entity& entity, const std::string& script, const st
 bool HasManagedScripts(Scene& scene);
 uint64_t NextManagedToken();
 ManagedJson EncodeAttachments(Entity& entity);
+YAML::Node GetManagedComponentValues(Entity& entity, uint64_t token);
+bool SetManagedComponentValues(Entity& entity, uint64_t token, const YAML::Node& values);
 void DecodeManagedComponents(const YAML::Node& node, Entity& entity);
 void EncodeManagedComponents(YAML::Node& node, Entity& entity);
 void RegisterManagedBindings(App& app, std::function<uint64_t(Entity*)> handle, std::function<Entity(uint64_t)> resolve);

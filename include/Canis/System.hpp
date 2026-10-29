@@ -1,4 +1,5 @@
 #pragma once
+#include <Canis/EditorExport.hpp>
 #include <string>
 
 #include <Canis/External/GetNameOfType.hpp>

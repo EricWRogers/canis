@@ -466,7 +466,7 @@ void Editor::DrawScriptTools(ScriptEditing::Document* active)
             std::string text; ScriptEditing::Document::Read(source, text);
             for (const auto& doc : m_scriptDocuments) if (doc.path == source) text = doc.text;
             const auto sync = ScriptEditing::SynchronizeHeader(active->text, text);
-            ImGui::Text("%d public properties; %d new method stubs", sync.properties, sync.methods);
+            ImGui::Text("%d exported fields; %d Signal actions; %d new method stubs", sync.properties, sync.actions, sync.methods);
             if (!sync.error.empty()) ImGui::TextWrapped("%s", sync.error.c_str());
             for (const auto& note : sync.notes) ImGui::TextWrapped("%s", note.c_str());
             if (sync.source == text) ImGui::TextDisabled("No source changes needed.");
