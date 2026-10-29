@@ -2032,6 +2032,12 @@ static void LightModesAndSpotCones(Window& window) {
     auto car=scene.CreateEntity("Car");car.AddComponent<Transform>();
     auto lamp=scene.CreateEntity("Headlight");lamp.AddComponent<Transform>()->SetParent(car.TryGet());
     auto& spot=*lamp.AddComponent<SpotLight>();spot.intensity=3;spot.range=15;spot.spotAngle=40;spot.innerAngle=20;
+    // Registry order must not let out-of-range points displace the headlight.
+    for (int i=0;i<12;++i) {
+        auto far=scene.CreateEntity("Distant practical");
+        far.AddComponent<Transform>()->position={1000.f+float(i),0,0};
+        auto& light=*far.AddComponent<PointLight>();light.range=5;light.intensity=20;
+    }
     MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
     auto draw=[&]() {
         scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);

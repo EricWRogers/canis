@@ -527,7 +527,7 @@ namespace Canis
             return state;
         }
 
-        std::vector<PointLightState> GatherPointLights(entt::registry &_registry)
+        std::vector<PointLightState> GatherPointLights(entt::registry &_registry, const Vector3& _cameraPosition)
         {
             std::vector<PointLightState> lights = {};
             lights.reserve(kMaxPointLights);
@@ -535,9 +535,6 @@ namespace Canis
             auto pointLightView = _registry.view<PointLight, Transform>();
             for (const entt::entity entityHandle : pointLightView)
             {
-                if (lights.size() >= kMaxPointLights)
-                    break;
-
                 PointLight &light = pointLightView.get<PointLight>(entityHandle);
                 Transform &lightTransform = pointLightView.get<Transform>(entityHandle);
                 Entity *entity = light.entity;
@@ -558,7 +555,6 @@ namespace Canis
 
             for (auto handle : _registry.view<SpotLight, Transform>())
             {
-                if (lights.size() >= kMaxPointLights) break;
                 auto& light = _registry.get<SpotLight>(handle);
                 auto& t = _registry.get<Transform>(handle);
                 if (!t.IsActiveInHierarchy() || !light.enabled || light.mode == LightMode::Baked) continue;
@@ -573,6 +569,24 @@ namespace Canis
                 const float inner = std::clamp(light.innerAngle, 0.f, outer);
                 state.cone = {std::cos(glm::radians(inner * .5f)), std::cos(glm::radians(outer * .5f))};
                 lights.push_back(state);
+            }
+            // Keep the fixed shader budget, but do not let distant point lights
+            // consume it before nearby spotlights are considered. Baked surfaces
+            // already contain the full static rig; visible moving objects need
+            // the most influential lights around the current view.
+            if (lights.size() > kMaxPointLights)
+            {
+                const auto influence = [&](const PointLightState& light) {
+                    const float distance = glm::length(light.position - _cameraPosition);
+                    const float range = light.range > 0 ? Max(0.0f, 1.0f - distance / light.range) : 1.0f;
+                    const float brightness = Max(light.color.x, Max(light.color.y, light.color.z));
+                    return Max(0.0f, light.intensity) * brightness * range * range /
+                        Max(1.0f, distance * distance);
+                };
+                std::stable_sort(lights.begin(), lights.end(), [&](const auto& a, const auto& b) {
+                    return influence(a) > influence(b);
+                });
+                lights.resize(kMaxPointLights);
             }
             return lights;
         }
@@ -987,6 +1001,7 @@ namespace Canis
         m_colliderDebugShader->Use();
         m_colliderDebugShader->SetMat4("P", _projection);
         m_colliderDebugShader->SetMat4("V", _view);
+        m_colliderDebugShader->SetFloat("depthBias", 0.0f);
 
         glBindVertexArray(m_debugGizmoVao);
         glBindBuffer(GL_ARRAY_BUFFER, m_debugGizmoVbo);
@@ -1125,7 +1140,12 @@ namespace Canis
         glBufferData(GL_ARRAY_BUFFER, static_cast<GLsizeiptr>(lines.size() * sizeof(Vector3)), lines.data(), GL_DYNAMIC_DRAW);
 
         glDisable(GL_CULL_FACE);
-        glDisable(GL_DEPTH_TEST);
+        const char* xray = std::getenv("CANIS_COLLIDER_XRAY");
+        const bool depthTest = xray && std::string_view(xray) == "0";
+        GLint previousDepthFunction = GL_LESS;
+        glGetIntegerv(GL_DEPTH_FUNC, &previousDepthFunction);
+        if (depthTest) { glEnable(GL_DEPTH_TEST); glDepthFunc(GL_LEQUAL); }
+        else glDisable(GL_DEPTH_TEST);
         glDepthMask(GL_FALSE);
         glEnable(GL_BLEND);
         glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
@@ -1135,10 +1155,12 @@ namespace Canis
         m_colliderDebugShader->Use();
         m_colliderDebugShader->SetMat4("P", _projection);
         m_colliderDebugShader->SetMat4("V", _view);
+        m_colliderDebugShader->SetFloat("depthBias", depthTest ? 0.00002f : 0.0f);
         m_colliderDebugShader->SetVec4("lineColor", Vector4(0.15f, 0.85f, 1.0f, 0.9f));
         glDrawArrays(GL_LINES, 0, static_cast<GLsizei>(lines.size()));
         m_colliderDebugShader->UnUse();
 
+        glDepthFunc(previousDepthFunction);
         glDepthMask(GL_TRUE);
         glBindBuffer(GL_ARRAY_BUFFER, 0);
         glBindVertexArray(0);
@@ -1872,7 +1894,7 @@ namespace Canis
             directionalLight.enabled=directionalLight.intensity>0;
             directionalLight.mode=LightMode::Baked;
         }
-        std::vector<PointLightState> pointLights = GatherPointLights(_registry);
+        std::vector<PointLightState> pointLights = GatherPointLights(_registry, cameraPosition);
         const int requestedShadowSize = scene->GetVRCamera().enabled
             ? 2048 : std::clamp(GetGraphicsSettings().shadowMapSize, 0, 2048);
         if (requestedShadowSize != m_shadowMapSize)
