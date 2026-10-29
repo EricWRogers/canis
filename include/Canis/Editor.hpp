@@ -517,6 +517,12 @@ namespace Canis
         bool m_animationPreviewEnabled = true;
         bool m_animationRecordEnabled = false;
         bool m_animationPlaying = false;
+        bool m_animationLoopPreview = true;
+        bool m_animationShowCurves = false;
+        float m_animationPlaybackSpeed = 1.0f;
+        float m_animationTimelineZoom = 1.0f;
+        float m_animationTimelineStart = 0.0f;
+        bool m_animationSnapToFrames = true;
         float m_animationTime = 0.0f;
         UUID m_animationTargetUUID = UUID(0);
         UUID m_animationPreviewTargetUUID = UUID(0);

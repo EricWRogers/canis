@@ -1,3 +1,4 @@
+#include <Canis/AnimationTimeline.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
@@ -3238,32 +3239,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         constexpr float kAnimationEditorFramesPerSecond = 60.0f;
         constexpr float kAnimationEditorKeyTimeEpsilon = 0.0001f;
 
-        int AnimationFrameFromTime(float _time)
+        int AnimationFrameFromTime(float time) { return AnimationTimeline::Frame(time); }
+        float AnimationTimeFromFrame(int frame) { return AnimationTimeline::Time(frame); }
+        float NormalizeAnimationSampleTime(float time, float length, bool loop)
         {
-            return std::max(0, static_cast<int>(std::round(std::max(_time, 0.0f) * kAnimationEditorFramesPerSecond)));
-        }
-
-        float AnimationTimeFromFrame(int _frame)
-        {
-            return std::max(_frame, 0) / kAnimationEditorFramesPerSecond;
-        }
-
-        float NormalizeAnimationSampleTime(float _time, float _length, bool _loop)
-        {
-            if (_length <= 0.0f)
-                return 0.0f;
-
-            float time = _time;
-            if (_loop)
-            {
-                while (time < 0.0f)
-                    time += _length;
-                while (time >= _length)
-                    time -= _length;
-                return time;
-            }
-
-            return std::clamp(time, 0.0f, _length);
+            return AnimationTimeline::Normalize(time, length, loop);
         }
 
         AnimationValue MakeDefaultAnimationValue(AnimationValueType _type)
@@ -14716,6 +14696,42 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         else if (!m_animationClipStatePath.empty())
             clipLabel = m_animationClipStatePath;
 
+        auto seek = [&](float time) {
+            m_animationPlaying = false;
+            m_animationTime = clip ? NormalizeAnimationSampleTime(time, clip->length, false) : 0.0f;
+            m_animationPreviewEnabled = true;
+        };
+        if (clip)
+        {
+            AnimationTimeline::Advance(m_animationTime, m_animationPlaying, _deltaTime,
+                clip->length, m_animationPlaybackSpeed, m_animationLoopPreview);
+            if (ImGui::Button("|<")) seek(0);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("First frame");
+            ImGui::SameLine();
+            if (ImGui::Button("<")) seek(m_animationTime - 1.0f / kAnimationEditorFramesPerSecond);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Previous frame");
+            ImGui::SameLine();
+            if (ImGui::Button(m_animationPlaying ? "Pause" : "Play"))
+            {
+                m_animationPlaying = !m_animationPlaying;
+                m_animationPreviewEnabled = true;
+                if (m_animationPlaying && m_animationTime >= clip->length) m_animationTime = 0;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stop")) seek(0);
+            ImGui::SameLine();
+            if (ImGui::Button(">")) seek(m_animationTime + 1.0f / kAnimationEditorFramesPerSecond);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Next frame");
+            ImGui::SameLine();
+            if (ImGui::Button(">|")) seek(clip->length);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Last frame");
+            ImGui::SameLine();
+            float seconds=m_animationTime;
+            ImGui::SetNextItemWidth(85);
+            if(ImGui::InputFloat("##PlayheadSeconds",&seconds,0,0,"%.3f s")) seek(seconds);
+            if(ImGui::IsItemHovered()) ImGui::SetTooltip("Playhead in seconds; edit to seek");
+            ImGui::SameLine();
+        }
         ImGui::TextUnformatted("Clip");
         ImGui::SameLine();
         ImGui::Button(clipLabel.c_str(), ImVec2(180, 0));
@@ -14756,44 +14772,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        const char *rootName = (rootEntity != nullptr) ? rootEntity->GetName().c_str() : "[ none ]";
-        ImGui::Text("Root: %s", rootName);
-        if (selectedEntity != nullptr)
-        {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Use Selected As Root"))
-                m_animationTargetUUID = selectedEntity->GetUUID();
-        }
-
-        if (rootEntity != nullptr && clip != nullptr)
-        {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Assign To AnimationPlayer"))
-            {
-                if (!rootEntity->HasComponent<AnimationPlayer>())
-                    rootEntity->AddComponent<AnimationPlayer>();
-
-                AnimationPlayer &player = rootEntity->GetComponent<AnimationPlayer>();
-                player.clip = MakeAnimationClipAssetHandleFromPath(m_animationClipStatePath);
-                NotifySceneChanged();
-            }
-        }
-
         ImGui::Separator();
 
         bool clipDirty = false;
         if (clip != nullptr)
         {
             clip->length = std::max(clip->length, 0.0f);
-            if (m_animationPlaying)
-                m_animationTime += _deltaTime;
-
-            const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
-            if (clip->length > 0.0f)
-                m_animationTime = sampleTime;
-            else
-                m_animationTime = std::max(m_animationTime, 0.0f);
-
             auto selectTrackByBinding = [&](const std::string &_path, const std::string &_component, const std::string &_property) -> void
             {
                 m_animationSelectedTrack = -1;
@@ -14839,37 +14823,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 selectTrackByBinding(_candidate.path, _candidate.component, _candidate.property);
             };
 
-            ImGui::Checkbox("Preview", &m_animationPreviewEnabled);
+            ImGui::BeginDisabled(rootEntity == nullptr);
+            if (ImGui::Button("+ Add Track")) ImGui::OpenPopup("AnimationAddPropertyPopup");
+            ImGui::EndDisabled();
             ImGui::SameLine();
-            ImGui::Checkbox("Record", &m_animationRecordEnabled);
-            ImGui::SameLine();
-            if (ImGui::Button(m_animationPlaying ? "Pause" : "Play"))
-                m_animationPlaying = !m_animationPlaying;
-
-            ImGui::SameLine();
-            if (ImGui::Button("Stop"))
-            {
-                m_animationPlaying = false;
-                m_animationTime = 0.0f;
-            }
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            if (ImGui::InputFloat("Length", &clip->length, 0.0f, 0.0f, "%.3f"))
-            {
-                clip->length = std::max(clip->length, 0.0f);
-                clipDirty = true;
-            }
-
-            if (rootEntity != nullptr)
-            {
-                ImGui::SameLine();
-                if (ImGui::Button("Add Property"))
-                    ImGui::OpenPopup("AnimationAddPropertyPopup");
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Add Event At Current Time"))
+            if (ImGui::Button("+ Event"))
             {
                 AnimationEvent event = {};
                 event.time = std::max(m_animationTime, 0.0f);
@@ -14892,6 +14850,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 clipDirty = true;
             }
 
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(85);
+            if (ImGui::InputFloat("Length", &clip->length, 0, 0, "%.2f s"))
+            {
+                clip->length = std::isfinite(clip->length) ? std::max(clip->length, 0.0f) : 0.0f;
+                clipDirty = true;
+            }
+            ImGui::SameLine(); ImGui::Checkbox("Loop", &m_animationLoopPreview);
             if (ImGui::BeginPopup("AnimationAddPropertyPopup"))
             {
                 ImGui::SetNextItemWidth(320.0f);
@@ -14931,110 +14897,141 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::EndPopup();
             }
 
-            ImGui::Text("Time: %.3fs  Frame: %d", m_animationTime, AnimationFrameFromTime(m_animationTime));
-
-            struct AnimationClipSequencer : ImSequencer::SequenceInterface
+            // Fit the entire clip in a compact dope sheet. Keep property labels
+            // separate from the ruler so long bindings cannot overlap keys.
+            const float timelineHeight = std::min(230.0f, 46.0f + float(clip->tracks.size()) * 25.0f);
+            ImGui::BeginChild("AnimationDopesheet", ImVec2(0, timelineHeight), true);
+            if (ImGui::BeginTable("AnimationTracks", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
             {
-                AnimationClipAsset &clip;
-                std::vector<int> startFrames = {};
-                std::vector<int> endFrames = {};
-                std::vector<std::string> labels = {};
-                int frameMax = 1;
-                bool deletedTrack = false;
-
-                explicit AnimationClipSequencer(AnimationClipAsset &_clip) : clip(_clip)
+                ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, 300.0f);
+                ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
+                const float length = std::max(clip->length, .001f);
+                const float span=length/std::max(m_animationTimelineZoom,1.0f);
+                m_animationTimelineStart=std::clamp(m_animationTimelineStart,0.0f,length-span);
+                int deleteTrack = -1;
+                for (int row = -1; row < int(clip->tracks.size()); ++row)
                 {
-                    Rebuild();
-                }
-
-                void Rebuild()
-                {
-                    startFrames.clear();
-                    endFrames.clear();
-                    labels.clear();
-                    frameMax = std::max(1, AnimationFrameFromTime(std::max(clip.length, 0.0f)));
-
-                    for (const AnimationTrack &track : clip.tracks)
+                    ImGui::PushID(row);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    if (row < 0) ImGui::TextDisabled("Property / seconds");
+                    else
                     {
-                        int start = 0;
-                        int end = 0;
-                        if (!track.keys.empty())
+                        const auto label = BuildAnimationTrackLabel(clip->tracks[row]);
+                        if (ImGui::Selectable(label.c_str(), m_animationSelectedTrack == row)) m_animationSelectedTrack = row;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", label.c_str());
+                        if (ImGui::BeginPopupContextItem("TrackMenu"))
                         {
-                            start = AnimationFrameFromTime(track.keys.front().time);
-                            end = AnimationFrameFromTime(track.keys.back().time);
-                            frameMax = std::max(frameMax, end + 1);
+                            if (ImGui::MenuItem("Delete track")) deleteTrack = row;
+                            ImGui::EndPopup();
                         }
-
-                        startFrames.push_back(start);
-                        endFrames.push_back(std::max(end, start));
-                        labels.push_back(BuildAnimationTrackLabel(track));
                     }
-                }
-
-                int GetFrameMin() const override { return 0; }
-                int GetFrameMax() const override { return frameMax; }
-                int GetItemCount() const override { return static_cast<int>(clip.tracks.size()); }
-                const char *GetItemLabel(int index) const override
-                {
-                    if (index < 0 || index >= static_cast<int>(labels.size()))
-                        return "";
-                    return labels[index].c_str();
-                }
-
-                void Get(int index, int **start, int **end, int *type, unsigned int *color) override
-                {
-                    if (start)
-                        *start = &startFrames[index];
-                    if (end)
-                        *end = &endFrames[index];
-                    if (type)
-                        *type = 0;
-                    if (color)
-                        *color = 0xFF80C0FF;
-                }
-
-                void Del(int index) override
-                {
-                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
-                        return;
-
-                    clip.tracks.erase(clip.tracks.begin() + index);
-                    deletedTrack = true;
-                    Rebuild();
-                }
-
-                void CustomDrawCompact(int index, ImDrawList *draw_list, const ImRect &rc, const ImRect &clippingRect) override
-                {
-                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
-                        return;
-
-                    const AnimationTrack &track = clip.tracks[index];
-                    const float frameSpan = static_cast<float>(std::max(frameMax, 1));
-
-                    draw_list->PushClipRect(clippingRect.Min, clippingRect.Max, true);
-                    for (const AnimationKeyframe &key : track.keys)
+                    ImGui::TableNextColumn();
+                    const ImVec2 start = ImGui::GetCursorScreenPos();
+                    const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+                    ImGui::InvisibleButton("Timeline", ImVec2(width, 22));
+                    auto* draw = ImGui::GetWindowDrawList();
+                    const auto xAt = [&](float time) { return start.x + (time - m_animationTimelineStart) / span * width; };
+                    draw->PushClipRect(start, ImVec2(start.x + width, start.y + 22), true);
+                    draw->AddRectFilled(start, ImVec2(start.x+width,start.y+22),
+                        m_animationSelectedTrack == row ? IM_COL32(42,57,73,255) : IM_COL32(30,34,40,255));
+                    for (int tick=0;tick<=5;++tick)
                     {
-                        const float normalized = static_cast<float>(AnimationFrameFromTime(key.time)) / frameSpan;
-                        const float x = ImLerp(rc.Min.x, rc.Max.x, normalized);
-                        draw_list->AddLine(ImVec2(x, rc.Min.y + 4.0f), ImVec2(x, rc.Max.y - 4.0f), 0xFFFFFFFF, 2.0f);
+                        const float x=start.x + width*float(tick)/5;
+                        draw->AddLine(ImVec2(x,start.y),ImVec2(x,start.y+22),IM_COL32(72,78,86,255));
+                        if(row<0)
+                        {
+                            char label[24]; std::snprintf(label,sizeof(label),"%.2f",m_animationTimelineStart+span*tick/5);
+                            const float textX=std::min(x+3,start.x+width-ImGui::CalcTextSize(label).x-2);
+                            draw->AddText(ImVec2(textX,start.y+3),IM_COL32(190,198,210,255),label);
+                        }
                     }
-                    draw_list->PopClipRect();
+                    if(row>=0)
+                        for(const auto& key:clip->tracks[row].keys)
+                        {
+                            const float x=xAt(key.time), y=start.y+11;
+                            draw->AddQuadFilled(ImVec2(x,y-5),ImVec2(x+5,y),ImVec2(x,y+5),ImVec2(x-5,y),IM_COL32(255,190,100,255));
+                        }
+                    const float playhead=xAt(m_animationTime);
+                    draw->AddLine(ImVec2(playhead,start.y),ImVec2(playhead,start.y+22),IM_COL32(255,85,85,255),2);
+                    draw->PopClipRect();
+                    if(ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                    {
+                        float target=AnimationTimeline::TimeAtFraction((ImGui::GetMousePos().x-start.x)/width,
+                            m_animationTimelineStart,span,m_animationSnapToFrames);
+                        if(row>=0)
+                        {
+                            m_animationSelectedTrack=row;
+                            for(const auto& key:clip->tracks[row].keys)
+                                if(std::abs(xAt(key.time)-ImGui::GetMousePos().x)<6) {target=key.time;break;}
+                        }
+                        seek(target);
+                    }
+                    ImGui::PopID();
                 }
-            };
-
-            int currentFrame = AnimationFrameFromTime(m_animationTime);
-            AnimationClipSequencer sequencer(*clip);
-            m_animationExpanded = m_animationExpanded || !clip->tracks.empty();
-            const int sequenceFlags = ImSequencer::SEQUENCER_CHANGE_FRAME | ImSequencer::SEQUENCER_DEL;
-            (void)ImSequencer::Sequencer(&sequencer, &currentFrame, &m_animationExpanded, &m_animationSelectedTrack, &m_animationFirstFrame, sequenceFlags);
-            if (sequencer.deletedTrack)
-            {
-                if (m_animationSelectedTrack >= static_cast<int>(clip->tracks.size()))
-                    m_animationSelectedTrack = static_cast<int>(clip->tracks.size()) - 1;
-                clipDirty = true;
+                if(deleteTrack>=0)
+                {
+                    clip->tracks.erase(clip->tracks.begin()+deleteTrack);
+                    m_animationSelectedTrack=-1;
+                    clipDirty=true;
+                }
+                ImGui::EndTable();
             }
+            ImGui::EndChild();
+            if (ImGui::RadioButton("Dopesheet", !m_animationShowCurves)) m_animationShowCurves=false;
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Curves", m_animationShowCurves)) m_animationShowCurves=true;
+            ImGui::SameLine(); ImGui::Checkbox("Snap (60 fps)", &m_animationSnapToFrames);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(100);
+            ImGui::SliderFloat("Zoom", &m_animationTimelineZoom, 1, 10, "%.1fx");
+            ImGui::SameLine();
+            if(ImGui::Button("Fit")) {m_animationTimelineZoom=1;m_animationTimelineStart=0;}
+            if(m_animationTimelineZoom>1)
+            {
+                ImGui::SameLine(); ImGui::SetNextItemWidth(140);
+                ImGui::SliderFloat("View",&m_animationTimelineStart,0,clip->length*(1-1/m_animationTimelineZoom),"%.2f s");
+            }
+            ImGui::Checkbox("Preview", &m_animationPreviewEnabled);
+            ImGui::SameLine(); ImGui::BeginDisabled(rootEntity == nullptr);
+            if (ImGui::Checkbox("Record", &m_animationRecordEnabled) && m_animationRecordEnabled)
+            {m_animationPreviewEnabled=true;m_animationPlaying=false;}
+            ImGui::EndDisabled();
+            ImGui::SameLine(); ImGui::SetNextItemWidth(80);
+            ImGui::SliderFloat("Speed",&m_animationPlaybackSpeed,.1f,2,"%.1fx");
+            ImGui::SameLine();
+            if(ImGui::Button("Previous Key")) seek(AnimationTimeline::AdjacentKey(*clip,m_animationTime,false,m_animationSelectedTrack));
+            ImGui::SameLine();
+            if(ImGui::Button("Next Key")) seek(AnimationTimeline::AdjacentKey(*clip,m_animationTime,true,m_animationSelectedTrack));
+            ImGui::SameLine();
+            int editFrame=AnimationFrameFromTime(m_animationTime);
+            ImGui::SetNextItemWidth(90);
+            if(ImGui::InputInt("Frame",&editFrame)) seek(AnimationTimeFromFrame(editFrame));
+            if(m_animationRecordEnabled)
+                ImGui::TextColored(ImVec4(1,.3f,.25f,1),"RECORDING - property edits create keys at the playhead");
+        const char *rootName = (rootEntity != nullptr) ? rootEntity->GetName().c_str() : "[ none ]";
+        ImGui::Text("Root: %s", rootName);
+        if (selectedEntity != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Use Selected As Root"))
+                m_animationTargetUUID = selectedEntity->GetUUID();
+        }
 
-            m_animationTime = AnimationTimeFromFrame(currentFrame);
+        if (rootEntity != nullptr && clip != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Assign To AnimationPlayer"))
+            {
+                if (!rootEntity->HasComponent<AnimationPlayer>())
+                    rootEntity->AddComponent<AnimationPlayer>();
+
+                AnimationPlayer &player = rootEntity->GetComponent<AnimationPlayer>();
+                player.clip = MakeAnimationClipAssetHandleFromPath(m_animationClipStatePath);
+                NotifySceneChanged();
+            }
+        }
+
+
             if (m_animationSelectedTrack >= 0 && m_animationSelectedTrack < static_cast<int>(clip->tracks.size()))
             {
                 AnimationTrack &track = clip->tracks[m_animationSelectedTrack];
@@ -15054,21 +15051,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     AnimationValue capturedValue = {};
                     if (CaptureAnimationTrackValue(*m_app, *rootEntity, track, capturedValue))
                     {
-                        bool updatedExisting = false;
-                        for (AnimationKeyframe &key : track.keys)
-                        {
-                            if (std::fabs(key.time - m_animationTime) <= kAnimationEditorKeyTimeEpsilon)
-                            {
-                                key.value = capturedValue;
-                                updatedExisting = true;
-                                break;
-                            }
-                        }
-
-                        if (!updatedExisting)
-                            track.keys.push_back(AnimationKeyframe{m_animationTime, capturedValue});
-
-                        SortAnimationTrackKeys(track);
+                        AnimationTimeline::UpsertKey(track, m_animationTime, capturedValue);
                         clipDirty = true;
                     }
                 }
@@ -15077,11 +15060,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (ImGui::Button("Add Empty Key"))
                 {
                     AnimationValue value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, std::max(m_animationTime, 0.0f));
-                    track.keys.push_back(AnimationKeyframe{std::max(m_animationTime, 0.0f), value});
-                    SortAnimationTrackKeys(track);
+                    AnimationTimeline::UpsertKey(track, m_animationTime, value);
                     clipDirty = true;
                 }
 
+                if (!m_animationShowCurves || ImGui::CollapsingHeader("Key values"))
                 for (std::size_t keyIndex = 0; keyIndex < track.keys.size(); ++keyIndex)
                 {
                     AnimationKeyframe &key = track.keys[keyIndex];
@@ -15118,7 +15101,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::PopID();
                 }
 
-                if (!track.keys.empty())
+                if (m_animationShowCurves && !track.keys.empty())
                 {
                     struct AnimationTrackCurveDelegate : ImCurveEdit::Delegate
                     {
@@ -15184,7 +15167,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         ImCurveEdit::CurveType GetCurveType(size_t) const override
                         {
-                            return AnimationValueIsDiscrete(track.type) ? ImCurveEdit::CurveDiscrete : ImCurveEdit::CurveLinear;
+                            return AnimationValueIsDiscrete(track.type) || track.interpolation == AnimationInterpolation::STEP
+                                ? ImCurveEdit::CurveDiscrete : ImCurveEdit::CurveLinear;
                         }
 
                         ImVec2& GetMin() override { return min; }
@@ -15241,8 +15225,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             key.time = std::max(value.x, 0.0f);
                             key.value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, key.time);
                             SetAnimationValueComponent(key.value, static_cast<int>(curveIndex), value.y);
-                            track.keys.push_back(key);
-                            SortAnimationTrackKeys(track);
+                            AnimationTimeline::UpsertKey(track, key.time, key.value);
                             Rebuild();
                         }
                     };
@@ -15392,7 +15375,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (previewTargetChanged || m_animationRestoreBindings.empty())
             capturePreviewState(*clip, *rootEntity);
 
-        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
+        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying && m_animationLoopPreview);
         (void)ApplyAnimationClip(*m_app, *rootEntity, *clip, sampleTime);
     }
 

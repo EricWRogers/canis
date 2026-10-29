@@ -13,6 +13,22 @@ namespace Canis
 {
     namespace
     {
+        float FiniteNonnegative(float value)
+        {
+            return std::isfinite(value) ? std::max(value, 0.0f) : 0.0f;
+        }
+
+        float SampleTime(double time, float length, bool loop)
+        {
+            if (!std::isfinite(time) || !std::isfinite(length) || length <= 0.0f)
+                return 0.0f;
+            if (!loop)
+                return float(std::clamp(time, 0.0, double(length)));
+            double wrapped = std::fmod(time, double(length));
+            if (wrapped < 0.0) wrapped += length;
+            return float(wrapped);
+        }
+
         const AnimatorState* FindAnimatorState(const AnimatorControllerAsset& _controller, const std::string& _name)
         {
             for (const AnimatorState& state : _controller.states)
@@ -62,7 +78,8 @@ namespace Canis
             const float parameterMultiplier = _state.speedParameter.empty()
                 ? 1.0f
                 : _animator.GetFloat(_state.speedParameter, 1.0f);
-            return _state.speed * parameterMultiplier;
+            const float speed = _state.speed * parameterMultiplier;
+            return std::isfinite(speed) ? speed : 0.0f;
         }
 
         ModelAsset* GetAnimatorStateModel(const AnimatorState& _state, i32& _outAnimationIndex)
@@ -131,7 +148,7 @@ namespace Canis
 
             ModelAnimation& animation = _entity.GetComponent<ModelAnimation>();
             const float transitionDuration = (_transition != nullptr)
-                ? std::max(_transition->duration, 0.0f)
+                ? FiniteNonnegative(_transition->duration)
                 : 0.0f;
 
             if (transitionDuration > 0.0f &&
@@ -188,7 +205,11 @@ namespace Canis
             else
             {
                 _animator.drivesModelAnimation = false;
-                _animator.time = 0.0f;
+                AnimationClipAsset* clip = nullptr;
+                std::string path;
+                const float length = GetAnimatorStateLength(_state, clip, path);
+                _animator.time = _transition && _transition->preserveNormalizedTime && _state.loop
+                    ? SampleTime(_previousNormalizedTime * length, length, true) : 0.0f;
                 if (_entity.HasComponent<ModelAnimation>())
                     _entity.GetComponent<ModelAnimation>().sourceModelId = -1;
             }
@@ -287,10 +308,13 @@ namespace Canis
                 runtime = &_animator.layers.back();
             }
 
+            float requestedStart = -1.0f;
             if (!runtime->requestedState.empty())
             {
-                if (runtime->restartRequested || runtime->currentState != runtime->requestedState)
+                if (FindAnimatorState(_layer.states, runtime->requestedState) &&
+                    (runtime->restartRequested || runtime->currentState != runtime->requestedState))
                 {
+                    requestedStart = runtime->requestedNormalizedTime;
                     runtime->currentState = runtime->requestedState;
                     runtime->time = 0.0f;
                     runtime->appliedState.clear();
@@ -318,40 +342,45 @@ namespace Canis
             if (source == nullptr)
                 return;
             const float duration = std::max(source->GetAnimationDuration(animationIndex), 0.0f);
-            if (_animator.playing && duration > 0.0f)
+            if (requestedStart >= 0.0f)
+                runtime->time = SampleTime(requestedStart * duration, duration, state->loop);
+            const double advanced = double(runtime->time) + (_animator.playing
+                ? double(_deltaTime) * GetAnimatorStateSpeed(*state, _animator) : 0.0);
+            runtime->time = SampleTime(advanced, duration, state->loop);
+            // Evaluate exit time before wrapping so crossing the end of a loop
+            // cannot skip a transition at normalized time 1.
+            const float normalized = duration > 0.0f ? float(std::clamp(advanced / duration, 0.0, 1.0)) : 1.0f;
+            if (_animator.playing)
             {
-                runtime->time += _deltaTime * GetAnimatorStateSpeed(*state, _animator);
-                if (state->loop)
+                for (const AnimatorTransition& transition : state->transitions)
                 {
-                    while (runtime->time < 0.0f) runtime->time += duration;
-                    while (runtime->time >= duration) runtime->time -= duration;
+                    if (transition.hasExitTime && normalized + 0.0001f < transition.exitTimeNormalized)
+                        continue;
+                    bool matches = true;
+                    for (const AnimatorTransitionCondition& condition : transition.conditions)
+                        if (!AnimatorConditionMatches(condition, _animator)) { matches = false; break; }
+                    const AnimatorState* nextState = FindAnimatorState(_layer.states, transition.toState);
+                    i32 nextIndex = 0;
+                    ModelAsset* nextModel = matches && nextState
+                        ? GetAnimatorStateModel(*nextState, nextIndex) : nullptr;
+                    if (!nextModel)
+                        continue;
+                    runtime->transitionSourceModelId = AssetManager::LoadModel(state->modelPath);
+                    runtime->transitionAnimationIndex = animationIndex;
+                    runtime->transitionAnimationTime = runtime->time;
+                    runtime->transitionDuration = FiniteNonnegative(transition.duration);
+                    runtime->transitionElapsed = 0.0f;
+                    ConsumeAnimatorTransitionTriggers(transition, _animator);
+                    runtime->currentState = transition.toState;
+                    const float phase = duration > 0.0f ? runtime->time / duration : 0.0f;
+                    state = nextState;
+                    source = nextModel;
+                    animationIndex = nextIndex;
+                    const float nextDuration = source->GetAnimationDuration(animationIndex);
+                    runtime->time = transition.preserveNormalizedTime && state->loop
+                        ? SampleTime(phase * nextDuration, nextDuration, true) : 0.0f;
+                    break;
                 }
-                else runtime->time = std::clamp(runtime->time, 0.0f, duration);
-            }
-
-            const float normalized = duration > 0.0f ? std::clamp(runtime->time / duration, 0.0f, 1.0f) : 1.0f;
-            for (const AnimatorTransition& transition : state->transitions)
-            {
-                if (transition.hasExitTime && normalized + 0.0001f < transition.exitTimeNormalized)
-                    continue;
-                bool matches = true;
-                for (const AnimatorTransitionCondition& condition : transition.conditions)
-                    if (!AnimatorConditionMatches(condition, _animator)) { matches = false; break; }
-                if (!matches || transition.toState.empty())
-                    continue;
-                runtime->transitionSourceModelId = AssetManager::LoadModel(state->modelPath);
-                runtime->transitionAnimationIndex = animationIndex;
-                runtime->transitionAnimationTime = runtime->time;
-                runtime->transitionDuration = std::max(transition.duration, 0.0f);
-                runtime->transitionElapsed = 0.0f;
-                ConsumeAnimatorTransitionTriggers(transition, _animator);
-                runtime->currentState = transition.toState;
-                runtime->time = 0.0f;
-                state = FindAnimatorState(_layer.states, runtime->currentState);
-                if (state == nullptr || state->modelPath.empty()) return;
-                source = GetAnimatorStateModel(*state, animationIndex);
-                if (source == nullptr) return;
-                break;
             }
 
             ModelAnimation::LayerSample sample = {};
@@ -365,13 +394,14 @@ namespace Canis
                     ? _layer.weight
                     : _animator.GetFloat(_layer.weightParameter, _layer.weight)),
                 0.0f, 1.0f);
+            if (!std::isfinite(sample.weight)) sample.weight = 0.0f;
             sample.additive = _layer.blendMode == AnimatorLayerBlendMode::ADDITIVE;
             sample.maskRoots = _layer.maskRoots;
             sample.maskBones = _layer.maskBones;
             sample.maskWeights = _layer.maskWeights;
             if (runtime->transitionDuration > 0.0f && runtime->transitionSourceModelId >= 0)
             {
-                runtime->transitionElapsed += std::max(_deltaTime, 0.0f);
+                runtime->transitionElapsed += _animator.playing ? _deltaTime : 0.0f;
                 sample.transitionSourceModelId = runtime->transitionSourceModelId;
                 sample.transitionAnimationIndex = runtime->transitionAnimationIndex;
                 sample.transitionAnimationTime = runtime->transitionAnimationTime;
@@ -393,6 +423,7 @@ namespace Canis
         if (scene == nullptr || scene->app == nullptr)
             return;
 
+        _deltaTime = FiniteNonnegative(_deltaTime);
         auto animatorView = _registry.view<Animator>();
         for (const entt::entity entityHandle : animatorView)
         {
@@ -441,25 +472,17 @@ namespace Canis
             bool hadPreviousSample = animator.lastEventSampleValid &&
                 animator.lastEventClipPath == activeClipPath;
 
-            if (animator.playing && clipLength > 0.0f)
+            if (animator.requestedNormalizedTime >= 0.0f)
             {
-                animator.time += _deltaTime * GetAnimatorStateSpeed(*state, animator);
-
-                if (state->loop)
-                {
-                    while (animator.time < 0.0f)
-                        animator.time += clipLength;
-
-                    while (animator.time >= clipLength)
-                        animator.time -= clipLength;
-                }
-                else
-                {
-                    animator.time = std::clamp(animator.time, 0.0f, clipLength);
-                }
+                animator.time = SampleTime(animator.requestedNormalizedTime * clipLength, clipLength, state->loop);
+                animator.requestedNormalizedTime = -1.0f;
+                hadPreviousSample = false;
             }
-
-            const float normalizedTime = (clipLength > 0.0f) ? std::clamp(animator.time / clipLength, 0.0f, 1.0f) : 1.0f;
+            const double advanced = double(animator.time) + (animator.playing
+                ? double(_deltaTime) * GetAnimatorStateSpeed(*state, animator) : 0.0);
+            animator.time = SampleTime(advanced, clipLength, state->loop);
+            const float normalizedTime = clipLength > 0.0f
+                ? float(std::clamp(advanced / clipLength, 0.0, 1.0)) : 1.0f;
 
             const AnimatorTransition* transitionToTake = nullptr;
             if (animator.playing)
@@ -479,7 +502,7 @@ namespace Canis
                         }
                     }
 
-                    if (matches)
+                    if (matches && FindAnimatorState(*controller, transition.toState))
                     {
                         transitionToTake = &transition;
                         break;
@@ -489,7 +512,7 @@ namespace Canis
 
             if (transitionToTake != nullptr && !transitionToTake->toState.empty())
             {
-                const float previousNormalizedTime = normalizedTime;
+                const float previousNormalizedTime = clipLength > 0.0f ? animator.time / clipLength : 0.0f;
                 ConsumeAnimatorTransitionTriggers(*transitionToTake, animator);
                 animator.currentState = transitionToTake->toState;
 

@@ -1,4 +1,5 @@
 #pragma once
+#include <cmath>
 #include <Canis/AudioComponents.hpp>
 #include <Canis/LOD.hpp>
 #include <Canis/Entity.hpp>
@@ -1284,7 +1285,10 @@ namespace Canis
             }
         }
 
-        // Selects a state immediately. "Base Layer" addresses the legacy
+        // Selects a state immediately. Normalized time is clamped to [0, 1]
+        // and applied when the clip duration is resolved. Replaying the same
+        // state keeps its time unless restart is requested.
+        // "Base Layer" addresses the legacy
         // top-level state machine; other names address additional layers.
         void Play(
             const std::string& _state,
@@ -1300,6 +1304,8 @@ namespace Canis
                 {
                     currentState = _state;
                     time = 0.0f;
+                    requestedNormalizedTime = std::isfinite(_normalizedTime)
+                        ? std::clamp(_normalizedTime, 0.0f, 1.0f) : 0.0f;
                     appliedState.clear();
                 }
                 return;
@@ -1309,20 +1315,22 @@ namespace Canis
                 if (layer.name != _layer)
                     continue;
                 layer.requestedState = _state;
-                layer.requestedNormalizedTime = std::max(_normalizedTime, 0.0f);
+                layer.requestedNormalizedTime = (std::isfinite(_normalizedTime) ? std::clamp(_normalizedTime, 0.0f, 1.0f) : 0.0f);
                 layer.restartRequested = _restart;
                 return;
             }
             AnimatorLayerRuntime layer = {};
             layer.name = _layer;
             layer.requestedState = _state;
-            layer.requestedNormalizedTime = std::max(_normalizedTime, 0.0f);
+            layer.requestedNormalizedTime = (std::isfinite(_normalizedTime) ? std::clamp(_normalizedTime, 0.0f, 1.0f) : 0.0f);
             layer.restartRequested = _restart;
             layers.push_back(layer);
         }
 
         void SetLayerWeight(const std::string& _layer, float _weight)
         {
+            if (_layer.empty() || _layer == "Base Layer" || !std::isfinite(_weight))
+                return;
             for (AnimatorLayerRuntime& layer : layers)
             {
                 if (layer.name == _layer)
@@ -1368,6 +1376,7 @@ namespace Canis
         std::vector<AnimatorParameterRuntime> parameters = {};
         std::vector<AnimatorLayerRuntime> layers = {};
 
+        float requestedNormalizedTime = -1.0f;
         bool parametersInitialized = false;
         bool drivesModelAnimation = false;
         std::string appliedState = "";
