@@ -4750,6 +4750,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         Canis::Debug::LogEntry entry = {};
         int count = 1;
+        std::string openTarget, displayPath;
     };
 
     static bool ConsoleEntriesAreDuplicates(const Canis::Debug::LogEntry &_left, const Canis::Debug::LogEntry &_right)
@@ -6374,6 +6375,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             captureIo.ConfigFlags &= ~ImGuiConfigFlags_NoMouseCursorChange;
         }
 
+        const int uiFrameTiming=Profiler::Get().Begin("Editor UI frame setup",Profiler::Category::Editor,Profiler::Now());
         // Start the Dear ImGui frame
         ImGui_ImplOpenGL3_NewFrame();
         ImGui_ImplSDL3_NewFrame();
@@ -6383,6 +6385,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             captureIo.AddMousePosEvent(-FLT_MAX, -FLT_MAX);
         }
         ImGui::NewFrame();
+        Profiler::Get().End(uiFrameTiming,Profiler::Now());
+        const int uiPanelTiming=Profiler::Get().Begin("Editor panels",Profiler::Category::Editor,Profiler::Now());
         const auto* panelViewport = ImGui::GetMainViewport();
         const float panelToolbarHeight = GetEditorToolbarHeight();
         const auto& panelToggle = m_scene->GetInputManager().EditorPanelToggle();
@@ -6524,6 +6528,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
+        Profiler::Get().End(uiPanelTiming,Profiler::Now());
         // rendering
         m_panelMaximizer.Finish();
         ImGui::Render();
@@ -6540,6 +6545,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         //  For this specific demo app we could also call SDL_GL_MakeCurrent(window, gl_context) directly)
         if (io.ConfigFlags & ImGuiConfigFlags_ViewportsEnable)
         {
+            Profiler::Scope platformTiming("Editor platform windows",Profiler::Category::Editor);
             SDL_Window *backup_current_window = SDL_GL_GetCurrentWindow();
             SDL_GLContext backup_current_context = SDL_GL_GetCurrentContext();
             ImGui::UpdatePlatformWindows();
@@ -8713,6 +8719,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawGameView()
     {
+        Profiler::Scope timing("Editor game panel",Profiler::Category::Editor);
         if (m_focusGamePanelNextFrame)
         {
             ImGui::SetNextWindowFocus();
@@ -18109,6 +18116,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawConsolePanel()
     {
+        Profiler::Scope timing("Editor console",Profiler::Category::Editor);
         if (!m_panelMaximizer.Begin("Canis Console", &m_showConsolePanel))
         {
             ImGui::End();
@@ -18118,47 +18126,78 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const std::vector<Canis::Debug::LogEntry> entries = Canis::Debug::GetEntries();
         const std::string lowerSearch = NormalizeAssetSearchQuery(m_consoleSearch);
 
-        int visibleCount = 0;
-        int logCount = 0;
-        int warningCount = 0;
-        int errorCount = 0;
-        int fatalCount = 0;
-        int matchedEntryCount = 0;
-        std::vector<ConsoleDisplayEntry> displayEntries = {};
-        for (const Canis::Debug::LogEntry &entry : entries)
-        {
-            switch (entry.level)
+        // Log rows and source paths are immutable. Rebuild on new/trimmed logs
+        // or filter changes instead of doing filesystem work every render frame.
+        struct ConsoleCache {
+            uint64_t first=0, last=0;
+            std::string search, directory;
+            unsigned flags=~0u;
+            int logCount=0, warningCount=0, errorCount=0, fatalCount=0, matchedEntryCount=0;
+            std::vector<ConsoleDisplayEntry> rows;
+        };
+        static ConsoleCache cache;
+        const uint64_t first=entries.empty()?0:entries.front().id;
+        const uint64_t last=entries.empty()?0:entries.back().id;
+        const unsigned flags=unsigned(m_consoleShowLogs) | (unsigned(m_consoleShowWarnings)<<1) |
+            (unsigned(m_consoleShowErrors)<<2) | (unsigned(m_consoleShowFatal)<<3) |
+            (unsigned(m_consoleCollapseDuplicates)<<4);
+        const auto directory=std::filesystem::current_path().generic_string();
+        static std::string sourceDirectory;
+        static std::unordered_map<std::string,std::pair<std::string,std::string>> sourcePaths;
+        if(sourceDirectory!=directory) { sourcePaths.clear(); sourceDirectory=directory; }
+        if(cache.first!=first || cache.last!=last || cache.search!=lowerSearch ||
+           cache.flags!=flags || cache.directory!=directory) {
+            cache={.first=first,.last=last,.search=lowerSearch,.directory=directory,.flags=flags};
+            auto &logCount=cache.logCount, &warningCount=cache.warningCount,
+                 &errorCount=cache.errorCount, &fatalCount=cache.fatalCount,
+                 &matchedEntryCount=cache.matchedEntryCount;
+            auto &displayEntries=cache.rows;
+            for (const Canis::Debug::LogEntry &entry : entries)
             {
-                case Canis::Debug::LogLevel::Warning: ++warningCount; break;
-                case Canis::Debug::LogLevel::Error: ++errorCount; break;
-                case Canis::Debug::LogLevel::Fatal: ++fatalCount; break;
-                case Canis::Debug::LogLevel::Log:
-                default: ++logCount; break;
-            }
-
-            if (ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) &&
-                ConsoleEntryMatchesSearch(entry, lowerSearch))
-            {
-                ++matchedEntryCount;
-
-                if (m_consoleCollapseDuplicates)
+                switch (entry.level)
                 {
-                    auto duplicate = std::find_if(displayEntries.begin(), displayEntries.end(), [&entry](const ConsoleDisplayEntry &_displayEntry)
-                    {
-                        return ConsoleEntriesAreDuplicates(_displayEntry.entry, entry);
-                    });
-
-                    if (duplicate != displayEntries.end())
-                    {
-                        ++duplicate->count;
-                        continue;
-                    }
+                    case Canis::Debug::LogLevel::Warning: ++warningCount; break;
+                    case Canis::Debug::LogLevel::Error: ++errorCount; break;
+                    case Canis::Debug::LogLevel::Fatal: ++fatalCount; break;
+                    case Canis::Debug::LogLevel::Log:
+                    default: ++logCount; break;
                 }
 
-                displayEntries.push_back(ConsoleDisplayEntry{ .entry = entry, .count = 1 });
+                if (ConsoleLogLevelEnabled(entry.level, m_consoleShowLogs, m_consoleShowWarnings, m_consoleShowErrors, m_consoleShowFatal) &&
+                    ConsoleEntryMatchesSearch(entry, lowerSearch))
+                {
+                    ++matchedEntryCount;
+
+                    if (m_consoleCollapseDuplicates)
+                    {
+                        auto duplicate = std::find_if(displayEntries.begin(), displayEntries.end(), [&entry](const ConsoleDisplayEntry &_displayEntry)
+                        {
+                            return ConsoleEntriesAreDuplicates(_displayEntry.entry, entry);
+                        });
+
+                        if (duplicate != displayEntries.end())
+                        {
+                            ++duplicate->count;
+                            continue;
+                        }
+                    }
+
+                    auto [source, inserted]=sourcePaths.try_emplace(entry.file);
+                    if(inserted) {
+                        auto location=entry;location.line=0;
+                        source->second={MakeConsoleOpenTarget(location),MakeConsoleSourceDisplayPath(entry.file)};
+                    }
+                    auto target=source->second.first;
+                    if(!target.empty() && entry.line>0)target+=":"+std::to_string(entry.line);
+                    displayEntries.push_back(ConsoleDisplayEntry{ .entry = entry, .count = 1,
+                        .openTarget = std::move(target), .displayPath = source->second.second });
+                }
             }
         }
-        visibleCount = static_cast<int>(displayEntries.size());
+        const auto &displayEntries=cache.rows;
+        const int visibleCount=static_cast<int>(displayEntries.size());
+        const int logCount=cache.logCount, warningCount=cache.warningCount, errorCount=cache.errorCount,
+                  fatalCount=cache.fatalCount, matchedEntryCount=cache.matchedEntryCount;
 
         ImGui::SetNextItemWidth(std::max(180.0f, ImGui::GetContentRegionAvail().x - 280.0f));
         ImGui::InputTextWithHint("##ConsoleSearch", "Search logs...", &m_consoleSearch);
@@ -18220,8 +18259,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 const Canis::Debug::LogEntry &entry = displayEntry.entry;
 
-                const std::string openTarget = MakeConsoleOpenTarget(entry);
-                const std::string displayPath = MakeConsoleSourceDisplayPath(entry.file);
+                const auto &openTarget = displayEntry.openTarget;
+                const auto &displayPath = displayEntry.displayPath;
                 const bool canOpenSource = !openTarget.empty();
 
                 ImGui::PushID(static_cast<int>(entry.id));
@@ -19121,6 +19160,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawEditorPanel()
     {
+        Profiler::Scope timing("Editor toolbar",Profiler::Category::Editor);
         FinalizeReloadBuildIfReady();
 
         static float hotKeyCoolDown = 0.0f;
