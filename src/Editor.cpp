@@ -4085,8 +4085,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             mutable std::string m_tooltipCache = {};
         };
 
+        // Match the component Inspector: label column first, full-width value
+        // column second. Hidden widget labels retain distinct property IDs.
+        std::string AnimationPropertyLabel(const char* label)
+        {
+            EditorUI::PropertyLabel(label);
+            return std::string("##") + label;
+        }
+
         bool DrawAnimationValueEditor(const char *_label, AnimationValue &_value)
         {
+            const std::string widgetLabel = _value.type == AnimationValueType::NONE
+                ? _label : AnimationPropertyLabel(_label);
+            _label = widgetLabel.c_str();
             switch (_value.type)
             {
                 case AnimationValueType::FLOAT:
@@ -13117,7 +13128,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         char entryStateBuffer[128] = {};
         std::snprintf(entryStateBuffer, sizeof(entryStateBuffer), "%s", controller->entryState.c_str());
-        if (ImGui::InputText("entryState", entryStateBuffer, sizeof(entryStateBuffer)))
+        if (ImGui::InputText(AnimationPropertyLabel("entryState").c_str(), entryStateBuffer, sizeof(entryStateBuffer)))
         {
             controller->entryState = entryStateBuffer;
             dirty = true;
@@ -13133,7 +13144,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         const std::string previousName = parameter.name;
                         parameter.name = nameBuffer;
@@ -13143,7 +13154,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     int typeIndex = static_cast<int>(parameter.type);
                     const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
-                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    if (ImGui::Combo(AnimationPropertyLabel("type").c_str(), &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
                     {
                         parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
                         parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
@@ -13189,17 +13200,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::PushID(static_cast<int>(layerIndex));
                 if (ImGui::TreeNode(layer.name.empty() ? "Layer" : layer.name.c_str()))
                 {
-                    dirty = ImGui::InputText("name", &layer.name) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("name").c_str(), &layer.name) || dirty;
                     const char* modes[] = {"Override", "Additive"};
                     int mode = static_cast<int>(layer.blendMode);
-                    if (ImGui::Combo("blend mode", &mode, modes, IM_ARRAYSIZE(modes)))
+                    if (ImGui::Combo(AnimationPropertyLabel("blend mode").c_str(), &mode, modes, IM_ARRAYSIZE(modes)))
                     {
                         layer.blendMode = static_cast<AnimatorLayerBlendMode>(std::clamp(mode, 0, 1));
                         dirty = true;
                     }
-                    dirty = ImGui::SliderFloat("weight", &layer.weight, 0.0f, 1.0f) || dirty;
-                    dirty = ImGui::InputText("weight parameter", &layer.weightParameter) || dirty;
-                    dirty = ImGui::InputText("entry state", &layer.entryState) || dirty;
+                    dirty = ImGui::SliderFloat(AnimationPropertyLabel("weight").c_str(), &layer.weight, 0.0f, 1.0f) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("weight parameter").c_str(), &layer.weightParameter) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("entry state").c_str(), &layer.entryState) || dirty;
 
                     if (ImGui::TreeNode("Mask Roots"))
                     {
@@ -13226,7 +13237,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Pick From Skeleton", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Pick From Skeleton").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13264,7 +13275,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Pick Exact Bone", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Pick Exact Bone").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13288,8 +13299,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             AnimatorMaskBoneWeight& weightedBone = layer.maskWeights[maskIndex];
                             ImGui::PushID(static_cast<int>(maskIndex));
-                            dirty = ImGui::InputText("bone", &weightedBone.boneName) || dirty;
-                            dirty = ImGui::SliderFloat("weight", &weightedBone.weight, 0.0f, 1.0f) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("bone").c_str(), &weightedBone.boneName) || dirty;
+                            dirty = ImGui::SliderFloat(AnimationPropertyLabel("weight").c_str(), &weightedBone.weight, 0.0f, 1.0f) || dirty;
                             if (ImGui::SmallButton("Delete Weighted Bone"))
                             {
                                 layer.maskWeights.erase(layer.maskWeights.begin() + static_cast<std::ptrdiff_t>(maskIndex));
@@ -13302,7 +13313,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Add Weighted Bone", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Add Weighted Bone").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13328,21 +13339,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             AnimatorState& state = layer.states[stateIndex];
                             ImGui::PushID(static_cast<int>(stateIndex));
-                            dirty = ImGui::InputText("name", &state.name) || dirty;
-                            dirty = ImGui::InputText("model path", &state.modelPath) || dirty;
-                            dirty = ImGui::InputInt("animation index", &state.modelAnimationIndex) || dirty;
-                            dirty = ImGui::Checkbox("loop", &state.loop) || dirty;
-                            dirty = ImGui::InputFloat("speed", &state.speed) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("name").c_str(), &state.name) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("model path").c_str(), &state.modelPath) || dirty;
+                            dirty = ImGui::InputInt(AnimationPropertyLabel("animation index").c_str(), &state.modelAnimationIndex) || dirty;
+                            dirty = ImGui::Checkbox(AnimationPropertyLabel("loop").c_str(), &state.loop) || dirty;
+                            dirty = ImGui::InputFloat(AnimationPropertyLabel("speed").c_str(), &state.speed) || dirty;
                             if (ImGui::TreeNode("Transitions"))
                             {
                                 for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
                                 {
                                     AnimatorTransition& transition = state.transitions[transitionIndex];
                                     ImGui::PushID(static_cast<int>(transitionIndex));
-                                    dirty = ImGui::InputText("to state", &transition.toState) || dirty;
-                                    dirty = ImGui::Checkbox("has exit time", &transition.hasExitTime) || dirty;
-                                    dirty = ImGui::SliderFloat("exit time", &transition.exitTimeNormalized, 0.0f, 1.0f) || dirty;
-                                    dirty = ImGui::InputFloat("crossfade", &transition.duration) || dirty;
+                                    dirty = ImGui::InputText(AnimationPropertyLabel("to state").c_str(), &transition.toState) || dirty;
+                                    dirty = ImGui::Checkbox(AnimationPropertyLabel("has exit time").c_str(), &transition.hasExitTime) || dirty;
+                                    dirty = ImGui::SliderFloat(AnimationPropertyLabel("exit time").c_str(), &transition.exitTimeNormalized, 0.0f, 1.0f) || dirty;
+                                    dirty = ImGui::InputFloat(AnimationPropertyLabel("crossfade").c_str(), &transition.duration) || dirty;
                                     transition.duration = std::max(transition.duration, 0.0f);
                                     if (ImGui::SmallButton("Delete Transition"))
                                     {
@@ -13412,7 +13423,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", state.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         std::string renamedState = nameBuffer;
                         if (renamedState.empty())
@@ -13450,7 +13461,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 0,
                                 animationCount - 1);
                             if (ImGui::InputInt(
-                                    "animation index",
+                                    AnimationPropertyLabel("animation index").c_str(),
                                     &state.modelAnimationIndex))
                             {
                                 state.modelAnimationIndex = std::clamp(
@@ -13467,12 +13478,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         state.clip);
                     if (AnimationClipAssetHandleChanged(previousClip, state.clip))
                         dirty = true;
-                    if (ImGui::Checkbox("loop", &state.loop))
+                    if (ImGui::Checkbox(AnimationPropertyLabel("loop").c_str(), &state.loop))
                         dirty = true;
-                    if (ImGui::InputFloat("speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("speed").c_str(), &state.speed, 0.0f, 0.0f, "%.3f"))
                         dirty = true;
                     if (ImGui::BeginCombo(
-                            "speed multiplier",
+                            AnimationPropertyLabel("speed multiplier").c_str(),
                             state.speedParameter.empty()
                                 ? "[ none ]"
                                 : state.speedParameter.c_str()))
@@ -13501,7 +13512,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
                     if (!state.modelPath.empty() &&
                         ImGui::InputFloat3(
-                            "lock root motion",
+                            AnimationPropertyLabel("lock root motion").c_str(),
                             &state.rootMotionMask.x,
                             "%.2f"))
                     {
@@ -13522,21 +13533,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             {
                                 char toStateBuffer[128] = {};
                                 std::snprintf(toStateBuffer, sizeof(toStateBuffer), "%s", transition.toState.c_str());
-                                if (ImGui::InputText("toState", toStateBuffer, sizeof(toStateBuffer)))
+                                if (ImGui::InputText(AnimationPropertyLabel("toState").c_str(), toStateBuffer, sizeof(toStateBuffer)))
                                 {
                                     transition.toState = toStateBuffer;
                                     dirty = true;
                                 }
 
-                                if (ImGui::Checkbox("hasExitTime", &transition.hasExitTime))
+                                if (ImGui::Checkbox(AnimationPropertyLabel("hasExitTime").c_str(), &transition.hasExitTime))
                                     dirty = true;
-                                if (transition.hasExitTime && ImGui::InputFloat("exitTimeNormalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                                if (transition.hasExitTime && ImGui::InputFloat(AnimationPropertyLabel("exitTimeNormalized").c_str(), &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
                                 {
                                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
                                     dirty = true;
                                 }
                                 if (ImGui::InputFloat(
-                                        "crossfade duration",
+                                        AnimationPropertyLabel("crossfade duration").c_str(),
                                         &transition.duration,
                                         0.01f,
                                         0.05f,
@@ -13547,7 +13558,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     dirty = true;
                                 }
                                 if (ImGui::Checkbox(
-                                        "match loop phase",
+                                        AnimationPropertyLabel("match loop phase").c_str(),
                                         &transition.preserveNormalizedTime))
                                 {
                                     dirty = true;
@@ -13559,7 +13570,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     ImGui::PushID(static_cast<int>(conditionIndex));
                                     if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
                                     {
-                                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                                        if (ImGui::BeginCombo(AnimationPropertyLabel("parameter").c_str(), condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
                                         {
                                             for (const AnimatorParameterDefinition &parameter : controller->parameters)
                                             {
@@ -13578,7 +13589,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                                         int modeIndex = static_cast<int>(condition.mode);
                                         const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
-                                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                                        if (ImGui::Combo(AnimationPropertyLabel("mode").c_str(), &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
                                         {
                                             condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
                                             dirty = true;
@@ -14103,7 +14114,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         const std::string previousName = parameter.name;
                         parameter.name = nameBuffer;
@@ -14113,7 +14124,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     int typeIndex = static_cast<int>(parameter.type);
                     const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
-                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    if (ImGui::Combo(AnimationPropertyLabel("type").c_str(), &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
                     {
                         parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
                         parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
@@ -14162,7 +14173,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             char stateNameBuffer[128] = {};
             std::snprintf(stateNameBuffer, sizeof(stateNameBuffer), "%s", state.name.c_str());
-            if (ImGui::InputText("State Name", stateNameBuffer, sizeof(stateNameBuffer)))
+            if (ImGui::InputText(AnimationPropertyLabel("State Name").c_str(), stateNameBuffer, sizeof(stateNameBuffer)))
             {
                 std::string renamedState = stateNameBuffer;
                 if (renamedState.empty())
@@ -14210,7 +14221,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (animationLabel.empty())
                         animationLabel =
                             "Animation " + std::to_string(state.modelAnimationIndex);
-                    if (ImGui::BeginCombo("Animation", animationLabel.c_str()))
+                    if (ImGui::BeginCombo(AnimationPropertyLabel("Animation").c_str(), animationLabel.c_str()))
                     {
                         for (int animationIndex = 0;
                              animationIndex < animationCount;
@@ -14253,12 +14264,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
-            if (ImGui::Checkbox("Loop", &state.loop))
+            if (ImGui::Checkbox(AnimationPropertyLabel("Loop").c_str(), &state.loop))
                 dirty = true;
-            if (ImGui::InputFloat("Speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+            if (ImGui::InputFloat(AnimationPropertyLabel("Speed").c_str(), &state.speed, 0.0f, 0.0f, "%.3f"))
                 dirty = true;
             if (ImGui::BeginCombo(
-                    "Speed Multiplier",
+                    AnimationPropertyLabel("Speed Multiplier").c_str(),
                     state.speedParameter.empty()
                         ? "[ none ]"
                         : state.speedParameter.c_str()))
@@ -14286,7 +14297,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (!state.modelPath.empty())
             {
                 if (ImGui::InputFloat3(
-                        "Lock Root Motion XYZ",
+                        AnimationPropertyLabel("Lock Root Motion XYZ").c_str(),
                         &state.rootMotionMask.x,
                         "%.2f"))
                 {
@@ -14301,7 +14312,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
 
             bool isEntryState = controller->entryState == state.name;
-            if (ImGui::Checkbox("Entry State", &isEntryState))
+            if (ImGui::Checkbox(AnimationPropertyLabel("Entry State").c_str(), &isEntryState))
             {
                 if (isEntryState)
                     controller->entryState = state.name;
@@ -14353,7 +14364,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (selectedTransitionFromGraph)
                     ImGui::SetScrollHereY(0.15f);
 
-                if (ImGui::BeginCombo("To State", transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
+                if (ImGui::BeginCombo(AnimationPropertyLabel("To State").c_str(), transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
                 {
                     for (const AnimatorState &candidateState : controller->states)
                     {
@@ -14370,15 +14381,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::EndCombo();
                 }
 
-                if (ImGui::Checkbox("Has Exit Time", &transition.hasExitTime))
+                if (ImGui::Checkbox(AnimationPropertyLabel("Has Exit Time").c_str(), &transition.hasExitTime))
                     dirty = true;
-                if (transition.hasExitTime && ImGui::InputFloat("Exit Time Normalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                if (transition.hasExitTime && ImGui::InputFloat(AnimationPropertyLabel("Exit Time Normalized").c_str(), &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
                 {
                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
                     dirty = true;
                 }
                 if (ImGui::InputFloat(
-                        "Blend Duration",
+                        AnimationPropertyLabel("Blend Duration").c_str(),
                         &transition.duration,
                         0.01f,
                         0.05f,
@@ -14390,7 +14401,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Time in seconds spent crossfading from the source animation to the destination.");
                 if (ImGui::Checkbox(
-                        "Match Loop Phase",
+                        AnimationPropertyLabel("Match Loop Phase").c_str(),
                         &transition.preserveNormalizedTime))
                 {
                     dirty = true;
@@ -14405,7 +14416,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::PushID(static_cast<int>(conditionIndex));
                     if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
                     {
-                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                        if (ImGui::BeginCombo(AnimationPropertyLabel("parameter").c_str(), condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
                         {
                             for (const AnimatorParameterDefinition &parameter : controller->parameters)
                             {
@@ -14424,7 +14435,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         int modeIndex = static_cast<int>(condition.mode);
                         const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
-                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                        if (ImGui::Combo(AnimationPropertyLabel("mode").c_str(), &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
                         {
                             condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
                             dirty = true;
@@ -15040,7 +15051,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 int interpolationIndex = (track.interpolation == AnimationInterpolation::STEP) ? 1 : 0;
                 const char *interpolationLabels[] = {"Linear", "Step"};
-                if (ImGui::Combo("Interpolation", &interpolationIndex, interpolationLabels, IM_ARRAYSIZE(interpolationLabels)))
+                if (ImGui::Combo(AnimationPropertyLabel("Interpolation").c_str(), &interpolationIndex, interpolationLabels, IM_ARRAYSIZE(interpolationLabels)))
                 {
                     track.interpolation = (interpolationIndex == 1) ? AnimationInterpolation::STEP : AnimationInterpolation::LINEAR;
                     clipDirty = true;
@@ -15071,7 +15082,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::PushID(static_cast<int>(keyIndex));
                     bool keyDirty = false;
 
-                    if (ImGui::InputFloat("time", &key.time, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("time").c_str(), &key.time, 0.0f, 0.0f, "%.3f"))
                     {
                         key.time = std::max(key.time, 0.0f);
                         keyDirty = true;
@@ -15262,7 +15273,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     AnimationEvent &event = clip->events[m_animationSelectedEvent];
                     ImGui::Separator();
-                    if (ImGui::InputFloat("event time", &event.time, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("event time").c_str(), &event.time, 0.0f, 0.0f, "%.3f"))
                     {
                         event.time = std::max(event.time, 0.0f);
                         std::sort(clip->events.begin(), clip->events.end(), [](const AnimationEvent &_left, const AnimationEvent &_right)
@@ -15274,7 +15285,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventPathBuffer[256] = {};
                     std::snprintf(eventPathBuffer, sizeof(eventPathBuffer), "%s", event.path.c_str());
-                    if (ImGui::InputText("target path", eventPathBuffer, sizeof(eventPathBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("target path").c_str(), eventPathBuffer, sizeof(eventPathBuffer)))
                     {
                         event.path = eventPathBuffer;
                         clipDirty = true;
@@ -15304,7 +15315,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventScriptBuffer[256] = {};
                     std::snprintf(eventScriptBuffer, sizeof(eventScriptBuffer), "%s", event.script.c_str());
-                    if (ImGui::InputText("script", eventScriptBuffer, sizeof(eventScriptBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("script").c_str(), eventScriptBuffer, sizeof(eventScriptBuffer)))
                     {
                         event.script = eventScriptBuffer;
                         clipDirty = true;
@@ -15312,7 +15323,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventNameBuffer[256] = {};
                     std::snprintf(eventNameBuffer, sizeof(eventNameBuffer), "%s", event.name.c_str());
-                    if (ImGui::InputText("event name", eventNameBuffer, sizeof(eventNameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("event name").c_str(), eventNameBuffer, sizeof(eventNameBuffer)))
                     {
                         event.name = eventNameBuffer;
                         clipDirty = true;
@@ -15320,14 +15331,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char stringPayloadBuffer[256] = {};
                     std::snprintf(stringPayloadBuffer, sizeof(stringPayloadBuffer), "%s", event.stringPayload.c_str());
-                    if (ImGui::InputText("string payload", stringPayloadBuffer, sizeof(stringPayloadBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("string payload").c_str(), stringPayloadBuffer, sizeof(stringPayloadBuffer)))
                     {
                         event.stringPayload = stringPayloadBuffer;
                         clipDirty = true;
                     }
 
-                    clipDirty = ImGui::InputFloat("float payload", &event.floatPayload, 0.0f, 0.0f, "%.3f") || clipDirty;
-                    clipDirty = ImGui::InputInt("int payload", &event.intPayload) || clipDirty;
+                    clipDirty = ImGui::InputFloat(AnimationPropertyLabel("float payload").c_str(), &event.floatPayload, 0.0f, 0.0f, "%.3f") || clipDirty;
+                    clipDirty = ImGui::InputInt(AnimationPropertyLabel("int payload").c_str(), &event.intPayload) || clipDirty;
 
                     if (ImGui::SmallButton("Delete Event"))
                     {
