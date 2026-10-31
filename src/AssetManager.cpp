@@ -156,7 +156,7 @@ namespace Canis
                 return key == "shader" || key == "albedo" || key == "normal" || key == "normalScale" || key == "specular" || key == "roughness" || key == "metallic" ||
                        key == "emission" || key == "color" || key == "emissionColor" || key == "emissionIntensity" ||
                        key == "specularValue" || key == "roughnessValue" || key == "roughnessChannel" || key == "metallicValue" ||
-                       key == "backFaceCulling" || key == "frontFaceCulling" || key == "uniforms";
+                       key == "transparentPriority" || key == "transparentDepthWrite" || key == "backFaceCulling" || key == "frontFaceCulling" || key == "uniforms";
             }
 
             bool ApplyTypedMaterialUniform(MaterialFields &_fields, const std::string &_uniformName, const std::string &_type, const YAML::Node &_valueNode)
@@ -441,6 +441,8 @@ namespace Canis
                     _material.info |= MATERIAL_HAS_COLOR;
                 }
 
+                _material.transparentPriority = _root["transparentPriority"].as<int>(0);
+                _material.transparentDepthWrite = _root["transparentDepthWrite"].as<bool>(false);
                 _material.emissionColor = _root["emissionColor"].as<Color>(Color(1.0f));
                 _material.emissionIntensity = std::max(0.0f, _root["emissionIntensity"].as<float>(0.0f));
                 _material.specularValue = _root["specularValue"].as<float>(0.5f);

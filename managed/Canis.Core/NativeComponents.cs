@@ -67,6 +67,9 @@ public sealed partial class Canvas : NativeComponent
     public bool NavigationEnabled { get => GetField<bool>("navigationEnabled"); set => SetField("navigationEnabled", value); }
     public uint NavigateAction { get => GetField<uint>("navigateAction"); set => SetField("navigateAction", value); }
     public uint ConfirmAction { get => GetField<uint>("confirmAction"); set => SetField("confirmAction", value); }
+    public uint NextAction { get => GetField<uint>("nextAction"); set => SetField("nextAction", value); }
+    public uint ReverseNavigationAction { get => GetField<uint>("reverseNavigationAction"); set => SetField("reverseNavigationAction", value); }
+    public uint PreviousAction { get => GetField<uint>("previousAction"); set => SetField("previousAction", value); }
     public float InteractionDistance { get => GetField<float>("interactionDistance"); set => SetField("interactionDistance", value); }
 }
 

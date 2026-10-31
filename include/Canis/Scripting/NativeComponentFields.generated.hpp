@@ -11,7 +11,7 @@ inline const std::map<std::string,std::set<std::string>> NativeSerializedFields 
     {"Canis::BoxCollider", {"active", "offset", "size"}},
     {"Canis::Camera", {"farClip", "fovDegrees", "nearClip", "primary"}},
     {"Canis::Camera2D", {"position", "scale"}},
-    {"Canis::Canvas", {"active", "confirmAction", "interactionDistance", "navigateAction", "navigationEnabled", "receivesEvents", "renderMode", "scaleMode", "screenSize"}},
+    {"Canis::Canvas", {"active", "confirmAction", "interactionDistance", "navigateAction", "navigationEnabled", "nextAction", "previousAction", "receivesEvents", "renderMode", "reverseNavigationAction", "scaleMode", "screenSize"}},
     {"Canis::CapsuleCollider", {"active", "halfHeight", "offset", "radius"}},
     {"Canis::CloudNavSurface", {"active", "agentRadius", "buildOnReady", "collisionMask", "nodeSpacing", "showDebug", "size"}},
     {"Canis::ConvexMeshCollider", {"active", "convexRadius", "modelPath", "modelUUID", "offset", "scale", "useAttachedModel"}},

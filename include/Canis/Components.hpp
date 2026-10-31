@@ -67,6 +67,7 @@ namespace Canis
         bool navigationEnabled = true;
         unsigned int navigateAction = 0;
         unsigned int confirmAction = 0;
+        unsigned int nextAction = 0, previousAction = 0, reverseNavigationAction = 0;
         float interactionDistance = 3.0f;
     };
 
@@ -1746,6 +1747,10 @@ namespace Canis
         void Create() {}
 
         bool active = true;
+        // Runtime events are consumed by native owners; authored script dispatch remains supported.
+        bool activated = false;
+        int adjustment = 0;
+        bool adjustable = false, continuous = false;
         bool defaultSelected = false;
         Entity up = nullptr;
         Entity down = nullptr;

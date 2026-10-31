@@ -632,6 +632,7 @@ namespace Canis
             RectTransform& rect = hoveredButton->GetComponent<RectTransform>();
             button.hovered = !m_navigationFocus;
             if (!m_navigationFocus) m_selectedButton = hoveredButton;
+            if (button.continuous && pointerDown && m_pressedButton == hoveredButton) button.activated = true;
             ApplyButtonVisual(*hoveredButton, button, rect);
         }
 
@@ -675,6 +676,7 @@ namespace Canis
                 if (m_pressedButton == hoveredButton && m_pressedButton->HasComponent<UIButton>())
                 {
                     UIButton& button = m_pressedButton->GetComponent<UIButton>();
+                    button.activated = true;
                     Entity* receiver = button.targetEntity != nullptr ? button.targetEntity.TryGet() : m_pressedButton.TryGet();
                     UIActionContext context = {};
                     context.sourceEntity = m_pressedButton;
@@ -746,6 +748,15 @@ namespace Canis
             return candidate->GetComponent<UIButton>().active && rect.IsActiveInHierarchy() &&
                 (canvas == nullptr || (canvas->active && canvas->receivesEvents));
         };
+        // An input gate (for example a menu opening delay) must not discard saved focus.
+        if (m_selectedButton && m_selectedButton->HasComponent<RectTransform>())
+            if (const auto* canvas = m_selectedButton->GetComponent<RectTransform>().GetCanvas();
+                canvas && !canvas->receivesEvents)
+            {
+                m_navigationPressedButton = nullptr;
+                m_navigationDirection = Vector2(0);
+                return;
+            }
         if (!selectable(m_selectedButton)) m_selectedButton = nullptr;
         if (!selectable(m_navigationPressedButton)) m_navigationPressedButton = nullptr;
         if (!inputManager->active || window->IsMouseLocked() || wasEditingText || m_focusedInputField || m_dragSource)
@@ -753,16 +764,8 @@ namespace Canis
             m_navigationPressedButton = nullptr;
             return;
         }
-        bool up = inputManager->JustPressedKey(Key::UP) || inputManager->JustPressedButton(ControllerButton::DPAD_UP);
-        bool down = inputManager->JustPressedKey(Key::DOWN) || inputManager->JustPressedButton(ControllerButton::DPAD_DOWN);
-        bool left = inputManager->JustPressedKey(Key::LEFT) || inputManager->JustPressedButton(ControllerButton::DPAD_LEFT);
-        bool right = inputManager->JustPressedKey(Key::RIGHT) || inputManager->JustPressedButton(ControllerButton::DPAD_RIGHT);
-        bool confirm = inputManager->JustPressedKey(Key::RETURN) || inputManager->JustPressedKey(Key::KP_ENTER) ||
-            inputManager->JustPressedKey(Key::SPACE) || inputManager->JustPressedButton(ControllerButton::A);
-        bool held = inputManager->GetKey(Key::RETURN) || inputManager->GetKey(Key::KP_ENTER) ||
-            inputManager->GetKey(Key::SPACE) || inputManager->GetButton(ControllerButton::A);
-        bool released = inputManager->JustReleasedKey(Key::RETURN) || inputManager->JustReleasedKey(Key::KP_ENTER) ||
-            inputManager->JustReleasedKey(Key::SPACE) || inputManager->JustReleasedButton(ControllerButton::A);
+        bool up = false, down = false, left = false, right = false;
+        bool confirm = false, held = false, released = false;
         Entity defaultButton = nullptr;
         if (!m_selectedButton)
             for (auto [handle, rect, button] : _registry.view<RectTransform, UIButton>().each())
@@ -784,7 +787,6 @@ namespace Canis
         }
         if (canvas && canvas->navigateAction != 0)
         {
-            if (!m_selectedButton) m_selectedButton = defaultButton;
             const auto value = inputManager->Action(ActionId{canvas->navigateAction}).value;
             const Vector2 direction(std::abs(value.x) > .45f ? (value.x > 0 ? 1.f : -1.f) : 0.f,
                                     std::abs(value.y) > .45f ? (value.y > 0 ? 1.f : -1.f) : 0.f);
@@ -802,7 +804,11 @@ namespace Canis
             confirm = action.pressed; held = action.down; released = action.released;
             if (action.canceled) { m_navigationPressedButton = nullptr; released = false; }
         }
-        if (up || down || left || right || confirm) m_navigationFocus = true;
+        const bool nextPressed = canvas && canvas->nextAction && inputManager->Action(ActionId{canvas->nextAction}).pressed;
+        const bool previousPressed = canvas &&
+            ((canvas->previousAction && inputManager->Action(ActionId{canvas->previousAction}).pressed) ||
+             (nextPressed && canvas->reverseNavigationAction && inputManager->Action(ActionId{canvas->reverseNavigationAction}).down));
+        if (up || down || left || right || confirm || nextPressed || previousPressed) m_navigationFocus = true;
         if (!m_navigationFocus) return;
         bool acquired = false;
         if (!m_selectedButton)
@@ -819,14 +825,35 @@ namespace Canis
         }
         if (!m_selectedButton) return;
         auto& selected = m_selectedButton->GetComponent<UIButton>();
+        if (selected.adjustable && (left || right))
+        {
+            selected.adjustment += right ? 1 : -1;
+            left = right = false;
+        }
         Entity next = up ? selected.up : down ? selected.down : left ? selected.left : right ? selected.right : Entity(nullptr);
+        if (nextPressed || previousPressed)
+        {
+            next = previousPressed ? selected.up : selected.down;
+            // Tab order is independent of authored spatial neighbors.
+            for (std::size_t i = 0; i < m_tabOrder.size(); ++i)
+                if (m_tabOrder[i] == m_selectedButton)
+                {
+                    for (std::size_t offset = 1; offset <= m_tabOrder.size(); ++offset)
+                    {
+                        const auto index = previousPressed ? (i + m_tabOrder.size() - offset) % m_tabOrder.size()
+                                                           : (i + offset) % m_tabOrder.size();
+                        if (selectable(m_tabOrder[index])) { next = m_tabOrder[index]; break; }
+                    }
+                    break;
+                }
+        }
         // Follow the same direction through disabled controls, with a bounded
         // traversal so a disabled cycle or stale link cannot trap navigation.
         for (std::size_t visited = 0; next && !selectable(next) && visited < _registry.view<UIButton>().size(); ++visited)
         {
             if (!next->HasComponent<UIButton>()) { next = nullptr; break; }
             const auto& link = next->GetComponent<UIButton>();
-            next = up ? link.up : down ? link.down : left ? link.left : link.right;
+            next = (up || previousPressed) ? link.up : (down || nextPressed) ? link.down : left ? link.left : link.right;
         }
         if (!acquired && selectable(next) && next != m_selectedButton)
         {
@@ -847,6 +874,7 @@ namespace Canis
         ApplyButtonVisual(*m_selectedButton, button, m_selectedButton->GetComponent<RectTransform>());
         if (released && !held && m_navigationPressedButton)
         {
+            button.activated = true;
             Entity source = m_navigationPressedButton;
             m_navigationPressedButton = nullptr;
             if (source != m_selectedButton) return;

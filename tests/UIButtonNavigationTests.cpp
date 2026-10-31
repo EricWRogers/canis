@@ -41,20 +41,51 @@ int main()
         return e;
     };
     Entity first = makeButton("First"), second = makeButton("Second"), disabled = makeButton("Disabled");
+    first.AddComponent<Text>()->color = Color(1);
+    first.GetComponent<UIButton>().hoverColor = Color(.26f, .9f, .376f, 1);
+    first.GetComponent<UIButton>().hoverScale = 1.08f;
+    second.AddComponent<Sprite2D>()->color = Color(1);
+    second.GetComponent<UIButton>().hoverColor = Color(1);
+    second.GetComponent<UIButton>().hoverScale = 1.08f;
     first.GetComponent<UIButton>().defaultSelected = true;
     first.GetComponent<UIButton>().down = disabled;
     disabled.GetComponent<UIButton>().active = false;
     disabled.GetComponent<UIButton>().down = second;
     second.GetComponent<UIButton>().up = first;
+    auto initialCanvas = app.scene.CreateEntity("Menu canvas");
+    initialCanvas.AddComponent<RectTransform>();
+    auto& initial = *initialCanvas.AddComponent<Canvas>();
+    initial.navigateAction = 31; initial.confirmAction = 32;
+    for (auto e : {first, second, disabled}) e.GetComponent<RectTransform>().parent = initialCanvas;
+    InputDocument initialDocument;
+    initialDocument.maps = {{30, "Menu"}};
+    initialDocument.actions = {
+        {31, 30, "Navigate", ActionType::Axis2D, {
+            {41, InputScheme::KeyboardMouse, "Composite/Axis2D", {{"up", "Keyboard/Up"}, {"down", "Keyboard/Down"}, {"left", "Keyboard/Left"}, {"right", "Keyboard/Right"}}},
+            {42, InputScheme::Gamepad, "Composite/Axis2D", {{"up", "Gamepad/DpadUp"}, {"down", "Gamepad/DpadDown"}, {"left", "Gamepad/DpadLeft"}, {"right", "Gamepad/DpadRight"}}}}},
+        {32, 30, "Confirm", ActionType::Button, {{43, InputScheme::KeyboardMouse, "Keyboard/Enter"}, {44, InputScheme::Gamepad, "Gamepad/South"}}}
+    };
+    auto initialSchema = initialDocument;
+    for (auto& action : initialSchema.actions) action.bindings.clear();
+    std::string initialError;
+    Check(input.Actions().RegisterSchema(initialSchema, initialError), initialError.c_str());
+    Check(input.Actions().QueueDocument(initialDocument, initialError), initialError.c_str());
+    input.Actions().EnableMap({30});
     UIInteractionSystem system;
     system.scene = &app.scene; system.window = &window; system.inputManager = &input;
-    auto frame = [&] { system.Update(app.scene.GetRegistry(), .016f); input.BeginSyntheticInputFrame(); };
+    auto frame = [&] { input.Actions().Evaluate(true); system.Update(app.scene.GetRegistry(), .016f); input.BeginSyntheticInputFrame(); };
     auto key = [&](unsigned int code, bool down) { input.SetSyntheticKey(code, down); frame(); };
     input.mouse = Vector2(0); input.mouseRel = Vector2(0);
+    frame();
     key(Key::DOWN, true);
     Check(first.GetComponent<UIButton>().hovered, "First direction must acquire default focus");
+    Check(first.GetComponent<Text>().color == first.GetComponent<UIButton>().hoverColor, "Focused text did not turn green");
+    Check(first.GetComponent<RectTransform>().scale.x == 1.08f, "Focused text did not enlarge");
     key(Key::DOWN, false); key(Key::DOWN, true);
     Check(second.GetComponent<UIButton>().hovered && !first.GetComponent<UIButton>().hovered, "Disabled link was not skipped");
+    Check(second.GetComponent<Sprite2D>().color == Color(1), "Focused artwork was tinted");
+    Check(second.GetComponent<RectTransform>().scale.x == 1.08f, "Focused artwork did not enlarge");
+    Check(first.GetComponent<RectTransform>().scale.x == 1, "Old focus did not restore its size");
     key(Key::DOWN, false); key(Key::RETURN, true);
     Check(second.GetComponent<UIButton>().pressed && listener->clicks == 0, "Confirm should press before activating");
     frame(); key(Key::RETURN, false);
@@ -103,17 +134,23 @@ int main()
     canvasEntity.AddComponent<RectTransform>();
     auto& canvas = *canvasEntity.AddComponent<Canvas>();
     canvas.navigateAction = 11; canvas.confirmAction = 12;
+    canvas.nextAction = 13; canvas.previousAction = 14; canvas.reverseNavigationAction = 15;
     second.GetComponent<RectTransform>().parent = canvasEntity;
     Entity third = makeButton("Third");
     third.GetComponent<RectTransform>().parent = canvasEntity;
     third.GetComponent<UIButton>().targetScript = "CSharp:test.buttons";
     second.GetComponent<UIButton>().down = third;
     third.GetComponent<UIButton>().down = second;
+    third.GetComponent<UIButton>().up = second;
+    second.GetComponent<UIButton>().up = third;
     InputDocument document;
     document.maps = {{10, "Menu"}};
     document.actions = {
         {11, 10, "Navigate", ActionType::Axis2D, {{21, InputScheme::Gamepad, "Gamepad/LeftStick"}}},
-        {12, 10, "Confirm", ActionType::Button, {{22, InputScheme::KeyboardMouse, "Keyboard/Z"}}}
+        {12, 10, "Confirm", ActionType::Button, {{22, InputScheme::KeyboardMouse, "Keyboard/Z"}}},
+        {13, 10, "Next", ActionType::Button, {{23, InputScheme::KeyboardMouse, "Keyboard/N"}}},
+        {14, 10, "Previous", ActionType::Button, {{24, InputScheme::KeyboardMouse, "Keyboard/P"}}},
+        {15, 10, "Reverse", ActionType::Button, {{25, InputScheme::KeyboardMouse, "Keyboard/LeftShift"}}}
     };
     auto schema = document; for (auto& action : schema.actions) action.bindings.clear();
     std::string error;
@@ -130,6 +167,33 @@ int main()
     input.Actions().Record("Keyboard/Z", Vector2(1, 0)); mappedFrame();
     input.Actions().Record("Keyboard/Z", Vector2(0)); mappedFrame();
     Check(managedClicks == 4, "Rebound confirmation did not call the C# binding");
+    system.SetTabOrder({second, disabled, third});
+    input.Actions().Record("Keyboard/N", Vector2(1, 0)); mappedFrame();
+    Check(system.SelectedButton() == third, "Mapped Next did not move focus");
+    input.Actions().Record("Keyboard/N", Vector2(0)); mappedFrame();
+    input.Actions().Record("Keyboard/LeftShift", Vector2(1, 0)); mappedFrame();
+    Check(system.SelectedButton() == third, "Reverse modifier moved focus without Next");
+    input.Actions().Record("Keyboard/N", Vector2(1, 0)); mappedFrame();
+    Check(system.SelectedButton() == second, "Mapped reverse modifier did not reverse traversal");
+    input.Actions().Record("Keyboard/N", Vector2(0));
+    input.Actions().Record("Keyboard/LeftShift", Vector2(0)); mappedFrame();
+    input.Actions().Record("Keyboard/P", Vector2(1, 0)); mappedFrame();
+    Check(system.SelectedButton() == third, "Mapped Previous did not move focus");
+    input.Actions().Record("Keyboard/P", Vector2(0)); mappedFrame();
+    system.SelectButton(second);
+    Check(second.GetComponent<UIButton>().activated, "Native owner did not receive confirmation event");
+    second.GetComponent<UIButton>().activated = false;
+    second.GetComponent<UIButton>().adjustable = true;
+    input.Actions().Record("Gamepad/LeftStick", Vector2(1, 0)); mappedFrame();
+    Check(second.GetComponent<UIButton>().adjustment == 1, "Slider did not receive mapped horizontal adjustment");
+    Check(system.SelectedButton() == second, "Slider adjustment moved focus");
+    input.Actions().Record("Gamepad/LeftStick", Vector2(0)); mappedFrame();
+    input.SetSyntheticKey(Key::RETURN, true); mappedFrame();
+    input.SetSyntheticKey(Key::RETURN, false); mappedFrame();
+    Check(managedClicks == 4, "Unbound Enter bypassed the mapped confirm action");
+    canvas.receivesEvents = false; mappedFrame();
+    Check(system.SelectedButton() == second, "Temporary input gate discarded saved focus");
+    canvas.receivesEvents = true; mappedFrame();
     canvas.navigationEnabled = false;
     input.Actions().Record("Keyboard/Z", Vector2(1, 0)); mappedFrame();
     canvas.navigationEnabled = true;
@@ -206,6 +270,13 @@ int main()
     Check(system.FocusInputField(otherField), "Second field did not focus");
     system.OnDestroy();
     Check(!SDL_TextInputActive(static_cast<SDL_Window*>(window.GetSDLWindow())), "System teardown left text input active");
+
+    canvas.nextAction = 13; canvas.previousAction = 14;
+    YAML::Node encodedCanvas;
+    app.GetScriptConf("Canis::Canvas")->Encode(encodedCanvas, canvasEntity);
+    Check(encodedCanvas["Canis::Canvas"]["nextAction"].as<unsigned>() == 13 &&
+          encodedCanvas["Canis::Canvas"]["previousAction"].as<unsigned>() == 14,
+          "Canvas traversal action IDs were not serialized");
 
     // Scene serialization must preserve links and remap them on duplication.
     auto* conf = app.GetScriptConf("Canis::UIButton");

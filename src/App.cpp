@@ -3345,6 +3345,9 @@ namespace Canis
                     comp["receivesEvents"] = canvas.receivesEvents;
                     comp["navigationEnabled"] = canvas.navigationEnabled;
                     comp["navigateAction"] = canvas.navigateAction;
+                    comp["reverseNavigationAction"] = canvas.reverseNavigationAction;
+                    comp["nextAction"] = canvas.nextAction;
+                    comp["previousAction"] = canvas.previousAction;
                     comp["confirmAction"] = canvas.confirmAction;
                     comp["interactionDistance"] = canvas.interactionDistance;
                     _node["Canis::Canvas"] = comp;
@@ -3362,6 +3365,9 @@ namespace Canis
                     canvas.receivesEvents = canvasNode["receivesEvents"].as<bool>(true);
                     canvas.navigationEnabled = canvasNode["navigationEnabled"].as<bool>(true);
                     canvas.navigateAction = canvasNode["navigateAction"].as<unsigned int>(0);
+                    canvas.reverseNavigationAction = canvasNode["reverseNavigationAction"].as<unsigned int>(0);
+                    canvas.nextAction = canvasNode["nextAction"].as<unsigned int>(0);
+                    canvas.previousAction = canvasNode["previousAction"].as<unsigned int>(0);
                     canvas.confirmAction = canvasNode["confirmAction"].as<unsigned int>(0);
                     canvas.interactionDistance = std::max(
                         0.0f, canvasNode["interactionDistance"].as<float>(3.0f));
@@ -3379,6 +3385,9 @@ namespace Canis
                     DrawInspectorField(_editor, "active", _conf.name.c_str(), canvas->active);
                     DrawInspectorField(_editor, "navigationEnabled", _conf.name.c_str(), canvas->navigationEnabled);
                     DrawInspectorField(_editor, "navigateAction", _conf.name.c_str(), canvas->navigateAction);
+                    DrawInspectorField(_editor, "reverseNavigationAction", _conf.name.c_str(), canvas->reverseNavigationAction);
+                    DrawInspectorField(_editor, "nextAction", _conf.name.c_str(), canvas->nextAction);
+                    DrawInspectorField(_editor, "previousAction", _conf.name.c_str(), canvas->previousAction);
                     DrawInspectorField(_editor, "confirmAction", _conf.name.c_str(), canvas->confirmAction);
 
                     int renderMode = static_cast<int>(canvas->renderMode);

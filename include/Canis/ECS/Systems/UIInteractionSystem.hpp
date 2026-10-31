@@ -3,6 +3,7 @@
 #include <Canis/Math.hpp>
 
 #include <Canis/System.hpp>
+#include <vector>
 
 namespace Canis
 {
@@ -10,6 +11,7 @@ namespace Canis
     class UIInteractionSystem : public System
     {
     private:
+        std::vector<Entity> m_tabOrder;
         Entity m_selectedButton = nullptr;
         Entity m_navigationPressedButton = nullptr;
         bool m_navigationFocus = false;
@@ -25,6 +27,9 @@ namespace Canis
     public:
         UIInteractionSystem() : System() { m_name = type_name<UIInteractionSystem>(); }
 
+        void SetTabOrder(const std::vector<Entity>& buttons) { m_tabOrder = buttons; }
+        Entity SelectedButton() const { return m_selectedButton; }
+        void SelectButton(Entity entity, bool showFocus = true) { m_selectedButton = entity; m_navigationFocus = showFocus; m_navigationPressedButton = nullptr; }
         bool FocusInputField(Entity* entity);
         static void SetInputText(UIInputField& field, const std::string& text);
         static void InsertInputText(UIInputField& field, const std::string& text);

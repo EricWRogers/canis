@@ -4839,7 +4839,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
     {
         return _key == "shader" || _key == "albedo" || _key == "normal" || _key == "normalScale" || _key == "specular" || _key == "roughness" || _key == "metallic" ||
                _key == "emission" || _key == "color" || _key == "specularValue" || _key == "roughnessValue" || _key == "roughnessChannel" || _key == "metallicValue" ||
-               _key == "backFaceCulling" || _key == "frontFaceCulling" || _key == "uniforms";
+               _key == "transparentPriority" || _key == "transparentDepthWrite" || _key == "backFaceCulling" || _key == "frontFaceCulling" || _key == "uniforms";
     }
 
     static YAML::Node MakeAssetRefNode(const std::string &_path)
@@ -5737,6 +5737,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         _material->roughnessValue = _root["roughnessValue"].as<float>(0.5f);
         _material->roughnessChannel = std::clamp(_root["roughnessChannel"].as<int>(0), 0, 3);
         _material->metallicValue = _root["metallicValue"].as<float>(0.0f);
+        _material->transparentPriority = _root["transparentPriority"].as<int>(0);
+        _material->transparentDepthWrite = _root["transparentDepthWrite"].as<bool>(false);
         const float normalScale = _root["normalScale"].as<float>(1.0f);
         _material->normalScale = std::isfinite(normalScale) ? std::clamp(normalScale, 0.0f, 4.0f) : 1.0f;
 
@@ -12578,6 +12580,18 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             dirty = true;
         }
 
+        int transparentPriority = root["transparentPriority"].as<int>(0);
+        EditorUI::PropertyLabel("transparentPriority");
+        if (ImGui::InputInt("##transparentPriority", &transparentPriority)) {
+            root["transparentPriority"] = transparentPriority;
+            dirty = true;
+        }
+        bool transparentDepthWrite = root["transparentDepthWrite"].as<bool>(false);
+        EditorUI::PropertyLabel("transparentDepthWrite");
+        if (ImGui::Checkbox("##transparentDepthWrite", &transparentDepthWrite)) {
+            root["transparentDepthWrite"] = transparentDepthWrite;
+            dirty = true;
+        }
         bool backFaceCulling = root["backFaceCulling"].as<bool>(false);
         EditorUI::PropertyLabel("backFaceCulling");
         if (ImGui::Checkbox("##backFaceCulling", &backFaceCulling))

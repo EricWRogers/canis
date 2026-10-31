@@ -512,6 +512,10 @@ namespace Canis
 
     struct MaterialAsset
     {
+        // Refractive surfaces can render before ordinary alpha geometry and
+        // provide depth for submerged fragments without changing opaque scene capture.
+        int transparentPriority = 0;
+        bool transparentDepthWrite = false;
         u32 info = 0u;
         i32 shaderId = -1;
         i32 albedoId = -1;

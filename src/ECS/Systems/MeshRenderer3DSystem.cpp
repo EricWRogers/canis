@@ -103,6 +103,8 @@ namespace Canis
         {
             entt::entity entityHandle = entt::null;
             float distanceSquared = 0.0f;
+            int priority = 0;
+            bool depthWrite = false;
         };
 
         constexpr int kColliderCircleSegments = 28;
@@ -1956,9 +1958,13 @@ namespace Canis
 
             if (candidate.transparent)
             {
+                auto* material = _registry.try_get<Material>(entityHandle);
+                auto* asset = material && material->materialId >= 0 ? AssetManager::GetMaterial(material->materialId) : nullptr;
                 transparentEntities.push_back(TransparentModelEntry{
                     .entityHandle = entityHandle,
-                    .distanceSquared = distanceSquared
+                    .distanceSquared = distanceSquared,
+                    .priority = asset ? asset->transparentPriority : 0,
+                    .depthWrite = asset && asset->transparentDepthWrite
                 });
             }
             else
@@ -1978,6 +1984,7 @@ namespace Canis
             transparentEntities.end(),
             [](const TransparentModelEntry &_a, const TransparentModelEntry &_b)
             {
+                if (_a.priority != _b.priority) return _a.priority < _b.priority;
                 return _a.distanceSquared > _b.distanceSquared;
             });
 
@@ -2816,8 +2823,10 @@ namespace Canis
             if(currentShader){currentShader->UnUse();currentShader=nullptr;}
         }
         glDepthMask(GL_FALSE);
-        for (const TransparentModelEntry &entry : transparentEntities)
+        for (const TransparentModelEntry &entry : transparentEntities) {
+            glDepthMask(entry.depthWrite ? GL_TRUE : GL_FALSE);
             drawEntity(entry.entityHandle);
+        }
         glDepthMask(GL_TRUE);
         if(wantsDepth || wantsColor) {
             glActiveTexture(GL_TEXTURE14);glBindTexture(GL_TEXTURE_2D,savedColorTexture);
