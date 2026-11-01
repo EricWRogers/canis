@@ -45,26 +45,29 @@ namespace Canis
             return centeredMouse;
         }
 
-        bool IsPointInsideRect(const RectTransform& _rect, const Vector2& _point)
+        bool IsPointInsideRect(const RectTransform& rect, const Vector2& point)
         {
-            const Vector2 min = _rect.GetRectMin() + _rect.originOffset;
-            const Vector2 size = _rect.GetResolvedSize();
-            return _point.x >= min.x &&
-                _point.x <= (min.x + size.x) &&
-                _point.y >= min.y &&
-                _point.y <= (min.y + size.y);
+            Vector2 local=point-rect.GetPosition();
+            const float angle=-rect.GetRotation();
+            local=Vector2(local.x*std::cos(angle)-local.y*std::sin(angle),
+                          local.x*std::sin(angle)+local.y*std::cos(angle));
+            const Vector2 size=rect.GetResolvedSize();
+            const Vector2 min=-rect.pivot*size+rect.originOffset;
+            return local.x>=min.x && local.x<=min.x+size.x &&
+                   local.y>=min.y && local.y<=min.y+size.y;
         }
 
         bool TryGetWorldCanvasPointer(
             entt::registry &_registry,
             Scene &_scene,
             const RectTransform &_rect,
-            Vector2 &_pointerPosition)
+            Vector2 &_pointerPosition,
+            bool requireEvents = true)
         {
             const Canvas *canvas = _rect.GetCanvas();
             if (canvas == nullptr ||
                 !canvas->active ||
-                !canvas->receivesEvents ||
+                (requireEvents && !canvas->receivesEvents) ||
                 canvas->entity == nullptr ||
                 !canvas->entity->HasComponent<Transform>())
             {
@@ -134,26 +137,62 @@ namespace Canis
             return true;
         }
 
+        bool HitRect(RectTransform& rect, Scene& scene, bool requireEvents)
+        {
+            if(!rect.IsActiveInHierarchy())return false;
+            const auto mode=rect.GetCanvasRenderMode();
+            if(scene.GetWindow().IsMouseLocked() && mode!=CanvasRenderMode::WORLD_SPACE)return false;
+            Vector2 point;
+            auto& registry=scene.GetRegistry();
+            if(mode==CanvasRenderMode::WORLD_SPACE) {
+                if(!TryGetWorldCanvasPointer(registry,scene,rect,point,requireEvents))return false;
+            } else point=GetMousePositionForRenderMode(registry,scene,mode);
+            return IsPointInsideRect(rect,point);
+        }
+
+        bool InFront(Entity candidate, Entity current)
+        {
+            const auto& rect=candidate.GetComponent<RectTransform>();
+            const auto& other=current.GetComponent<RectTransform>();
+            const bool overlay=rect.GetCanvasRenderMode()==CanvasRenderMode::SCREEN_SPACE_OVERLAY;
+            const bool otherOverlay=other.GetCanvasRenderMode()==CanvasRenderMode::SCREEN_SPACE_OVERLAY;
+            if(overlay!=otherOverlay)return overlay;
+            // Overlay glyphs are rendered in ascending depth order; later/higher
+            // artwork is on top. Depth-tested camera/world UI keeps its depth order.
+            return overlay ? rect.GetDepth()>=other.GetDepth() : rect.GetDepth()<other.GetDepth();
+        }
+
         void SetRectUniformScale(RectTransform& _rect, float _scale)
         {
             _rect.scale.x = (_rect.scale.x < 0.0f) ? -_scale : _scale;
             _rect.scale.y = (_rect.scale.y < 0.0f) ? -_scale : _scale;
         }
 
+        void SaveButtonBase(Entity& entity, UIButton& button, RectTransform& rect)
+        {
+            if (button.baseValuesSaved) return;
+            button.baseValuesSaved = true;
+            button.baseScale = rect.scale.x;
+            if (entity.HasComponent<Sprite2D>()) button.baseColor = entity.GetComponent<Sprite2D>().color;
+            else if (entity.HasComponent<Text>()) button.baseColor = entity.GetComponent<Text>().color;
+        }
+
         void ApplyButtonVisual(Entity& _entity, UIButton& _button, RectTransform& _rect)
         {
-            const bool pressed = _button.pressed;
-            const bool hovered = _button.hovered;
+            const bool pressed = _button.active && _button.pressed;
+            const bool hovered = _button.active && _button.hovered;
+            const Color color = !_button.active ? _button.disabledColor :
+                pressed ? _button.pressedColor : hovered ? _button.hoverColor : _button.baseColor;
 
             if (_entity.HasComponent<Sprite2D>())
             {
                 Sprite2D& sprite = _entity.GetComponent<Sprite2D>();
-                sprite.color = pressed ? _button.pressedColor : (hovered ? _button.hoverColor : _button.baseColor);
+                sprite.color = color;
             }
             else if (_entity.HasComponent<Text>())
             {
                 Text& text = _entity.GetComponent<Text>();
-                text.color = pressed ? _button.pressedColor : (hovered ? _button.hoverColor : _button.baseColor);
+                text.color = color;
             }
 
             SetRectUniformScale(_rect, pressed ? _button.pressedScale : (hovered ? _button.hoverScale : _button.baseScale));
@@ -259,6 +298,36 @@ namespace Canis
 
             RefreshInputFieldDisplay(_inputField);
         }
+    }
+
+    bool UIInteractionSystem::HitTest(Entity widget)
+    {
+        if(!widget || !widget.HasComponent<RectTransform>())return false;
+        auto* rect=&widget.GetComponent<RectTransform>();
+        if(!rect->IsActiveInHierarchy())return false;
+        if(auto button=widget.TryGetComponent<UIButton>())
+            if(button->hitRect && button->hitRect.HasComponent<RectTransform>())
+                rect=&button->hitRect.GetComponent<RectTransform>();
+        return HitRect(*rect,widget.scene,false);
+    }
+
+    Entity UIInteractionSystem::Pick(std::span<const Entity> widgets)
+    {
+        Entity result;
+        for(auto widget:widgets)
+            if(HitTest(widget) && (!result || InFront(widget,result)))result=widget;
+        return result;
+    }
+
+    void UIInteractionSystem::SetButtonActive(Entity entity, bool active)
+    {
+        if (!entity || !entity.HasComponents<UIButton, RectTransform>()) return;
+        auto& button = entity.GetComponent<UIButton>();
+        auto& rect = entity.GetComponent<RectTransform>();
+        SaveButtonBase(entity, button, rect);
+        button.active = active;
+        if (!active) { button.hovered = false; button.pressed = false; }
+        ApplyButtonVisual(entity, button, rect);
     }
 
     bool UIInteractionSystem::FocusInputField(Entity* entity)
@@ -463,16 +532,7 @@ namespace Canis
             if (entity == nullptr)
                 continue;
 
-            if (button.baseValuesSaved == false)
-            {
-                button.baseValuesSaved = true;
-                button.baseScale = rect.scale.x;
-
-                if (entity->HasComponent<Sprite2D>())
-                    button.baseColor = entity->GetComponent<Sprite2D>().color;
-                else if (entity->HasComponent<Text>())
-                    button.baseColor = entity->GetComponent<Text>().color;
-            }
+            SaveButtonBase(*entity, button, rect);
 
             const bool visible = button.active && rect.IsActiveInHierarchy();
             button.hovered = false;
@@ -527,45 +587,8 @@ namespace Canis
         Entity* hoveredInputField = nullptr;
         Entity* hoveredDragSource = nullptr;
         Entity* hoveredDropTarget = nullptr;
-        float hoveredButtonDepth = FLT_MAX;
-        float hoveredInputFieldDepth = FLT_MAX;
-        float hoveredDragDepth = FLT_MAX;
-        float hoveredDropDepth = FLT_MAX;
-
-        auto evaluateRectEntity = [&](Entity* _entity, RectTransform& _rect, float& _bestDepth, Entity*& _bestEntity) -> void
-        {
-            if (_entity == nullptr || !_rect.IsActiveInHierarchy())
-                return;
-
-            const unsigned int renderMode = _rect.GetCanvasRenderMode();
-            if (window->IsMouseLocked() &&
-                renderMode != CanvasRenderMode::WORLD_SPACE)
-            {
-                return;
-            }
-            if (renderMode == CanvasRenderMode::WORLD_SPACE)
-            {
-                Vector2 pointerPosition = Vector2(0.0f);
-                if (!TryGetWorldCanvasPointer(_registry, *scene, _rect, pointerPosition) ||
-                    !IsPointInsideRect(_rect, pointerPosition))
-                {
-                    return;
-                }
-            }
-            else
-            {
-                const Vector2 pointerPosition =
-                    GetMousePositionForRenderMode(_registry, *scene, renderMode);
-                if (!IsPointInsideRect(_rect, pointerPosition))
-                    return;
-            }
-
-            const float depth = _rect.GetDepth();
-            if (_bestEntity == nullptr || depth < _bestDepth)
-            {
-                _bestDepth = depth;
-                _bestEntity = _entity;
-            }
+        auto evaluateRectEntity = [&](Entity* candidate, RectTransform& rect, Entity*& best) {
+            if(candidate && HitRect(rect,*scene,true) && (!best || InFront(*candidate,*best)))best=candidate;
         };
 
         if (m_dragSource == nullptr)
@@ -578,7 +601,7 @@ namespace Canis
                 auto* hitEntity = button.hitRect.TryGet();
                 auto& hitRect = hitEntity && hitEntity->HasComponent<RectTransform>()
                     ? hitEntity->GetComponent<RectTransform>() : rect;
-                evaluateRectEntity(button.entity, hitRect, hoveredButtonDepth, hoveredButton);
+                evaluateRectEntity(button.entity, hitRect, hoveredButton);
             }
 
             auto inputFieldView = _registry.view<RectTransform, UIInputField>();
@@ -586,7 +609,7 @@ namespace Canis
             {
                 (void)entityHandle;
                 if (inputField.active)
-                    evaluateRectEntity(inputField.entity, rect, hoveredInputFieldDepth, hoveredInputField);
+                    evaluateRectEntity(inputField.entity, rect, hoveredInputField);
             }
 
             auto dragView = _registry.view<RectTransform, UIDragSource>();
@@ -594,7 +617,7 @@ namespace Canis
             {
                 (void)entityHandle;
                 if (dragSource.active)
-                    evaluateRectEntity(dragSource.entity, rect, hoveredDragDepth, hoveredDragSource);
+                    evaluateRectEntity(dragSource.entity, rect, hoveredDragSource);
             }
         }
         else
@@ -615,7 +638,7 @@ namespace Canis
                 if (!dropTarget.acceptedPayloadType.empty() && dropTarget.acceptedPayloadType != dragSource.payloadType)
                     continue;
 
-                evaluateRectEntity(dropTarget.entity, rect, hoveredDropDepth, hoveredDropTarget);
+                evaluateRectEntity(dropTarget.entity, rect, hoveredDropTarget);
             }
         }
 

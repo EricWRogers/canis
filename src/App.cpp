@@ -3440,6 +3440,7 @@ namespace Canis
                     comp["pivot"] = transform.pivot;
                     comp["originOffset"] = transform.originOffset;
                     comp["depth"] = transform.depth;
+                    comp["opacity"] = transform.opacity;
                     comp["rotation"] = transform.rotation;
                     comp["rotationOriginOffset"] = transform.rotationOriginOffset;
                     comp["parent"] = _entity.scene.GetLiveEntityUUID(transform.parent);
@@ -3471,6 +3472,7 @@ namespace Canis
                     rt.pivot = rectTransform["pivot"].as<Vector2>(rt.pivot);
                     rt.originOffset = rectTransform["originOffset"].as<Vector2>(rt.originOffset);
                     rt.depth = rectTransform["depth"].as<float>(rt.depth);
+                    rt.opacity = rectTransform["opacity"].as<float>(1.0f);
                     rt.rotation = rectTransform["rotation"].as<float>(rt.rotation);
                     rt.rotationOriginOffset = rectTransform["rotationOriginOffset"].as<Vector2>(rt.rotationOriginOffset);
 
@@ -3533,6 +3535,7 @@ namespace Canis
                     DrawInspectorField(_editor, "originOffset", _conf.name.c_str(), transform->originOffset);
                     DrawInspectorField(_editor, "rotationOriginOffset", _conf.name.c_str(), transform->rotationOriginOffset);
                     DrawInspectorField(_editor, "depth", _conf.name.c_str(), transform->depth);
+                    DrawInspectorField(_editor, "opacity", _conf.name.c_str(), transform->opacity);
                     // let user work with degrees
                     float degrees = RAD2DEG * transform->rotation;
                     DrawInspectorField(_editor, "rotation", _conf.name.c_str(), degrees);
@@ -3897,6 +3900,7 @@ namespace Canis
                     comp["actionName"] = button->actionName;
                     comp["hoverColor"] = button->hoverColor;
                     comp["pressedColor"] = button->pressedColor;
+                    comp["disabledColor"] = button->disabledColor;
                     comp["hoverScale"] = button->hoverScale;
                     comp["pressedScale"] = button->pressedScale;
                     _node["Canis::UIButton"] = comp;
@@ -3918,10 +3922,13 @@ namespace Canis
                         _entity.scene.GetEntityAfterLoad(comp["left"].as<Canis::UUID>(0), button.left);
                     if (comp["right"].as<Canis::UUID>(0) != Canis::UUID(0))
                         _entity.scene.GetEntityAfterLoad(comp["right"].as<Canis::UUID>(0), button.right);
+                    if (comp["hitRect"].as<Canis::UUID>(0) != Canis::UUID(0))
+                        _entity.scene.GetEntityAfterLoad(comp["hitRect"].as<Canis::UUID>(0), button.hitRect);
                     button.targetScript = comp["targetScript"].as<std::string>("");
                     button.actionName = comp["actionName"].as<std::string>("");
                     button.hoverColor = comp["hoverColor"].as<Vector4>(Color(1.0f));
                     button.pressedColor = comp["pressedColor"].as<Vector4>(Color(0.85f, 0.85f, 0.85f, 1.0f));
+                    button.disabledColor = comp["disabledColor"].as<Vector4>(Color(.4f, .4f, .4f, 1));
                     button.hoverScale = comp["hoverScale"].as<float>(1.03f);
                     button.pressedScale = comp["pressedScale"].as<float>(0.98f);
 
@@ -3953,6 +3960,7 @@ namespace Canis
 #endif
                 DrawInspectorColorField("hoverColor", _conf.name.c_str(), button->hoverColor);
                 DrawInspectorColorField("pressedColor", _conf.name.c_str(), button->pressedColor);
+                DrawInspectorColorField("disabledColor", _conf.name.c_str(), button->disabledColor);
                 
                 DrawInspectorField(_editor, "hoverScale", _conf.name.c_str(), button->hoverScale);
                 DrawInspectorField(_editor, "pressedScale", _conf.name.c_str(), button->pressedScale);

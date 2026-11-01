@@ -8,6 +8,7 @@
 #include <Canis/Window.hpp>
 #include <Canis/ECS/Systems/UIInteractionSystem.hpp>
 #include <iostream>
+#include <array>
 #include <SDL3/SDL.h>
 #include <stdexcept>
 using namespace Canis;
@@ -21,6 +22,53 @@ int main()
     app.scene.Init(&app, &window, &input);
     Editor editor;
     app.RegisterDefaults(editor);
+    auto fadeRoot=app.scene.CreateEntity("UI fade group");
+    fadeRoot.AddComponent<RectTransform>()->opacity=.5f;
+    auto fadeChild=app.scene.CreateEntity("UI fade child");
+    auto& childRect=*fadeChild.AddComponent<RectTransform>();
+    childRect.parent=fadeRoot;childRect.opacity=.5f;
+    Check(childRect.GetOpacity()==.25f,"UI subtree opacity did not multiply through parents");
+    YAML::Node encodedOpacity;
+    app.GetScriptConf("Canis::RectTransform")->Encode(encodedOpacity,fadeChild);
+    Check(encodedOpacity["Canis::RectTransform"]["opacity"].as<float>()==.5f,"UI opacity did not serialize");
+    auto opacitySource=YAML::Load(
+        "- {Entity: 201, Name: Fading, 'Canis::RectTransform': {opacity: 0.5}}\n"
+        "- {Entity: 202, Name: Backdrop, 'Canis::RectTransform': {}}\n");
+    auto opacityNodes=app.scene.LoadEntityNodes(opacitySource,false);
+    Check(opacityNodes[0]->GetComponent<RectTransform>().GetOpacity()==.5f &&
+          opacityNodes[1]->GetComponent<RectTransform>().GetOpacity()==1,
+          "UI opacity decode changed the default background opacity");
+
+    // Passive HUD queries use the same transformed bounds as native controls.
+    {
+        auto root=app.scene.CreateEntity("Picking canvas");
+        root.AddComponent<RectTransform>()->size={320,240};
+        auto& queryCanvas=*root.AddComponent<Canvas>();queryCanvas.screenSize={320,240};
+        auto front=app.scene.CreateEntity("Raised card"),back=app.scene.CreateEntity("Lower card");
+        for(auto widget:{front,back}) {
+            auto& rect=*widget.AddComponent<RectTransform>();rect.parent=root;rect.size={80,20};
+            root.GetComponent<RectTransform>().children.push_back(widget);
+        }
+        auto& frontRect=front.GetComponent<RectTransform>();frontRect.rotation=glm::radians(45.f);frontRect.depth=.2f;
+        back.GetComponent<RectTransform>().depth=.1f;
+        input.mouse={195,120};
+        Check(!UIInteractionSystem::HitTest(front),"Rotated UI hit test used its unrotated box");
+        input.mouse={175,135};
+        Check(UIInteractionSystem::HitTest(front),"Rotated UI hit test missed visible artwork");
+        input.mouse={160,120};
+        Check(UIInteractionSystem::Pick(std::array{front,back})==front,"UI picking ignored rendered overlay order");
+        queryCanvas.screenSize={640,480};frontRect.rotation=0;
+        input.mouse={185,120};Check(!UIInteractionSystem::HitTest(front),"UI hit test ignored canvas scaling");
+        input.mouse={175,120};Check(UIInteractionSystem::HitTest(front),"Scaled UI hit test missed artwork");
+        auto& button=*front.AddComponent<UIButton>();button.hitRect=back;button.active=false;
+        frontRect.size={10,10};back.GetComponent<RectTransform>().size={100,100};
+        input.mouse={180,120};
+        Check(UIInteractionSystem::HitTest(front),"Passive query ignored a disabled control's authored hit area");
+        root.Active()=false;
+        Check(!UIInteractionSystem::HitTest(front),"UI hit test accepted a hidden ancestor");
+        root.Destroy();input.mouse=Vector2(0);
+    }
+
     ScriptConf receiver;
     receiver.name = "Receiver";
     receiver.kind = RegistryEntryKind::Script;
@@ -47,6 +95,16 @@ int main()
     second.AddComponent<Sprite2D>()->color = Color(1);
     second.GetComponent<UIButton>().hoverColor = Color(1);
     second.GetComponent<UIButton>().hoverScale = 1.08f;
+    // Enabling and disabled appearance belong to the native button system.
+    first.GetComponent<UIButton>().disabledColor = Color(.2f,.3f,.4f,1);
+    UIInteractionSystem::SetButtonActive(first,false);
+    Check(!first.GetComponent<UIButton>().active &&
+          first.GetComponent<Text>().color == Color(.2f,.3f,.4f,1),
+          "Native disabling did not apply the authored disabled color immediately");
+    UIInteractionSystem::SetButtonActive(first,true);
+    Check(first.GetComponent<Text>().color == Color(1) &&
+          first.GetComponent<UIButton>().hoverScale == 1.08f,
+          "Re-enabling lost the authored button appearance");
     first.GetComponent<UIButton>().defaultSelected = true;
     first.GetComponent<UIButton>().down = disabled;
     disabled.GetComponent<UIButton>().active = false;
@@ -286,10 +344,13 @@ int main()
     conf->Encode(encoded, second);
     Check(encoded["Canis::UIButton"]["targetScript"].as<std::string>() == "CSharp:test.buttons", "C# callback binding not serialized");
     Check(encoded["Canis::UIButton"]["defaultSelected"].as<bool>(), "Default selection not serialized");
+    Check(encoded["Canis::UIButton"]["disabledColor"].as<Color>() == second.GetComponent<UIButton>().disabledColor, "Disabled color was not serialized");
     Check(encoded["Canis::UIButton"]["right"].as<UUID>() == disabled.GetUUID(), "Directional link not serialized");
-    YAML::Node nodes = YAML::Load("- {Entity: 101, Name: A, 'Canis::UIButton': {defaultSelected: true, down: 102}}\n- {Entity: 102, Name: B, 'Canis::UIButton': {up: 101}}\n");
+    YAML::Node nodes = YAML::Load("- {Entity: 101, Name: A, 'Canis::UIButton': {defaultSelected: true, down: 102, hitRect: 102, disabledColor: [0.1, 0.2, 0.3, 1]}}\n- {Entity: 102, Name: B, 'Canis::UIButton': {up: 101}}\n");
     auto loaded = app.scene.LoadEntityNodes(nodes, false);
     Check(loaded[0]->GetComponent<UIButton>().down == loaded[1], "Duplicated directional link did not resolve");
     Check(loaded[1]->GetComponent<UIButton>().up == loaded[0], "Reverse link did not resolve");
+    Check(loaded[0]->GetComponent<UIButton>().hitRect == loaded[1], "Authored stable hit area did not resolve");
+    Check(loaded[0]->GetComponent<UIButton>().disabledColor == Color(.1f,.2f,.3f,1), "Authored disabled color did not decode");
     std::cout << "Button navigation, confirmation, lifetime and serialization passed.\n";
 }

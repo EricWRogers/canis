@@ -414,6 +414,13 @@ unsigned int RectTransform::GetCanvasRenderMode() const
     return CanvasRenderMode::SCREEN_SPACE_CAMERA;
 }
 
+float RectTransform::GetOpacity() const
+{
+    const float own = std::isfinite(opacity) ? std::clamp(opacity, 0.0f, 1.0f) : 0.0f;
+    return parent && parent->HasComponent<RectTransform>()
+        ? own * parent->GetComponent<RectTransform>().GetOpacity() : own;
+}
+
 bool RectTransform::IsActiveInHierarchy() const
 {
     if (entity == nullptr || !entity->Active() || !active)

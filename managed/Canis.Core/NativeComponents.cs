@@ -184,6 +184,7 @@ public sealed class PrefabInstance : NativeComponent
 
 public sealed class RectTransform : NativeComponent
 {
+    public float Opacity { get => GetField<float>("opacity"); set => SetField("opacity", value); }
 }
 
 public sealed class Rigidbody : NativeComponent
@@ -235,6 +236,7 @@ public sealed class UIButton : NativeComponent
     public bool DefaultSelected { get => GetField<bool>("defaultSelected"); set => SetField("defaultSelected", value); }
     public string TargetScript { get => GetField<string>("targetScript"); set => SetField("targetScript", value); }
     public string ActionName { get => GetField<string>("actionName"); set => SetField("actionName", value); }
+    public Vector4 DisabledColor { get => GetField<Vector4>("disabledColor"); set => SetField("disabledColor", value); }
     public Vector4 HoverColor { get => GetField<Vector4>("hoverColor"); set => SetField("hoverColor", value); }
     public Vector4 PressedColor { get => GetField<Vector4>("pressedColor"); set => SetField("pressedColor", value); }
     public float HoverScale { get => GetField<float>("hoverScale"); set => SetField("hoverScale", value); }

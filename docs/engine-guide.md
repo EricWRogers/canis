@@ -156,6 +156,21 @@ Examples of built-in components:
 - Lighting: `DirectionalLight`, `PointLight`
 - Rendering/materials: `Material`
 
+`RectTransform.opacity` multiplies sprite and text alpha throughout its UI subtree.
+It defaults to 1. Put foreground widgets under a rect and animate that rect's
+opacity to fade them together; keep the background under a separate parent.
+This rendering multiplier leaves `UIButton` hover, pressed, and disabled colors
+intact. Opacity does not change focus or pointer interaction.
+
+`UIInteractionSystem::HitTest(entity)` queries a widget under the current scene
+pointer, including canvas scaling, rotation, visibility, and an authored
+`UIButton.hitRect`. It also works for passive panels and disabled controls,
+which can still block world clicks or show tooltips. `Pick(entities)` returns
+the frontmost hit entity using the UI render mode's depth order. Native controls
+use the same geometry and priority rules; games only map the result to their
+own card slots or actions.
+
+
 ### Scripts
 
 Gameplay code derives from `Canis::ScriptableEntity`.

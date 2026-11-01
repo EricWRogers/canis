@@ -98,6 +98,10 @@ namespace Canis
         Entity parent = nullptr;
 		std::vector<Entity> children;
 
+        // Multiplies sprite/text alpha throughout this UI subtree.
+        float opacity = 1.0f;
+        float GetOpacity() const;
+
         Vector2 GetPosition() const;
 
         void SetPosition(Vector2 _globalPos);
@@ -1764,6 +1768,7 @@ namespace Canis
         Color baseColor = Color(1.0f); // set the first update in UIInteractionSystem
         Color hoverColor = Color(1.0f);
         Color pressedColor = Color(0.85f, 0.85f, 0.85f, 1.0f);
+        Color disabledColor = Color(0.4f, 0.4f, 0.4f, 1.0f);
         
         float baseScale = 1.0f; // set the first update in UIInteractionSystem
         float hoverScale = 1.03f;

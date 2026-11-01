@@ -38,6 +38,8 @@ namespace Canis
         if (font == nullptr || _text->text.empty())
             return;
 
+        Color color = _text->color;
+        color.a *= _transform->GetOpacity();
         const float scaleX = std::abs(_scale.x);
         const float scaleY = std::abs(_scale.y);
         const Vector2 rectSize = _size;
@@ -155,7 +157,7 @@ namespace Canis
                     Vector4(ch.atlasPos.x, uvY, ch.atlasSize.x, ch.atlasSize.y),
                     GLTexture{font->GetTexture(), 0, 0},
                     _depth,
-                    _text->color,
+                    color,
                     _rotation,
                     Vector2(0.0f),
                     textRotationPivot,
@@ -663,12 +665,14 @@ namespace Canis
                             ((0.5f - transform.pivot.x) * size.x) + transform.originOffset.x,
                             ((0.5f - transform.pivot.y) * size.y) + transform.originOffset.y);
 
+                        Color color = sprite->color;
+                        color.a *= transform.GetOpacity();
                         Draw(
                             Vector4(position.x, position.y, size.x, size.y),
                             sprite->uv,
                             sprite->textureHandle.texture,
                             depth,
-                            sprite->color,
+                            color,
                             rotation,
                             pivotOffset);
                     }

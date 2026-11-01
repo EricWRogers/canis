@@ -4,6 +4,7 @@
 
 #include <Canis/System.hpp>
 #include <vector>
+#include <span>
 
 namespace Canis
 {
@@ -30,6 +31,11 @@ namespace Canis
         void SetTabOrder(const std::vector<Entity>& buttons) { m_tabOrder = buttons; }
         Entity SelectedButton() const { return m_selectedButton; }
         void SelectButton(Entity entity, bool showFocus = true) { m_selectedButton = entity; m_navigationFocus = showFocus; m_navigationPressedButton = nullptr; }
+        // Geometry queries use the scene's current UI pointer and canvas mode.
+        // Disabled buttons can still be queried for tooltips or world-input blocking.
+        static bool HitTest(Entity widget);
+        static Entity Pick(std::span<const Entity> widgets);
+        static void SetButtonActive(Entity entity, bool active);
         bool FocusInputField(Entity* entity);
         static void SetInputText(UIInputField& field, const std::string& text);
         static void InsertInputText(UIInputField& field, const std::string& text);
