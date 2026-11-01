@@ -565,7 +565,10 @@ namespace Canis
         
         glEnable(GL_DEPTH_TEST);
         glEnable(GL_BLEND);
-        glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+        // Preserve destination coverage when drawing translucent UI. Squaring
+        // source alpha leaves dark edges when the viewport is composited again.
+        glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA,
+                            GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
         glDepthFunc(GL_LESS);
 
         bool cameraFound = false;

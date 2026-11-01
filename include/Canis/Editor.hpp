@@ -330,6 +330,9 @@ namespace Canis
         void CommitScriptFolderRename(const std::filesystem::path &_includeRoot, const std::filesystem::path &_sourceRoot);
         bool DrawModelAssetInspector(const std::string &_modelPath);
         bool DrawTextureAssetInspector(const std::string &_texturePath);
+        bool DrawTextureAssetInspector(const std::vector<std::string> &_texturePaths);
+        void SyncAssetSelection();
+        void SelectAsset(const std::string &_path, bool _toggle, bool _range);
         void DrawSpriteEditor();
         std::shared_ptr<SpriteEditorState> m_spriteEditor;
         bool DrawMaterialAssetInspector(const std::string &_materialPath);
@@ -477,6 +480,12 @@ namespace Canis
         std::string m_renamingPath;
         char m_renameBuffer[256] = {};
         std::string m_selectedAssetPath = {};
+        std::vector<std::string> m_selectedAssetPaths;
+        std::string m_assetSelectionAnchor;
+        std::vector<std::string> m_visibleAssetPaths;
+        std::string m_pendingAssetSelection;
+        bool m_pendingAssetToggle = false;
+        bool m_pendingAssetRange = false;
         std::string m_assetSearch = {};
         std::string m_assetRevealTargetPath = {};
         std::vector<std::string> m_assetRevealFolders = {};

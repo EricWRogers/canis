@@ -57,6 +57,11 @@ The startup path currently looks like this:
 6. The main scene is loaded from `assets/scenes/roll_a_ball.scene`
 7. The frame loop updates input, scene systems, scripts, and rendering
 
+`App::LoadScene()` queues a scene change. The engine applies it at the next
+frame boundary, before the game tick. During play, the new scene runs `Ready()`
+and its first update before rendering; a load requested during an update leaves
+the current scene in place for the remainder of that frame.
+
 Important engine entry points:
 
 - `canis/include/Canis/App.hpp`
@@ -449,6 +454,18 @@ The editor integration currently provides:
 - multiple scene tabs with per-tab working snapshots and undo/redo history
 - a scene-local viewport toolbar below the scene tabs
 - system timing collection for update and render systems
+
+In Assets, click to select one asset, Shift-click to select a range in the
+displayed order, or Ctrl-click (Cmd-click on macOS) to add/remove individual
+assets. Shift keeps the original anchor when extending a range in either
+direction; Ctrl+Shift adds a range to the current selection. Search results and
+expanded folders determine which assets are included.
+
+Selecting multiple textures opens their shared import settings in the Inspector.
+Differing values show as Mixed. Editing a field changes that field on every
+selected texture; choosing a preset changes all import settings. Apply saves and
+reloads changed textures, and Revert discards unapplied edits. Selection alone
+does not change files, and texture UUIDs and sprite regions are preserved.
 
 Editor typography uses 20 px entity/asset titles, 18 px section headings,
 16 px controls and panel tabs, 14 px hierarchy/asset/script trees, and 13 px

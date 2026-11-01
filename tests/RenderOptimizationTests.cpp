@@ -1091,6 +1091,7 @@ static void ScreenUiAfterPostProcessing(Window& window) {
         auto& s=*e.AddComponent<Sprite2D>();s.textureHandle.texture.id=texture;s.color=color;return e;
     };
     auto overlay=canvas(CanvasRenderMode::SCREEN_SPACE_OVERLAY);sprite(overlay,{-80,0},{20,20},{0,1,0,1});
+    sprite(overlay,{0,70},{20,20},{1,1,1,.5f});
     auto cameraUi=canvas(CanvasRenderMode::SCREEN_SPACE_CAMERA);sprite(cameraUi,{-40,0},{20,20},{1,0,1,1});
     auto world=canvas(CanvasRenderMode::WORLD_SPACE);world.AddComponent<Transform>()->position={0,0,-1};
     sprite(world,{0,0},{.2f,.2f},{0,0,1,1});
@@ -1098,7 +1099,7 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     RenderTarget raw,processed;EnsureRenderTarget(raw,320,240);
     glBindFramebuffer(GL_FRAMEBUFFER,raw.framebuffer);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
     glClearColor(1,0,0,1);glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);
-    auto pixel=[&](int x){std::array<unsigned char,4> value{};glReadPixels(x,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,value.data());return value;};
+    auto pixel=[&](int x,int y=120){std::array<unsigned char,4> value{};glReadPixels(x,y,1,1,GL_RGBA,GL_UNSIGNED_BYTE,value.data());return value;};
     scene.Render(1.f/60,true);
     Check(pixel(80)[0]>240 && pixel(80)[1]<10 && pixel(120)[0]>240 && pixel(120)[2]<10,
           "Screen canvases were already baked into the world render before postprocessing");
@@ -1111,6 +1112,11 @@ static void ScreenUiAfterPostProcessing(Window& window) {
           "Postprocessing modified or hid screen-space overlay/camera UI");
     Check(pixel(160)[0]<10 && pixel(160)[2]<10 && pixel(240)[0]<10 && pixel(240)[1]<10,
           "World-space UI or ordinary sprites incorrectly bypassed postprocessing");
+    const auto translucent=pixel(160,190);
+    Check(translucent[0]>=126 && translucent[0]<=129 &&
+          translucent[1]>=126 && translucent[1]<=129 &&
+          translucent[2]>=126 && translucent[2]<=129 && translucent[3]==255,
+          "Translucent UI reduced opaque viewport alpha, creating dark compositing fringes");
     Check(glGetError()==GL_NO_ERROR,"Post UI composition produced an OpenGL error");
     const auto graphics = GetGraphicsSettings();
     const auto clear = window.GetClearColor();

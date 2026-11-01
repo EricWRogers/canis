@@ -4,10 +4,13 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/EditorUI.hpp>
 #include <Canis/TextureImport.hpp>
+#include <imgui_internal.h>
+#include <type_traits>
 
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 #include <filesystem>
 #include <string>
 #include <unordered_map>
@@ -122,134 +125,200 @@ namespace
 
 bool Editor::DrawTextureAssetInspector(const std::string &assetPath)
 {
-    auto *meta = AssetManager::GetMetaFile(assetPath);
-    if (!meta || meta->type != MetaFileAsset::FileType::TEXTURE)
-        return false;
-    const std::string path = meta->path.empty() ? assetPath : meta->path;
+    return DrawTextureAssetInspector(std::vector<std::string>{assetPath});
+}
 
-    // Drafts belong to assets, rather than individual UI frames. Merely selecting
-    // a texture never changes its metadata or how it is rendered.
-    static std::unordered_map<std::string, TextureInspectorDraft> drafts;
-    auto &draft = drafts[path];
-    const auto writeTime = MetadataWriteTime(path);
-    if (!draft.initialized || (draft.saved == draft.staged && draft.metadataWriteTime != writeTime))
+bool Editor::DrawTextureAssetInspector(const std::vector<std::string> &assetPaths)
+{
+    if (assetPaths.empty()) return false;
+    std::vector<std::string> paths;
+    for (const auto &assetPath : assetPaths)
+    {
+        auto *meta = AssetManager::GetMetaFile(assetPath);
+        if (!meta || meta->type != MetaFileAsset::FileType::TEXTURE) return false;
+        const auto path = meta->path.empty() ? assetPath : meta->path;
+        if (std::find(paths.begin(), paths.end(), path) == paths.end()) paths.push_back(path);
+    }
+
+    // Drafts belong to assets, so selection changes retain unapplied edits.
+    static std::unordered_map<std::string, TextureInspectorDraft> assetDrafts;
+    std::vector<TextureInspectorDraft *> drafts;
+    auto reload = [](TextureInspectorDraft &draft, const std::string &path)
     {
         draft.saved = draft.staged = LoadTextureImportSettings(path);
-        draft.metadataWriteTime = writeTime;
+        draft.metadataWriteTime = MetadataWriteTime(path);
         draft.initialized = true;
+        draft.error.clear();
+        draft.status.clear();
+    };
+    for (const auto &path : paths)
+    {
+        auto &draft = assetDrafts[path];
+        if (!draft.initialized || (draft.saved == draft.staged && draft.metadataWriteTime != MetadataWriteTime(path)))
+            reload(draft, path);
+        drafts.push_back(&draft);
     }
-
-    ImGui::PushID(path.c_str());
+    auto &draft = *drafts.front();
+    const bool multiple = paths.size() > 1;
+    const auto &path = paths.front();
+    ImGui::PushID(multiple ? "##TextureSelection" : path.c_str());
     {
         EditorUI::ScopedFont font(EditorUI::TitleSize);
-        ImGui::TextWrapped("%s", meta->name.c_str());
+        if (multiple) ImGui::Text("%zu textures selected", paths.size());
+        else ImGui::TextWrapped("%s", AssetManager::GetMetaFile(path)->name.c_str());
     }
+    if (multiple)
+    {
+        TextureHelp("Mixed values differ between textures. Changes affect every selected texture; other settings are preserved.");
+        if (ImGui::TreeNode("Selected textures"))
+        {
+            for (const auto &item : paths) ImGui::TextWrapped("%s", item.c_str());
+            ImGui::TreePop();
+        }
+    }
+    else
     {
         EditorUI::ScopedFont font(EditorUI::DetailSize);
         ImGui::TextWrapped("Path: %s", path.c_str());
     }
     ImGui::Separator();
 
-    TextureAsset *texture = AssetManager::GetTexture(path);
-    if (EditorUI::SectionHeader("Texture preview", ImGuiTreeNodeFlags_DefaultOpen))
-        TexturePreview(draft, texture ? texture->GetGLTexture() : GLTexture{});
-    if (ImGui::Button("Sprite Editor"))
-        OpenSpriteEditor(path);
-    TextureHelp("Slice an atlas or adjust sprite rectangles and pivots in the Sprite Editor.");
+    if (!multiple)
+    {
+        auto *texture = AssetManager::GetTexture(path);
+        if (EditorUI::SectionHeader("Texture preview", ImGuiTreeNodeFlags_DefaultOpen))
+            TexturePreview(draft, texture ? texture->GetGLTexture() : GLTexture{});
+        if (ImGui::Button("Sprite Editor")) OpenSpriteEditor(path);
+        TextureHelp("Slice an atlas or adjust sprite rectangles and pivots in the Sprite Editor.");
+    }
+    auto mixed = [&](auto member)
+    {
+        return std::any_of(drafts.begin(), drafts.end(), [&](auto *item)
+            { return item->staged.*member != draft.staged.*member; });
+    };
+    auto assign = [&](auto member, auto value)
+    {
+        for (auto *item : drafts)
+        {
+            item->staged.*member = value;
+            item->status.clear();
+        }
+    };
+    auto combo = [](const char *id, int &value, const char *options, bool isMixed)
+    {
+        const char *preview = options;
+        for (int i = 0; i < value; ++i) preview += std::strlen(preview) + 1;
+        bool changed = false;
+        if (ImGui::BeginCombo(id, isMixed ? "Mixed" : preview))
+        {
+            int index = 0;
+            for (const char *option = options; *option; option += std::strlen(option) + 1, ++index)
+            {
+                if (ImGui::Selectable(option, !isMixed && index == value))
+                { value = index; changed = true; }
+                if (!isMixed && index == value) ImGui::SetItemDefaultFocus();
+            }
+            ImGui::EndCombo();
+        }
+        return changed;
+    };
+    auto enumField = [&](const char *label, const char *id, auto member, const char *options)
+    {
+        int value = static_cast<int>(draft.staged.*member);
+        EditorUI::PropertyLabel(label);
+        if (combo(id, value, options, mixed(member)))
+            assign(member, static_cast<std::decay_t<decltype(draft.staged.*member)>>(value));
+    };
+    auto boolField = [&](const char *label, const char *id, auto member)
+    {
+        EditorUI::PropertyLabel(label);
+        const bool isMixed = mixed(member);
+        bool value = !isMixed && draft.staged.*member;
+        ImGui::PushItemFlag(ImGuiItemFlags_MixedValue, isMixed);
+        if (ImGui::Checkbox(id, &value)) assign(member, value);
+        ImGui::PopItemFlag();
+    };
 
     if (EditorUI::SectionHeader("Import settings", ImGuiTreeNodeFlags_DefaultOpen))
     {
         const TextureImportSettings defaults;
         int preset = draft.staged == UIPreset(true) ? 1 : draft.staged == UIPreset(false) ? 2 :
                      draft.staged == defaults ? 3 : 0;
+        const bool mixedPreset = std::any_of(drafts.begin(), drafts.end(), [&](auto *item)
+            { return item->staged != draft.staged; });
         EditorUI::PropertyLabel("Preset");
-        if (ImGui::Combo("##Texture preset", &preset,
-                         "Custom\0Pixel sprite / UI\0Smooth UI\0Defaults\0"))
+        if (combo("##Texture preset", preset, "Custom\0Pixel sprite / UI\0Smooth UI\0Defaults\0", mixedPreset))
         {
-            if (preset == 1 || preset == 2)
-                draft.staged = UIPreset(preset == 1);
-            else if (preset == 3)
-                draft.staged = defaults;
-            draft.status.clear();
+            if (preset != 0)
+                for (auto *item : drafts)
+                {
+                    item->staged = preset == 3 ? defaults : UIPreset(preset == 1);
+                    item->status.clear();
+                }
         }
-
-        int filter = static_cast<int>(draft.staged.filter);
-        EditorUI::PropertyLabel("Filter");
-        if (ImGui::Combo("##Texture filter", &filter, "Legacy\0Point\0Bilinear\0Trilinear\0"))
-            draft.staged.filter = static_cast<TextureFilter>(filter);
+        enumField("Filter", "##Texture filter", &TextureImportSettings::filter, "Legacy\0Point\0Bilinear\0Trilinear\0");
         TextureHelp("Point keeps pixel art crisp. Bilinear smooths between pixels. Trilinear also blends mip levels when mipmaps are enabled.");
-
-        int wrapU = static_cast<int>(draft.staged.wrapU);
-        int wrapV = static_cast<int>(draft.staged.wrapV);
-        EditorUI::PropertyLabel("Wrap U");
-        if (ImGui::Combo("##Texture wrap U", &wrapU, "Repeat\0Clamp\0Mirror\0"))
-            draft.staged.wrapU = static_cast<TextureWrap>(wrapU);
-        EditorUI::PropertyLabel("Wrap V");
-        if (ImGui::Combo("##Texture wrap V", &wrapV, "Repeat\0Clamp\0Mirror\0"))
-            draft.staged.wrapV = static_cast<TextureWrap>(wrapV);
+        enumField("Wrap U", "##Texture wrap U", &TextureImportSettings::wrapU, "Repeat\0Clamp\0Mirror\0");
+        enumField("Wrap V", "##Texture wrap V", &TextureImportSettings::wrapV, "Repeat\0Clamp\0Mirror\0");
         TextureHelp("Clamp stops sampling the opposite image edge. Sprite atlases still need spacing between neighboring sprites.");
-
-        EditorUI::PropertyLabel("Generate mipmaps");
-        ImGui::Checkbox("##Texture mipmaps", &draft.staged.mipmaps);
-        if (draft.staged.mipmaps)
+        boolField("Generate mipmaps", "##Texture mipmaps", &TextureImportSettings::mipmaps);
+        if (std::any_of(drafts.begin(), drafts.end(), [](auto *item) { return item->staged.mipmaps; }))
             TextureHelp("Mipmaps reduce distant shimmer, but can mix neighboring atlas sprites. Disable for screen-space HUDs or add padded atlas borders.");
         if (draft.staged.filter == TextureFilter::Trilinear && !draft.staged.mipmaps)
             TextureHelp("Trilinear without mipmaps uses bilinear sampling.");
-
-        EditorUI::PropertyLabel("Edge color bleed");
-        ImGui::Checkbox("##Texture alpha bleed", &draft.staged.alphaBleed);
+        boolField("Edge color bleed", "##Texture alpha bleed", &TextureImportSettings::alphaBleed);
         TextureHelp("Extends visible RGB colors into fully transparent pixels to reduce dark fringes. Alpha and the source image stay unchanged; this does not separate adjacent atlas sprites.");
-
-        ImGui::BeginDisabled(!draft.staged.mipmaps);
+        const bool anyMipmaps = std::any_of(drafts.begin(), drafts.end(), [](auto *item) { return item->staged.mipmaps; });
+        ImGui::BeginDisabled(!anyMipmaps);
         EditorUI::PropertyLabel("Mip bias");
-        ImGui::SliderFloat("##Texture mip bias", &draft.staged.mipBias, -2.f, 2.f, "%.2f");
+        float bias = draft.staged.mipBias;
+        if (ImGui::SliderFloat("##Texture mip bias", &bias, -2.f, 2.f,
+                               mixed(&TextureImportSettings::mipBias) ? "Mixed" : "%.2f"))
+            assign(&TextureImportSettings::mipBias, bias);
         ImGui::EndDisabled();
         TextureHelp("Negative bias sharpens distant details and may shimmer; positive bias softens them. Only affects mipmapped textures.");
     }
 
-    const bool dirty = !(draft.saved == draft.staged);
-    if (dirty)
-        draft.status.clear();
+    const bool dirty = std::any_of(drafts.begin(), drafts.end(), [](auto *item) { return item->saved != item->staged; });
     ImGui::Separator();
     ImGui::TextDisabled("%s", dirty ? "Unapplied changes" : "Import settings saved");
     ImGui::BeginDisabled(!dirty);
     if (ImGui::Button("Apply"))
     {
-        draft.error.clear();
-        draft.status.clear();
-        if (SaveTextureImportSettings(path, draft.staged, &draft.error))
+        for (size_t i = 0; i < paths.size(); ++i)
         {
-            if (AssetManager::ReloadTexture(path))
+            auto &item = *drafts[i];
+            if (item.saved == item.staged) continue;
+            item.error.clear(); item.status.clear();
+            if (SaveTextureImportSettings(paths[i], item.staged, &item.error))
             {
-                draft.saved = draft.staged = LoadTextureImportSettings(path);
-                draft.metadataWriteTime = MetadataWriteTime(path);
-                draft.status = "Saved and reloaded. Scene and Game views now use these settings.";
-            }
-            else
-            {
-                // Save succeeded but the old GL resource remains in use. Keep
-                // the draft dirty so Apply can retry after fixing the source.
-                draft.error = "Metadata saved, but the source texture could not be reloaded. The previous texture remains in use. Check the source file and Apply again.";
+                if (AssetManager::ReloadTexture(paths[i]))
+                {
+                    reload(item, paths[i]);
+                    item.status = "Saved and reloaded. Scene and Game views now use these settings.";
+                }
+                else
+                    item.error = "Metadata saved, but the source texture could not be reloaded. The previous texture remains in use. Check the source file and Apply again.";
             }
         }
     }
     ImGui::SameLine();
     if (ImGui::Button("Revert"))
-    {
-        draft.saved = draft.staged = LoadTextureImportSettings(path);
-        draft.metadataWriteTime = MetadataWriteTime(path);
-        draft.error.clear();
-        draft.status.clear();
-    }
+        for (size_t i = 0; i < paths.size(); ++i) reload(*drafts[i], paths[i]);
     ImGui::EndDisabled();
-    if (!draft.error.empty())
+    bool saved = false;
+    for (size_t i = 0; i < paths.size(); ++i)
     {
-        ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, .45f, .35f, 1.f));
-        ImGui::TextWrapped("%s", draft.error.c_str());
-        ImGui::PopStyleColor();
+        if (!drafts[i]->error.empty())
+        {
+            ImGui::PushStyleColor(ImGuiCol_Text, ImVec4(1.f, .45f, .35f, 1.f));
+            if (multiple) ImGui::TextWrapped("%s: %s", paths[i].c_str(), drafts[i]->error.c_str());
+            else ImGui::TextWrapped("%s", drafts[i]->error.c_str());
+            ImGui::PopStyleColor();
+        }
+        saved |= !drafts[i]->status.empty();
     }
-    else if (!draft.status.empty())
-        TextureHelp(draft.status.c_str());
+    if (saved && !dirty) TextureHelp("Saved and reloaded. Scene and Game views now use these settings.");
     ImGui::PopID();
     return true;
 }
@@ -258,5 +327,6 @@ bool Editor::DrawTextureAssetInspector(const std::string &assetPath)
 namespace Canis
 {
 bool Editor::DrawTextureAssetInspector(const std::string &) { return false; }
+bool Editor::DrawTextureAssetInspector(const std::vector<std::string> &) { return false; }
 }
 #endif

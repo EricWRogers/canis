@@ -2558,6 +2558,11 @@ namespace Canis
             runtime.exitReason = "stop-time-reached";
         }
 
+        // Commit scene changes before ticking: a newly loaded scene must run
+        // Ready() and its first update before any renderer can see it. Loads
+        // requested during this tick are committed at the next frame boundary.
+        ProcessPendingSceneLoad();
+
         bool runGameTick = true;
 #if CANIS_EDITOR
         if (runtime.editorRuntimeEnabled)
@@ -2627,8 +2632,6 @@ namespace Canis
             m_sceneUpdateTimeMs = 0.0f;
             m_gameCodeUpdateTimeMs = 0.0f;
         }
-
-        ProcessPendingSceneLoad();
 
         if (!window.MakeContextCurrent())
         {

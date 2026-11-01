@@ -92,6 +92,147 @@ namespace Canis
     // or reaching into the draft/state implementations under test.
     struct EditorSceneTabsTestAccess
     {
+        static void RunMultiple(App &app, Editor &editor, Window &window, const fs::path &artifacts)
+        {
+            InputManager input;
+            app.scene.Init(&app, &window, &input);
+            editor.m_scene = &app.scene; editor.m_app = &app; editor.m_window = &window;
+            editor.m_mode = EditorMode::EDIT;
+            editor.m_selectedAssetPath.clear(); editor.m_assetSearch = "ui-atlas";
+            std::vector<std::string> paths{TexturePath};
+            std::vector<TextureImportSettings> original;
+            std::vector<std::string> bytes;
+            std::vector<UUID> uuids;
+            for (int i = 1; i < 12; ++i)
+            {
+                const auto path = "assets/ui-atlas" + std::to_string(i < 10 ? 0 : 1) + std::to_string(i % 10) + ".png";
+                fs::copy_file(TexturePath, path);
+                Check(AssetManager::GetMetaFile(path) != nullptr, "Missing range-selection fixture metadata");
+                TextureImportSettings settings;
+                settings.wrapU = i % 2 ? TextureWrap::Mirror : TextureWrap::Clamp;
+                settings.mipBias = i * .1f;
+                std::string error;
+                Check(SaveTextureImportSettings(path, settings, &error), error);
+                paths.push_back(path);
+            }
+            for (const auto &path : paths)
+            {
+                original.push_back(LoadTextureImportSettings(path)); bytes.push_back(Contents(path + ".meta"));
+                uuids.push_back(AssetManager::GetMetaFile(path)->uuid);
+            }
+            bool ctrl = false, shift = false;
+            auto frame = [&](ImVec2 mouse = ImVec2(-100,-100), bool down = false, const fs::path &capture = fs::path{})
+            {
+                ImGui_ImplOpenGL3_NewFrame(); auto &io = ImGui::GetIO();
+                io.AddKeyEvent(ImGuiMod_Ctrl, ctrl); io.AddKeyEvent(ImGuiMod_Shift, shift);
+                io.AddMousePosEvent(mouse.x, mouse.y); io.AddMouseButtonEvent(ImGuiMouseButton_Left, down);
+                ImGui::NewFrame();
+                ImGui::SetNextWindowPos(ImVec2(640,0),ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(1280,400),ImGuiCond_Always); editor.DrawAssetsPanel();
+                ImGui::SetNextWindowPos(ImVec2(0,0),ImGuiCond_Always);
+                ImGui::SetNextWindowSize(ImVec2(620,ScreenHeight),ImGuiCond_Always); editor.DrawInspectorPanel(false);
+                const auto hovered = ImGui::GetCurrentContext()->HoveredId;
+                ImGui::Render();
+                Check(ImGui::GetCurrentContext()->ErrorCountCurrentFrame == 0,"Multi-texture Inspector ImGui scope error");
+                if (!capture.empty())
+                {
+                    glBindFramebuffer(GL_FRAMEBUFFER,0); glViewport(0,0,ScreenWidth,ScreenHeight);
+                    glClearColor(.05f,.065f,.08f,1.f); glClear(GL_COLOR_BUFFER_BIT);
+                    ImGui_ImplOpenGL3_RenderDrawData(ImGui::GetDrawData()); glFinish(); Screenshot(capture);
+                }
+                return hovered;
+            };
+            auto click = [&](ImVec2 pos) { frame(pos); frame(pos,true); frame(pos,false); frame(); };
+            auto locate = [&](ImGuiID id, float x, float from, float to)
+            {
+                for (float y=from; y<to; y+=3.f) if (frame(ImVec2(x,y))==id) return ImVec2(x,y);
+                frame(ImVec2(-100,-100),false,artifacts/"multi-control-missing.png");
+                throw std::runtime_error("Could not locate multi-texture control " + std::to_string(id));
+            };
+            frame(); frame();
+            Check(editor.m_visibleAssetPaths == paths,"Range selection order differs from visible alphabetical cards");
+            auto card = [&](int index)
+            {
+                auto *assets = ImGui::FindWindowByName("Assets");
+                const float spacing = ImGui::GetStyle().ItemSpacing.x;
+                const float available = assets->Size.x - ImGui::GetStyle().WindowPadding.x * 2;
+                const int columns = int((available+spacing)/(108.f+spacing));
+                const float width = (available-spacing*(columns-1))/columns;
+                const auto id = ImHashStr("##AssetCard",0,ImHashStr(paths[index].c_str(),0,assets->ID));
+                const auto slot = std::find(editor.m_visibleAssetPaths.begin(),editor.m_visibleAssetPaths.end(),paths[index]) - editor.m_visibleAssetPaths.begin();
+                return locate(id,assets->Pos.x+30.f+(slot%columns)*(width+spacing),70.f,380.f);
+            };
+            std::vector<ImVec2> cards;
+            for (int i=0;i<12;++i) cards.push_back(card(i));
+            auto count = [&](size_t n) { Check(editor.m_selectedAssetPaths.size()==n,"Unexpected asset range/toggle selection count"); };
+            click(cards[0]); count(1);
+            shift=true; click(cards[11]); count(12);
+            click(cards[3]); count(4);
+            shift=false; click(cards[6]); count(1);
+            shift=true; click(cards[2]); count(5);
+            click(cards[11]); count(6);
+            Check(editor.m_assetSelectionAnchor==paths[6],"Shift-click moved the fixed range anchor");
+            shift=false; ctrl=true; click(cards[0]); count(7);
+            click(cards[7]); count(6);
+            shift=true; click(cards[4]); count(9);
+            ctrl=false; shift=false;
+            for (size_t i=0;i<paths.size();++i) Check(Contents(paths[i]+".meta")==bytes[i],"Range selection rewrote texture metadata");
+            editor.m_assetSearch="ui-atlas0"; frame(); frame();
+            click(card(1)); shift=true; click(card(9)); shift=false; count(9);
+            Check(std::find(editor.m_selectedAssetPaths.begin(),editor.m_selectedAssetPaths.end(),paths[0])==editor.m_selectedAssetPaths.end(),
+                  "Filtered-out assets were included in range selection");
+            editor.m_assetSearch="ui-atlas"; frame(); frame();
+
+            click(cards[0]); ctrl=true; click(cards[1]); ctrl=false; count(2); frame();
+            auto id = [&](const char *label)
+            { return ImHashStr(label,0,ImHashStr("##TextureSelection",0,ImGui::FindWindowByName("Inspector")->ID)); };
+            frame(ImVec2(-100,-100),false,artifacts/"multi-texture-mixed.png");
+            // An individual field must not copy the primary texture's other settings.
+            click(locate(id("##Texture mipmaps"),190.f,25.f,ScreenHeight-20.f));
+            const auto apply=locate(id("Apply"),30.f,25.f,ScreenHeight-20.f);
+            for (int i=0;i<2;++i) Check(LoadTextureImportSettings(paths[i])==original[i],"Multi-edit saved before Apply");
+            click(apply);
+            for (int i=0;i<2;++i)
+            {
+                auto expected=original[i]; expected.mipmaps=true;
+                Check(LoadTextureImportSettings(paths[i])==expected,"Multi-edit overwrote unrelated per-texture values");
+            }
+            click(locate(id("##Texture alpha bleed"),190.f,25.f,ScreenHeight-20.f));
+            click(locate(id("Revert"),90.f,25.f,ScreenHeight-20.f));
+            click(apply);
+            for (int i=0;i<2;++i)
+            {
+                auto expected=original[i]; expected.mipmaps=true;
+                Check(LoadTextureImportSettings(paths[i])==expected,"Bulk Revert changed applied values");
+            }
+            // Drive the actual preset dropdown and Apply for a range across rows.
+            click(cards[0]); shift=true; click(cards[11]); shift=false; frame(); count(12);
+            click(locate(id("##Texture preset"),240.f,25.f,ScreenHeight-20.f));
+            ImGuiWindow *popup=nullptr;
+            for (auto *candidate:ImGui::GetCurrentContext()->Windows)
+                if (candidate->Active && std::string(candidate->Name).starts_with("##Combo_")) popup=candidate;
+            Check(popup!=nullptr,"Texture preset popup did not open");
+            click(locate(ImHashStr("Pixel sprite / UI",0,popup->ID),popup->Pos.x+30.f,popup->Pos.y,popup->Pos.y+popup->Size.y));
+            for (int i=2;i<12;++i) Check(Contents(paths[i]+".meta")==bytes[i],"Preset was saved before Apply");
+            click(locate(id("Apply"),30.f,25.f,ScreenHeight-20.f));
+            TextureImportSettings expected;
+            expected.filter=TextureFilter::Point; expected.wrapU=expected.wrapV=TextureWrap::Clamp;
+            expected.mipmaps=false; expected.alphaBleed=true;
+            for (size_t i=0;i<paths.size();++i)
+            {
+                Check(LoadTextureImportSettings(paths[i])==expected,"Bulk UI preset was not applied to every selected texture");
+                Check(AssetManager::GetMetaFile(paths[i])->uuid==uuids[i],"Bulk Apply replaced texture identity");
+                Check(AssetManager::GetTexture(paths[i])->GetImportSettings()==expected,"Bulk Apply did not reload a live texture");
+            }
+            SpriteSheet retained; std::string error;
+            Check(LoadSpriteSheet(TexturePath,256,128,retained,&error) && retained.regions.size()==3,"Bulk Apply lost atlas regions");
+            frame(ImVec2(-100,-100),false,artifacts/"multi-texture-ui-preset.png");
+            click(cards[4]); count(1);
+            Check(editor.m_selectedAssetPath==paths[4],"Plain click did not restore the individual texture Inspector");
+            for (const auto &path:paths) AssetManager::Free<TextureAsset>(path);
+            editor.m_scene=nullptr; editor.m_app=nullptr; editor.m_window=nullptr;
+        }
+
         static void Run(App &app, Editor &editor, Window &window, const fs::path &artifacts)
         {
             InputManager input;
@@ -357,6 +498,7 @@ int main(int argc, char **argv)
         {
             Canis::App app; Canis::Editor editor;
             Canis::EditorSceneTabsTestAccess::Run(app, editor, window, artifacts);
+            Canis::EditorSceneTabsTestAccess::RunMultiple(app, editor, window, artifacts);
         }
         Canis::AssetManager::Free<Canis::TextureAsset>(TexturePath);
         ImGui_ImplOpenGL3_Shutdown(); ImGui::DestroyContext();

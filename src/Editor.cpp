@@ -9447,7 +9447,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const fs::path relative = fs::relative(path, "assets", ec);
         if (ec || relative.empty() || *relative.begin() == "..") return;
         path = (fs::path("assets") / relative).lexically_normal();
-        m_selectedAssetPath = path.generic_string();
+        SelectAsset(path.generic_string(), false, false);
         m_assetSearch.clear();
         m_assetRevealTargetPath = m_selectedAssetPath;
         m_assetRevealFolders.clear();
@@ -12064,8 +12064,20 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ScopedEditorFont propertyFont(EditorUI::BodySize);
 
+        SyncAssetSelection();
         if (!m_selectedAssetPath.empty())
         {
+            if (m_selectedAssetPaths.size() > 1)
+            {
+                if (!DrawTextureAssetInspector(m_selectedAssetPaths))
+                {
+                    ImGui::Text("%zu assets selected", m_selectedAssetPaths.size());
+                    ImGui::TextWrapped("Select textures together to edit their shared import settings.");
+                }
+                propertyFont.Reset();
+                ImGui::End();
+                return;
+            }
             if (DrawTextureAssetInspector(m_selectedAssetPath))
             {
                 propertyFont.Reset();
@@ -16068,6 +16080,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     };
 
                     remapTrackedPath(m_selectedAssetPath);
+                    remapTrackedPath(m_assetSelectionAnchor);
+                    for (auto &selectedPath : m_selectedAssetPaths) remapTrackedPath(selectedPath);
                     remapTrackedPath(m_animationClipStatePath);
                     remapTrackedPath(m_shaderGraphStatePath);
 
@@ -16107,6 +16121,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
         else if (AssetManager::MoveAsset(oldPath.string(), newPath.string()))
         {
+            for (auto &selectedPath : m_selectedAssetPaths)
+                if (selectedPath == oldPath.string()) selectedPath = newPath.string();
+            if (m_assetSelectionAnchor == oldPath.string()) m_assetSelectionAnchor = newPath.string();
             if (m_selectedAssetPath == oldPath.string())
                 m_selectedAssetPath = newPath.string();
             if (m_animationClipStatePath == oldPath.string())
@@ -17238,6 +17255,45 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return clicked;
     }
 
+    void Editor::SyncAssetSelection()
+    {
+        // Other editor tools can focus an asset or clear asset focus directly.
+        if (m_selectedAssetPath.empty())
+        {
+            m_selectedAssetPaths.clear();
+            m_assetSelectionAnchor.clear();
+        }
+        else if (std::find(m_selectedAssetPaths.begin(), m_selectedAssetPaths.end(), m_selectedAssetPath) == m_selectedAssetPaths.end())
+        {
+            m_selectedAssetPaths = {m_selectedAssetPath};
+            m_assetSelectionAnchor = m_selectedAssetPath;
+        }
+    }
+
+    void Editor::SelectAsset(const std::string &path, bool toggle, bool range)
+    {
+        SyncAssetSelection();
+        const auto anchor = std::find(m_visibleAssetPaths.begin(), m_visibleAssetPaths.end(), m_assetSelectionAnchor);
+        const auto target = std::find(m_visibleAssetPaths.begin(), m_visibleAssetPaths.end(), path);
+        if (range && anchor != m_visibleAssetPaths.end() && target != m_visibleAssetPaths.end())
+        {
+            if (!toggle) m_selectedAssetPaths.clear();
+            for (auto item = std::min(anchor, target); item <= std::max(anchor, target); ++item)
+                if (std::find(m_selectedAssetPaths.begin(), m_selectedAssetPaths.end(), *item) == m_selectedAssetPaths.end())
+                    m_selectedAssetPaths.push_back(*item);
+        }
+        else
+        {
+            if (!toggle) m_selectedAssetPaths.clear();
+            auto item = std::find(m_selectedAssetPaths.begin(), m_selectedAssetPaths.end(), path);
+            if (toggle && item != m_selectedAssetPaths.end()) m_selectedAssetPaths.erase(item);
+            else m_selectedAssetPaths.push_back(path);
+            m_assetSelectionAnchor = path;
+        }
+        m_selectedAssetPath = std::find(m_selectedAssetPaths.begin(), m_selectedAssetPaths.end(), path) != m_selectedAssetPaths.end()
+            ? path : m_selectedAssetPaths.empty() ? std::string{} : m_selectedAssetPaths.back();
+    }
+
     void Editor::DrawDirectoryRecursive(const std::string &_dirPath)
     {
         namespace fs = std::filesystem;
@@ -17326,6 +17382,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         const std::string targetPath = (entry.path() / src.filename()).string();
                         if (AssetManager::MoveAsset(src.string(), targetPath))
                         {
+                            for (auto &selectedPath : m_selectedAssetPaths)
+                                if (selectedPath == src.string()) selectedPath = targetPath;
+                            if (m_assetSelectionAnchor == src.string()) m_assetSelectionAnchor = targetPath;
                             if (m_selectedAssetPath == src.string())
                                 m_selectedAssetPath = targetPath;
                             if (m_animationClipStatePath == src.string())
@@ -17368,6 +17427,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (searchActive && !AssetPathMatchesSearch(entry.path(), searchQuery))
                     continue;
 
+                m_visibleAssetPaths.push_back(fullPath);
                 if (assetCardColumns == 0)
                 {
                     const float availableWidth = std::max(ImGui::GetContentRegionAvail().x, 1.0f);
@@ -17441,7 +17501,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     bool deleteThisAsset = false;
                     bool duplicateThisAsset = false;
-                    const bool selected = (m_selectedAssetPath == fullPath);
+                    const bool selected = std::find(m_selectedAssetPaths.begin(), m_selectedAssetPaths.end(), fullPath) != m_selectedAssetPaths.end();
                     MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath);
                     const bool clicked = DrawAssetPreviewCard(
                         fullPath,
@@ -17458,6 +17518,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
                     if (clicked)
                     {
+                        m_pendingAssetSelection = fullPath;
+                        m_pendingAssetToggle = ImGui::GetIO().KeyCtrl || ImGui::GetIO().KeySuper;
+                        m_pendingAssetRange = ImGui::GetIO().KeyShift;
                         if (meta != nullptr)
                         {
                             if (meta->type == MetaFileAsset::FileType::TEXTURE ||
@@ -17470,9 +17533,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                 meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                             {
-                                m_selectedAssetPath = fullPath;
                                 if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
-                                    RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                    RememberLastShaderGraphAssetPath(fullPath);
                                 if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                                 {
                                     m_animationClipStatePath = fullPath;
@@ -17482,7 +17544,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         }
                     }
 
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+                        !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeySuper)
                     {
                         if (entry.path().extension() == ".cs") OpenScriptDocument(entry.path());
                         if (MetaFileAsset *meta = AssetManager::GetMetaFile(fullPath))
@@ -17497,9 +17560,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                 meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                             {
-                                m_selectedAssetPath = fullPath;
+                                SelectAsset(fullPath, false, false);
                                 if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
-                                    RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                    RememberLastShaderGraphAssetPath(fullPath);
                                 if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                                 {
                                     m_animationClipStatePath = fullPath;
@@ -17612,8 +17675,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             ClearRememberedAnimationClipAssetPathIfMatches(fullPath);
                             ClearRememberedShaderGraphAssetPathIfMatches(fullPath);
+                            std::erase(m_selectedAssetPaths, fullPath);
+                            if (m_assetSelectionAnchor == fullPath) m_assetSelectionAnchor.clear();
                             if (m_selectedAssetPath == fullPath)
-                                m_selectedAssetPath.clear();
+                                m_selectedAssetPath = m_selectedAssetPaths.empty() ? std::string{} : m_selectedAssetPaths.back();
                             if (m_animationClipStatePath == fullPath)
                                 m_animationClipStatePath.clear();
                             if (m_shaderGraphStatePath == fullPath)
@@ -17652,7 +17717,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
 
                     // double-click handling (open scene / shader)
-                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
+                    if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left) &&
+                        !ImGui::GetIO().KeyShift && !ImGui::GetIO().KeyCtrl && !ImGui::GetIO().KeySuper)
                     {
                         MetaFileAsset *meta = AssetManager::GetMetaFile(entry.path().string());
                         if (!meta)
@@ -17672,9 +17738,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                  meta->type == MetaFileAsset::FileType::ANIMATORCONTROLLER ||
                                  meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                         {
-                            m_selectedAssetPath = fullPath;
+                            SelectAsset(fullPath, false, false);
                             if (meta->type == MetaFileAsset::FileType::SHADERGRAPH)
-                                RememberLastShaderGraphAssetPath(m_selectedAssetPath);
+                                RememberLastShaderGraphAssetPath(fullPath);
                             if (meta->type == MetaFileAsset::FileType::ANIMATIONCLIP)
                             {
                                 m_animationClipStatePath = fullPath;
@@ -18072,6 +18138,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return;
         }
         m_focusAssetsPanel = false;
+        SyncAssetSelection();
+        m_visibleAssetPaths.clear();
+        m_pendingAssetSelection.clear();
 
         ImGui::SetNextItemWidth(std::max(120.0f, ImGui::GetContentRegionAvail().x - 72.0f));
         ImGui::InputTextWithHint("##AssetSearch", "Search assets...", &m_assetSearch);
@@ -18097,6 +18166,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             ScopedEditorFont treeFont(14.0f);
             DrawDirectoryRecursive("assets");
         }
+        if (!m_pendingAssetSelection.empty())
+            SelectAsset(m_pendingAssetSelection, m_pendingAssetToggle, m_pendingAssetRange);
 
         if (ImGui::BeginPopupContextWindow("assets_root_ctx", ImGuiPopupFlags_MouseButtonRight | ImGuiPopupFlags_NoOpenOverItems))
         {
