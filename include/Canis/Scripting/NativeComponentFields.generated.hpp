@@ -33,7 +33,7 @@ inline const std::map<std::string,std::set<std::string>> NativeSerializedFields 
     {"Canis::Terrain", {"TerrainAsset"}},
     {"Canis::Text", {"FontAsset", "alignment", "color", "horizontalBoundary", "text"}},
     {"Canis::Transform", {"active", "children", "parent", "position", "rotation", "scale"}},
-    {"Canis::UIButton", {"actionName", "active", "defaultSelected", "disabledColor", "down", "hitRect", "hoverColor", "hoverScale", "left", "pressedColor", "pressedScale", "right", "targetEntity", "targetScript", "up"}},
+    {"Canis::UIButton", {"actionName", "active", "defaultSelected", "disabledColor", "down", "hoverColor", "hoverScale", "left", "pressedColor", "pressedScale", "right", "targetEntity", "targetScript", "up"}},
     {"Canis::UIDragSource", {"active", "payloadType", "payloadValue"}},
     {"Canis::UIDropTarget", {"acceptedPayloadType", "actionName", "active", "baseColor", "hoverColor", "targetEntity", "targetScript"}},
     {"Canis::UIInputField", {"active", "allowedCharacters", "backspaceAction", "displayEntity", "focusedColor", "hoverColor", "maxLength", "placeholder", "placeholderColor", "submitOnEnter", "targetEntity", "targetProperty", "targetScript", "text", "textColor"}},

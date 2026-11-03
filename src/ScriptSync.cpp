@@ -164,7 +164,7 @@ namespace Canis::ScriptEditing
             "glm::vec2", "glm::vec3", "glm::vec4", "glm::quat",
             "Vector2", "Vector3", "Vector4", "Quaternion", "Color", "Mask", "Entity",
             "Canis::Vector2", "Canis::Vector3", "Canis::Vector4", "Canis::Quaternion", "Canis::Color", "Canis::Mask", "Canis::Entity",
-            "AudioAssetHandle", "SceneAssetHandle", "ShaderGraphAssetHandle", "AnimationClipAssetHandle", "AnimatorControllerAssetHandle", "TerrainAssetHandle",
+            "TextureAssetHandle", "Canis::TextureAssetHandle", "MaterialAssetHandle", "Canis::MaterialAssetHandle", "ModelAssetHandle", "Canis::ModelAssetHandle", "AudioAssetHandle", "SceneAssetHandle", "ShaderGraphAssetHandle", "AnimationClipAssetHandle", "AnimatorControllerAssetHandle", "TerrainAssetHandle",
             "Canis::AudioAssetHandle", "Canis::SceneAssetHandle", "Canis::ShaderGraphAssetHandle", "Canis::AnimationClipAssetHandle", "Canis::AnimatorControllerAssetHandle", "Canis::TerrainAssetHandle"};
     }
 

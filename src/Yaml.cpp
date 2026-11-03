@@ -9,6 +9,12 @@ std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle)
     return Canis::AssetManager::GetTexture(_textureHandle.id)->GetPath();
 }
 
+YAML::Node YAMLEncodeAssetReference(Canis::UUID uuid, const std::string &path)
+{
+    auto identity = YAMLDecodeSceneAssetHandle(YAMLEncodeAudioAssetHandle({uuid, path}));
+    return YAMLEncodeAudioAssetHandle({identity.uuid, identity.path});
+}
+
 YAML::Node YAMLEncodeAudioAssetHandle(const Canis::AudioAssetHandle &_audioAssetHandle)
 {
     YAML::Node node(YAML::NodeType::Map);

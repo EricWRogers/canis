@@ -1236,9 +1236,6 @@ namespace Canis
         bool _useDirectionalLight)
     {
         RenderMetrics::Scope timing("Directional shadows");
-        (void)_projection;
-        (void)_view;
-
         if (m_shadowShader == nullptr || m_shadowFramebuffer == 0 || m_shadowDepthTexture == 0 || !_useDirectionalLight)
         {
             m_shadowLightSpaceMatrix = Matrix4(1.0f);
@@ -1257,12 +1254,47 @@ namespace Canis
         const Vector3 lightUp = (std::abs(glm::dot(_directionalLightDirection, worldUp)) > 0.95f)
             ? Vector3(0.0f, 0.0f, 1.0f)
             : worldUp;
-        const float shadowExtent = std::clamp(_cameraFarClip * 0.1f, 20.0f, 120.0f);
+        float shadowExtent = std::clamp(_cameraFarClip * 0.1f, 20.0f, 120.0f);
+        Vector3 focus = _cameraPosition;
+        // Fit a bounded slice of the visible frustum, rather than centering the
+        // map on the camera itself. Orbit cameras can be well outside the scene
+        // they are looking at. A sphere keeps coverage stable as the view turns.
+        const float reach = std::min(_cameraFarClip, std::clamp(_cameraFarClip * .5f, 40.f, 120.f));
+        const Matrix4 inverseProjection = glm::inverse(_projection);
+        std::array<Vector3, 8> corners{};
+        Vector3 center(0);
+        bool valid = true;
+        for (int i = 0; i < 4; ++i)
+        {
+            const float x = (i & 1) ? 1.f : -1.f, y = (i & 2) ? 1.f : -1.f;
+            const Vector4 nearPoint = inverseProjection * Vector4(x, y, -1, 1);
+            // An interior clip plane also supports infinite-far projections.
+            const Vector4 middlePoint = inverseProjection * Vector4(x, y, 0, 1);
+            if (std::abs(nearPoint.w) < 1e-6f || std::abs(middlePoint.w) < 1e-6f) { valid = false; break; }
+            const Vector3 near = Vector3(nearPoint) / nearPoint.w;
+            const Vector3 middle = Vector3(middlePoint) / middlePoint.w;
+            const float depth = near.z - middle.z;
+            if (std::abs(depth) < 1e-6f) { valid = false; break; }
+            corners[i] = near;
+            corners[i + 4] = near + (middle - near) * std::max(0.f, (reach + near.z) / depth);
+            center += corners[i] + corners[i + 4];
+        }
+        if (valid)
+        {
+            center /= 8.f;
+            float radius = 0;
+            for (const auto &corner : corners) radius = std::max(radius, glm::length(corner - center));
+            if (std::isfinite(radius) && radius > 0)
+            {
+                focus += Vector3(glm::inverse(_view) * Vector4(center, 0));
+                // Reserve room for the existing 8m grid snap and PCF footprint.
+                shadowExtent = std::max(20.f, std::ceil(radius + 8.f));
+            }
+        }
         const float shadowDistance = std::max(50.0f, shadowExtent * 2.0f);
-        // Snap the camera-centered volume in a fixed light basis. This keeps
-        // world-space shadow texels stationary during sub-texel camera motion.
+        // Keep world-space shadow texels stationary during sub-texel motion.
         const Matrix4 lightOrientation = glm::lookAt(Vector3(0.0f), _directionalLightDirection, lightUp);
-        Vector3 centerInLight = Vector3(lightOrientation * Vector4(_cameraPosition, 1.0f));
+        Vector3 centerInLight = Vector3(lightOrientation * Vector4(focus, 1.0f));
         const float worldUnitsPerTexel = (shadowExtent * 2.0f) / m_shadowMapSize;
         // Integral texel blocks keep world-space texels aligned while allowing a
         // static shadow bake to survive normal head motion inside an 8m region.

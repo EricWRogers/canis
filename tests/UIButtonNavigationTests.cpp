@@ -60,10 +60,12 @@ int main()
         queryCanvas.screenSize={640,480};frontRect.rotation=0;
         input.mouse={185,120};Check(!UIInteractionSystem::HitTest(front),"UI hit test ignored canvas scaling");
         input.mouse={175,120};Check(UIInteractionSystem::HitTest(front),"Scaled UI hit test missed artwork");
-        auto& button=*front.AddComponent<UIButton>();button.hitRect=back;button.active=false;
+        auto& button=*front.AddComponent<UIButton>();button.active=false;
         frontRect.size={10,10};back.GetComponent<RectTransform>().size={100,100};
         input.mouse={180,120};
-        Check(UIInteractionSystem::HitTest(front),"Passive query ignored a disabled control's authored hit area");
+        Check(!UIInteractionSystem::HitTest(front),"Passive query used another widget's rectangle");
+        frontRect.size={100,100};
+        Check(UIInteractionSystem::HitTest(front),"Passive query ignored a disabled control's own rectangle");
         root.Active()=false;
         Check(!UIInteractionSystem::HitTest(front),"UI hit test accepted a hidden ancestor");
         root.Destroy();input.mouse=Vector2(0);
@@ -179,13 +181,12 @@ int main()
     input.mouseRel = Vector2(0);
     input.SetSyntheticMouseButton(1, false); frame();
     Check(managedClicks == 2, "Mouse activation did not route to C#");
-    auto hit = app.scene.CreateEntity("Full button hit area");
-    hit.AddComponent<RectTransform>()->size = Vector2(100);
-    second.GetComponent<UIButton>().hitRect = hit;
+    rect.position = Vector2(0);
+    rect.size = Vector2(100);
     input.mouse = Vector2(160, 120); input.mouseRel = Vector2(1);
     input.SetSyntheticMouseButton(1, true); frame();
     input.mouseRel = Vector2(0); input.SetSyntheticMouseButton(1, false); frame();
-    Check(managedClicks == 3, "Separate hit area did not activate the visual button");
+    Check(managedClicks == 3, "Button's own rectangle did not activate the button");
     input.mouse = Vector2(0);
 
     auto canvasEntity = app.scene.CreateEntity("Action-mapped menu");
@@ -346,11 +347,10 @@ int main()
     Check(encoded["Canis::UIButton"]["defaultSelected"].as<bool>(), "Default selection not serialized");
     Check(encoded["Canis::UIButton"]["disabledColor"].as<Color>() == second.GetComponent<UIButton>().disabledColor, "Disabled color was not serialized");
     Check(encoded["Canis::UIButton"]["right"].as<UUID>() == disabled.GetUUID(), "Directional link not serialized");
-    YAML::Node nodes = YAML::Load("- {Entity: 101, Name: A, 'Canis::UIButton': {defaultSelected: true, down: 102, hitRect: 102, disabledColor: [0.1, 0.2, 0.3, 1]}}\n- {Entity: 102, Name: B, 'Canis::UIButton': {up: 101}}\n");
+    YAML::Node nodes = YAML::Load("- {Entity: 101, Name: A, 'Canis::UIButton': {defaultSelected: true, down: 102, disabledColor: [0.1, 0.2, 0.3, 1]}}\n- {Entity: 102, Name: B, 'Canis::UIButton': {up: 101}}\n");
     auto loaded = app.scene.LoadEntityNodes(nodes, false);
     Check(loaded[0]->GetComponent<UIButton>().down == loaded[1], "Duplicated directional link did not resolve");
     Check(loaded[1]->GetComponent<UIButton>().up == loaded[0], "Reverse link did not resolve");
-    Check(loaded[0]->GetComponent<UIButton>().hitRect == loaded[1], "Authored stable hit area did not resolve");
     Check(loaded[0]->GetComponent<UIButton>().disabledColor == Color(.1f,.2f,.3f,1), "Authored disabled color did not decode");
     std::cout << "Button navigation, confirmation, lifetime and serialization passed.\n";
 }

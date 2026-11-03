@@ -72,6 +72,30 @@ namespace Canis
         }
     };
 
+    // Persistent asset identity; unlike runtime IDs, survives asset moves.
+    struct TextureAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path;
+        bool Empty() const { return uuid == UUID(0) && path.empty(); }
+    };
+
+    // Persistent asset identity; unlike runtime IDs, survives asset moves.
+    struct MaterialAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path;
+        bool Empty() const { return uuid == UUID(0) && path.empty(); }
+    };
+
+    // Persistent asset identity; unlike runtime IDs, survives asset moves.
+    struct ModelAssetHandle
+    {
+        UUID uuid = UUID(0);
+        std::string path;
+        bool Empty() const { return uuid == UUID(0) && path.empty(); }
+    };
+
     struct TextureHandle
     {
         int id = -1;

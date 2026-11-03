@@ -15,6 +15,7 @@
 
 extern std::string YAMLEncodeTexture(const Canis::TextureHandle &_textureHandle);
 extern Canis::TextureHandle YAMLDecodeTexture(std::string &_path);
+extern YAML::Node YAMLEncodeAssetReference(Canis::UUID uuid, const std::string &path);
 extern YAML::Node YAMLEncodeAudioAssetHandle(const Canis::AudioAssetHandle &_audioAssetHandle);
 extern Canis::AudioAssetHandle YAMLDecodeAudioAssetHandle(const YAML::Node &_node);
 extern YAML::Node YAMLEncodeSceneAssetHandle(const Canis::SceneAssetHandle &_sceneAssetHandle);
@@ -174,6 +175,54 @@ namespace YAML
         static bool decode(const Node &_node, Canis::AnimatorControllerAssetHandle &_animatorControllerAssetHandle)
         {
             _animatorControllerAssetHandle = YAMLDecodeAnimatorControllerAssetHandle(_node);
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::TextureAssetHandle>
+    {
+        static Node encode(const Canis::TextureAssetHandle &value)
+        {
+            // Maps retain a fallback path for tools without an asset library.
+            return YAMLEncodeAssetReference(value.uuid, value.path);
+        }
+        static bool decode(const Node &node, Canis::TextureAssetHandle &value)
+        {
+            auto identity = YAMLDecodeSceneAssetHandle(node);
+            value = {identity.uuid, identity.path};
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::MaterialAssetHandle>
+    {
+        static Node encode(const Canis::MaterialAssetHandle &value)
+        {
+            // Maps retain a fallback path for tools without an asset library.
+            return YAMLEncodeAssetReference(value.uuid, value.path);
+        }
+        static bool decode(const Node &node, Canis::MaterialAssetHandle &value)
+        {
+            auto identity = YAMLDecodeSceneAssetHandle(node);
+            value = {identity.uuid, identity.path};
+            return true;
+        }
+    };
+
+    template <>
+    struct convert<Canis::ModelAssetHandle>
+    {
+        static Node encode(const Canis::ModelAssetHandle &value)
+        {
+            // Maps retain a fallback path for tools without an asset library.
+            return YAMLEncodeAssetReference(value.uuid, value.path);
+        }
+        static bool decode(const Node &node, Canis::ModelAssetHandle &value)
+        {
+            auto identity = YAMLDecodeSceneAssetHandle(node);
+            value = {identity.uuid, identity.path};
             return true;
         }
     };

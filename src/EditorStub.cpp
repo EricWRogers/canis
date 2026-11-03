@@ -133,6 +133,12 @@ namespace Canis
         (void)_variable;
     }
 
+    void Editor::InputTextureAsset(const std::string&, const char*, Canis::TextureAssetHandle&) {}
+
+    void Editor::InputMaterialAsset(const std::string&, const char*, Canis::MaterialAssetHandle&) {}
+
+    void Editor::InputModelAsset(const std::string&, const char*, Canis::ModelAssetHandle&) {}
+
     void Editor::InputSceneAsset(const std::string& _name, Canis::SceneAssetHandle& _variable)
     {
         (void)_name;

@@ -3206,6 +3206,18 @@ namespace Canis
             _editor.InputAudioAsset(_label, _idSuffix, _value);
         });
 
+        _editor.RegisterInspectorFieldDrawer<Canis::TextureAssetHandle>([](Editor& editor, const char* label, const char* suffix, Canis::TextureAssetHandle& value) {
+            editor.InputTextureAsset(label, suffix, value);
+        });
+
+        _editor.RegisterInspectorFieldDrawer<Canis::MaterialAssetHandle>([](Editor& editor, const char* label, const char* suffix, Canis::MaterialAssetHandle& value) {
+            editor.InputMaterialAsset(label, suffix, value);
+        });
+
+        _editor.RegisterInspectorFieldDrawer<Canis::ModelAssetHandle>([](Editor& editor, const char* label, const char* suffix, Canis::ModelAssetHandle& value) {
+            editor.InputModelAsset(label, suffix, value);
+        });
+
         _editor.RegisterInspectorFieldDrawer<Canis::SceneAssetHandle>([](Editor& _editor, const char* _label, const char* _idSuffix, Canis::SceneAssetHandle& _value)
         {
             _editor.InputSceneAsset(_label, _idSuffix, _value);
@@ -3897,7 +3909,6 @@ namespace Canis
                     comp["down"] = _entity.scene.GetLiveEntityUUID(button->down);
                     comp["left"] = _entity.scene.GetLiveEntityUUID(button->left);
                     comp["right"] = _entity.scene.GetLiveEntityUUID(button->right);
-                    comp["hitRect"] = _entity.scene.GetLiveEntityUUID(button->hitRect);
                     comp["targetEntity"] = _entity.scene.GetLiveEntityUUID(button->targetEntity);
                     comp["targetScript"] = button->targetScript;
                     comp["actionName"] = button->actionName;
@@ -3915,8 +3926,6 @@ namespace Canis
                     UIButton& button = *_entity.AddComponent<UIButton>();
                     button.active = comp["active"].as<bool>(true);
                     button.defaultSelected = comp["defaultSelected"].as<bool>(false);
-                    if (comp["hitRect"].as<Canis::UUID>(0) != Canis::UUID(0))
-                        _entity.scene.GetEntityAfterLoad(comp["hitRect"].as<Canis::UUID>(0), button.hitRect);
                     if (comp["up"].as<Canis::UUID>(0) != Canis::UUID(0))
                         _entity.scene.GetEntityAfterLoad(comp["up"].as<Canis::UUID>(0), button.up);
                     if (comp["down"].as<Canis::UUID>(0) != Canis::UUID(0))
@@ -3925,8 +3934,6 @@ namespace Canis
                         _entity.scene.GetEntityAfterLoad(comp["left"].as<Canis::UUID>(0), button.left);
                     if (comp["right"].as<Canis::UUID>(0) != Canis::UUID(0))
                         _entity.scene.GetEntityAfterLoad(comp["right"].as<Canis::UUID>(0), button.right);
-                    if (comp["hitRect"].as<Canis::UUID>(0) != Canis::UUID(0))
-                        _entity.scene.GetEntityAfterLoad(comp["hitRect"].as<Canis::UUID>(0), button.hitRect);
                     button.targetScript = comp["targetScript"].as<std::string>("");
                     button.actionName = comp["actionName"].as<std::string>("");
                     button.hoverColor = comp["hoverColor"].as<Vector4>(Color(1.0f));
@@ -3949,7 +3956,6 @@ namespace Canis
 
                 DrawInspectorField(_editor, "active", _conf.name.c_str(), button->active);
                 DrawInspectorField(_editor, "defaultSelected", _conf.name.c_str(), button->defaultSelected);
-                DrawInspectorField(_editor, "hitRect", _conf.name.c_str(), button->hitRect);
                 DrawInspectorField(_editor, "up", _conf.name.c_str(), button->up);
                 DrawInspectorField(_editor, "down", _conf.name.c_str(), button->down);
                 DrawInspectorField(_editor, "left", _conf.name.c_str(), button->left);

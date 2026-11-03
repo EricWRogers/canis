@@ -305,9 +305,6 @@ namespace Canis
         if(!widget || !widget.HasComponent<RectTransform>())return false;
         auto* rect=&widget.GetComponent<RectTransform>();
         if(!rect->IsActiveInHierarchy())return false;
-        if(auto button=widget.TryGetComponent<UIButton>())
-            if(button->hitRect && button->hitRect.HasComponent<RectTransform>())
-                rect=&button->hitRect.GetComponent<RectTransform>();
         return HitRect(*rect,widget.scene,false);
     }
 
@@ -598,10 +595,7 @@ namespace Canis
             {
                 (void)entityHandle;
                 if (!button.active || !rect.IsActiveInHierarchy()) continue;
-                auto* hitEntity = button.hitRect.TryGet();
-                auto& hitRect = hitEntity && hitEntity->HasComponent<RectTransform>()
-                    ? hitEntity->GetComponent<RectTransform>() : rect;
-                evaluateRectEntity(button.entity, hitRect, hoveredButton);
+                evaluateRectEntity(button.entity, rect, hoveredButton);
             }
 
             auto inputFieldView = _registry.view<RectTransform, UIInputField>();

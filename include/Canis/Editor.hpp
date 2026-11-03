@@ -126,6 +126,9 @@ namespace Canis
         void InputAnimatorControllerAsset(const std::string& _name, const char* _idSuffix, Canis::AnimatorControllerAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, Canis::SceneAssetHandle &_variable);
         void InputSceneAsset(const std::string& _name, const char* _idSuffix, Canis::SceneAssetHandle &_variable);
+        void InputTextureAsset(const std::string&, const char*, Canis::TextureAssetHandle&);
+        void InputMaterialAsset(const std::string&, const char*, Canis::MaterialAssetHandle&);
+        void InputModelAsset(const std::string&, const char*, Canis::ModelAssetHandle&);
         bool InputTerrainAsset(const std::string& _name, Canis::TerrainAssetHandle &_variable);
         bool InputTerrainAsset(const std::string& _name, const char* _idSuffix, Canis::TerrainAssetHandle &_variable);
         //void InputScriptableEntity(const std::string& _name, const std::string& _script, );

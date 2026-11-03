@@ -10592,6 +10592,210 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         PopInspectorFieldID(_idSuffix);
     }
 
+    void Editor::InputTextureAsset(const std::string &_name, const char *_idSuffix, Canis::TextureAssetHandle &_variable)
+    {
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        EditorUI::PropertyLabel(_name.c_str());
+
+        std::string resolvedPath = _variable.path;
+        if (_variable.uuid != UUID(0))
+        {
+            const std::string pathFromUUID = AssetManager::GetPath(_variable.uuid);
+            if (pathFromUUID != "Path was not found in AssetLibrary")
+                resolvedPath = pathFromUUID;
+        }
+
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::TEXTURE)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("texture_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_texture_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
+        }
+
+        PopInspectorFieldID(_idSuffix);
+    }
+
+    void Editor::InputMaterialAsset(const std::string &_name, const char *_idSuffix, Canis::MaterialAssetHandle &_variable)
+    {
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        EditorUI::PropertyLabel(_name.c_str());
+
+        std::string resolvedPath = _variable.path;
+        if (_variable.uuid != UUID(0))
+        {
+            const std::string pathFromUUID = AssetManager::GetPath(_variable.uuid);
+            if (pathFromUUID != "Path was not found in AssetLibrary")
+                resolvedPath = pathFromUUID;
+        }
+
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::MATERIAL)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("material_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_material_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
+        }
+
+        PopInspectorFieldID(_idSuffix);
+    }
+
+    void Editor::InputModelAsset(const std::string &_name, const char *_idSuffix, Canis::ModelAssetHandle &_variable)
+    {
+        PushInspectorFieldID(_name.c_str(), _idSuffix);
+        EditorUI::PropertyLabel(_name.c_str());
+
+        std::string resolvedPath = _variable.path;
+        if (_variable.uuid != UUID(0))
+        {
+            const std::string pathFromUUID = AssetManager::GetPath(_variable.uuid);
+            if (pathFromUUID != "Path was not found in AssetLibrary")
+                resolvedPath = pathFromUUID;
+        }
+
+        if (!resolvedPath.empty())
+            _variable.path = resolvedPath;
+
+        std::string label = "[ none ]";
+        if (!resolvedPath.empty())
+        {
+            if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
+                label = meta->name;
+            else
+                label = resolvedPath;
+        }
+
+        ImGui::Button(label.c_str(), ImVec2(EditorUI::ControlWidth(EditorUI::TrailingButtonWidth("X")), 0));
+        NavigateAssetReference(resolvedPath);
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const ImGuiPayload *payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const AssetDragData dropped = *static_cast<const AssetDragData *>(payload->Data);
+                const std::string path = AssetManager::GetPath(dropped.uuid);
+
+                if (MetaFileAsset *meta = AssetManager::GetMetaFile(path))
+                {
+                    if (meta->type == MetaFileAsset::FileType::MODEL)
+                    {
+                        _variable.uuid = meta->uuid;
+                        _variable.path = path;
+                    }
+                }
+            }
+            ImGui::EndDragDropTarget();
+        }
+
+        if (ImGui::BeginPopupContextItem("model_asset_ctx"))
+        {
+            if (ImGui::MenuItem("Clear"))
+            {
+                _variable.uuid = UUID(0);
+                _variable.path.clear();
+            }
+
+            ImGui::EndPopup();
+        }
+
+        ImGui::SameLine();
+        if (ImGui::SmallButton("X##clear_model_asset"))
+        {
+            _variable.uuid = UUID(0);
+            _variable.path.clear();
+        }
+
+        PopInspectorFieldID(_idSuffix);
+    }
+
     bool Editor::InputTerrainAsset(const std::string &_name, Canis::TerrainAssetHandle &_variable)
     {
         return InputTerrainAsset(_name, nullptr, _variable);

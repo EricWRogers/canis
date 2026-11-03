@@ -96,6 +96,26 @@ namespace Canis
             return _sceneAssetHandle.path;
         }
 
+        inline std::string ResolvePath(const TextureAssetHandle &handle)
+        {
+            return ResolvePath(SceneAssetHandle{handle.uuid, handle.path});
+        }
+
+        inline std::string ResolvePath(const MaterialAssetHandle &handle)
+        {
+            return ResolvePath(SceneAssetHandle{handle.uuid, handle.path});
+        }
+
+        inline std::string ResolvePath(const ModelAssetHandle &handle)
+        {
+            return ResolvePath(SceneAssetHandle{handle.uuid, handle.path});
+        }
+
+        inline std::string ResolvePath(const AudioAssetHandle &handle)
+        {
+            return ResolvePath(SceneAssetHandle{handle.uuid, handle.path});
+        }
+
         inline std::string ResolvePath(const ShaderGraphAssetHandle &_shaderGraphAssetHandle)
         {
             if (_shaderGraphAssetHandle.uuid != UUID(0))

@@ -1760,7 +1760,6 @@ namespace Canis
         Entity down = nullptr;
         Entity left = nullptr;
         Entity right = nullptr;
-        Entity hitRect = nullptr; // Optional separate pointer area; visuals stay on this button.
         Entity targetEntity = nullptr;
         std::string targetScript = "";
         std::string actionName = "";

@@ -168,8 +168,8 @@ This rendering multiplier leaves `UIButton` hover, pressed, and disabled colors
 intact. Opacity does not change focus or pointer interaction.
 
 `UIInteractionSystem::HitTest(entity)` queries a widget under the current scene
-pointer, including canvas scaling, rotation, visibility, and an authored
-`UIButton.hitRect`. It also works for passive panels and disabled controls,
+pointer using its own `RectTransform`, including canvas scaling, rotation, and
+visibility. It also works for passive panels and disabled controls,
 which can still block world clicks or show tooltips. `Pick(entities)` returns
 the frontmost hit entity using the UI render mode's depth order. Native controls
 use the same geometry and priority rules; games only map the result to their
@@ -716,7 +716,10 @@ map. Moving casters render into a fresh copy of that map each frame, so moving
 objects continue casting and receiving shadows. The cache key includes static
 membership, hierarchy transforms, model geometry revision, node selection, light
 matrix and shadow shader program. Moving/removing a static object or changing the
-light direction rebuilds the map. The camera/light-space volume advances in
+light direction rebuilds the map. Coverage fits a bounded slice of the visible
+frustum, including room for snapping, so orbit cameras keep the viewed scene
+inside the shadow map. A rotation-independent sphere preserves stable sizing.
+The camera/light-space volume advances in
 approximately 8m blocks aligned to complete shadow texels, allowing ordinary head
 motion within a block to reuse the bake. The first frame and a volume transition
 still require a full static shadow render; this is a runtime cache, not a saved

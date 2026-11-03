@@ -1144,6 +1144,48 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     std::cout << "Screen canvases bypass postprocessing; world UI and 2D scene sprites retain it\n";
 }
 
+static void OrbitShadowCoverage(Window& window) {
+    const auto graphics=GetGraphicsSettings();
+    GetGraphicsSettings().shadowMapSize=2048;
+    Scene scene;scene.Init(nullptr,&window,nullptr);window.SetRenderSize(320,240);
+    auto sun=scene.CreateEntity("Orbit sun");sun.AddComponent<Transform>();
+    auto& light=*sun.AddComponent<DirectionalLight>();light.direction=glm::normalize(Vector3(.4f,-.5f,1));
+    ModelAsset::PrimitiveBuild3D wall;
+    wall.vertices={{{-1,0,0},{0,0,1},{}},{{1,0,0},{0,0,1},{}},{{1,3,0},{0,0,1},{}},{{-1,3,0},{0,0,1},{}}};
+    wall.indices={0,1,2,0,2,3};
+    const int id=AssetManager::CreateModel();
+    Check(AssetManager::GetModel(id)->SetRuntimePrimitives({wall}),"Orbit shadow geometry failed");
+    auto caster=scene.CreateEntity("Orbit caster");caster.AddComponent<Transform>();caster.AddComponent<Model>()->modelId=id;
+    MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
+    RenderTarget target;EnsureRenderTarget(target,320,240);
+    auto* shader=AssetManager::Get<ShaderAsset>(AssetManager::LoadShader("assets/shaders/model3d"))->GetShader();
+    for (int step=0;step<8;++step) {
+        const float yaw=step*glm::pi<float>()/4;
+        const Vector3 eye(std::cos(yaw)*28.f,25.f,std::sin(yaw)*28.f);
+        scene.SetVRCamera(glm::lookAt(eye,Vector3(0),Vector3(0,1,0)),glm::perspective(glm::radians(30.f),320.f/240.f,.1f,200.f),.1f,200.f);
+        glBindFramebuffer(GL_FRAMEBUFFER,target.framebuffer);glViewport(0,0,320,240);glDepthMask(GL_TRUE);
+        glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);renderer.Update(scene.GetRegistry(),1.f/60);
+        Matrix4 shadow(1);
+        glGetUniformfv(shader->GetProgramID(),shader->GetUniformLocation("directionalLightSpaceMatrix",0),&shadow[0][0]);
+        // Both the viewed caster and its surrounding receivers must remain
+        // inside the actual GPU shadow projection through a full orbit.
+        for(float x:{-4.f,4.f})for(float y:{0.f,3.f})for(float z:{-6.f,6.f}) {
+            const auto point=shadow*Vector4(x,y,z,1);
+            Check(std::abs(point.x)<point.w && std::abs(point.y)<point.w && std::abs(point.z)<point.w,
+                  "Orbiting the camera moved the viewed scene outside shadow coverage");
+        }
+        glActiveTexture(GL_TEXTURE6);GLint width=0;glGetTexLevelParameteriv(GL_TEXTURE_2D,0,GL_TEXTURE_WIDTH,&width);
+        Check(width==2048,"Orbit shadow depth texture was not bound");
+        std::vector<float> depths(width*width);glGetTexImage(GL_TEXTURE_2D,0,GL_DEPTH_COMPONENT,GL_FLOAT,depths.data());
+        Check(*std::min_element(depths.begin(),depths.end())<.999f,"Visible orbit caster was absent from shadow depth");
+        glActiveTexture(GL_TEXTURE0);
+    }
+    Check(glGetError()==GL_NO_ERROR,"Orbit shadow coverage produced an OpenGL error");
+    renderer.OnDestroy();glBindFramebuffer(GL_FRAMEBUFFER,0);DestroyRenderTarget(target);
+    AssetManager::FreeModel(id);GetGraphicsSettings()=graphics;
+    std::cout<<"Orbit shadows cover viewed casters and receivers through a full rotation\n";
+}
+
 static void GraphicsShadowQuality(Window& window) {
     const auto graphics=GetGraphicsSettings();
     Scene scene;scene.Init(nullptr,&window,nullptr);window.SetRenderSize(320,240);
@@ -2400,6 +2442,7 @@ int main(int argc,char** argv) {
         MaterialSlotCulling(window);
         OverlayDepthIsolation(window);
         ScreenUiAfterPostProcessing(window);
+        OrbitShadowCoverage(window);
         GraphicsShadowQuality(window);
         StaticShadowBaking(window);
         ShadowTextureIsolation(window);
