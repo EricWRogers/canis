@@ -426,6 +426,32 @@ namespace Canis
             std::cout<<"Color correction Inspector sliders expose, save and reload exposure/contrast/saturation\n";
         }
 
+        static void Framing(App& app, Editor& editor)
+        {
+            editor.m_scene=&app.scene;
+            const int modelId=AssetManager::CreateModel();
+            ModelAsset::PrimitiveBuild3D quad;
+            quad.vertices={{{-2,-2,0},{0,0,1},{}},{{2,-2,0},{0,0,1},{}},{{2,2,0},{0,0,1},{}}};
+            quad.indices={0,1,2};
+            Check(AssetManager::GetModel(modelId)->SetRuntimePrimitives({quad}),"Framing fixture failed");
+            auto selection=app.scene.CreateEntity("Root");selection.AddComponent<Transform>();
+            auto child=app.scene.CreateEntity("Child");child.AddComponent<Transform>()->SetParent(&selection);
+            child.GetComponent<Transform>().position.z=10;
+            child.AddComponent<Model>()->modelId=modelId;
+            child.GetComponent<Transform>().scale=Vector3(.05f);
+            editor.m_gameViewportWidth=800;editor.m_gameViewportHeight=600;
+            editor.FrameEntityInScene(selection.TryGet());
+            const float framed=glm::distance(editor.m_editorCamera3DPosition,Vector3(0,0,10));
+            Check(framed<1 && framed>.1f,"Tiny child model did not fill the viewport or lost its world center");
+            editor.m_gameViewportWidth=200;
+            editor.FrameEntityInScene(selection.TryGet());
+            Check(glm::distance(editor.m_editorCamera3DPosition,Vector3(0,0,10))>framed*2,
+                  "Framing ignored the horizontal FOV of a narrow viewport");
+            child.GetComponent<Transform>().scale=Vector3(1);
+            editor.m_gameViewportWidth=800;
+
+            app.scene.Unload();AssetManager::FreeModel(modelId);editor.m_scene=nullptr;
+        }
         static void Run(App& app, Editor& editor, Window& window, const fs::path& executable)
         {
             InputManager input;
@@ -720,7 +746,8 @@ int main(int argc, char** argv)
 {
     if(argc==2 && std::string(argv[1])=="--fake-bake-success")return 0;
     if(argc==2 && std::string(argv[1])=="--fake-bake-failure")return 7;
-    if (argc != 2) return 1;
+    const bool framingOnly=argc==3 && std::string(argv[2])=="--framing-only";
+    if (argc != 2 && !framingOnly) return 1;
     const auto executable=fs::absolute(argv[0]);
     const auto original=fs::current_path();
     const auto sourceAssets=fs::absolute(argv[1]).parent_path();
@@ -730,6 +757,7 @@ int main(int argc, char** argv)
     try {
         fs::create_directories("assets");
         fs::copy(argv[1], "assets/shaders", fs::copy_options::recursive);
+        if (!framingOnly) {
         fs::create_directories("assets/defaults/models");
         fs::create_directories("assets/defaults/materials");
         fs::create_directories("assets/brutal-city/shaders");
@@ -749,17 +777,19 @@ int main(int argc, char** argv)
                           std::string("assets/brutal-city/shaders/wet")+extension);
         std::ofstream("assets/defaults/materials/default.material")
             << "shader: {path: assets/shaders/model3d}\ncolor: [1, 1, 1, 1]\nroughnessValue: 0.5\nspecularValue: 0.5\n";
+        }
         Canis::Window window("Scene tab test",800,600,true);
         ImGui::CreateContext();
         auto& io=ImGui::GetIO(); io.IniFilename=nullptr; io.DisplaySize=ImVec2(800,600); io.DeltaTime=1.f/60;
         unsigned char* pixels; int width,height; io.Fonts->GetTexDataAsRGBA32(&pixels,&width,&height);
         {
             Canis::App app; Canis::Editor editor;
-            Canis::EditorSceneTabsTestAccess::Run(app,editor,window,executable);
+            Canis::EditorSceneTabsTestAccess::Framing(app,editor);
+            if (!framingOnly) Canis::EditorSceneTabsTestAccess::Run(app,editor,window,executable);
         }
         ImGui::DestroyContext();
         fs::current_path(original); fs::remove_all(temp);
-        std::cout << "Scene tab X, cancel, discard, save, failed save and active-tab checks passed\n";
+        std::cout << "Scene editor checks passed\n";
         return 0;
     } catch (const std::exception& error) {
         fs::current_path(original);

@@ -7894,6 +7894,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         Canis::GetEditorConfig().lastEditorScene = MakeSceneAssetHandleFromPath(normalizedPath);
         Canis::SaveEditorConfig();
         LoadSceneCameraConfig();
+        if (normalizedPath.find("/prefabs/") != std::string::npos ||
+            !FindSceneCameraConfig(Canis::GetEditorConfig().sceneCameras, Canis::GetEditorConfig().lastEditorScene))
+            FrameEntityInScene(nullptr);
         m_forceRefresh = true;
     }
 
@@ -10130,17 +10133,51 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::FrameEntityInScene(Canis::Entity *_entity)
     {
-        if (_entity == nullptr || !_entity->HasComponent<Canis::Transform>())
-            return;
-
-        const Canis::Transform &transform = _entity->GetComponent<Canis::Transform>();
-        const Vector3 target = transform.GetGlobalPosition();
-        const Vector3 globalScale = transform.GetGlobalScale();
-        const float radius = std::max({
-            std::abs(globalScale.x),
-            std::abs(globalScale.y),
-            std::abs(globalScale.z),
-            0.75f});
+        if (!m_scene) return;
+        Vector3 minimum(0), maximum(0);
+        bool found = false, hasModels = false;
+        auto include = [&](Vector3 lo, Vector3 hi) {
+            if (!found) { minimum = lo; maximum = hi; found = true; }
+            else { minimum = glm::min(minimum, lo); maximum = glm::max(maximum, hi); }
+        };
+        for (auto* candidate : m_scene->GetEntities()) {
+            if (!candidate || !candidate->HasComponent<Transform>()) continue;
+            auto& spatial = candidate->GetComponent<Transform>();
+            if (_entity && candidate != _entity) {
+                auto parent = spatial.parent;
+                while (parent && parent != _entity && parent.HasComponent<Transform>()) parent = parent.GetComponent<Transform>().parent;
+                if (parent != _entity) continue;
+            }
+            Vector3 lo, hi;
+            if (BuildEntityModelWorldBounds(candidate, spatial.GetModelMatrix(), lo, hi)) {
+                include(lo, hi); hasModels = true;
+            }
+        }
+        if (!hasModels) {
+            for (auto* candidate : m_scene->GetEntities()) {
+                if (!candidate || !candidate->HasComponent<RectLayout>()) continue;
+                auto& layout = candidate->GetComponent<RectLayout>();
+                if (_entity && candidate != _entity && !layout.IsChildOf(_entity)) continue;
+                const auto lo = layout.GetRectMin(), size = layout.GetResolvedSize();
+                if (size.x > 0 && size.y > 0) include(Vector3(lo, 0), Vector3(lo + size, 0));
+            }
+            if (found) {
+                m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_2D;
+                m_editorCamera2DPosition = Vector2((minimum + maximum) * .5f);
+                const auto size = glm::max(Vector2(maximum - minimum), Vector2(1));
+                m_editorCamera2DScale = std::clamp(.85f * std::min((m_gameViewportWidth > 0 ? m_gameViewportWidth : 640) / size.x,
+                    (m_gameViewportHeight > 0 ? m_gameViewportHeight : 480) / size.y), .01f, 100.f);
+                MarkSceneCameraConfigDirty();
+                return;
+            }
+        }
+        if (!found) {
+            if (!_entity || !_entity->HasComponent<Transform>()) return;
+            const auto position = _entity->GetComponent<Transform>().GetGlobalPosition();
+            include(position - Vector3(.25f), position + Vector3(.25f));
+        }
+        const Vector3 target = (minimum + maximum) * .5f;
+        const float radius = std::max(glm::length(maximum - minimum) * .5f, .025f);
 
         const float yaw = DEG2RAD * m_editorCamera3DYaw;
         const float pitch = DEG2RAD * m_editorCamera3DPitch;
@@ -10157,7 +10194,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         const float halfFovRadians = DEG2RAD * m_editorCamera3DFovDegrees * 0.5f;
         const float fovTangent = std::max(std::tan(halfFovRadians), 0.15f);
-        const float distance = std::clamp((radius / fovTangent) + radius, 4.0f, 500.0f);
+        const float aspect = float((m_gameViewportWidth > 0 ? m_gameViewportWidth : 640)) / (m_gameViewportHeight > 0 ? m_gameViewportHeight : 480);
+        const float limitingHalfFov = std::min(halfFovRadians, std::atan(fovTangent * aspect));
+        const float distance = std::clamp(radius * 1.15f / std::sin(limitingHalfFov), .1f, 1500.0f);
 
         m_sceneCameraMode = SceneCameraMode::SCENE_CAMERA_3D;
         m_editorCamera3DPosition = target - forward * distance;
