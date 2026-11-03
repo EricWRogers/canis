@@ -81,7 +81,7 @@ namespace Canis
         {
             if (removed.contains(node["Entity"].as<uint64_t>(0))) continue;
             auto kept = YAML::Clone(node);
-            for (const char* type : {"Canis::Transform", "Canis::RectTransform"})
+            for (const char* type : {"Canis::Transform"})
             {
                 if (!kept[type] || !kept[type]["children"].IsSequence()) continue;
                 YAML::Node children(YAML::NodeType::Sequence);

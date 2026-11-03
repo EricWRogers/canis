@@ -1,5 +1,6 @@
 #include <Canis/App.hpp>
 #include <Canis/Editor.hpp>
+#include <Canis/Canis.hpp>
 #include <Canis/InputManager.hpp>
 #include <Canis/Window.hpp>
 #include <Canis/AssetManager.hpp>
@@ -329,6 +330,29 @@ namespace Canis
             track.keys = {{0, AnimationValue::Float(0)}, {40, AnimationValue::Float(1)}};
             clip.tracks = {track};
             Check(clip.Save("assets/weather-preview.animclip"), "Preview clip could not save");
+            // Deleted remembered tabs must not discover every unrelated asset
+            // again on each editor frame. UUID moves and path fallback still work.
+            auto &remembered = GetEditorConfig().lastAnimationClip;
+            const auto savedRemembered = remembered;
+            Check(clip.Save("assets/unindexed-preview.animclip"), "Unindexed fixture could not save");
+            remembered.uuid = UUID(991234567890123456ULL);
+            remembered.path = "assets/deleted-pack/missing.animclip";
+            const auto assetCount = AssetManager::GetAssetLibrary().assets.size();
+            for (int i = 0; i < 20; ++i)
+                Check(editor.ResolveRememberedAnimationClipPath().empty(), "Deleted remembered clip resolved");
+            Check(AssetManager::GetAssetLibrary().assets.size() == assetCount &&
+                  !fs::exists("assets/unindexed-preview.animclip.meta") &&
+                  !fs::exists("assets/deleted-pack/missing.animclip.meta"),
+                  "Remembered clip searched or registered unrelated/missing assets");
+            auto *previewMeta = AssetManager::GetMetaFile("assets/weather-preview.animclip");
+            remembered.uuid = previewMeta->uuid;
+            Check(editor.ResolveRememberedAnimationClipPath() == previewMeta->path,
+                  "Remembered UUID did not follow its indexed path after a move");
+            remembered.uuid = UUID(0);
+            remembered.path = "assets/weather-preview.animclip";
+            Check(editor.ResolveRememberedAnimationClipPath() == previewMeta->path,
+                  "Remembered path-only clip no longer resolves");
+            remembered = savedRemembered;
             editor.m_animationClipStatePath = "assets/weather-preview.animclip";
             editor.m_animationTargetUUID = root.GetUUID();
             editor.m_animationTime = 40;
@@ -601,15 +625,15 @@ namespace Canis
             app.scene.Unload();
             auto canvas=app.scene.CreateEntity("Menu");
             canvas.AddComponent<Transform>();
-            auto& root=*canvas.AddComponent<RectTransform>();root.anchorMin={0,0};root.anchorMax={1,1};root.size={0,0};root.depth=0;
+            auto& root=*canvas.AddComponent<RectLayout>();root.anchorMin={0,0};root.anchorMax={1,1};root.size={0,0};root.Spatial().position.z=0;
             canvas.AddComponent<Canvas>()->screenSize={800,600};
             auto label=app.scene.CreateEntity("Menu item");
             label.AddComponent<Transform>();
-            auto& rect=*label.AddComponent<RectTransform>();rect.SetParent(&canvas);rect.position={-200,0};rect.size={120,60};rect.depth=.3f;
+            auto& rect=*label.AddComponent<RectLayout>();rect.Spatial().SetParent(&canvas, false);rect.SetLocalPosition({-200,0});rect.size={120,60};rect.Spatial().position.z=.3f;
             label.AddComponent<Text>()->text="Caption";
             auto group=app.scene.CreateEntity("Stretched grouping rect");
-            auto& container=*group.AddComponent<RectTransform>();container.SetParent(&canvas);
-            container.position={0,0};container.anchorMin={0,0};container.anchorMax={1,1};container.size={0,0};
+            auto& container=*group.AddComponent<RectLayout>();container.Spatial().SetParent(&canvas, false);
+            container.SetLocalPosition({0,0});container.anchorMin={0,0};container.anchorMax={1,1};container.size={0,0};
             editor.m_sceneCameraMode=Editor::SceneCameraMode::SCENE_CAMERA_2D;
             editor.m_mode=EditorMode::EDIT;editor.m_editorCamera2DPosition={0,0};editor.m_editorCamera2DScale=1;
             editor.m_gameViewportWidth=editor.m_gameTextureWidth=800;
@@ -641,9 +665,9 @@ namespace Canis
                 editor.DrawSceneViewGizmo();bool usingGizmo=ImGuizmo::IsUsing();ImGui::End();ImGui::Render();return usingGizmo;
             };
             gizmoFrame(363,false);gizmoFrame(363,false);
-            Check(gizmoFrame(363,true),"UI with both Transform and RectTransform did not expose its 2D gizmo");
+            Check(gizmoFrame(363,true),"UI with both Transform and RectLayout did not expose its 2D gizmo");
             gizmoFrame(383,true);gizmoFrame(383,false);
-            Check(rect.position.x>-180 && std::abs(rect.position.y)<.01f,
+            Check(rect.Spatial().position.x>-180 && std::abs(rect.Spatial().position.y)<.01f,
                   "Dragging the selected UI gizmo did not update its reference-canvas position");
             Check(window.GetScreenWidth()==800 && window.GetScreenHeight()==600 && !app.scene.HasEditorCamera2DOverride(),
                   "Scene UI picking leaked preview dimensions/camera into the Game view");

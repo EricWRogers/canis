@@ -4,6 +4,7 @@
 #include <Canis/AssetManager.hpp>
 #include <Canis/ConfigHelper.hpp>
 #include <Canis/Editor.hpp>
+#include <Canis/SpriteSheet.hpp>
 
 #include <algorithm>
 #include <cmath>
@@ -67,6 +68,85 @@ namespace Canis
             const float y = RandomRange(emitter, _minValue.y, _maxValue.y);
             const float z = RandomRange(emitter, _minValue.z, _maxValue.z);
             return {x, y, z};
+        }
+
+        void HideSprite(ParticleEmitter& emitter)
+        {
+            if (emitter.entity)
+                if (auto* sprite = emitter.entity->TryGetComponent<Sprite2D>()) sprite->color.a = 0;
+        }
+
+        void ApplySpriteFrame(ParticleEmitter& emitter)
+        {
+            if (!emitter.entity || !*emitter.entity) return;
+            auto& owner = *emitter.entity;
+            auto& canvas = owner.GetOrAddComponent<Canvas>();
+            canvas.renderMode = CanvasRenderMode::WORLD_SPACE;
+            canvas.depthTest = emitter.spriteDepthTest;
+            canvas.receivesEvents = canvas.navigationEnabled = false;
+            auto& rect = owner.GetOrAddComponent<RectLayout>();
+            rect.size = emitter.spriteSize * emitter.spriteScale;
+            auto& sprite = owner.GetOrAddComponent<Sprite2D>();
+            if (owner.scene.TryGetWindow() && !emitter.spriteTexturePath.empty() &&
+                (emitter.cachedSpritePath != emitter.spriteTexturePath || sprite.textureHandle.id < 0))
+            {
+                sprite.textureHandle = AssetManager::GetTextureHandle(emitter.spriteTexturePath);
+                emitter.cachedSpritePath = emitter.spriteTexturePath;
+            }
+            const int columns = Min(Max(emitter.spriteColumns, 1), 1024);
+            const int rows = Min(Max(emitter.spriteRows, 1), 1024);
+            const int frames = Min(Max(emitter.spriteFrameCount, 1), columns * rows +
+                (emitter.spriteBlankLastFrame ? 1 : 0));
+            const float rate = std::isfinite(emitter.spriteFrameRate)
+                ? Max(0.001f, emitter.spriteFrameRate) : 30.0f;
+            const int frame = Min(int(std::floor(emitter.elapsed * rate + 0.00001f)), frames - 1);
+            SpriteRegion region;
+            region.x = frame % columns;
+            region.y = frame / columns;
+            sprite.uv = SpriteRegionUV(region, columns, rows);
+            sprite.color = emitter.startColor;
+            if (emitter.spriteBlankLastFrame && frame == frames - 1) sprite.color.a = 0;
+        }
+
+        void StartSpriteBurst(ParticleEmitter& emitter)
+        {
+            if (!emitter.entity || !*emitter.entity) return;
+            auto& transform = emitter.entity->GetOrAddComponent<Transform>();
+            emitter.spriteScale = RandomRange(emitter, emitter.spriteScaleRange.x, emitter.spriteScaleRange.y);
+            const float rotation = RandomRange(emitter, emitter.spriteRotationRange.x,
+                emitter.spriteRotationRange.y) * DEG2RAD;
+            transform.rotation = glm::normalize(transform.rotation *
+                glm::angleAxis(rotation - emitter.appliedSpriteRotation, Vector3(0, 0, 1)));
+            emitter.appliedSpriteRotation = rotation;
+            emitter.spriteInitialized = true;
+            emitter.hasTriggeredBurst = true;
+            emitter.totalSpawned = 1;
+            ApplySpriteFrame(emitter);
+        }
+
+        void UpdateSpriteBurst(ParticleEmitter& emitter, float delta, bool preview)
+        {
+            if (!emitter.playing) { HideSprite(emitter); return; }
+            if (!emitter.hasTriggeredBurst) StartSpriteBurst(emitter);
+            const int columns = Min(Max(emitter.spriteColumns, 1), 1024);
+            const int rows = Min(Max(emitter.spriteRows, 1), 1024);
+            const int frames = Min(Max(emitter.spriteFrameCount, 1), columns * rows +
+                (emitter.spriteBlankLastFrame ? 1 : 0));
+            const float rate = std::isfinite(emitter.spriteFrameRate)
+                ? Max(0.001f, emitter.spriteFrameRate) : 30.0f;
+            const float duration = float(frames) / rate;
+            emitter.elapsed += delta;
+            if (emitter.elapsed >= duration - 0.000001f)
+            {
+                if (emitter.looping) emitter.elapsed = std::fmod(emitter.elapsed, duration);
+                else
+                {
+                    emitter.Stop();
+                    if (preview) emitter.pendingDestroy = false;
+                    return;
+                }
+            }
+            ApplySpriteFrame(emitter);
         }
 
         void ResolveEmitterAssets(ParticleEmitter &_emitter)
@@ -303,8 +383,38 @@ namespace Canis
         }
     } // namespace
 
+    void ParticleEmitter::Play()
+    {
+        playing = initialized = true;
+        elapsed = spawnAccumulator = 0;
+        hasTriggeredBurst = pendingDestroy = false;
+        randomState = 0;
+        totalSpawned = totalDropped = totalImpacts = 0;
+        if (spriteBurst) StartSpriteBurst(*this);
+    }
+
+    void ParticleEmitter::Stop()
+    {
+        playing = false;
+        pendingDestroy = destroyEntityWhenDone;
+        if (spriteBurst) HideSprite(*this);
+    }
+
     void RegisterParticleEmitterComponent(App &_app)
     {
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteBurst);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteTexturePath);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteColumns);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteRows);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteFrameCount);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteFrameRate);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteBlankLastFrame);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteDepthTest);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteSize);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteScaleRange);
+        REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, spriteRotationRange);
+        RegisterSignalAction(particleEmitterConf, "Play", &ParticleEmitter::Play);
+        RegisterSignalAction(particleEmitterConf, "Stop", &ParticleEmitter::Stop);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, playOnStart);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, paused);
         REGISTER_PROPERTY(particleEmitterConf, Canis::ParticleEmitter, simulationSpeed);
@@ -362,6 +472,7 @@ namespace Canis
             ImGui::SameLine();
             if (ImGui::Button("Stop"))
             {
+                if (component->spriteBurst) HideSprite(*component);
                 component->playing = false;
                 component->pendingDestroy = false;
                 component->editorPreviewPaused = true;
@@ -369,6 +480,7 @@ namespace Canis
             ImGui::SameLine();
             if (ImGui::Button("Clear"))
             {
+                if (component->spriteBurst) HideSprite(*component);
                 DestroyEmitterParticles(*component, _entity.scene.GetRegistry());
                 component->playing = false;
                 component->pendingDestroy = false;
@@ -379,6 +491,23 @@ namespace Canis
             DrawInspectorField(_editor, "paused", _conf.name.c_str(), component->paused);
             DrawInspectorField(_editor, "simulationSpeed", _conf.name.c_str(), component->simulationSpeed);
             DrawInspectorField(_editor, "looping", _conf.name.c_str(), component->looping);
+            DrawInspectorField(_editor, "spriteBurst", _conf.name.c_str(), component->spriteBurst);
+            if (component->spriteBurst)
+            {
+                DrawInspectorField(_editor, "spriteTexturePath", _conf.name.c_str(), component->spriteTexturePath);
+                DrawInspectorField(_editor, "spriteColumns", _conf.name.c_str(), component->spriteColumns);
+                DrawInspectorField(_editor, "spriteRows", _conf.name.c_str(), component->spriteRows);
+                DrawInspectorField(_editor, "spriteFrameCount", _conf.name.c_str(), component->spriteFrameCount);
+                DrawInspectorField(_editor, "spriteFrameRate", _conf.name.c_str(), component->spriteFrameRate);
+                DrawInspectorField(_editor, "spriteBlankLastFrame", _conf.name.c_str(), component->spriteBlankLastFrame);
+                DrawInspectorField(_editor, "spriteDepthTest", _conf.name.c_str(), component->spriteDepthTest);
+                DrawInspectorField(_editor, "spriteSize", _conf.name.c_str(), component->spriteSize);
+                DrawInspectorField(_editor, "spriteScaleRange", _conf.name.c_str(), component->spriteScaleRange);
+                DrawInspectorField(_editor, "spriteRotationRange", _conf.name.c_str(), component->spriteRotationRange);
+                DrawInspectorField(_editor, "startColor", _conf.name.c_str(), component->startColor);
+                DrawInspectorField(_editor, "destroyEntityWhenDone", _conf.name.c_str(), component->destroyEntityWhenDone);
+                return;
+            }
             DrawInspectorField(_editor, "burstMode", _conf.name.c_str(), component->burstMode);
             DrawInspectorField(_editor, "destroyEntityWhenDone", _conf.name.c_str(),
                                component->destroyEntityWhenDone);
@@ -653,6 +782,7 @@ namespace Canis
                 {
                     if (emitter.editorPreviewSelected)
                     {
+                        if (emitter.spriteBurst) HideSprite(emitter);
                         DestroyEmitterParticles(emitter, _registry);
                         emitter.playing = false;
                         emitter.pendingDestroy = false;
@@ -693,6 +823,14 @@ namespace Canis
                 emitter.pendingDestroy = false;
                 emitter.playing = emitter.playOnStart;
             }
+
+            if (emitter.spriteBurst)
+            {
+                UpdateSpriteBurst(emitter, emitterDelta, _editorPreview);
+                if (!_editorPreview && emitter.pendingDestroy) emitter.entity->Destroy();
+                continue;
+            }
+            if (emitter.spriteInitialized) HideSprite(emitter);
 
             if (emitter.playing)
             {

@@ -23,7 +23,7 @@ void Install(TweenWorld &w) {
   Connect<Text>(w);
   Connect<Sprite2D>(w);
   Connect<Material>(w);
-  Connect<RectTransform>(w);
+  Connect<RectLayout>(w);
   Connect<AudioSource>(w);
   Connect<Camera>(w);
   Connect<PointLight>(w);
@@ -62,7 +62,7 @@ void DisconnectShortcuts(TweenWorld &w) {
   Disconnect<Text>(w);
   Disconnect<Sprite2D>(w);
   Disconnect<Material>(w);
-  Disconnect<RectTransform>(w);
+  Disconnect<RectLayout>(w);
   Disconnect<AudioSource>(w);
   Disconnect<Camera>(w);
   Disconnect<PointLight>(w);
@@ -148,9 +148,9 @@ Tween PropertyTween(Entity e, Property property, Value value, double seconds) {
     return Color<Material>(e, value, seconds,
                            property == Property::MaterialFade);
   case Property::AnchorPos:
-    return Bind<RectTransform>(
-        e, value, seconds, 0, [](auto &t) { return t.position; },
-        [](auto &t, Value v) { t.position = v.As<Vector2>(); });
+    return Bind<RectLayout>(
+        e, value, seconds, 0, [](auto &t) { return t.GetLocalPosition(); },
+        [](auto &t, Value v) { t.SetLocalPosition(v.As<Vector2>()); });
   case Property::AudioVolume:
     return Bind<AudioSource>(
         e, value, seconds, 0, [](auto &t) { return t.volume; },
@@ -211,7 +211,7 @@ Tween TweenColor(Material &target, Vector4 value, double seconds) {
 Tween TweenFade(Material &target, float value, double seconds) {
   return PropertyTween(target.entity, Property::MaterialFade, value, seconds);
 }
-Tween TweenAnchorPos(RectTransform &target, Vector2 value, double seconds) {
+Tween TweenAnchorPos(RectLayout &target, Vector2 value, double seconds) {
   return PropertyTween(target.entity, Property::AnchorPos, value, seconds);
 }
 Tween TweenFade(AudioSource &target, float value, double seconds) {

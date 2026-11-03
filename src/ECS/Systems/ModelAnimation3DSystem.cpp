@@ -21,7 +21,7 @@ namespace Canis
 
     void ModelAnimation3DSystem::Update(entt::registry &_registry, float _deltaTime)
     {
-        const float deltaTime = _deltaTime;
+        const float deltaTime = std::isfinite(_deltaTime) ? std::max(_deltaTime, 0.0f) : 0.0f;
 
         // Use the live gameplay camera so a turn/teleport refreshes newly visible
         // poses in this update, rather than one frame after renderer feedback.
@@ -151,7 +151,7 @@ namespace Canis
             const bool transitionActive =
                 modelAnimation.transitionDuration > 0.0f &&
                 !modelAnimation.transitionLocalNodeMatrices.empty();
-            if (transitionActive)
+            if (transitionActive && modelAnimation.playAnimation)
                 modelAnimation.transitionElapsed += std::max(deltaTime, 0.0f);
 
             // Advance clocks above every frame, but sample/skin only at the requested

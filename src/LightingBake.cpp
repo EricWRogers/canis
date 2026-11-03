@@ -12,6 +12,7 @@
 #include <set>
 #include <stb_image.h>
 #include <thread>
+#include <unordered_map>
 namespace Canis
 {
     namespace
@@ -298,6 +299,45 @@ namespace Canis
                 out.vertices.push_back(v);
             }
         }
+        // Subdivision emits triangle corners independently. Reuse identical
+        // evaluated samples before writing so baking does not triple vertex
+        // bandwidth. Include every scenario channel to retain lighting seams.
+        static void CompactBakedSamples(Pipeline::Primitive& primitive,
+                                        std::vector<std::vector<float>>& channels)
+        {
+            struct Hash
+            {
+                size_t operator()(const std::vector<float>& values) const
+                {
+                    size_t result = 0;
+                    for (float value : values)
+                        result ^= std::hash<float>{}(value) + 0x9e3779b9u + (result << 6) + (result >> 2);
+                    return result;
+                }
+            };
+            std::unordered_map<std::vector<float>, uint32_t, Hash> samples;
+            std::vector<Pipeline::Vertex> compact;
+            std::vector<std::vector<float>> compactChannels(channels.size());
+            for (auto& index : primitive.indices)
+            {
+                const auto& v = primitive.vertices[index];
+                std::vector<float> key{v.position.x,v.position.y,v.position.z,v.normal.x,v.normal.y,v.normal.z,
+                                       v.uv.x,v.uv.y,v.color.x,v.color.y,v.color.z,v.color.w};
+                for (const auto& channel : channels)
+                    key.insert(key.end(), channel.begin()+index*3, channel.begin()+index*3+3);
+                const auto [it, inserted] = samples.emplace(std::move(key), static_cast<uint32_t>(compact.size()));
+                if (inserted)
+                {
+                    compact.push_back(v);
+                    for (size_t c=0;c<channels.size();++c)
+                        compactChannels[c].insert(compactChannels[c].end(), channels[c].begin()+index*3,
+                                                  channels[c].begin()+index*3+3);
+                }
+                index = it->second;
+            }
+            primitive.vertices = std::move(compact);
+            channels = std::move(compactChannels);
+        }
         // Additional irradiance channels use accessors in the same buffer as the shared
         // geometry. They never duplicate positions, indices or collision data.
         static void WriteScenarioChannels(const std::filesystem::path& path,
@@ -519,8 +559,12 @@ namespace Canis
                     addTexture("albedo", "baseColorTexture", true);
                     addTexture("normal", "normalTexture", false);
                     addTexture("emission", "emissiveTexture", false);
-                    if (m["emission"])
-                        dst["emissiveFactor"] = {1, 1, 1};
+                    const auto emission = m["emissionColor"].as<Vector4>(Vector4(1));
+                    const float energy = Max(0.0f, m["emissionIntensity"].as<float>(0));
+                    dst["emissiveFactor"] = {
+                        std::pow(Max(0.0f, emission.x), 2.2f) * energy,
+                        std::pow(Max(0.0f, emission.y), 2.2f) * energy,
+                        std::pow(Max(0.0f, emission.z), 2.2f) * energy};
                 }
                 for (auto& p : instance.mesh.primitives)
                     for (size_t i = 0; i + 2 < p.indices.size(); i += 3)
@@ -609,6 +653,8 @@ namespace Canis
                                       p.vertices[p.indices[i + 2]], instance.world,
                                       std::max(.1f, options.vertexSpacing));
                         p = std::move(subdivided);
+                        std::vector<std::vector<float>> unevaluated;
+                        CompactBakedSamples(p, unevaluated);
                         channels.emplace_back(scenarioLights.size());
                         for (auto& channel : channels.back())
                             channel.reserve(p.vertices.size() * 3);
@@ -663,6 +709,7 @@ namespace Canis
                                 channel.insert(channel.end(), {light.x, light.y, light.z});
                             }
                         }
+                        CompactBakedSamples(p, channels.back());
                         vertices += p.vertices.size();
                     }
                     auto path = directory / (std::to_string(instance.id) + ".gltf");
@@ -785,6 +832,7 @@ namespace Canis
             if (auto model = node["Canis::Model"]; model && model["static"].as<bool>(false))
                 previousPaths[node["Entity"].as<uint64_t>()] = Path(model["ModelAsset"]);
         YAML::Node quality;
+        quality["VertexSharingVersion"] = 1;
         quality["VertexSpacing"] = options.vertexSpacing;
         quality["IndirectSamples"] = options.indirectSamples;
         quality["IndirectIntensity"] = options.indirectIntensity;
@@ -794,7 +842,8 @@ namespace Canis
             if (scenario.manifestPath.empty() || !std::filesystem::exists(scenario.manifestPath))
                 return false;
             const auto saved = YAML::LoadFile(scenario.manifestPath)["Quality"];
-            return saved && saved["VertexSpacing"].as<float>(-1) == options.vertexSpacing &&
+            return saved && saved["VertexSharingVersion"].as<int>(0) == 1 &&
+                   saved["VertexSpacing"].as<float>(-1) == options.vertexSpacing &&
                    saved["IndirectSamples"].as<int>(-1) == options.indirectSamples &&
                    saved["IndirectIntensity"].as<float>(-1) == options.indirectIntensity &&
                    saved["AmbientOcclusionDistance"].as<float>(-1) == options.ambientOcclusionDistance;

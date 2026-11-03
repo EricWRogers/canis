@@ -10,7 +10,7 @@ namespace Canis
     class Shader;
     class Camera2D;
     class Entity;
-    class RectTransform;
+    class RectLayout;
     class Text;
 
     class RenderBatch
@@ -78,7 +78,7 @@ namespace Canis
         void RenderLayers(entt::registry &_registry, float _deltaTime, bool _worldOnly, bool _screenOnly);
         void DrawText(
             Entity* _entity,
-            RectTransform* _transform,
+            RectLayout* _transform,
             Text* _text,
             const Vector2& _position,
             const Vector2& _size,

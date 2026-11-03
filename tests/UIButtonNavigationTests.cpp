@@ -23,45 +23,45 @@ int main()
     Editor editor;
     app.RegisterDefaults(editor);
     auto fadeRoot=app.scene.CreateEntity("UI fade group");
-    fadeRoot.AddComponent<RectTransform>()->opacity=.5f;
+    fadeRoot.AddComponent<RectLayout>()->opacity=.5f;
     auto fadeChild=app.scene.CreateEntity("UI fade child");
-    auto& childRect=*fadeChild.AddComponent<RectTransform>();
-    childRect.parent=fadeRoot;childRect.opacity=.5f;
+    auto& childRect=*fadeChild.AddComponent<RectLayout>();
+    childRect.Spatial().parent=fadeRoot;childRect.opacity=.5f;
     Check(childRect.GetOpacity()==.25f,"UI subtree opacity did not multiply through parents");
     YAML::Node encodedOpacity;
-    app.GetScriptConf("Canis::RectTransform")->Encode(encodedOpacity,fadeChild);
-    Check(encodedOpacity["Canis::RectTransform"]["opacity"].as<float>()==.5f,"UI opacity did not serialize");
+    app.GetScriptConf("Canis::RectLayout")->Encode(encodedOpacity,fadeChild);
+    Check(encodedOpacity["Canis::RectLayout"]["opacity"].as<float>()==.5f,"UI opacity did not serialize");
     auto opacitySource=YAML::Load(
-        "- {Entity: 201, Name: Fading, 'Canis::RectTransform': {opacity: 0.5}}\n"
-        "- {Entity: 202, Name: Backdrop, 'Canis::RectTransform': {}}\n");
+        "- {Entity: 201, Name: Fading, 'Canis::RectLayout': {opacity: 0.5}}\n"
+        "- {Entity: 202, Name: Backdrop, 'Canis::RectLayout': {}}\n");
     auto opacityNodes=app.scene.LoadEntityNodes(opacitySource,false);
-    Check(opacityNodes[0]->GetComponent<RectTransform>().GetOpacity()==.5f &&
-          opacityNodes[1]->GetComponent<RectTransform>().GetOpacity()==1,
+    Check(opacityNodes[0]->GetComponent<RectLayout>().GetOpacity()==.5f &&
+          opacityNodes[1]->GetComponent<RectLayout>().GetOpacity()==1,
           "UI opacity decode changed the default background opacity");
 
     // Passive HUD queries use the same transformed bounds as native controls.
     {
         auto root=app.scene.CreateEntity("Picking canvas");
-        root.AddComponent<RectTransform>()->size={320,240};
+        root.AddComponent<RectLayout>()->size={320,240};
         auto& queryCanvas=*root.AddComponent<Canvas>();queryCanvas.screenSize={320,240};
         auto front=app.scene.CreateEntity("Raised card"),back=app.scene.CreateEntity("Lower card");
         for(auto widget:{front,back}) {
-            auto& rect=*widget.AddComponent<RectTransform>();rect.parent=root;rect.size={80,20};
-            root.GetComponent<RectTransform>().children.push_back(widget);
+            auto& rect=*widget.AddComponent<RectLayout>();rect.Spatial().parent=root;rect.size={80,20};
+            root.GetComponent<RectLayout>().GetChildren().push_back(widget);
         }
-        auto& frontRect=front.GetComponent<RectTransform>();frontRect.rotation=glm::radians(45.f);frontRect.depth=.2f;
-        back.GetComponent<RectTransform>().depth=.1f;
+        auto& frontRect=front.GetComponent<RectLayout>();frontRect.SetLocalRotation(glm::radians(45.f));frontRect.SetLocalDepth(.2f);
+        back.GetComponent<RectLayout>().SetLocalDepth(.1f);
         input.mouse={195,120};
         Check(!UIInteractionSystem::HitTest(front),"Rotated UI hit test used its unrotated box");
         input.mouse={175,135};
         Check(UIInteractionSystem::HitTest(front),"Rotated UI hit test missed visible artwork");
         input.mouse={160,120};
         Check(UIInteractionSystem::Pick(std::array{front,back})==front,"UI picking ignored rendered overlay order");
-        queryCanvas.screenSize={640,480};frontRect.rotation=0;
+        queryCanvas.screenSize={640,480};frontRect.SetLocalRotation(0);
         input.mouse={185,120};Check(!UIInteractionSystem::HitTest(front),"UI hit test ignored canvas scaling");
         input.mouse={175,120};Check(UIInteractionSystem::HitTest(front),"Scaled UI hit test missed artwork");
         auto& button=*front.AddComponent<UIButton>();button.active=false;
-        frontRect.size={10,10};back.GetComponent<RectTransform>().size={100,100};
+        frontRect.size={10,10};back.GetComponent<RectLayout>().size={100,100};
         input.mouse={180,120};
         Check(!UIInteractionSystem::HitTest(front),"Passive query used another widget's rectangle");
         frontRect.size={100,100};
@@ -81,8 +81,8 @@ int main()
     auto* listener = owner.AddScript<Receiver>();
     auto makeButton = [&](const char* name) {
         auto e = app.scene.CreateEntity(name);
-        auto& rect = *e.AddComponent<RectTransform>();
-        rect.position = Vector2(1000); // Keep the pointer outside the fixture.
+        auto& rect = *e.AddComponent<RectLayout>();
+        rect.SetLocalPosition(Vector2(1000)); // Keep the pointer outside the fixture.
         rect.size = Vector2(40);
         auto& button = *e.AddComponent<UIButton>();
         button.targetEntity = owner;
@@ -113,10 +113,10 @@ int main()
     disabled.GetComponent<UIButton>().down = second;
     second.GetComponent<UIButton>().up = first;
     auto initialCanvas = app.scene.CreateEntity("Menu canvas");
-    initialCanvas.AddComponent<RectTransform>();
+    initialCanvas.AddComponent<RectLayout>();
     auto& initial = *initialCanvas.AddComponent<Canvas>();
     initial.navigateAction = 31; initial.confirmAction = 32;
-    for (auto e : {first, second, disabled}) e.GetComponent<RectTransform>().parent = initialCanvas;
+    for (auto e : {first, second, disabled}) e.GetComponent<RectLayout>().Spatial().parent = initialCanvas;
     InputDocument initialDocument;
     initialDocument.maps = {{30, "Menu"}};
     initialDocument.actions = {
@@ -140,12 +140,12 @@ int main()
     key(Key::DOWN, true);
     Check(first.GetComponent<UIButton>().hovered, "First direction must acquire default focus");
     Check(first.GetComponent<Text>().color == first.GetComponent<UIButton>().hoverColor, "Focused text did not turn green");
-    Check(first.GetComponent<RectTransform>().scale.x == 1.08f, "Focused text did not enlarge");
+    Check(first.GetComponent<RectLayout>().Spatial().scale.x == 1.08f, "Focused text did not enlarge");
     key(Key::DOWN, false); key(Key::DOWN, true);
     Check(second.GetComponent<UIButton>().hovered && !first.GetComponent<UIButton>().hovered, "Disabled link was not skipped");
     Check(second.GetComponent<Sprite2D>().color == Color(1), "Focused artwork was tinted");
-    Check(second.GetComponent<RectTransform>().scale.x == 1.08f, "Focused artwork did not enlarge");
-    Check(first.GetComponent<RectTransform>().scale.x == 1, "Old focus did not restore its size");
+    Check(second.GetComponent<RectLayout>().Spatial().scale.x == 1.08f, "Focused artwork did not enlarge");
+    Check(first.GetComponent<RectLayout>().Spatial().scale.x == 1, "Old focus did not restore its size");
     key(Key::DOWN, false); key(Key::RETURN, true);
     Check(second.GetComponent<UIButton>().pressed && listener->clicks == 0, "Confirm should press before activating");
     frame(); key(Key::RETURN, false);
@@ -174,14 +174,14 @@ int main()
     second.GetComponent<UIButton>().targetScript = "CSharp:test.buttons";
     key(Key::RETURN, true); key(Key::RETURN, false);
     Check(managedClicks == 1, "Keyboard activation did not route to C#");
-    auto& rect = second.GetComponent<RectTransform>();
+    auto& rect = second.GetComponent<RectLayout>();
     input.mouse = rect.GetRectMin() + rect.originOffset + rect.GetResolvedSize() * .5f + Vector2(160, 120);
     input.mouseRel = Vector2(1);
     input.SetSyntheticMouseButton(1, true); frame();
     input.mouseRel = Vector2(0);
     input.SetSyntheticMouseButton(1, false); frame();
     Check(managedClicks == 2, "Mouse activation did not route to C#");
-    rect.position = Vector2(0);
+    rect.SetLocalPosition(Vector2(0));
     rect.size = Vector2(100);
     input.mouse = Vector2(160, 120); input.mouseRel = Vector2(1);
     input.SetSyntheticMouseButton(1, true); frame();
@@ -190,13 +190,13 @@ int main()
     input.mouse = Vector2(0);
 
     auto canvasEntity = app.scene.CreateEntity("Action-mapped menu");
-    canvasEntity.AddComponent<RectTransform>();
+    canvasEntity.AddComponent<RectLayout>();
     auto& canvas = *canvasEntity.AddComponent<Canvas>();
     canvas.navigateAction = 11; canvas.confirmAction = 12;
     canvas.nextAction = 13; canvas.previousAction = 14; canvas.reverseNavigationAction = 15;
-    second.GetComponent<RectTransform>().parent = canvasEntity;
+    second.GetComponent<RectLayout>().Spatial().parent = canvasEntity;
     Entity third = makeButton("Third");
-    third.GetComponent<RectTransform>().parent = canvasEntity;
+    third.GetComponent<RectLayout>().Spatial().parent = canvasEntity;
     third.GetComponent<UIButton>().targetScript = "CSharp:test.buttons";
     second.GetComponent<UIButton>().down = third;
     third.GetComponent<UIButton>().down = second;
@@ -270,8 +270,8 @@ int main()
     vrCanvas.renderMode = CanvasRenderMode::WORLD_SPACE;
     vrCanvas.interactionDistance = 6;
     vrCanvas.navigationEnabled = false;
-    auto& vrRect = vrButton.GetComponent<RectTransform>();
-    vrRect.position = Vector2(0); vrRect.size = Vector2(1);
+    auto& vrRect = vrButton.GetComponent<RectLayout>();
+    vrRect.SetLocalPosition(Vector2(0)); vrRect.size = Vector2(1);
     auto& pointer = input.worldUIPointer;
     pointer.enabled = pointer.active = pointer.moved = true;
     frame();
@@ -294,7 +294,7 @@ int main()
 
     // UIInputField owns SDL text entry for native and managed focus requests.
     auto fieldEntity = app.scene.CreateEntity("Editable text");
-    fieldEntity.AddComponent<RectTransform>()->position = Vector2(1000);
+    fieldEntity.AddComponent<RectLayout>()->SetLocalPosition(Vector2(1000));
     auto& field = *fieldEntity.AddComponent<UIInputField>();
     field.maxLength = 3;
     Check(system.FocusInputField(fieldEntity), "Programmatic field focus failed");
@@ -324,7 +324,7 @@ int main()
     frame();
     Check(!SDL_TextInputActive(static_cast<SDL_Window*>(window.GetSDLWindow())), "Destroyed field left platform text input active");
     auto otherField = app.scene.CreateEntity("Unload text focus");
-    otherField.AddComponent<RectTransform>()->position = Vector2(1000);
+    otherField.AddComponent<RectLayout>()->SetLocalPosition(Vector2(1000));
     otherField.AddComponent<UIInputField>();
     Check(system.FocusInputField(otherField), "Second field did not focus");
     system.OnDestroy();

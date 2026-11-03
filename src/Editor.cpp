@@ -1,6 +1,9 @@
+#include <Canis/AnimationTimeline.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #include "EditorGizmo.hpp"
 #include <Canis/Editor.hpp>
+#include <Canis/ScriptSync.hpp>
+#include <Canis/ComponentPicker.hpp>
 #include <Canis/EditorUI.hpp>
 #include <Canis/Profiler.hpp>
 #include "EditorHistoryEvent.hpp"
@@ -1889,24 +1892,14 @@ namespace Canis
 
         void AppendNamespaceOpens(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
         {
-            int indentLevel = 0;
-            for (const std::string &namespaceName : _namespaceParts)
-            {
-                const std::string indent = MakeIndent(indentLevel);
-                _stream << indent << "namespace " << namespaceName << "\n";
-                _stream << indent << "{\n";
-                indentLevel += 4;
-            }
+            if (!_namespaceParts.empty())
+                _stream << "namespace " << JoinStringParts(_namespaceParts, "::") << "\n{\n";
         }
 
         void AppendNamespaceCloses(std::ostringstream &_stream, const std::vector<std::string> &_namespaceParts)
         {
-            int indentLevel = static_cast<int>(_namespaceParts.size()) * 4;
-            for (size_t index = _namespaceParts.size(); index > 0; --index)
-            {
-                indentLevel -= 4;
-                _stream << MakeIndent(indentLevel) << "}\n";
-            }
+            if (!_namespaceParts.empty())
+                _stream << "}\n";
         }
 
         enum class GameScriptType
@@ -2017,7 +2010,7 @@ namespace Canis
 
             AppendNamespaceOpens(header, pathParts);
 
-            const int classIndentLevel = static_cast<int>(pathParts.size()) * 4;
+            const int classIndentLevel = pathParts.empty() ? 0 : 4;
             const std::string classIndent = MakeIndent(classIndentLevel);
             const std::string bodyIndent = MakeIndent(classIndentLevel + 4);
 
@@ -2028,6 +2021,8 @@ namespace Canis
                 header << classIndent << "public:\n";
                 header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
                 header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : Canis::ScriptableEntity(_entity) {}\n\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT float exampleValue = 1.0f;\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT void OnExample();\n\n";
                 header << bodyIndent << "void Create() override;\n";
                 header << bodyIndent << "void Ready() override;\n";
                 header << bodyIndent << "void Destroy() override;\n";
@@ -2046,7 +2041,7 @@ namespace Canis
                 header << bodyIndent << "explicit " << className << "(Canis::Entity& _entity) : entity(&_entity) {}\n\n";
                 header << bodyIndent << "void Create() {}\n";
                 header << bodyIndent << "Canis::Entity* entity = nullptr;\n";
-                header << bodyIndent << "bool active = true;\n";
+                header << bodyIndent << "CANIS_EDITOR_EXPORT bool active = true;\n";
                 header << classIndent << "};\n\n";
                 header << classIndent << "void Register" << className << "Component(Canis::App& _app);\n";
                 header << classIndent << "void UnRegister" << className << "Component(Canis::App& _app);\n";
@@ -2058,6 +2053,8 @@ namespace Canis
                 header << classIndent << "public:\n";
                 header << bodyIndent << "static constexpr const char* ScriptName = \"" << scriptSymbolName << "\";\n\n";
                 header << bodyIndent << className << "() : Canis::System() { m_name = type_name<" << className << ">(); }\n\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT float exampleValue = 1.0f;\n";
+                header << bodyIndent << "// CANIS_EDITOR_EXPORT void OnExample();\n\n";
                 header << bodyIndent << "void Create() override;\n";
                 header << bodyIndent << "void Ready() override;\n";
                 header << bodyIndent << "void Update(entt::registry &_registry, float _deltaTime) override;\n";
@@ -2080,6 +2077,21 @@ namespace Canis
             const std::string sourceIndent = MakeIndent(classIndentLevel);
             const std::string blockIndent = MakeIndent(classIndentLevel + 4);
 
+            if (_scriptType == GameScriptType::ScriptableEntity)
+            {
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(float _dt) {}\n\n";
+            }
+            else if (_scriptType == GameScriptType::System)
+            {
+                source << sourceIndent << "void " << className << "::Create() {}\n\n";
+                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
+                source << sourceIndent << "void " << className << "::Update(entt::registry &, float) {}\n\n";
+                source << sourceIndent << "void " << className << "::OnDestroy() {}\n\n";
+            }
+
             source << sourceIndent << "namespace\n";
             source << sourceIndent << "{\n";
             if (_scriptType == GameScriptType::ScriptableEntity)
@@ -2097,16 +2109,12 @@ namespace Canis
 
                 source << sourceIndent << "void Register" << className << "Script(Canis::App& _app)\n";
                 source << sourceIndent << "{\n";
-                source << blockIndent << "// REGISTER_PROPERTY(scriptConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << "// Mark editor fields and Signal actions with CANIS_EDITOR_EXPORT in the header.\n\n";
                 source << blockIndent << configMacro << "\n\n";
                 source << blockIndent << "scriptConf.DEFAULT_DRAW_INSPECTOR(" << scriptSymbolName << ");\n\n";
                 source << blockIndent << "_app.RegisterScript(scriptConf);\n";
                 source << sourceIndent << "}\n\n";
                 source << sourceIndent << "DEFAULT_UNREGISTER_SCRIPT(scriptConf, " << className << ")\n\n";
-                source << sourceIndent << "void " << className << "::Create() {}\n\n";
-                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
-                source << sourceIndent << "void " << className << "::Destroy() {}\n\n";
-                source << sourceIndent << "void " << className << "::Update(float _dt) {}\n";
             }
             else if (_scriptType == GameScriptType::Component)
             {
@@ -2116,7 +2124,7 @@ namespace Canis
 
                 source << sourceIndent << "void Register" << className << "Component(Canis::App& _app)\n";
                 source << sourceIndent << "{\n";
-                source << blockIndent << "// REGISTER_PROPERTY(componentConf, " << scriptSymbolName << ", exampleProperty);\n\n";
+                source << blockIndent << "// Mark editor fields and Signal actions with CANIS_EDITOR_EXPORT in the header.\n\n";
                 source << blockIndent << configMacro << "\n\n";
                 source << blockIndent << "componentConf.DEFAULT_DRAW_COMPONENT_INSPECTOR(" << scriptSymbolName << ");\n\n";
                 source << blockIndent << "_app.RegisterComponent(componentConf);\n";
@@ -2131,14 +2139,18 @@ namespace Canis
                 source << blockIndent << "_app.RegisterSystem(systemConf);\n";
                 source << sourceIndent << "}\n\n";
                 source << sourceIndent << "DEFAULT_UNREGISTER_SYSTEM(systemConf, " << className << ")\n\n";
-                source << sourceIndent << "void " << className << "::Create() {}\n\n";
-                source << sourceIndent << "void " << className << "::Ready() {}\n\n";
-                source << sourceIndent << "void " << className << "::Update(entt::registry &, float) {}\n\n";
-                source << sourceIndent << "void " << className << "::OnDestroy() {}\n";
             }
 
             if (!pathParts.empty())
                 AppendNamespaceCloses(source, pathParts);
+
+            const auto exports = ScriptEditing::SynchronizeHeader(header.str(), source.str(), false);
+            if (!exports.error.empty())
+            {
+                _outError = exports.error;
+                return false;
+            }
+            source.str(exports.source);
 
             {
                 std::ofstream headerFile(headerPath);
@@ -3227,32 +3239,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         constexpr float kAnimationEditorFramesPerSecond = 60.0f;
         constexpr float kAnimationEditorKeyTimeEpsilon = 0.0001f;
 
-        int AnimationFrameFromTime(float _time)
+        int AnimationFrameFromTime(float time) { return AnimationTimeline::Frame(time); }
+        float AnimationTimeFromFrame(int frame) { return AnimationTimeline::Time(frame); }
+        float NormalizeAnimationSampleTime(float time, float length, bool loop)
         {
-            return std::max(0, static_cast<int>(std::round(std::max(_time, 0.0f) * kAnimationEditorFramesPerSecond)));
-        }
-
-        float AnimationTimeFromFrame(int _frame)
-        {
-            return std::max(_frame, 0) / kAnimationEditorFramesPerSecond;
-        }
-
-        float NormalizeAnimationSampleTime(float _time, float _length, bool _loop)
-        {
-            if (_length <= 0.0f)
-                return 0.0f;
-
-            float time = _time;
-            if (_loop)
-            {
-                while (time < 0.0f)
-                    time += _length;
-                while (time >= _length)
-                    time -= _length;
-                return time;
-            }
-
-            return std::clamp(time, 0.0f, _length);
+            return AnimationTimeline::Normalize(time, length, loop);
         }
 
         AnimationValue MakeDefaultAnimationValue(AnimationValueType _type)
@@ -4094,8 +4085,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             mutable std::string m_tooltipCache = {};
         };
 
+        // Match the component Inspector: label column first, full-width value
+        // column second. Hidden widget labels retain distinct property IDs.
+        std::string AnimationPropertyLabel(const char* label)
+        {
+            EditorUI::PropertyLabel(label);
+            return std::string("##") + label;
+        }
+
         bool DrawAnimationValueEditor(const char *_label, AnimationValue &_value)
         {
+            const std::string widgetLabel = _value.type == AnimationValueType::NONE
+                ? _label : AnimationPropertyLabel(_label);
+            _label = widgetLabel.c_str();
             switch (_value.type)
             {
                 case AnimationValueType::FLOAT:
@@ -4187,36 +4189,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             SpotLight,
         };
 
-        struct AddComponentEntry
-        {
-            std::string componentName = "";
-            std::string displayName = "";
-        };
-
-        std::string GetAddComponentDisplayName(const std::string &_componentName)
-        {
-            if (_componentName == DirectionalLight::ScriptName)
-                return "3D/Directional Light";
-
-            if (_componentName == SpotLight::ScriptName)
-                return "3D/Spot Light";
-
-            if (_componentName == PointLight::ScriptName)
-                return "3D/Point Light";
-
-            return _componentName;
-        }
-
-        struct RectTransformRenderBounds
+        struct RectLayoutRenderBounds
         {
             Vector2 min = Vector2(0.0f);
             Vector2 size = Vector2(0.0f);
             Vector2 rotationPivot = Vector2(0.0f);
         };
 
-        RectTransformRenderBounds GetRenderBounds(const Entity& _entity, const RectTransform& _transform)
+        RectLayoutRenderBounds GetRenderBounds(const Entity& _entity, const RectLayout& _transform)
         {
-            RectTransformRenderBounds bounds = {};
+            RectLayoutRenderBounds bounds = {};
             bounds.min = _transform.GetRectMin() + _transform.originOffset;
             bounds.size = _transform.GetResolvedSize();
             bounds.rotationPivot = _transform.GetPosition();
@@ -4256,11 +4238,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (_entity == nullptr || _parent == nullptr)
                 return;
 
-            if (_entity->HasComponent<RectTransform>() && _parent->HasComponent<RectTransform>())
+            if (_entity->HasComponent<RectLayout>() && _parent->HasComponent<RectLayout>())
             {
-                RectTransform &rect = _entity->GetComponent<RectTransform>();
-                rect.SetParent(_parent);
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = _entity->GetComponent<RectLayout>();
+                rect.Spatial().SetParent(_parent, false);
+                rect.SetLocalPosition(Vector2(0.0f));
                 return;
             }
 
@@ -4349,8 +4331,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             {
                 if (_parent != nullptr)
                 {
-                    if (_parent->HasComponent<RectTransform>())
-                        addRequired(*entity, RectTransform::ScriptName);
+                    if (_parent->HasComponent<RectLayout>())
+                        addRequired(*entity, RectLayout::ScriptName);
                     else if (_parent->HasComponent<Transform>())
                         addRequired(*entity, Transform::ScriptName);
                 }
@@ -4363,14 +4345,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
             case HierarchyCreateType::Empty2D:
             {
-                addRequired(*entity, RectTransform::ScriptName);
+                addRequired(*entity, RectLayout::ScriptName);
                 break;
             }
             case HierarchyCreateType::Canvas:
             {
                 addRequired(*entity, Canvas::ScriptName);
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(0.0f);
                 rect.anchorMin = Vector2(0.0f);
                 rect.anchorMax = Vector2(1.0f);
@@ -4380,8 +4362,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             case HierarchyCreateType::Text:
             {
                 addRequired(*entity, Text::ScriptName);
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(0.0f);
                 Text &text = entity->GetComponent<Text>();
                 text.SetText("Text");
@@ -4393,8 +4375,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 addRequired(*entity, UIButton::ScriptName);
                 addRequired(*entity, Sprite2D::ScriptName);
 
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(160.0f, 48.0f);
 
                 const Color baseColor = Color(0.14f, 0.18f, 0.24f, 0.98f);
@@ -4416,13 +4398,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     addRequired(*label, Text::ScriptName);
 
-                    RectTransform &labelRect = label->GetComponent<RectTransform>();
-                    labelRect.position = Vector2(0.0f);
+                    RectLayout &labelRect = label->GetComponent<RectLayout>();
+                    labelRect.SetLocalPosition(Vector2(0.0f));
                     labelRect.size = Vector2(0.0f);
                     labelRect.anchorMin = Vector2(0.5f);
                     labelRect.anchorMax = Vector2(0.5f);
                     labelRect.pivot = Vector2(0.5f);
-                    labelRect.depth = rect.depth - 0.0001f;
+                    labelRect.Spatial().position.z = rect.Spatial().position.z - 0.0001f;
 
                     Text &labelText = label->GetComponent<Text>();
                     labelText.SetText("Button");
@@ -4436,11 +4418,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
             case HierarchyCreateType::Image:
             {
-                addRequired(*entity, RectTransform::ScriptName);
+                addRequired(*entity, RectLayout::ScriptName);
                 addRequired(*entity, Sprite2D::ScriptName);
 
-                RectTransform &rect = entity->GetComponent<RectTransform>();
-                rect.position = Vector2(0.0f);
+                RectLayout &rect = entity->GetComponent<RectLayout>();
+                rect.SetLocalPosition(Vector2(0.0f));
                 rect.size = Vector2(96.0f, 96.0f);
                 break;
             }
@@ -5752,25 +5734,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ReadMaterialUniformsFromNode(_root, _material->materialFields);
     }
 
-    std::vector<AddComponentEntry> BuildAddComponentEntries(App &_app, Entity &_entity)
-    {
-        std::vector<AddComponentEntry> entries = {};
-        for (ScriptConf &conf : _app.GetScriptRegistry())
-        {
-            if (conf.name == PrefabInstance::ScriptName)
-                continue;
-
-            if (conf.Has(_entity))
-                continue;
-
-            entries.push_back({
-                .componentName = conf.name,
-                .displayName = GetAddComponentDisplayName(conf.name),
-            });
-        }
-        return entries;
-    }
-
     void Editor::Init(Window *_window)
     {
 #if CANIS_EDITOR
@@ -6522,7 +6485,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 camera2D = camera;
             }
 
-            if (entity.HasComponent<RectTransform>() && camera2D)
+            if (entity.HasComponent<RectLayout>() && camera2D)
             {
                 m_debugDraw = DebugDraw::RECT;
             }
@@ -6739,7 +6702,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (m_index >= 0 && m_index < m_scene->GetEntities().size() && m_scene->GetEntities()[m_index] != nullptr)
         {
             Entity &selected = *m_scene->GetEntities()[m_index];
-            if (selected.HasComponent<RectTransform>())
+            if (selected.HasComponent<RectLayout>())
                 DrawBoundingBox(camera2D);
         }
         
@@ -9063,6 +9026,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
                 if (transform3D->useLocalMatrixPrefix)
                     localSpace *= transform3D->localMatrixPrefix;
+                if (auto* layout = selected->TryGetComponent<RectLayout>())
+                    localSpace *= layout->GetPlacementMatrix();
 
                 const Matrix4 manipulatedWorld = ComposeTransformMatrix(
                     worldPosition,
@@ -9100,6 +9065,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         otherLocalSpace = otherTransform.parent->GetComponent<Transform>().GetModelMatrix();
                     if (otherTransform.useLocalMatrixPrefix)
                         otherLocalSpace *= otherTransform.localMatrixPrefix;
+                    if (auto* layout = other->TryGetComponent<RectLayout>())
+                        otherLocalSpace *= layout->GetPlacementMatrix();
 
                     const Matrix4 otherWorld = deltaModel * otherTransform.GetModelMatrix();
                     const Matrix4 otherLocal = glm::inverse(otherLocalSpace) * otherWorld;
@@ -9133,7 +9100,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         ResetVertexSnapDrag();
 
-        RectTransform *rtc = (selected != nullptr && selected->HasComponent<RectTransform>() ? &selected->GetComponent<RectTransform>() : nullptr);
+        RectLayout *rtc = (selected != nullptr && selected->HasComponent<RectLayout>() ? &selected->GetComponent<RectLayout>() : nullptr);
         if (!rtc)
             return;
 
@@ -9158,8 +9125,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         Matrix4 model = Matrix4(1.0f);
         model = glm::translate(model, Vector3(pos.x, pos.y, 0.0f));
-        model = glm::rotate(model, rtc->rotation, Vector3(0.0f, 0.0f, 1.0f));
-        model = glm::scale(model, Vector3(rtc->size.x * globalScale.x, rtc->size.y * globalScale.y, 1.0f));
+        model = glm::rotate(model, rtc->GetRotation(), Vector3(0.0f, 0.0f, 1.0f));
+        model = glm::scale(model, Vector3(rtc->GetLogicalSize().x * globalScale.x, rtc->GetLogicalSize().y * globalScale.y, 1.0f));
 
         Matrix4 view = Matrix4(1.0f);
         view = glm::translate(view, Vector3(-m_editorCamera2DPosition.x + renderWidth * 0.5f,
@@ -9195,9 +9162,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Vector2 newPos(t[0], t[1]);
             rtc->SetPosition(newPos);
 
-            rtc->rotation = DEG2RAD * r[2];
-
-            rtc->SetScale(Vector2(s[0] / rtc->size.x, s[1] / rtc->size.y));
+            float parentAngle = 0;
+            if (auto parent = rtc->GetParent(); parent && parent.HasComponent<RectLayout>())
+                parentAngle = parent.GetComponent<RectLayout>().GetRotation();
+            rtc->SetLocalRotation(DEG2RAD * r[2] - parentAngle);
+            const auto logicalSize = rtc->GetLogicalSize();
+            auto scale = rtc->GetScale();
+            if (logicalSize.x != 0) scale.x = s[0] / logicalSize.x;
+            if (logicalSize.y != 0) scale.y = s[1] / logicalSize.y;
+            rtc->SetScale(scale);
         }
     }
 
@@ -9888,18 +9861,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             Vector3 scale = Vector3(1.0f);
         };
 
-        struct SavedRectTransformState
+        struct SavedRectLayoutState
         {
             bool valid = false;
-            Vector2 position = Vector2(0.0f);
             Vector2 size = Vector2(0.0f);
-            Vector2 scale = Vector2(1.0f);
             Vector2 anchorMin = Vector2(0.5f);
             Vector2 anchorMax = Vector2(0.5f);
             Vector2 pivot = Vector2(0.5f);
             Vector2 originOffset = Vector2(0.0f);
-            float depth = 0.0f;
-            float rotation = 0.0f;
             Vector2 rotationOriginOffset = Vector2(0.0f);
         };
 
@@ -9917,23 +9886,19 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return state;
         };
 
-        auto saveRectTransformState = [](Canis::Entity *_target) -> SavedRectTransformState
+        auto saveRectLayoutState = [](Canis::Entity *_target) -> SavedRectLayoutState
         {
-            SavedRectTransformState state = {};
-            if (_target == nullptr || !_target->HasComponent<RectTransform>())
+            SavedRectLayoutState state = {};
+            if (_target == nullptr || !_target->HasComponent<RectLayout>())
                 return state;
 
-            const RectTransform &transform = _target->GetComponent<RectTransform>();
+            const RectLayout &transform = _target->GetComponent<RectLayout>();
             state.valid = true;
-            state.position = transform.position;
             state.size = transform.size;
-            state.scale = transform.scale;
             state.anchorMin = transform.anchorMin;
             state.anchorMax = transform.anchorMax;
             state.pivot = transform.pivot;
             state.originOffset = transform.originOffset;
-            state.depth = transform.depth;
-            state.rotation = transform.rotation;
             state.rotationOriginOffset = transform.rotationOriginOffset;
             return state;
         };
@@ -9949,21 +9914,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             transform.scale = _state.scale;
         };
 
-        auto applyRectTransformState = [](Canis::Entity *_target, const SavedRectTransformState &_state) -> void
+        auto applyRectLayoutState = [](Canis::Entity *_target, const SavedRectLayoutState &_state) -> void
         {
-            if (_target == nullptr || !_state.valid || !_target->HasComponent<RectTransform>())
+            if (_target == nullptr || !_state.valid || !_target->HasComponent<RectLayout>())
                 return;
 
-            RectTransform &transform = _target->GetComponent<RectTransform>();
-            transform.position = _state.position;
+            RectLayout &transform = _target->GetComponent<RectLayout>();
             transform.size = _state.size;
-            transform.scale = _state.scale;
             transform.anchorMin = _state.anchorMin;
             transform.anchorMax = _state.anchorMax;
             transform.pivot = _state.pivot;
             transform.originOffset = _state.originOffset;
-            transform.depth = _state.depth;
-            transform.rotation = _state.rotation;
             transform.rotationOriginOffset = _state.rotationOriginOffset;
         };
 
@@ -9993,9 +9954,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         const TagId instanceTag = _entity->GetTag();
         const bool instanceActive = _entity->Active();
         const SavedTransformState rootTransformState = saveTransformState(_entity);
-        const SavedRectTransformState rootRectState = saveRectTransformState(_entity);
+        const SavedRectLayoutState rootRectState = saveRectLayoutState(_entity);
         const SavedTransformState firstTransformState = saveTransformState(prefabInstance.firstEntity);
-        const SavedRectTransformState firstRectState = saveRectTransformState(prefabInstance.firstEntity);
+        const SavedRectLayoutState firstRectState = saveRectLayoutState(prefabInstance.firstEntity);
         const SceneAssetHandle prefabHandle = prefabInstance.prefab;
 
         std::vector<Canis::UUID> updatedRootOrder = m_hierarchyRootOrder;
@@ -10036,13 +9997,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         applyTransformState(newTopLevel, rootTransformState);
-        applyRectTransformState(newTopLevel, rootRectState);
+        applyRectLayoutState(newTopLevel, rootRectState);
 
         if (newTopLevel->HasComponent<PrefabInstance>())
         {
             PrefabInstance &newPrefabInstance = newTopLevel->GetComponent<PrefabInstance>();
             applyTransformState(newPrefabInstance.firstEntity, firstTransformState);
-            applyRectTransformState(newPrefabInstance.firstEntity, firstRectState);
+            applyRectLayoutState(newPrefabInstance.firstEntity, firstRectState);
         }
 
         if (_focusSelection)
@@ -10888,11 +10849,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (!_parent || !_potentialChild)
             return false;
 
-        std::vector<Canis::Entity>* children = nullptr;
-        if (auto *parentRT = (_parent != nullptr && _parent->HasComponent<RectTransform>() ? &_parent->GetComponent<RectTransform>() : nullptr))
-            children = &parentRT->children;
-        else if (auto *parentTransform = (_parent != nullptr && _parent->HasComponent<Transform>() ? &_parent->GetComponent<Transform>() : nullptr))
-            children = &parentTransform->children;
+        auto* spatial = _parent->TryGetComponent<Transform>();
+        auto* children = spatial ? &spatial->children : nullptr;
 
         if (children == nullptr)
             return false;
@@ -10910,148 +10868,31 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         return false;
     }
 
-    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity *_entity)
+    static std::vector<Canis::Entity>* GetHierarchyChildren(Canis::Entity* entity)
     {
-        if (_entity == nullptr)
-            return nullptr;
-
-        Canis::RectTransform* rectTransform = _entity->HasComponent<RectTransform>()
-            ? &_entity->GetComponent<RectTransform>()
-            : nullptr;
-        Canis::Transform* transform = _entity->HasComponent<Transform>()
-            ? &_entity->GetComponent<Transform>()
-            : nullptr;
-
-        // An entity may have both components (for example, a world-space canvas).
-        // Follow the hierarchy that is actually connected instead of always
-        // treating RectTransform as authoritative.
-        if (rectTransform != nullptr && transform != nullptr)
-        {
-            if (transform->parent != nullptr && rectTransform->parent == nullptr)
-                return &transform->children;
-            if (rectTransform->parent != nullptr && transform->parent == nullptr)
-                return &rectTransform->children;
-            if (!transform->children.empty() && rectTransform->children.empty())
-                return &transform->children;
-        }
-
-        if (rectTransform != nullptr)
-            return &rectTransform->children;
-
-        if (transform != nullptr)
-            return &transform->children;
-
-        return nullptr;
+        auto* spatial = entity ? entity->TryGetComponent<Transform>() : nullptr;
+        return spatial ? &spatial->children : nullptr;
     }
-
-    static Canis::Entity* GetHierarchyParent(Canis::Entity *_entity)
+    static Canis::Entity* GetHierarchyParent(Canis::Entity* entity)
     {
-        if (_entity == nullptr)
-            return nullptr;
-
-        if (_entity->HasComponent<RectTransform>())
-        {
-            Canis::Entity* parent = _entity->GetComponent<RectTransform>().parent;
-            if (parent != nullptr)
-                return parent;
-        }
-
-        if (_entity->HasComponent<Transform>())
-            return _entity->GetComponent<Transform>().parent;
-
-        return nullptr;
+        auto* spatial = entity ? entity->TryGetComponent<Transform>() : nullptr;
+        return spatial ? spatial->parent.TryGet() : nullptr;
     }
-
-    static bool SetHierarchyParent(Canis::Entity *_child, Canis::Entity *_parent)
+    static bool SetHierarchyParent(Canis::Entity* child, Canis::Entity* parent)
     {
-        if (_child == nullptr)
-            return false;
-
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
-
-                childTransform->SetParent(_parent);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
-        {
-            if (_parent != nullptr && !_parent->HasComponent<Transform>())
-                return false;
-
-            childTransform->SetParent(_parent);
-            return true;
-        }
-
-        return false;
+        auto* spatial = child ? child->TryGetComponent<Transform>() : nullptr;
+        if (!spatial || (parent && !parent->HasComponent<Transform>())) return false;
+        spatial->SetParent(parent);
+        return true;
     }
-
-    static bool SetHierarchyParentAtIndex(Canis::Entity *_child, Canis::Entity *_parent, std::size_t _index)
+    static bool SetHierarchyParentAtIndex(Canis::Entity* child, Canis::Entity* parent, std::size_t index)
     {
-        if (_child == nullptr)
-            return false;
-
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
-
-                childTransform->SetParentAtIndex(_parent, _index);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* childTransform = (_child != nullptr && _child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
-        {
-            if (_parent != nullptr && !_parent->HasComponent<Transform>())
-                return false;
-
-            childTransform->SetParentAtIndex(_parent, _index);
-            return true;
-        }
-
-        return false;
+        auto* spatial = child ? child->TryGetComponent<Transform>() : nullptr;
+        if (!spatial || (parent && !parent->HasComponent<Transform>())) return false;
+        spatial->SetParentAtIndex(parent, index);
+        return true;
     }
-
-    static bool UnparentHierarchyEntity(Canis::Entity *_entity)
-    {
-        if (_entity == nullptr)
-            return false;
-
-        if (_entity->HasComponent<RectTransform>())
-        {
-            Canis::RectTransform& transform = _entity->GetComponent<RectTransform>();
-            if (transform.parent != nullptr)
-            {
-                transform.SetParent(nullptr);
-                return true;
-            }
-        }
-
-        if (Canis::Transform* transform = (_entity->HasComponent<Transform>() ? &_entity->GetComponent<Transform>() : nullptr))
-        {
-            if (transform->parent == nullptr)
-                return false;
-
-            transform->SetParent(nullptr);
-            return true;
-        }
-
-        return false;
-    }
+    static bool UnparentHierarchyEntity(Canis::Entity* entity) { return SetHierarchyParent(entity, nullptr); }
 
     static void GetHierarchyChildrenRecursive(Canis::Entity* _entity, std::vector<Canis::Entity*> &_entities)
     {
@@ -11166,18 +11007,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_entity == nullptr)
             return HierarchyEntityKind::None;
 
-        if (_entity->HasComponent<Transform>() && _entity->HasComponent<RectTransform>())
-        {
-            const Canis::Transform& transform = _entity->GetComponent<Transform>();
-            const Canis::RectTransform& rectTransform = _entity->GetComponent<RectTransform>();
-            if ((transform.parent != nullptr && rectTransform.parent == nullptr) ||
-                (!transform.children.empty() && rectTransform.children.empty()))
-            {
-                return HierarchyEntityKind::Transform;
-            }
-        }
 
-        if (_entity->HasComponent<RectTransform>())
+
+        if (_entity->HasComponent<RectLayout>())
             return HierarchyEntityKind::Rect;
 
         if (_entity->HasComponent<Transform>())
@@ -11214,22 +11046,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (_child == nullptr)
             return false;
 
-        if (Canis::RectTransform* childTransform = (_child->HasComponent<RectTransform>() ? &_child->GetComponent<RectTransform>() : nullptr))
-        {
-            const bool useTransform = _child->HasComponent<Transform>() &&
-                ((childTransform->parent == nullptr && _child->GetComponent<Transform>().parent != nullptr) ||
-                 (_parent != nullptr && !_parent->HasComponent<RectTransform>() && _parent->HasComponent<Transform>()));
-            if (!useTransform)
-            {
-                if (_parent != nullptr && !_parent->HasComponent<RectTransform>())
-                    return false;
 
-                const Vector2 localPosition = childTransform->position;
-                childTransform->SetParentAtIndex(_parent, _index);
-                childTransform->position = localPosition;
-                return true;
-            }
-        }
 
         if (Canis::Transform* childTransform = (_child->HasComponent<Transform>() ? &_child->GetComponent<Transform>() : nullptr))
         {
@@ -11270,7 +11087,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             return nullptr;
 
         if (_kind == HierarchyEntityKind::Rect)
-            wrapper->AddComponent<RectTransform>();
+            wrapper->AddComponent<RectLayout>();
         else
             wrapper->AddComponent<Transform>();
 
@@ -11436,9 +11253,6 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         if (YAML::Node transformNode = _rootNode[Transform::ScriptName])
             transformNode["parent"] = static_cast<uint64_t>(0);
-
-        if (YAML::Node rectTransformNode = _rootNode[RectTransform::ScriptName])
-            rectTransformNode["parent"] = static_cast<uint64_t>(0);
 
         if (YAML::Node networkIdentityNode = _rootNode[NetworkIdentity::ScriptName])
             networkIdentityNode.remove("prefab");
@@ -12407,7 +12221,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
-            for (ScriptConf &conf : m_app->GetScriptRegistry())
+            auto drawComponent = [&](ScriptConf& conf)
             {
                 if (conf.Has(entity))
                 {
@@ -12430,6 +12244,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             }
                         }
 
+                        DrawComponentValueMenu(entity, conf);
                         if (ImGui::MenuItem(std::string("Remove##" + conf.name).c_str()))
                         {
                             conf.Remove(entity);
@@ -12449,7 +12264,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             ImGui::TextDisabled("No inspector available.");
                     }
                 }
-            }
+            };
+
+            // Inspector presentation is independent of registration/serialization order.
+            if (auto* spatial = m_app->GetScriptConf(Transform::ScriptName))
+                drawComponent(*spatial);
+            for (ScriptConf& conf : m_app->GetScriptRegistry())
+                if (conf.name != Transform::ScriptName)
+                    drawComponent(conf);
+
 
             Scripting::DrawManagedInspector(*this, entity);
             DrawAddComponentDropDown(_refresh);
@@ -13542,7 +13365,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
         char entryStateBuffer[128] = {};
         std::snprintf(entryStateBuffer, sizeof(entryStateBuffer), "%s", controller->entryState.c_str());
-        if (ImGui::InputText("entryState", entryStateBuffer, sizeof(entryStateBuffer)))
+        if (ImGui::InputText(AnimationPropertyLabel("entryState").c_str(), entryStateBuffer, sizeof(entryStateBuffer)))
         {
             controller->entryState = entryStateBuffer;
             dirty = true;
@@ -13558,7 +13381,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         const std::string previousName = parameter.name;
                         parameter.name = nameBuffer;
@@ -13568,7 +13391,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     int typeIndex = static_cast<int>(parameter.type);
                     const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
-                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    if (ImGui::Combo(AnimationPropertyLabel("type").c_str(), &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
                     {
                         parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
                         parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
@@ -13614,17 +13437,17 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::PushID(static_cast<int>(layerIndex));
                 if (ImGui::TreeNode(layer.name.empty() ? "Layer" : layer.name.c_str()))
                 {
-                    dirty = ImGui::InputText("name", &layer.name) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("name").c_str(), &layer.name) || dirty;
                     const char* modes[] = {"Override", "Additive"};
                     int mode = static_cast<int>(layer.blendMode);
-                    if (ImGui::Combo("blend mode", &mode, modes, IM_ARRAYSIZE(modes)))
+                    if (ImGui::Combo(AnimationPropertyLabel("blend mode").c_str(), &mode, modes, IM_ARRAYSIZE(modes)))
                     {
                         layer.blendMode = static_cast<AnimatorLayerBlendMode>(std::clamp(mode, 0, 1));
                         dirty = true;
                     }
-                    dirty = ImGui::SliderFloat("weight", &layer.weight, 0.0f, 1.0f) || dirty;
-                    dirty = ImGui::InputText("weight parameter", &layer.weightParameter) || dirty;
-                    dirty = ImGui::InputText("entry state", &layer.entryState) || dirty;
+                    dirty = ImGui::SliderFloat(AnimationPropertyLabel("weight").c_str(), &layer.weight, 0.0f, 1.0f) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("weight parameter").c_str(), &layer.weightParameter) || dirty;
+                    dirty = ImGui::InputText(AnimationPropertyLabel("entry state").c_str(), &layer.entryState) || dirty;
 
                     if (ImGui::TreeNode("Mask Roots"))
                     {
@@ -13651,7 +13474,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Pick From Skeleton", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Pick From Skeleton").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13689,7 +13512,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Pick Exact Bone", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Pick Exact Bone").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13713,8 +13536,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             AnimatorMaskBoneWeight& weightedBone = layer.maskWeights[maskIndex];
                             ImGui::PushID(static_cast<int>(maskIndex));
-                            dirty = ImGui::InputText("bone", &weightedBone.boneName) || dirty;
-                            dirty = ImGui::SliderFloat("weight", &weightedBone.weight, 0.0f, 1.0f) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("bone").c_str(), &weightedBone.boneName) || dirty;
+                            dirty = ImGui::SliderFloat(AnimationPropertyLabel("weight").c_str(), &weightedBone.weight, 0.0f, 1.0f) || dirty;
                             if (ImGui::SmallButton("Delete Weighted Bone"))
                             {
                                 layer.maskWeights.erase(layer.maskWeights.begin() + static_cast<std::ptrdiff_t>(maskIndex));
@@ -13727,7 +13550,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         ModelAsset* maskModel = nullptr;
                         if (!layer.states.empty() && !layer.states.front().modelPath.empty())
                             maskModel = AssetManager::GetModel(AssetManager::LoadModel(layer.states.front().modelPath));
-                        if (maskModel != nullptr && ImGui::BeginCombo("Add Weighted Bone", "[ select bone ]"))
+                        if (maskModel != nullptr && ImGui::BeginCombo(AnimationPropertyLabel("Add Weighted Bone").c_str(), "[ select bone ]"))
                         {
                             for (i32 nodeIndex = 0; nodeIndex < maskModel->GetNodeCount(); ++nodeIndex)
                             {
@@ -13753,21 +13576,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         {
                             AnimatorState& state = layer.states[stateIndex];
                             ImGui::PushID(static_cast<int>(stateIndex));
-                            dirty = ImGui::InputText("name", &state.name) || dirty;
-                            dirty = ImGui::InputText("model path", &state.modelPath) || dirty;
-                            dirty = ImGui::InputInt("animation index", &state.modelAnimationIndex) || dirty;
-                            dirty = ImGui::Checkbox("loop", &state.loop) || dirty;
-                            dirty = ImGui::InputFloat("speed", &state.speed) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("name").c_str(), &state.name) || dirty;
+                            dirty = ImGui::InputText(AnimationPropertyLabel("model path").c_str(), &state.modelPath) || dirty;
+                            dirty = ImGui::InputInt(AnimationPropertyLabel("animation index").c_str(), &state.modelAnimationIndex) || dirty;
+                            dirty = ImGui::Checkbox(AnimationPropertyLabel("loop").c_str(), &state.loop) || dirty;
+                            dirty = ImGui::InputFloat(AnimationPropertyLabel("speed").c_str(), &state.speed) || dirty;
                             if (ImGui::TreeNode("Transitions"))
                             {
                                 for (std::size_t transitionIndex = 0; transitionIndex < state.transitions.size(); ++transitionIndex)
                                 {
                                     AnimatorTransition& transition = state.transitions[transitionIndex];
                                     ImGui::PushID(static_cast<int>(transitionIndex));
-                                    dirty = ImGui::InputText("to state", &transition.toState) || dirty;
-                                    dirty = ImGui::Checkbox("has exit time", &transition.hasExitTime) || dirty;
-                                    dirty = ImGui::SliderFloat("exit time", &transition.exitTimeNormalized, 0.0f, 1.0f) || dirty;
-                                    dirty = ImGui::InputFloat("crossfade", &transition.duration) || dirty;
+                                    dirty = ImGui::InputText(AnimationPropertyLabel("to state").c_str(), &transition.toState) || dirty;
+                                    dirty = ImGui::Checkbox(AnimationPropertyLabel("has exit time").c_str(), &transition.hasExitTime) || dirty;
+                                    dirty = ImGui::SliderFloat(AnimationPropertyLabel("exit time").c_str(), &transition.exitTimeNormalized, 0.0f, 1.0f) || dirty;
+                                    dirty = ImGui::InputFloat(AnimationPropertyLabel("crossfade").c_str(), &transition.duration) || dirty;
                                     transition.duration = std::max(transition.duration, 0.0f);
                                     if (ImGui::SmallButton("Delete Transition"))
                                     {
@@ -13837,7 +13660,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", state.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         std::string renamedState = nameBuffer;
                         if (renamedState.empty())
@@ -13875,7 +13698,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                 0,
                                 animationCount - 1);
                             if (ImGui::InputInt(
-                                    "animation index",
+                                    AnimationPropertyLabel("animation index").c_str(),
                                     &state.modelAnimationIndex))
                             {
                                 state.modelAnimationIndex = std::clamp(
@@ -13892,12 +13715,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                         state.clip);
                     if (AnimationClipAssetHandleChanged(previousClip, state.clip))
                         dirty = true;
-                    if (ImGui::Checkbox("loop", &state.loop))
+                    if (ImGui::Checkbox(AnimationPropertyLabel("loop").c_str(), &state.loop))
                         dirty = true;
-                    if (ImGui::InputFloat("speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("speed").c_str(), &state.speed, 0.0f, 0.0f, "%.3f"))
                         dirty = true;
                     if (ImGui::BeginCombo(
-                            "speed multiplier",
+                            AnimationPropertyLabel("speed multiplier").c_str(),
                             state.speedParameter.empty()
                                 ? "[ none ]"
                                 : state.speedParameter.c_str()))
@@ -13926,7 +13749,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     }
                     if (!state.modelPath.empty() &&
                         ImGui::InputFloat3(
-                            "lock root motion",
+                            AnimationPropertyLabel("lock root motion").c_str(),
                             &state.rootMotionMask.x,
                             "%.2f"))
                     {
@@ -13947,21 +13770,21 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             {
                                 char toStateBuffer[128] = {};
                                 std::snprintf(toStateBuffer, sizeof(toStateBuffer), "%s", transition.toState.c_str());
-                                if (ImGui::InputText("toState", toStateBuffer, sizeof(toStateBuffer)))
+                                if (ImGui::InputText(AnimationPropertyLabel("toState").c_str(), toStateBuffer, sizeof(toStateBuffer)))
                                 {
                                     transition.toState = toStateBuffer;
                                     dirty = true;
                                 }
 
-                                if (ImGui::Checkbox("hasExitTime", &transition.hasExitTime))
+                                if (ImGui::Checkbox(AnimationPropertyLabel("hasExitTime").c_str(), &transition.hasExitTime))
                                     dirty = true;
-                                if (transition.hasExitTime && ImGui::InputFloat("exitTimeNormalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                                if (transition.hasExitTime && ImGui::InputFloat(AnimationPropertyLabel("exitTimeNormalized").c_str(), &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
                                 {
                                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
                                     dirty = true;
                                 }
                                 if (ImGui::InputFloat(
-                                        "crossfade duration",
+                                        AnimationPropertyLabel("crossfade duration").c_str(),
                                         &transition.duration,
                                         0.01f,
                                         0.05f,
@@ -13972,7 +13795,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     dirty = true;
                                 }
                                 if (ImGui::Checkbox(
-                                        "match loop phase",
+                                        AnimationPropertyLabel("match loop phase").c_str(),
                                         &transition.preserveNormalizedTime))
                                 {
                                     dirty = true;
@@ -13984,7 +13807,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                                     ImGui::PushID(static_cast<int>(conditionIndex));
                                     if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
                                     {
-                                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                                        if (ImGui::BeginCombo(AnimationPropertyLabel("parameter").c_str(), condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
                                         {
                                             for (const AnimatorParameterDefinition &parameter : controller->parameters)
                                             {
@@ -14003,7 +13826,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                                         int modeIndex = static_cast<int>(condition.mode);
                                         const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
-                                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                                        if (ImGui::Combo(AnimationPropertyLabel("mode").c_str(), &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
                                         {
                                             condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
                                             dirty = true;
@@ -14528,7 +14351,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     char nameBuffer[128] = {};
                     std::snprintf(nameBuffer, sizeof(nameBuffer), "%s", parameter.name.c_str());
-                    if (ImGui::InputText("name", nameBuffer, sizeof(nameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("name").c_str(), nameBuffer, sizeof(nameBuffer)))
                     {
                         const std::string previousName = parameter.name;
                         parameter.name = nameBuffer;
@@ -14538,7 +14361,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     int typeIndex = static_cast<int>(parameter.type);
                     const char *typeLabels[] = {"Float", "Int", "Bool", "Trigger"};
-                    if (ImGui::Combo("type", &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
+                    if (ImGui::Combo(AnimationPropertyLabel("type").c_str(), &typeIndex, typeLabels, IM_ARRAYSIZE(typeLabels)))
                     {
                         parameter.type = static_cast<AnimatorParameterType>(std::clamp(typeIndex, 0, 3));
                         parameter.defaultValue = MakeDefaultAnimatorParameterValue(parameter.type);
@@ -14587,7 +14410,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
             char stateNameBuffer[128] = {};
             std::snprintf(stateNameBuffer, sizeof(stateNameBuffer), "%s", state.name.c_str());
-            if (ImGui::InputText("State Name", stateNameBuffer, sizeof(stateNameBuffer)))
+            if (ImGui::InputText(AnimationPropertyLabel("State Name").c_str(), stateNameBuffer, sizeof(stateNameBuffer)))
             {
                 std::string renamedState = stateNameBuffer;
                 if (renamedState.empty())
@@ -14635,7 +14458,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     if (animationLabel.empty())
                         animationLabel =
                             "Animation " + std::to_string(state.modelAnimationIndex);
-                    if (ImGui::BeginCombo("Animation", animationLabel.c_str()))
+                    if (ImGui::BeginCombo(AnimationPropertyLabel("Animation").c_str(), animationLabel.c_str()))
                     {
                         for (int animationIndex = 0;
                              animationIndex < animationCount;
@@ -14678,12 +14501,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 }
             }
 
-            if (ImGui::Checkbox("Loop", &state.loop))
+            if (ImGui::Checkbox(AnimationPropertyLabel("Loop").c_str(), &state.loop))
                 dirty = true;
-            if (ImGui::InputFloat("Speed", &state.speed, 0.0f, 0.0f, "%.3f"))
+            if (ImGui::InputFloat(AnimationPropertyLabel("Speed").c_str(), &state.speed, 0.0f, 0.0f, "%.3f"))
                 dirty = true;
             if (ImGui::BeginCombo(
-                    "Speed Multiplier",
+                    AnimationPropertyLabel("Speed Multiplier").c_str(),
                     state.speedParameter.empty()
                         ? "[ none ]"
                         : state.speedParameter.c_str()))
@@ -14711,7 +14534,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             if (!state.modelPath.empty())
             {
                 if (ImGui::InputFloat3(
-                        "Lock Root Motion XYZ",
+                        AnimationPropertyLabel("Lock Root Motion XYZ").c_str(),
                         &state.rootMotionMask.x,
                         "%.2f"))
                 {
@@ -14726,7 +14549,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
 
             bool isEntryState = controller->entryState == state.name;
-            if (ImGui::Checkbox("Entry State", &isEntryState))
+            if (ImGui::Checkbox(AnimationPropertyLabel("Entry State").c_str(), &isEntryState))
             {
                 if (isEntryState)
                     controller->entryState = state.name;
@@ -14778,7 +14601,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (selectedTransitionFromGraph)
                     ImGui::SetScrollHereY(0.15f);
 
-                if (ImGui::BeginCombo("To State", transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
+                if (ImGui::BeginCombo(AnimationPropertyLabel("To State").c_str(), transition.toState.empty() ? "[ none ]" : transition.toState.c_str()))
                 {
                     for (const AnimatorState &candidateState : controller->states)
                     {
@@ -14795,15 +14618,15 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::EndCombo();
                 }
 
-                if (ImGui::Checkbox("Has Exit Time", &transition.hasExitTime))
+                if (ImGui::Checkbox(AnimationPropertyLabel("Has Exit Time").c_str(), &transition.hasExitTime))
                     dirty = true;
-                if (transition.hasExitTime && ImGui::InputFloat("Exit Time Normalized", &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
+                if (transition.hasExitTime && ImGui::InputFloat(AnimationPropertyLabel("Exit Time Normalized").c_str(), &transition.exitTimeNormalized, 0.0f, 0.0f, "%.3f"))
                 {
                     transition.exitTimeNormalized = std::clamp(transition.exitTimeNormalized, 0.0f, 1.0f);
                     dirty = true;
                 }
                 if (ImGui::InputFloat(
-                        "Blend Duration",
+                        AnimationPropertyLabel("Blend Duration").c_str(),
                         &transition.duration,
                         0.01f,
                         0.05f,
@@ -14815,7 +14638,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (ImGui::IsItemHovered())
                     ImGui::SetTooltip("Time in seconds spent crossfading from the source animation to the destination.");
                 if (ImGui::Checkbox(
-                        "Match Loop Phase",
+                        AnimationPropertyLabel("Match Loop Phase").c_str(),
                         &transition.preserveNormalizedTime))
                 {
                     dirty = true;
@@ -14830,7 +14653,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::PushID(static_cast<int>(conditionIndex));
                     if (ImGui::TreeNode(("Condition " + std::to_string(conditionIndex)).c_str()))
                     {
-                        if (ImGui::BeginCombo("parameter", condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
+                        if (ImGui::BeginCombo(AnimationPropertyLabel("parameter").c_str(), condition.parameter.empty() ? "[ none ]" : condition.parameter.c_str()))
                         {
                             for (const AnimatorParameterDefinition &parameter : controller->parameters)
                             {
@@ -14849,7 +14672,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         int modeIndex = static_cast<int>(condition.mode);
                         const char *modeLabels[] = {"Greater", "Less", "Equal", "Not Equal", "If True", "If False", "Triggered"};
-                        if (ImGui::Combo("mode", &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
+                        if (ImGui::Combo(AnimationPropertyLabel("mode").c_str(), &modeIndex, modeLabels, IM_ARRAYSIZE(modeLabels)))
                         {
                             condition.mode = static_cast<AnimatorConditionMode>(std::clamp(modeIndex, 0, 6));
                             dirty = true;
@@ -14981,6 +14804,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
     void Editor::DrawAnimationWindow(float _deltaTime)
     {
+        Profiler::Scope timing("Editor animation", Profiler::Category::Editor);
+        if (!m_panelMaximizer.Begin("Animation", &m_showAnimationPanel))
+        {
+            ImGui::End();
+            return;
+        }
         namespace fs = std::filesystem;
 
         if (m_animationClipStatePath.empty())
@@ -15109,14 +14938,48 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             RememberLastAnimationClipAssetPath(m_animationClipStatePath);
         };
 
-        m_panelMaximizer.Begin("Animation", &m_showAnimationPanel);
-
         std::string clipLabel = "[ none ]";
         if (clipMeta != nullptr)
             clipLabel = clipMeta->name;
         else if (!m_animationClipStatePath.empty())
             clipLabel = m_animationClipStatePath;
 
+        auto seek = [&](float time) {
+            m_animationPlaying = false;
+            m_animationTime = clip ? NormalizeAnimationSampleTime(time, clip->length, false) : 0.0f;
+            m_animationPreviewEnabled = true;
+        };
+        if (clip)
+        {
+            AnimationTimeline::Advance(m_animationTime, m_animationPlaying, _deltaTime,
+                clip->length, m_animationPlaybackSpeed, m_animationLoopPreview);
+            if (ImGui::Button("|<")) seek(0);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("First frame");
+            ImGui::SameLine();
+            if (ImGui::Button("<")) seek(m_animationTime - 1.0f / kAnimationEditorFramesPerSecond);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Previous frame");
+            ImGui::SameLine();
+            if (ImGui::Button(m_animationPlaying ? "Pause" : "Play"))
+            {
+                m_animationPlaying = !m_animationPlaying;
+                m_animationPreviewEnabled = true;
+                if (m_animationPlaying && m_animationTime >= clip->length) m_animationTime = 0;
+            }
+            ImGui::SameLine();
+            if (ImGui::Button("Stop")) seek(0);
+            ImGui::SameLine();
+            if (ImGui::Button(">")) seek(m_animationTime + 1.0f / kAnimationEditorFramesPerSecond);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Next frame");
+            ImGui::SameLine();
+            if (ImGui::Button(">|")) seek(clip->length);
+            if (ImGui::IsItemHovered()) ImGui::SetTooltip("Last frame");
+            ImGui::SameLine();
+            float seconds=m_animationTime;
+            ImGui::SetNextItemWidth(85);
+            if(ImGui::InputFloat("##PlayheadSeconds",&seconds,0,0,"%.3f s")) seek(seconds);
+            if(ImGui::IsItemHovered()) ImGui::SetTooltip("Playhead in seconds; edit to seek");
+            ImGui::SameLine();
+        }
         ImGui::TextUnformatted("Clip");
         ImGui::SameLine();
         ImGui::Button(clipLabel.c_str(), ImVec2(180, 0));
@@ -15157,44 +15020,12 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             }
         }
 
-        const char *rootName = (rootEntity != nullptr) ? rootEntity->GetName().c_str() : "[ none ]";
-        ImGui::Text("Root: %s", rootName);
-        if (selectedEntity != nullptr)
-        {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Use Selected As Root"))
-                m_animationTargetUUID = selectedEntity->GetUUID();
-        }
-
-        if (rootEntity != nullptr && clip != nullptr)
-        {
-            ImGui::SameLine();
-            if (ImGui::SmallButton("Assign To AnimationPlayer"))
-            {
-                if (!rootEntity->HasComponent<AnimationPlayer>())
-                    rootEntity->AddComponent<AnimationPlayer>();
-
-                AnimationPlayer &player = rootEntity->GetComponent<AnimationPlayer>();
-                player.clip = MakeAnimationClipAssetHandleFromPath(m_animationClipStatePath);
-                NotifySceneChanged();
-            }
-        }
-
         ImGui::Separator();
 
         bool clipDirty = false;
         if (clip != nullptr)
         {
             clip->length = std::max(clip->length, 0.0f);
-            if (m_animationPlaying)
-                m_animationTime += _deltaTime;
-
-            const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
-            if (clip->length > 0.0f)
-                m_animationTime = sampleTime;
-            else
-                m_animationTime = std::max(m_animationTime, 0.0f);
-
             auto selectTrackByBinding = [&](const std::string &_path, const std::string &_component, const std::string &_property) -> void
             {
                 m_animationSelectedTrack = -1;
@@ -15240,37 +15071,11 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 selectTrackByBinding(_candidate.path, _candidate.component, _candidate.property);
             };
 
-            ImGui::Checkbox("Preview", &m_animationPreviewEnabled);
+            ImGui::BeginDisabled(rootEntity == nullptr);
+            if (ImGui::Button("+ Add Track")) ImGui::OpenPopup("AnimationAddPropertyPopup");
+            ImGui::EndDisabled();
             ImGui::SameLine();
-            ImGui::Checkbox("Record", &m_animationRecordEnabled);
-            ImGui::SameLine();
-            if (ImGui::Button(m_animationPlaying ? "Pause" : "Play"))
-                m_animationPlaying = !m_animationPlaying;
-
-            ImGui::SameLine();
-            if (ImGui::Button("Stop"))
-            {
-                m_animationPlaying = false;
-                m_animationTime = 0.0f;
-            }
-
-            ImGui::SameLine();
-            ImGui::SetNextItemWidth(110.0f);
-            if (ImGui::InputFloat("Length", &clip->length, 0.0f, 0.0f, "%.3f"))
-            {
-                clip->length = std::max(clip->length, 0.0f);
-                clipDirty = true;
-            }
-
-            if (rootEntity != nullptr)
-            {
-                ImGui::SameLine();
-                if (ImGui::Button("Add Property"))
-                    ImGui::OpenPopup("AnimationAddPropertyPopup");
-            }
-
-            ImGui::SameLine();
-            if (ImGui::Button("Add Event At Current Time"))
+            if (ImGui::Button("+ Event"))
             {
                 AnimationEvent event = {};
                 event.time = std::max(m_animationTime, 0.0f);
@@ -15293,6 +15098,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 clipDirty = true;
             }
 
+            ImGui::SameLine();
+            ImGui::SetNextItemWidth(85);
+            if (ImGui::InputFloat("Length", &clip->length, 0, 0, "%.2f s"))
+            {
+                clip->length = std::isfinite(clip->length) ? std::max(clip->length, 0.0f) : 0.0f;
+                clipDirty = true;
+            }
+            ImGui::SameLine(); ImGui::Checkbox("Loop", &m_animationLoopPreview);
             if (ImGui::BeginPopup("AnimationAddPropertyPopup"))
             {
                 ImGui::SetNextItemWidth(320.0f);
@@ -15332,110 +15145,141 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::EndPopup();
             }
 
-            ImGui::Text("Time: %.3fs  Frame: %d", m_animationTime, AnimationFrameFromTime(m_animationTime));
-
-            struct AnimationClipSequencer : ImSequencer::SequenceInterface
+            // Fit the entire clip in a compact dope sheet. Keep property labels
+            // separate from the ruler so long bindings cannot overlap keys.
+            const float timelineHeight = std::min(230.0f, 46.0f + float(clip->tracks.size()) * 25.0f);
+            ImGui::BeginChild("AnimationDopesheet", ImVec2(0, timelineHeight), true);
+            if (ImGui::BeginTable("AnimationTracks", 2, ImGuiTableFlags_Resizable | ImGuiTableFlags_BordersInnerV))
             {
-                AnimationClipAsset &clip;
-                std::vector<int> startFrames = {};
-                std::vector<int> endFrames = {};
-                std::vector<std::string> labels = {};
-                int frameMax = 1;
-                bool deletedTrack = false;
-
-                explicit AnimationClipSequencer(AnimationClipAsset &_clip) : clip(_clip)
+                ImGui::TableSetupColumn("Property", ImGuiTableColumnFlags_WidthFixed, 300.0f);
+                ImGui::TableSetupColumn("Timeline", ImGuiTableColumnFlags_WidthStretch);
+                const float length = std::max(clip->length, .001f);
+                const float span=length/std::max(m_animationTimelineZoom,1.0f);
+                m_animationTimelineStart=std::clamp(m_animationTimelineStart,0.0f,length-span);
+                int deleteTrack = -1;
+                for (int row = -1; row < int(clip->tracks.size()); ++row)
                 {
-                    Rebuild();
-                }
-
-                void Rebuild()
-                {
-                    startFrames.clear();
-                    endFrames.clear();
-                    labels.clear();
-                    frameMax = std::max(1, AnimationFrameFromTime(std::max(clip.length, 0.0f)));
-
-                    for (const AnimationTrack &track : clip.tracks)
+                    ImGui::PushID(row);
+                    ImGui::TableNextRow();
+                    ImGui::TableNextColumn();
+                    if (row < 0) ImGui::TextDisabled("Property / seconds");
+                    else
                     {
-                        int start = 0;
-                        int end = 0;
-                        if (!track.keys.empty())
+                        const auto label = BuildAnimationTrackLabel(clip->tracks[row]);
+                        if (ImGui::Selectable(label.c_str(), m_animationSelectedTrack == row)) m_animationSelectedTrack = row;
+                        if (ImGui::IsItemHovered()) ImGui::SetTooltip("%s", label.c_str());
+                        if (ImGui::BeginPopupContextItem("TrackMenu"))
                         {
-                            start = AnimationFrameFromTime(track.keys.front().time);
-                            end = AnimationFrameFromTime(track.keys.back().time);
-                            frameMax = std::max(frameMax, end + 1);
+                            if (ImGui::MenuItem("Delete track")) deleteTrack = row;
+                            ImGui::EndPopup();
                         }
-
-                        startFrames.push_back(start);
-                        endFrames.push_back(std::max(end, start));
-                        labels.push_back(BuildAnimationTrackLabel(track));
                     }
-                }
-
-                int GetFrameMin() const override { return 0; }
-                int GetFrameMax() const override { return frameMax; }
-                int GetItemCount() const override { return static_cast<int>(clip.tracks.size()); }
-                const char *GetItemLabel(int index) const override
-                {
-                    if (index < 0 || index >= static_cast<int>(labels.size()))
-                        return "";
-                    return labels[index].c_str();
-                }
-
-                void Get(int index, int **start, int **end, int *type, unsigned int *color) override
-                {
-                    if (start)
-                        *start = &startFrames[index];
-                    if (end)
-                        *end = &endFrames[index];
-                    if (type)
-                        *type = 0;
-                    if (color)
-                        *color = 0xFF80C0FF;
-                }
-
-                void Del(int index) override
-                {
-                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
-                        return;
-
-                    clip.tracks.erase(clip.tracks.begin() + index);
-                    deletedTrack = true;
-                    Rebuild();
-                }
-
-                void CustomDrawCompact(int index, ImDrawList *draw_list, const ImRect &rc, const ImRect &clippingRect) override
-                {
-                    if (index < 0 || index >= static_cast<int>(clip.tracks.size()))
-                        return;
-
-                    const AnimationTrack &track = clip.tracks[index];
-                    const float frameSpan = static_cast<float>(std::max(frameMax, 1));
-
-                    draw_list->PushClipRect(clippingRect.Min, clippingRect.Max, true);
-                    for (const AnimationKeyframe &key : track.keys)
+                    ImGui::TableNextColumn();
+                    const ImVec2 start = ImGui::GetCursorScreenPos();
+                    const float width = std::max(1.0f, ImGui::GetContentRegionAvail().x);
+                    ImGui::InvisibleButton("Timeline", ImVec2(width, 22));
+                    auto* draw = ImGui::GetWindowDrawList();
+                    const auto xAt = [&](float time) { return start.x + (time - m_animationTimelineStart) / span * width; };
+                    draw->PushClipRect(start, ImVec2(start.x + width, start.y + 22), true);
+                    draw->AddRectFilled(start, ImVec2(start.x+width,start.y+22),
+                        m_animationSelectedTrack == row ? IM_COL32(42,57,73,255) : IM_COL32(30,34,40,255));
+                    for (int tick=0;tick<=5;++tick)
                     {
-                        const float normalized = static_cast<float>(AnimationFrameFromTime(key.time)) / frameSpan;
-                        const float x = ImLerp(rc.Min.x, rc.Max.x, normalized);
-                        draw_list->AddLine(ImVec2(x, rc.Min.y + 4.0f), ImVec2(x, rc.Max.y - 4.0f), 0xFFFFFFFF, 2.0f);
+                        const float x=start.x + width*float(tick)/5;
+                        draw->AddLine(ImVec2(x,start.y),ImVec2(x,start.y+22),IM_COL32(72,78,86,255));
+                        if(row<0)
+                        {
+                            char label[24]; std::snprintf(label,sizeof(label),"%.2f",m_animationTimelineStart+span*tick/5);
+                            const float textX=std::min(x+3,start.x+width-ImGui::CalcTextSize(label).x-2);
+                            draw->AddText(ImVec2(textX,start.y+3),IM_COL32(190,198,210,255),label);
+                        }
                     }
-                    draw_list->PopClipRect();
+                    if(row>=0)
+                        for(const auto& key:clip->tracks[row].keys)
+                        {
+                            const float x=xAt(key.time), y=start.y+11;
+                            draw->AddQuadFilled(ImVec2(x,y-5),ImVec2(x+5,y),ImVec2(x,y+5),ImVec2(x-5,y),IM_COL32(255,190,100,255));
+                        }
+                    const float playhead=xAt(m_animationTime);
+                    draw->AddLine(ImVec2(playhead,start.y),ImVec2(playhead,start.y+22),IM_COL32(255,85,85,255),2);
+                    draw->PopClipRect();
+                    if(ImGui::IsItemActive() && ImGui::IsMouseDown(ImGuiMouseButton_Left))
+                    {
+                        float target=AnimationTimeline::TimeAtFraction((ImGui::GetMousePos().x-start.x)/width,
+                            m_animationTimelineStart,span,m_animationSnapToFrames);
+                        if(row>=0)
+                        {
+                            m_animationSelectedTrack=row;
+                            for(const auto& key:clip->tracks[row].keys)
+                                if(std::abs(xAt(key.time)-ImGui::GetMousePos().x)<6) {target=key.time;break;}
+                        }
+                        seek(target);
+                    }
+                    ImGui::PopID();
                 }
-            };
-
-            int currentFrame = AnimationFrameFromTime(m_animationTime);
-            AnimationClipSequencer sequencer(*clip);
-            m_animationExpanded = m_animationExpanded || !clip->tracks.empty();
-            const int sequenceFlags = ImSequencer::SEQUENCER_CHANGE_FRAME | ImSequencer::SEQUENCER_DEL;
-            (void)ImSequencer::Sequencer(&sequencer, &currentFrame, &m_animationExpanded, &m_animationSelectedTrack, &m_animationFirstFrame, sequenceFlags);
-            if (sequencer.deletedTrack)
-            {
-                if (m_animationSelectedTrack >= static_cast<int>(clip->tracks.size()))
-                    m_animationSelectedTrack = static_cast<int>(clip->tracks.size()) - 1;
-                clipDirty = true;
+                if(deleteTrack>=0)
+                {
+                    clip->tracks.erase(clip->tracks.begin()+deleteTrack);
+                    m_animationSelectedTrack=-1;
+                    clipDirty=true;
+                }
+                ImGui::EndTable();
             }
+            ImGui::EndChild();
+            if (ImGui::RadioButton("Dopesheet", !m_animationShowCurves)) m_animationShowCurves=false;
+            ImGui::SameLine();
+            if (ImGui::RadioButton("Curves", m_animationShowCurves)) m_animationShowCurves=true;
+            ImGui::SameLine(); ImGui::Checkbox("Snap (60 fps)", &m_animationSnapToFrames);
+            ImGui::SameLine(); ImGui::SetNextItemWidth(100);
+            ImGui::SliderFloat("Zoom", &m_animationTimelineZoom, 1, 10, "%.1fx");
+            ImGui::SameLine();
+            if(ImGui::Button("Fit")) {m_animationTimelineZoom=1;m_animationTimelineStart=0;}
+            if(m_animationTimelineZoom>1)
+            {
+                ImGui::SameLine(); ImGui::SetNextItemWidth(140);
+                ImGui::SliderFloat("View",&m_animationTimelineStart,0,clip->length*(1-1/m_animationTimelineZoom),"%.2f s");
+            }
+            ImGui::Checkbox("Preview", &m_animationPreviewEnabled);
+            ImGui::SameLine(); ImGui::BeginDisabled(rootEntity == nullptr);
+            if (ImGui::Checkbox("Record", &m_animationRecordEnabled) && m_animationRecordEnabled)
+            {m_animationPreviewEnabled=true;m_animationPlaying=false;}
+            ImGui::EndDisabled();
+            ImGui::SameLine(); ImGui::SetNextItemWidth(80);
+            ImGui::SliderFloat("Speed",&m_animationPlaybackSpeed,.1f,2,"%.1fx");
+            ImGui::SameLine();
+            if(ImGui::Button("Previous Key")) seek(AnimationTimeline::AdjacentKey(*clip,m_animationTime,false,m_animationSelectedTrack));
+            ImGui::SameLine();
+            if(ImGui::Button("Next Key")) seek(AnimationTimeline::AdjacentKey(*clip,m_animationTime,true,m_animationSelectedTrack));
+            ImGui::SameLine();
+            int editFrame=AnimationFrameFromTime(m_animationTime);
+            ImGui::SetNextItemWidth(90);
+            if(ImGui::InputInt("Frame",&editFrame)) seek(AnimationTimeFromFrame(editFrame));
+            if(m_animationRecordEnabled)
+                ImGui::TextColored(ImVec4(1,.3f,.25f,1),"RECORDING - property edits create keys at the playhead");
+        const char *rootName = (rootEntity != nullptr) ? rootEntity->GetName().c_str() : "[ none ]";
+        ImGui::Text("Root: %s", rootName);
+        if (selectedEntity != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Use Selected As Root"))
+                m_animationTargetUUID = selectedEntity->GetUUID();
+        }
 
-            m_animationTime = AnimationTimeFromFrame(currentFrame);
+        if (rootEntity != nullptr && clip != nullptr)
+        {
+            ImGui::SameLine();
+            if (ImGui::SmallButton("Assign To AnimationPlayer"))
+            {
+                if (!rootEntity->HasComponent<AnimationPlayer>())
+                    rootEntity->AddComponent<AnimationPlayer>();
+
+                AnimationPlayer &player = rootEntity->GetComponent<AnimationPlayer>();
+                player.clip = MakeAnimationClipAssetHandleFromPath(m_animationClipStatePath);
+                NotifySceneChanged();
+            }
+        }
+
+
             if (m_animationSelectedTrack >= 0 && m_animationSelectedTrack < static_cast<int>(clip->tracks.size()))
             {
                 AnimationTrack &track = clip->tracks[m_animationSelectedTrack];
@@ -15444,7 +15288,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                 int interpolationIndex = (track.interpolation == AnimationInterpolation::STEP) ? 1 : 0;
                 const char *interpolationLabels[] = {"Linear", "Step"};
-                if (ImGui::Combo("Interpolation", &interpolationIndex, interpolationLabels, IM_ARRAYSIZE(interpolationLabels)))
+                if (ImGui::Combo(AnimationPropertyLabel("Interpolation").c_str(), &interpolationIndex, interpolationLabels, IM_ARRAYSIZE(interpolationLabels)))
                 {
                     track.interpolation = (interpolationIndex == 1) ? AnimationInterpolation::STEP : AnimationInterpolation::LINEAR;
                     clipDirty = true;
@@ -15455,21 +15299,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     AnimationValue capturedValue = {};
                     if (CaptureAnimationTrackValue(*m_app, *rootEntity, track, capturedValue))
                     {
-                        bool updatedExisting = false;
-                        for (AnimationKeyframe &key : track.keys)
-                        {
-                            if (std::fabs(key.time - m_animationTime) <= kAnimationEditorKeyTimeEpsilon)
-                            {
-                                key.value = capturedValue;
-                                updatedExisting = true;
-                                break;
-                            }
-                        }
-
-                        if (!updatedExisting)
-                            track.keys.push_back(AnimationKeyframe{m_animationTime, capturedValue});
-
-                        SortAnimationTrackKeys(track);
+                        AnimationTimeline::UpsertKey(track, m_animationTime, capturedValue);
                         clipDirty = true;
                     }
                 }
@@ -15478,18 +15308,18 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (ImGui::Button("Add Empty Key"))
                 {
                     AnimationValue value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, std::max(m_animationTime, 0.0f));
-                    track.keys.push_back(AnimationKeyframe{std::max(m_animationTime, 0.0f), value});
-                    SortAnimationTrackKeys(track);
+                    AnimationTimeline::UpsertKey(track, m_animationTime, value);
                     clipDirty = true;
                 }
 
+                if (!m_animationShowCurves || ImGui::CollapsingHeader("Key values"))
                 for (std::size_t keyIndex = 0; keyIndex < track.keys.size(); ++keyIndex)
                 {
                     AnimationKeyframe &key = track.keys[keyIndex];
                     ImGui::PushID(static_cast<int>(keyIndex));
                     bool keyDirty = false;
 
-                    if (ImGui::InputFloat("time", &key.time, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("time").c_str(), &key.time, 0.0f, 0.0f, "%.3f"))
                     {
                         key.time = std::max(key.time, 0.0f);
                         keyDirty = true;
@@ -15519,7 +15349,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                     ImGui::PopID();
                 }
 
-                if (!track.keys.empty())
+                if (m_animationShowCurves && !track.keys.empty())
                 {
                     struct AnimationTrackCurveDelegate : ImCurveEdit::Delegate
                     {
@@ -15585,7 +15415,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                         ImCurveEdit::CurveType GetCurveType(size_t) const override
                         {
-                            return AnimationValueIsDiscrete(track.type) ? ImCurveEdit::CurveDiscrete : ImCurveEdit::CurveLinear;
+                            return AnimationValueIsDiscrete(track.type) || track.interpolation == AnimationInterpolation::STEP
+                                ? ImCurveEdit::CurveDiscrete : ImCurveEdit::CurveLinear;
                         }
 
                         ImVec2& GetMin() override { return min; }
@@ -15642,8 +15473,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                             key.time = std::max(value.x, 0.0f);
                             key.value = track.keys.empty() ? MakeDefaultAnimationValue(track.type) : EvaluateAnimationTrack(track, key.time);
                             SetAnimationValueComponent(key.value, static_cast<int>(curveIndex), value.y);
-                            track.keys.push_back(key);
-                            SortAnimationTrackKeys(track);
+                            AnimationTimeline::UpsertKey(track, key.time, key.value);
                             Rebuild();
                         }
                     };
@@ -15680,7 +15510,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     AnimationEvent &event = clip->events[m_animationSelectedEvent];
                     ImGui::Separator();
-                    if (ImGui::InputFloat("event time", &event.time, 0.0f, 0.0f, "%.3f"))
+                    if (ImGui::InputFloat(AnimationPropertyLabel("event time").c_str(), &event.time, 0.0f, 0.0f, "%.3f"))
                     {
                         event.time = std::max(event.time, 0.0f);
                         std::sort(clip->events.begin(), clip->events.end(), [](const AnimationEvent &_left, const AnimationEvent &_right)
@@ -15692,7 +15522,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventPathBuffer[256] = {};
                     std::snprintf(eventPathBuffer, sizeof(eventPathBuffer), "%s", event.path.c_str());
-                    if (ImGui::InputText("target path", eventPathBuffer, sizeof(eventPathBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("target path").c_str(), eventPathBuffer, sizeof(eventPathBuffer)))
                     {
                         event.path = eventPathBuffer;
                         clipDirty = true;
@@ -15722,7 +15552,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventScriptBuffer[256] = {};
                     std::snprintf(eventScriptBuffer, sizeof(eventScriptBuffer), "%s", event.script.c_str());
-                    if (ImGui::InputText("script", eventScriptBuffer, sizeof(eventScriptBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("script").c_str(), eventScriptBuffer, sizeof(eventScriptBuffer)))
                     {
                         event.script = eventScriptBuffer;
                         clipDirty = true;
@@ -15730,7 +15560,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char eventNameBuffer[256] = {};
                     std::snprintf(eventNameBuffer, sizeof(eventNameBuffer), "%s", event.name.c_str());
-                    if (ImGui::InputText("event name", eventNameBuffer, sizeof(eventNameBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("event name").c_str(), eventNameBuffer, sizeof(eventNameBuffer)))
                     {
                         event.name = eventNameBuffer;
                         clipDirty = true;
@@ -15738,14 +15568,14 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     char stringPayloadBuffer[256] = {};
                     std::snprintf(stringPayloadBuffer, sizeof(stringPayloadBuffer), "%s", event.stringPayload.c_str());
-                    if (ImGui::InputText("string payload", stringPayloadBuffer, sizeof(stringPayloadBuffer)))
+                    if (ImGui::InputText(AnimationPropertyLabel("string payload").c_str(), stringPayloadBuffer, sizeof(stringPayloadBuffer)))
                     {
                         event.stringPayload = stringPayloadBuffer;
                         clipDirty = true;
                     }
 
-                    clipDirty = ImGui::InputFloat("float payload", &event.floatPayload, 0.0f, 0.0f, "%.3f") || clipDirty;
-                    clipDirty = ImGui::InputInt("int payload", &event.intPayload) || clipDirty;
+                    clipDirty = ImGui::InputFloat(AnimationPropertyLabel("float payload").c_str(), &event.floatPayload, 0.0f, 0.0f, "%.3f") || clipDirty;
+                    clipDirty = ImGui::InputInt(AnimationPropertyLabel("int payload").c_str(), &event.intPayload) || clipDirty;
 
                     if (ImGui::SmallButton("Delete Event"))
                     {
@@ -15793,7 +15623,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (previewTargetChanged || m_animationRestoreBindings.empty())
             capturePreviewState(*clip, *rootEntity);
 
-        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying);
+        const float sampleTime = NormalizeAnimationSampleTime(m_animationTime, clip->length, m_animationPlaying && m_animationLoopPreview);
         (void)ApplyAnimationClip(*m_app, *rootEntity, *clip, sampleTime);
     }
 
@@ -15815,7 +15645,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_focusAddComponentSearch = false;
         }
 
-        std::vector<AddComponentEntry> componentEntries = BuildAddComponentEntries(*m_app, entity);
+        std::vector<ComponentPickerEntry> componentEntries = BuildComponentPickerEntries(*m_app, entity);
         const bool hasAvailableComponents = !componentEntries.empty();
 
         if (!hasAvailableComponents)
@@ -15832,6 +15662,16 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
             m_addComponentSearch.clear();
             m_focusAddComponentSearch = true;
             ImGui::OpenPopup("Add Component");
+        }
+
+        if (ImGui::BeginDragDropTarget())
+        {
+            if (const auto* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+            {
+                const auto& asset = *static_cast<const AssetDragData*>(payload->Data);
+                if (Scripting::AddManagedComponentsFromAsset(entity, asset.path)) NotifySceneChanged();
+            }
+            ImGui::EndDragDropTarget();
         }
 
         ImGuiViewport *viewport = ImGui::GetMainViewport();
@@ -15851,21 +15691,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 if (_filteredIndices.empty())
                     return false;
 
-                const std::string componentName = componentEntries[_filteredIndices[m_addComponentSelection]].componentName;
-                for (ScriptConf &conf : m_app->GetScriptRegistry())
-                {
-                    if (conf.name == componentName)
-                    {
-                        conf.Add(entity);
-                        NotifySceneChanged();
-                        ImGui::CloseCurrentPopup();
-                        m_addComponentSelection = 0;
-                        m_addComponentSearch.clear();
-                        return true;
-                    }
-                }
-
-                return false;
+                const auto entry = componentEntries[_filteredIndices[m_addComponentSelection]];
+                if (!AddPickedComponent(*m_app, entity, entry)) return false;
+                NotifySceneChanged();
+                ImGui::CloseCurrentPopup();
+                m_addComponentSelection = 0;
+                m_addComponentSearch.clear();
+                return true;
             };
 
             auto cancelAddComponent = [&]() -> void
@@ -15875,7 +15707,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 ImGui::CloseCurrentPopup();
             };
 
-            auto matchesSearch = [&](const AddComponentEntry &_entry) -> bool
+            auto matchesSearch = [&](const ComponentPickerEntry &_entry) -> bool
             {
                 if (m_addComponentSearch.empty())
                     return true;
@@ -15921,8 +15753,10 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 {
                     const int componentIndex = filteredIndices[filteredIndex];
                     const bool selected = (filteredIndex == m_addComponentSelection);
-                    const AddComponentEntry &entry = componentEntries[componentIndex];
+                    const ComponentPickerEntry &entry = componentEntries[componentIndex];
 
+                    const auto entryID = std::string(entry.managed ? "managed:" : "native:") + entry.componentName;
+                    ImGui::PushID(entryID.c_str());
                     if (ImGui::Selectable(entry.displayName.c_str(), selected))
                         m_addComponentSelection = filteredIndex;
 
@@ -15931,6 +15765,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
 
                     if (ImGui::IsItemHovered() && ImGui::IsMouseDoubleClicked(ImGuiMouseButton_Left))
                         addSelectedComponent(filteredIndices);
+                    ImGui::PopID();
                 }
                 ImGui::EndChild();
             }
@@ -18598,13 +18433,34 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         ImGui::End();
     }
 
+    namespace
+    {
+        template <typename Handle>
+        std::string RememberedEditorAssetPath(const Handle &handle)
+        {
+            if (handle.uuid != UUID(0))
+            {
+                auto &paths = AssetManager::GetAssetLibrary().uuidAssetPath;
+                if (auto found = paths.find(handle.uuid); found != paths.end())
+                    return found->second;
+            }
+            // Metadata is preloaded at editor startup and refreshed by the asset
+            // watcher. Keep path fallback, but never scan the asset tree for a
+            // stale remembered tab (for example after removing an asset pack).
+            std::error_code error;
+            if (!handle.path.empty() && std::filesystem::is_regular_file(handle.path, error))
+                return handle.path;
+            return {};
+        }
+    }
+
     std::string Editor::ResolveRememberedShaderGraphPath() const
     {
         const ShaderGraphAssetHandle &remembered = Canis::GetEditorConfig().lastShaderGraph;
         if (remembered.Empty())
             return {};
 
-        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        const std::string resolvedPath = RememberedEditorAssetPath(remembered);
         if (resolvedPath.empty())
             return {};
 
@@ -18623,7 +18479,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         if (remembered.Empty())
             return {};
 
-        const std::string resolvedPath = AssetManager::ResolvePath(remembered);
+        const std::string resolvedPath = RememberedEditorAssetPath(remembered);
         if (!resolvedPath.empty())
         {
             if (MetaFileAsset *meta = AssetManager::GetMetaFile(resolvedPath))
@@ -20399,8 +20255,8 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 continue;
 
             Entity* candidate = m_scene->GetEntities()[i];
-            RectTransform *transform = (candidate != nullptr && candidate->HasComponent<RectTransform>())
-                ? &candidate->GetComponent<RectTransform>()
+            RectLayout *transform = (candidate != nullptr && candidate->HasComponent<RectLayout>())
+                ? &candidate->GetComponent<RectLayout>()
                 : nullptr;
 
             if (transform == nullptr)
@@ -20410,7 +20266,7 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 transform->GetCanvasRenderMode() == CanvasRenderMode::WORLD_SPACE)
                 continue;
 
-            const RectTransformRenderBounds bounds = GetRenderBounds(*candidate, *transform);
+            const RectLayoutRenderBounds bounds = GetRenderBounds(*candidate, *transform);
             float globalRotation = transform->GetRotation();
             Vector2 selectionMouse = mouse;
 
@@ -20631,9 +20487,9 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
         }
 
         Canis::Shader &debugLineShader = GetDebugLineShader();
-        Entity &debugRectTransformEntity = *m_scene->GetEntities()[m_index];
-        RectTransform &rtc = debugRectTransformEntity.GetComponent<RectTransform>();
-        const RectTransformRenderBounds bounds = GetRenderBounds(debugRectTransformEntity, rtc);
+        Entity &debugRectLayoutEntity = *m_scene->GetEntities()[m_index];
+        RectLayout &rtc = debugRectLayoutEntity.GetComponent<RectLayout>();
+        const RectLayoutRenderBounds bounds = GetRenderBounds(debugRectLayoutEntity, rtc);
         Vector2 vertices[4];
 
         vertices[0] = {bounds.min.x, bounds.min.y};

@@ -24,9 +24,9 @@ namespace Canis
                 }
             }
 
-            if (_entity->HasComponent<RectTransform>())
+            if (_entity->HasComponent<RectLayout>())
             {
-                for (Entity* child : _entity->GetComponent<RectTransform>().children)
+                for (Entity* child : _entity->GetComponent<RectLayout>().Spatial().children)
                 {
                     if (child != nullptr && std::find(_children.begin(), _children.end(), child) == _children.end())
                         _children.push_back(child);

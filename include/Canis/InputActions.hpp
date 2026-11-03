@@ -9,6 +9,7 @@
 #include <string>
 #include <type_traits>
 #include <unordered_map>
+#include <unordered_set>
 #include <vector>
 
 namespace Canis
@@ -121,6 +122,8 @@ public:
     void RemoveSource(uint64_t source, InputCancellation reason);
     void DiscardSourceEvents(uint64_t source);
     void Cancel(InputCancellation reason);
+    // Cancel a device-owned aggregate action without canceling other devices/actions.
+    void Cancel(ActionId action, InputCancellation reason);
     void Evaluate(bool active);
     InputScheme PromptScheme() const { return m_promptScheme; }
     void BeginCapture(InputScheme scheme, ActionType type);
@@ -139,6 +142,10 @@ public:
     void SetNativeInput(bool active);
     bool HasNativeInput() const { return m_nativeInput; }
     void RecordNative(ActionId action, Vector2 value);
+    // A game-owned device can replace an aggregate action's processed value.
+    // Samples retain ordered edges and obey maps, focus/capture and neutral gates.
+    // nullopt restores bindings; physical per-controller queries stay independent.
+    void OverrideAction(ActionId action, std::optional<Vector2> value);
     void SetNativePrompt(ActionId action, InputPrompt prompt);
 private:
     struct Event { std::string path; Vector2 value; uint64_t source; };
@@ -167,6 +174,7 @@ private:
     ActionType m_captureType = ActionType::Button;
     std::optional<std::string> m_captureResult;
     std::chrono::steady_clock::time_point m_captureStart;
+    std::unordered_set<uint32_t> m_actionOverrides;
     bool m_nativeInput = false;
     std::unordered_map<uint32_t, InputPrompt> m_nativePrompts;
     uint64_t m_promptRevision = 1;

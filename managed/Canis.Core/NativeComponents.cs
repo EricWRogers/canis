@@ -182,9 +182,16 @@ public sealed class PrefabInstance : NativeComponent
 {
 }
 
-public sealed class RectTransform : NativeComponent
+public sealed class RectLayout : NativeComponent
 {
     public float Opacity { get => GetField<float>("opacity"); set => SetField("opacity", value); }
+    public bool Active { get => GetField<bool>("active"); set => SetField("active", value); }
+    public Vector2 Size { get => GetField<Vector2>("size"); set => SetField("size", value); }
+    public Vector2 AnchorMin { get => GetField<Vector2>("anchorMin"); set => SetField("anchorMin", value); }
+    public Vector2 AnchorMax { get => GetField<Vector2>("anchorMax"); set => SetField("anchorMax", value); }
+    public Vector2 Pivot { get => GetField<Vector2>("pivot"); set => SetField("pivot", value); }
+    public Vector2 OriginOffset { get => GetField<Vector2>("originOffset"); set => SetField("originOffset", value); }
+    public Vector2 RotationOriginOffset { get => GetField<Vector2>("rotationOriginOffset"); set => SetField("rotationOriginOffset", value); }
 }
 
 public sealed class Rigidbody : NativeComponent

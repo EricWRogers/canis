@@ -1,4 +1,5 @@
 #include <Canis/PlayerPrefs.hpp>
+#include <Canis/RectLayoutEditor.hpp>
 #include <Canis/Scripting/ManagedComponents.hpp>
 #if CANIS_CSHARP
 #include <Canis/Scripting/CSharpRuntime.hpp>
@@ -3269,8 +3270,7 @@ namespace Canis
                 if (comp["firstEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
                     _entity.scene.GetEntityAfterLoad(comp["firstEntity"].as<Canis::UUID>(0), prefabInstance.firstEntity);
 
-                if (_callCreate)
-                    prefabInstance.Create();
+
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
                 PrefabInstance* prefabInstance = _entity.HasComponent<PrefabInstance>() ? &_entity.GetComponent<PrefabInstance>() : nullptr;
@@ -3303,12 +3303,7 @@ namespace Canis
                     if (ImGui::Button(BuildInspectorFieldLabel("Select First Entity", _conf.name.c_str()).c_str()))
                         _editor.FocusEntity(prefabInstance->firstEntity);
 
-                    if (prefabInstance->firstEntity->HasComponent<RectTransform>())
-                    {
-                        RectTransform &transform = prefabInstance->firstEntity->GetComponent<RectTransform>();
-                        DrawInspectorField(_editor, "overridePosition", _conf.name.c_str(), transform.position);
-                    }
-                    else if (prefabInstance->firstEntity->HasComponent<Transform>())
+                    if (prefabInstance->firstEntity->HasComponent<Transform>())
                     {
                         Transform &transform = prefabInstance->firstEntity->GetComponent<Transform>();
                         DrawInspectorField(_editor, "overridePosition", _conf.name.c_str(), transform.position);
@@ -3338,8 +3333,8 @@ namespace Canis
             .name = "Canis::Canvas",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                if (!_entity.HasComponent<RectTransform>())
-                    _entity.AddComponent<RectTransform>();
+                if (!_entity.HasComponent<RectLayout>())
+                    _entity.AddComponent<RectLayout>();
                 Canvas& canvas = *_entity.AddComponent<Canvas>();
                 canvas.scaleMode = CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
                 canvas.screenSize = Vector2(1280.0f, 800.0f);
@@ -3358,6 +3353,7 @@ namespace Canis
                     comp["scaleMode"] = canvas.scaleMode;
                     comp["screenSize"] = canvas.screenSize;
                     comp["receivesEvents"] = canvas.receivesEvents;
+                    comp["depthTest"] = canvas.depthTest;
                     comp["navigationEnabled"] = canvas.navigationEnabled;
                     comp["navigateAction"] = canvas.navigateAction;
                     comp["reverseNavigationAction"] = canvas.reverseNavigationAction;
@@ -3378,6 +3374,7 @@ namespace Canis
                     canvas.scaleMode = canvasNode["scaleMode"].as<unsigned int>(CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH);
                     canvas.screenSize = canvasNode["screenSize"].as<Vector2>(defaultScreenSize);
                     canvas.receivesEvents = canvasNode["receivesEvents"].as<bool>(true);
+                    canvas.depthTest = canvasNode["depthTest"].as<bool>(true);
                     canvas.navigationEnabled = canvasNode["navigationEnabled"].as<bool>(true);
                     canvas.navigateAction = canvasNode["navigateAction"].as<unsigned int>(0);
                     canvas.reverseNavigationAction = canvasNode["reverseNavigationAction"].as<unsigned int>(0);
@@ -3389,8 +3386,7 @@ namespace Canis
                     canvas.screenSize.x = std::max(1.0f, canvas.screenSize.x);
                     canvas.screenSize.y = std::max(1.0f, canvas.screenSize.y);
 
-                    if (_callCreate)
-                        canvas.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -3421,6 +3417,7 @@ namespace Canis
                     }
                     else if (canvas->renderMode == CanvasRenderMode::WORLD_SPACE)
                     {
+                        DrawInspectorField(_editor, "depthTest", _conf.name.c_str(), canvas->depthTest);
                         DrawInspectorField(_editor, "receivesEvents", _conf.name.c_str(), canvas->receivesEvents);
                         DrawInspectorField(_editor, "interactionDistance", _conf.name.c_str(), canvas->interactionDistance);
                         canvas->interactionDistance = std::max(0.0f, canvas->interactionDistance);
@@ -3431,188 +3428,84 @@ namespace Canis
 
         RegisterScript(canvasConf);
 
-        ScriptConf rectTransformConf = {
-            .name = "Canis::RectTransform",
-            .Construct = nullptr,
-            .Add = [this](Entity& _entity) -> void {
-                _entity.AddComponent<RectTransform>();
-            },
-            .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<RectTransform>(); },
-            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<RectTransform>(); },
-            .Get = [this](Entity& _entity) -> void* { return _entity.HasComponent<RectTransform>() ? (void*)(&_entity.GetComponent<RectTransform>()) : nullptr; },
-            .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
-                if (_entity.HasComponent<RectTransform>())
-                {
-                    RectTransform& transform = _entity.GetComponent<RectTransform>();
-
-                    YAML::Node comp;
-                    comp["active"] = transform.active;
-                    comp["position"] = transform.position;
-                    comp["size"] = transform.size;
-                    comp["scale"] = transform.scale;
-                    comp["anchorMin"] = transform.anchorMin;
-                    comp["anchorMax"] = transform.anchorMax;
-                    comp["pivot"] = transform.pivot;
-                    comp["originOffset"] = transform.originOffset;
-                    comp["depth"] = transform.depth;
-                    comp["opacity"] = transform.opacity;
-                    comp["rotation"] = transform.rotation;
-                    comp["rotationOriginOffset"] = transform.rotationOriginOffset;
-                    comp["parent"] = _entity.scene.GetLiveEntityUUID(transform.parent);
-                    // children
-                    YAML::Node children = YAML::Node(YAML::NodeType::Sequence);
-
-                    for (Canis::Entity* c : transform.children)
-                    {
-                        const Canis::UUID childUUID = _entity.scene.GetLiveEntityUUID(c);
-                        if (childUUID != Canis::UUID(0))
-                            children.push_back(childUUID);
-                    }
-
-                    comp["children"] = children;
-
-                    _node["Canis::RectTransform"] = comp;
-                }
-            },
-            .Decode = [](YAML::Node &_node, Entity &_entity, bool _callCreate) -> void {
-                if (auto rectTransform = _node["Canis::RectTransform"])
-                {
-                    auto &rt = *_entity.AddComponent<RectTransform>();
-                    rt.active = rectTransform["active"].as<bool>(true);
-                    rt.position = rectTransform["position"].as<Vector2>(rt.position);
-                    rt.size = rectTransform["size"].as<Vector2>(rt.size);
-                    rt.scale = rectTransform["scale"].as<Vector2>(rt.scale);
-                    rt.anchorMin = rectTransform["anchorMin"].as<Vector2>(rt.anchorMin);
-                    rt.anchorMax = rectTransform["anchorMax"].as<Vector2>(rt.anchorMax);
-                    rt.pivot = rectTransform["pivot"].as<Vector2>(rt.pivot);
-                    rt.originOffset = rectTransform["originOffset"].as<Vector2>(rt.originOffset);
-                    rt.depth = rectTransform["depth"].as<float>(rt.depth);
-                    rt.opacity = rectTransform["opacity"].as<float>(1.0f);
-                    rt.rotation = rectTransform["rotation"].as<float>(rt.rotation);
-                    rt.rotationOriginOffset = rectTransform["rotationOriginOffset"].as<Vector2>(rt.rotationOriginOffset);
-
-                    if (rectTransform["parent"].as<Canis::UUID>(0) != Canis::UUID(0))
-                        _entity.scene.GetEntityAfterLoad(rectTransform["parent"].as<Canis::UUID>(0), rt.parent);
-                    
-                    if (auto children = rectTransform["children"]; children && children.IsSequence())
-                    {
-                        const std::size_t count = children.size();
-                        rt.children.clear();
-                        rt.children.resize(count);
-
-                        std::size_t i = 0;
-                        for (const auto &e : children)
-                        {
-                            auto uuid = e.as<Canis::UUID>(Canis::UUID(0));
-                            _entity.scene.GetEntityAfterLoad(uuid, rt.children[i++]);
-                        }
-                    }
-                    
-                        //rt.scaleWithScreen = (ScaleWithScreen)rectTransform["scaleWithScreen"].as<int>(0);
-                    if (_callCreate)
-                        rt.Create();
-                }
-            },
-            .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
-                RectTransform* transform = nullptr;
-                if (_entity.HasComponent<RectTransform>() && ((transform = &_entity.GetComponent<RectTransform>()), true))
-                {
-                    const bool beforeActive = transform->active;
-                    const Vector2 beforePosition = transform->position;
-                    const Vector2 beforeSize = transform->size;
-                    const Vector2 beforeScale = transform->scale;
-                    const Vector2 beforeAnchorMin = transform->anchorMin;
-                    const Vector2 beforeAnchorMax = transform->anchorMax;
-                    const Vector2 beforePivot = transform->pivot;
-                    const Vector2 beforeOriginOffset = transform->originOffset;
-                    const Vector2 beforeRotationOriginOffset = transform->rotationOriginOffset;
-                    const float beforeDepth = transform->depth;
-                    const float beforeRotation = transform->rotation;
-
-                    DrawInspectorField(_editor, "active", _conf.name.c_str(), transform->active);
-                    DrawInspectorField(_editor, "position", _conf.name.c_str(), transform->position);
-                    DrawInspectorField(_editor, "size", _conf.name.c_str(), transform->size);
-                    DrawInspectorField(_editor, "scale", _conf.name.c_str(), transform->scale);
-                    int anchorPreset = transform->GetAnchorPreset();
-                    int anchorPresetSelection = anchorPreset < 0 ? 0 : anchorPreset + 1;
-                    static const char* anchorPresetLabels[] = {
-                        "Custom",
-                        "Top Left", "Top Center", "Top Right",
-                        "Center Left", "Center", "Center Right",
-                        "Bottom Left", "Bottom Center", "Bottom Right"
-                    };
-                    if (DrawInspectorComboField("anchorPreset", _conf.name.c_str(), &anchorPresetSelection, anchorPresetLabels, IM_ARRAYSIZE(anchorPresetLabels)) && anchorPresetSelection > 0)
-                        transform->SetAnchorPreset(static_cast<RectAnchor>(anchorPresetSelection - 1));
-
-                    DrawInspectorField(_editor, "anchorMin", _conf.name.c_str(), transform->anchorMin);
-                    DrawInspectorField(_editor, "anchorMax", _conf.name.c_str(), transform->anchorMax);
-                    DrawInspectorField(_editor, "pivot", _conf.name.c_str(), transform->pivot);
-                    DrawInspectorField(_editor, "originOffset", _conf.name.c_str(), transform->originOffset);
-                    DrawInspectorField(_editor, "rotationOriginOffset", _conf.name.c_str(), transform->rotationOriginOffset);
-                    DrawInspectorField(_editor, "depth", _conf.name.c_str(), transform->depth);
-                    DrawInspectorField(_editor, "opacity", _conf.name.c_str(), transform->opacity);
-                    // let user work with degrees
-                    float degrees = RAD2DEG * transform->rotation;
-                    DrawInspectorField(_editor, "rotation", _conf.name.c_str(), degrees);
-                    transform->rotation = DEG2RAD * degrees;
-
-                    auto clamp01 = [](float value) -> float
-                    {
-                        return std::clamp(value, 0.0f, 1.0f);
-                    };
-
-                    transform->anchorMin.x = clamp01(transform->anchorMin.x);
-                    transform->anchorMin.y = clamp01(transform->anchorMin.y);
-                    transform->anchorMax.x = std::clamp(transform->anchorMax.x, transform->anchorMin.x, 1.0f);
-                    transform->anchorMax.y = std::clamp(transform->anchorMax.y, transform->anchorMin.y, 1.0f);
-                    transform->pivot.x = clamp01(transform->pivot.x);
-                    transform->pivot.y = clamp01(transform->pivot.y);
-
-                    if (beforeActive != transform->active)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "active", AnimationValueType::BOOL, AnimationInterpolation::STEP, AnimationValue::Bool(transform->active));
-                    if (beforePosition != transform->position)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "position", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->position));
-                    if (beforeSize != transform->size)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "size", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->size));
-                    if (beforeScale != transform->scale)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "scale", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->scale));
-                    if (beforeAnchorMin != transform->anchorMin)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "anchorMin", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->anchorMin));
-                    if (beforeAnchorMax != transform->anchorMax)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "anchorMax", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->anchorMax));
-                    if (beforePivot != transform->pivot)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "pivot", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->pivot));
-                    if (beforeOriginOffset != transform->originOffset)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "originOffset", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->originOffset));
-                    if (beforeRotationOriginOffset != transform->rotationOriginOffset)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotationOriginOffset", AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(transform->rotationOriginOffset));
-                    if (std::fabs(beforeDepth - transform->depth) > 0.00001f)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "depth", AnimationValueType::FLOAT, AnimationInterpolation::LINEAR, AnimationValue::Float(transform->depth));
-                    if (std::fabs(beforeRotation - transform->rotation) > 0.00001f)
-                        _editor.NotifyAnimationPropertyEdited(_entity, _conf.name, "rotation", AnimationValueType::FLOAT, AnimationInterpolation::LINEAR, AnimationValue::Float(transform->rotation));
-                }
-            },
+        ScriptConf rectLayoutConf;
+        rectLayoutConf.name = RectLayout::ScriptName;
+        rectLayoutConf.Add = [](Entity& owner) { owner.AddComponent<RectLayout>(); };
+        rectLayoutConf.Has = [](Entity& owner) { return owner.HasComponent<RectLayout>(); };
+        rectLayoutConf.Remove = [](Entity& owner) { owner.RemoveComponent<RectLayout>(); };
+        rectLayoutConf.Get = [](Entity& owner) -> void* { return owner.TryGetComponent<RectLayout>(); };
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, active);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, opacity);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, size);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, anchorMin);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, anchorMax);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, pivot);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, originOffset);
+        REGISTER_PROPERTY(rectLayoutConf, RectLayout, rotationOriginOffset);
+        rectLayoutConf.Encode = [](YAML::Node& node, Entity& owner) {
+            if (auto* layout = owner.TryGetComponent<RectLayout>()) {
+                YAML::Node data;
+                data["active"] = layout->active;
+                data["opacity"] = layout->opacity;
+                data["size"] = layout->size;
+                data["anchorMin"] = layout->anchorMin;
+                data["anchorMax"] = layout->anchorMax;
+                data["pivot"] = layout->pivot;
+                data["originOffset"] = layout->originOffset;
+                data["rotationOriginOffset"] = layout->rotationOriginOffset;
+                node[RectLayout::ScriptName] = data;
+            }
         };
-
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, active);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, position);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, size);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, scale);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, anchorMin);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, anchorMax);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, pivot);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, originOffset);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, depth);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, rotation);
-        REGISTER_PROPERTY(rectTransformConf, RectTransform, rotationOriginOffset);
-
-        RegisterScript(rectTransformConf);
+        rectLayoutConf.Decode = [](YAML::Node& node, Entity& owner, bool) {
+            if (const auto data = node[RectLayout::ScriptName]) {
+                auto& layout = *owner.AddComponent<RectLayout>();
+                layout.active = data["active"].as<bool>(layout.active);
+                layout.opacity = data["opacity"].as<float>(1.0f);
+                layout.size = data["size"].as<Vector2>(layout.size);
+                layout.anchorMin = data["anchorMin"].as<Vector2>(layout.anchorMin);
+                layout.anchorMax = data["anchorMax"].as<Vector2>(layout.anchorMax);
+                layout.pivot = data["pivot"].as<Vector2>(layout.pivot);
+                layout.originOffset = data["originOffset"].as<Vector2>(layout.originOffset);
+                layout.rotationOriginOffset = data["rotationOriginOffset"].as<Vector2>(layout.rotationOriginOffset);
+            }
+        };
+        rectLayoutConf.DrawInspector = [](Editor& editor, Entity& owner, const ScriptConf& conf) {
+            auto& layout = owner.GetComponent<RectLayout>();
+            const RectLayout before = layout;
+            const Vector3 beforePosition = layout.Spatial().position;
+            if (DrawRectLayoutAnchorPresets(layout)) editor.NotifySceneChanged();
+            DrawInspectorField(editor, "active", conf.name.c_str(), layout.active);
+            DrawInspectorField(editor, "opacity", conf.name.c_str(), layout.opacity);
+            DrawInspectorField(editor, "size", conf.name.c_str(), layout.size);
+            DrawInspectorField(editor, "anchorMin", conf.name.c_str(), layout.anchorMin);
+            DrawInspectorField(editor, "anchorMax", conf.name.c_str(), layout.anchorMax);
+            DrawInspectorField(editor, "pivot", conf.name.c_str(), layout.pivot);
+            DrawInspectorField(editor, "originOffset", conf.name.c_str(), layout.originOffset);
+            DrawInspectorField(editor, "rotationOriginOffset", conf.name.c_str(), layout.rotationOriginOffset);
+            layout.anchorMin = glm::clamp(layout.anchorMin, Vector2(0), Vector2(1));
+            layout.anchorMax = glm::clamp(layout.anchorMax, layout.anchorMin, Vector2(1));
+            layout.pivot = glm::clamp(layout.pivot, Vector2(0), Vector2(1));
+            if (before.opacity != layout.opacity)
+                editor.NotifyAnimationPropertyEdited(owner, conf.name, "opacity", AnimationValueType::FLOAT, AnimationInterpolation::LINEAR, AnimationValue::Float(layout.opacity));
+            if (before.active != layout.active)
+                editor.NotifyAnimationPropertyEdited(owner, conf.name, "active", AnimationValueType::BOOL, AnimationInterpolation::STEP, AnimationValue::Bool(layout.active));
+            const std::pair<const char*, Vector2 RectLayout::*> fields[] = {
+                {"size", &RectLayout::size}, {"anchorMin", &RectLayout::anchorMin},
+                {"anchorMax", &RectLayout::anchorMax}, {"pivot", &RectLayout::pivot},
+                {"originOffset", &RectLayout::originOffset}, {"rotationOriginOffset", &RectLayout::rotationOriginOffset}};
+            for (const auto& [name, member] : fields)
+                if (before.*member != layout.*member)
+                    editor.NotifyAnimationPropertyEdited(owner, conf.name, name, AnimationValueType::VEC2, AnimationInterpolation::LINEAR, AnimationValue::Vec2(layout.*member));
+            if (beforePosition != layout.Spatial().position)
+                editor.NotifyAnimationPropertyEdited(owner, Transform::ScriptName, "position", AnimationValueType::VEC3, AnimationInterpolation::LINEAR, AnimationValue::Vec3(layout.Spatial().position));
+        };
+        RegisterScript(rectLayoutConf);
 
         ScriptConf sprite2DConf = {
             .name = "Canis::Sprite2D",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                // TODO: require a RectTransform component
+                _entity.AddComponent<RectLayout>();
                 Sprite2D& sprite = *_entity.AddComponent<Sprite2D>();
                 sprite.textureHandle = Canis::AssetManager::GetTextureHandle("assets/defaults/textures/square.png");
                 //sprite->size.x = sprite->textureHandle.texture.width;
@@ -3639,7 +3532,7 @@ namespace Canis
                         if (MetaFileAsset* meta = AssetManager::GetMetaFile(texturePath))
                             textureAsset["uuid"] = (uint64_t)meta->uuid;
                     }
-                    
+
                     comp["TextureAsset"] = textureAsset;
                     _node["Canis::Sprite2D"] = comp;
                 }
@@ -3675,8 +3568,7 @@ namespace Canis
                             sprite.textureHandle = AssetManager::GetTextureHandle(path);
                     }
                     //sprite.textureHandle = sprite2DComponent["TextureHandle"].as<TextureHandle>();//AssetManager::GetTextureHandle(sprite2DComponent["textureHandle"].as<std::string>());
-                    if (_callCreate)
-                        sprite.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -3688,7 +3580,7 @@ namespace Canis
                     DrawInspectorField(_editor, "uv", _conf.name.c_str(), sprite->uv);
 
                     bool updateUV = false;
-                    
+
                     const bool flipXBefore = sprite->flipX;
                     DrawInspectorField(_editor, "flipX", _conf.name.c_str(), sprite->flipX);
                     if (flipXBefore != sprite->flipX)
@@ -3697,7 +3589,7 @@ namespace Canis
                     DrawInspectorField(_editor, "flipY", _conf.name.c_str(), sprite->flipY);
                     if (flipYBefore != sprite->flipY)
                         updateUV = true;
-                    
+
                     if (updateUV)
                     {
                         if (SpriteAnimation* animation = _entity.HasComponent<SpriteAnimation>() ? &_entity.GetComponent<SpriteAnimation>() : nullptr)
@@ -3759,7 +3651,7 @@ namespace Canis
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
 
-                _entity.AddComponent<RectTransform>();
+                _entity.AddComponent<RectLayout>();
 
                 Text& text = *_entity.AddComponent<Text>();
                 text.assetId = AssetManager::LoadText("assets/fonts/Antonio-Bold.ttf", 32);
@@ -3827,8 +3719,7 @@ namespace Canis
                             text.assetId = AssetManager::LoadText(path, fontSize);
                     }
 
-                    if (_callCreate)
-                        text.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -3861,27 +3752,34 @@ namespace Canis
                         text->_status |= BIT::ONE;
                     }
 
-                    if (text->assetId > -1)
-                    {
-                        TextAsset* textAsset = AssetManager::GetText(text->assetId);
-                        MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
-                        DrawInspectorAssetButton(_editor, "font", "textFont",
-                            fontMeta != nullptr ? fontMeta->name : "Missing Font",
-                            textAsset != nullptr ? textAsset->GetPath() : "");
+                    TextAsset* textAsset = AssetManager::GetText(text->assetId);
+                    MetaFileAsset* fontMeta = textAsset != nullptr ? AssetManager::GetMetaFile(textAsset->GetPath()) : nullptr;
+                    DrawInspectorAssetButton(_editor, "font", "textFont",
+                        fontMeta != nullptr ? fontMeta->name : "Missing Font",
+                        textAsset != nullptr ? textAsset->GetPath() : "");
 
-                        if (ImGui::BeginDragDropTarget())
+                    if (ImGui::BeginDragDropTarget())
+                    {
+                        if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
                         {
-                            if (const ImGuiPayload* payload = ImGui::AcceptDragDropPayload("ASSET_DRAG"))
+                            const AssetDragData dropped = *static_cast<const AssetDragData*>(payload->Data);
+                            const std::string path = AssetManager::GetPath(dropped.uuid);
+                            const std::string extension = ToLower(std::filesystem::path(path).extension().string());
+                            if (extension == ".ttf" || extension == ".otf")
                             {
-                                const AssetDragData dropped = *static_cast<const AssetDragData*>(payload->Data);
-                                std::string path = AssetManager::GetPath(dropped.uuid);
-                                const unsigned int fontSize = (textAsset == nullptr) ? 32u : textAsset->GetFontSize();
-                                text->assetId = AssetManager::LoadText(path, fontSize);
-                                text->_status |= BIT::ONE;
+                                const unsigned int fontSize = textAsset != nullptr ? textAsset->GetFontSize() : 32u;
+                                const int fontId = AssetManager::LoadText(path, fontSize);
+                                if (fontId >= 0)
+                                {
+                                    text->assetId = fontId;
+                                    text->_status |= BIT::ONE;
+                                }
                             }
-                            ImGui::EndDragDropTarget();
                         }
+                        ImGui::EndDragDropTarget();
                     }
+                    if (textAsset == nullptr)
+                        ImGui::TextWrapped("No font assigned. Drag a .ttf or .otf font into the font field.");
                 }
             },
         };
@@ -3892,8 +3790,8 @@ namespace Canis
             .name = "Canis::UIButton",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                if (!_entity.HasComponent<RectTransform>())
-                    _entity.AddComponent<RectTransform>();
+                if (!_entity.HasComponent<RectLayout>())
+                    _entity.AddComponent<RectLayout>();
                 _entity.AddComponent<UIButton>();
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<UIButton>(); },
@@ -3926,13 +3824,13 @@ namespace Canis
                     UIButton& button = *_entity.AddComponent<UIButton>();
                     button.active = comp["active"].as<bool>(true);
                     button.defaultSelected = comp["defaultSelected"].as<bool>(false);
-                    if (comp["up"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["up"])
                         _entity.scene.GetEntityAfterLoad(comp["up"].as<Canis::UUID>(0), button.up);
-                    if (comp["down"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["down"])
                         _entity.scene.GetEntityAfterLoad(comp["down"].as<Canis::UUID>(0), button.down);
-                    if (comp["left"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["left"])
                         _entity.scene.GetEntityAfterLoad(comp["left"].as<Canis::UUID>(0), button.left);
-                    if (comp["right"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["right"])
                         _entity.scene.GetEntityAfterLoad(comp["right"].as<Canis::UUID>(0), button.right);
                     button.targetScript = comp["targetScript"].as<std::string>("");
                     button.actionName = comp["actionName"].as<std::string>("");
@@ -3942,11 +3840,10 @@ namespace Canis
                     button.hoverScale = comp["hoverScale"].as<float>(1.03f);
                     button.pressedScale = comp["pressedScale"].as<float>(0.98f);
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), button.targetEntity);
 
-                    if (_callCreate)
-                        button.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -3982,8 +3879,8 @@ namespace Canis
             .name = "Canis::UIInputField",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                if (!_entity.HasComponent<RectTransform>())
-                    _entity.AddComponent<RectTransform>();
+                if (!_entity.HasComponent<RectLayout>())
+                    _entity.AddComponent<RectLayout>();
                 _entity.AddComponent<UIInputField>();
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<UIInputField>(); },
@@ -4029,14 +3926,13 @@ namespace Canis
                     inputField.textColor = comp["textColor"].as<Vector4>(Color(1.0f));
                     inputField.placeholderColor = comp["placeholderColor"].as<Vector4>(Color(0.7f, 0.7f, 0.7f, 1.0f));
 
-                    if (comp["displayEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["displayEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["displayEntity"].as<Canis::UUID>(0), inputField.displayEntity);
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), inputField.targetEntity);
 
-                    if (_callCreate)
-                        inputField.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -4068,8 +3964,8 @@ namespace Canis
             .name = "Canis::UIDragSource",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                if (!_entity.HasComponent<RectTransform>())
-                    _entity.AddComponent<RectTransform>();
+                if (!_entity.HasComponent<RectLayout>())
+                    _entity.AddComponent<RectLayout>();
                 _entity.AddComponent<UIDragSource>();
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<UIDragSource>(); },
@@ -4093,8 +3989,7 @@ namespace Canis
                     dragSource.payloadType = comp["payloadType"].as<std::string>("");
                     dragSource.payloadValue = comp["payloadValue"].as<std::string>("");
 
-                    if (_callCreate)
-                        dragSource.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -4114,8 +4009,8 @@ namespace Canis
             .name = "Canis::UIDropTarget",
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
-                if (!_entity.HasComponent<RectTransform>())
-                    _entity.AddComponent<RectTransform>();
+                if (!_entity.HasComponent<RectLayout>())
+                    _entity.AddComponent<RectLayout>();
                 _entity.AddComponent<UIDropTarget>();
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<UIDropTarget>(); },
@@ -4146,11 +4041,10 @@ namespace Canis
                     dropTarget.baseColor = comp["baseColor"].as<Vector4>(Color(1.0f));
                     dropTarget.hoverColor = comp["hoverColor"].as<Vector4>(Color(1.0f));
 
-                    if (comp["targetEntity"].as<Canis::UUID>(0) != Canis::UUID(0))
+                    if (comp["targetEntity"])
                         _entity.scene.GetEntityAfterLoad(comp["targetEntity"].as<Canis::UUID>(0), dropTarget.targetEntity);
 
-                    if (_callCreate)
-                        dropTarget.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -4179,7 +4073,7 @@ namespace Canis
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void {
                 Camera2D& camera = *_entity.AddComponent<Camera2D>();
-                camera.Create();
+
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<Camera2D>(); },
             .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<Camera2D>(); },
@@ -4202,8 +4096,7 @@ namespace Canis
                     Camera2D& camera = *_entity.AddComponent<Camera2D>();
                     camera.SetPosition(camera2DComponent["position"].as<Vector2>(camera.GetPosition()));
                     camera.SetScale(camera2DComponent["scale"].as<float>(camera.GetScale()));
-                    if (_callCreate)
-                        camera.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -4218,7 +4111,7 @@ namespace Canis
 
                     if (lastPosition != camera->GetPosition())
                         camera->SetPosition(lastPosition);
-                    
+
                     if (lastScale != camera->GetScale())
                         camera->SetScale(lastScale);
                 }
@@ -4232,7 +4125,7 @@ namespace Canis
             .Construct = nullptr,
             .Add = [this](Entity& _entity) -> void { _entity.AddComponent<Transform>(); },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<Transform>(); },
-            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<Transform>(); },
+            .Remove = [this](Entity& _entity) -> void { _entity.RemoveComponent<RectLayout>(); _entity.RemoveComponent<Transform>(); },
             .Get = [this](Entity& _entity) -> void* { return _entity.HasComponent<Transform>() ? (void*)(&_entity.GetComponent<Transform>()) : nullptr; },
             .Encode = [](YAML::Node &_node, Entity &_entity) -> void {
                 if (_entity.HasComponent<Transform>())
@@ -4287,8 +4180,7 @@ namespace Canis
                         }
                     }
 
-                    if (_callCreate)
-                        transform.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -4377,8 +4269,7 @@ namespace Canis
                 identity.replicateTransform = comp["replicateTransform"].as<bool>(true);
                 identity.prefab = comp["prefab"].as<SceneAssetHandle>(identity.prefab);
 
-                if (_callCreate)
-                    identity.Create();
+
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
                 NetworkIdentity *identity = nullptr;
@@ -4470,8 +4361,7 @@ namespace Canis
                     rigidbody.lockRotationZ = comp["lockRotationZ"].as<bool>(false);
                     rigidbody.linearVelocity = comp["linearVelocity"].as<Vector3>(Vector3(0.0f));
                     rigidbody.angularVelocity = comp["angularVelocity"].as<Vector3>(Vector3(0.0f));
-                    if (_callCreate)
-                        rigidbody.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4546,8 +4436,7 @@ namespace Canis
                     boxCollider.active = comp["active"].as<bool>(true);
                     boxCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     boxCollider.size = comp["size"].as<Vector3>(Vector3(1.0f));
-                    if (_callCreate)
-                        boxCollider.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4605,8 +4494,7 @@ namespace Canis
                     sphereCollider.active = comp["active"].as<bool>(true);
                     sphereCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     sphereCollider.radius = comp["radius"].as<float>(0.5f);
-                    if (_callCreate)
-                        sphereCollider.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4666,8 +4554,7 @@ namespace Canis
                     capsuleCollider.offset = comp["offset"].as<Vector3>(Vector3(0.0f));
                     capsuleCollider.halfHeight = comp["halfHeight"].as<float>(0.5f);
                     capsuleCollider.radius = comp["radius"].as<float>(0.25f);
-                    if (_callCreate)
-                        capsuleCollider.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4764,8 +4651,7 @@ namespace Canis
                     meshCollider.modelId = -1;
                     if (!meshCollider.modelPath.empty())
                         meshCollider.modelId = AssetManager::LoadModel(meshCollider.modelPath);
-                    if (_callCreate)
-                        meshCollider.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4845,8 +4731,7 @@ namespace Canis
                         collider.modelPath = comp["modelPath"].as<std::string>("");
 
                     collider.modelId = collider.modelPath.empty() ? -1 : AssetManager::LoadModel(collider.modelPath);
-                    if (_callCreate)
-                        collider.Create();
+
                 }
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -4921,8 +4806,7 @@ namespace Canis
                 surface.collisionMask = comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask);
                 surface.MarkDirty();
                 _entity.scene.InvalidateNavMesh(_entity);
-                if (_callCreate)
-                    surface.Create();
+
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
                 if (!_entity.HasComponent<NavMeshSurface>())
@@ -5031,8 +4915,7 @@ namespace Canis
                 surface.nodeSpacing = std::max(0.25f, comp["nodeSpacing"].as<float>(surface.nodeSpacing));
                 surface.agentRadius = std::max(0.0f, comp["agentRadius"].as<float>(surface.agentRadius));
                 surface.collisionMask = comp["collisionMask"].as<Mask>(Rigidbody::DefaultMask);
-                if (_callCreate)
-                    surface.Create();
+
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
                 if (!_entity.HasComponent<CloudNavSurface>())
@@ -5180,8 +5063,7 @@ namespace Canis
                 }
                 shape.visibleInGame = comp["visibleInGame"].as<bool>(true);
                 shape.castShadow = comp["castShadow"].as<bool>(true);
-                if (_callCreate)
-                    shape.Create();
+
                 RebuildBlockoutEntity(_entity);
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -5393,8 +5275,7 @@ namespace Canis
 
                 auto &terrain = *_entity.AddComponent<Terrain>();
                 terrain.terrain = comp["TerrainAsset"].as<TerrainAssetHandle>(TerrainAssetHandle{});
-                if (_callCreate)
-                    terrain.Create();
+
                 RebuildTerrainEntity(_entity);
             },
             .DrawInspector = [this](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -5529,8 +5410,7 @@ namespace Canis
                     camera.fovDegrees = comp["fovDegrees"].as<float>(60.0f);
                     camera.nearClip = comp["nearClip"].as<float>(0.1f);
                     camera.farClip = comp["farClip"].as<float>(1000.0f);
-                    if (_callCreate)
-                        camera.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -5580,8 +5460,7 @@ namespace Canis
                     light.color = DecodeLightColor(comp["color"]);
                     light.intensity = comp["intensity"].as<float>(1.0f);
                     light.direction = comp["direction"].as<Vector3>(Vector3(-0.4f, -1.0f, -0.25f));
-                    if (_callCreate)
-                        light.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -5635,8 +5514,7 @@ namespace Canis
                     light.color = DecodeLightColor(comp["color"]);
                     light.intensity = comp["intensity"].as<float>(1.2f);
                     light.range = comp["range"].as<float>(12.0f);
-                    if (_callCreate)
-                        light.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -5694,8 +5572,7 @@ namespace Canis
                     light.range = comp["range"].as<float>(35.0f);
                     light.spotAngle = std::clamp(comp["spotAngle"].as<float>(55.f), .1f, 179.f);
                     light.innerAngle = std::clamp(comp["innerAngle"].as<float>(35.f), 0.f, light.spotAngle);
-                    if (_callCreate)
-                        light.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -5851,8 +5728,7 @@ namespace Canis
                     if (auto uniformOverrides = comp["UniformOverrides"]; uniformOverrides && uniformOverrides.IsMap())
                         DecodeMaterialOverrides(uniformOverrides, material.materialFields);
 
-                    if (_callCreate)
-                        material.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -6236,7 +6112,7 @@ namespace Canis
                 group.bias=data["bias"].as<float>(1);group.hysteresis=data["hysteresis"].as<float>(.15f);
                 group.cullHeight=data["cullHeight"].as<float>(0);group.shadowBias=data["shadowBias"].as<int>(1);
                 group.forcedLevel=data["forcedLevel"].as<int>(-1);group.debugColors=data["debugColors"].as<bool>(false);
-                if(create)group.Create();
+
             },
             .DrawInspector = [](Editor& editor, Entity& entity, const ScriptConf& conf) {
                 auto& group=entity.GetComponent<LODGroup>();
@@ -6400,8 +6276,7 @@ namespace Canis
                     //    }
                     //}
 
-                    if (_callCreate)
-                        model.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -6557,8 +6432,7 @@ namespace Canis
                     animation.rootMotionMask =
                         comp["rootMotionMask"].as<Vector3>(Vector3(0.0f));
 
-                    if (_callCreate)
-                        animation.Create();
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
@@ -6688,8 +6562,7 @@ namespace Canis
                 Animator &animator = *_entity.AddComponent<Animator>();
                 animator.controller = comp["controller"].as<AnimatorControllerAssetHandle>(animator.controller);
                 animator.playing = comp["playing"].as<bool>(animator.playing);
-                if (_callCreate)
-                    animator.Create();
+
             }
         };
         animatorConf.DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -6827,8 +6700,7 @@ namespace Canis
                 player.loop = comp["loop"].as<bool>(player.loop);
                 player.speed = comp["speed"].as<float>(player.speed);
                 player.time = comp["time"].as<float>(player.time);
-                if (_callCreate)
-                    player.Create();
+
             }
         };
         animationPlayerConf.DrawInspector = [](Editor &_editor, Entity &_entity, const ScriptConf &_conf) -> void {
@@ -6847,7 +6719,7 @@ namespace Canis
                     Sprite2D* sprite = _entity.AddComponent<Sprite2D>();
                     sprite->textureHandle = Canis::AssetManager::GetTextureHandle("assets/defaults/textures/square.png");
                 }
-                
+
                 SpriteAnimation* anim = _entity.AddComponent<SpriteAnimation>();
             },
             .Has = [this](Entity& _entity) -> bool { return _entity.HasComponent<SpriteAnimation>(); },
@@ -6869,21 +6741,20 @@ namespace Canis
                 if (auto comp = _node["Canis::SpriteAnimation"])
                 {
                     auto &animation = *_entity.AddComponent<SpriteAnimation>();
-                    
+
                     Canis::UUID uuid = comp["id"].as<u64>();
                     AssetManager::GetSpriteAnimation(AssetManager::GetPath(uuid));
                     animation.id = AssetManager::GetID(uuid);
                     animation.speed = comp["speed"].as<f32>(1.0f);
-                    
-                    if (_callCreate)
-                        animation.Create();
+
+
                 }
             },
             .DrawInspector = [this](Editor& _editor, Entity& _entity, const ScriptConf& _conf) -> void {
                 SpriteAnimation* animation = nullptr;
                 if (_entity.HasComponent<SpriteAnimation>() && ((animation = &_entity.GetComponent<SpriteAnimation>()), true))
                 {
-                    
+
                     _editor.InputAnimationClip("animation", animation->id);
                     DrawInspectorField(_editor, "speed", _conf.name.c_str(), animation->speed);
                 }
@@ -6897,7 +6768,7 @@ namespace Canis
             .name = "Create Square",
             .Func = [](App& _app, Editor& _editor, Entity& _entity, std::vector<ScriptConf>& _scriptConfs) -> void {
                 Canis::Entity *entityOne = _app.scene.CreateEntity("Square");
-                RectTransform * transform = entityOne->AddComponent<RectTransform>();
+                RectLayout * transform = entityOne->AddComponent<RectLayout>();
                 Canis::Sprite2D *sprite = entityOne->AddComponent<Sprite2D>();
 
                 sprite->textureHandle = Canis::AssetManager::GetTextureHandle("assets/defaults/textures/square.png");
@@ -6911,7 +6782,7 @@ namespace Canis
             .name = "Create Circle",
             .Func = [](App& _app, Editor& _editor, Entity& _entity, std::vector<ScriptConf>& _scriptConfs) -> void {
                 Canis::Entity *entityOne = _app.scene.CreateEntity("Circle");
-                RectTransform * transform = entityOne->AddComponent<RectTransform>();
+                RectLayout * transform = entityOne->AddComponent<RectLayout>();
                 Canis::Sprite2D *sprite = entityOne->AddComponent<Sprite2D>();
 
                 sprite->textureHandle = Canis::AssetManager::GetTextureHandle("assets/defaults/textures/circle.png");
@@ -6957,10 +6828,10 @@ namespace Canis
             .name = "Create Cube",
             .Func = [](App& _app, Editor& _editor, Entity& _entity, std::vector<ScriptConf>& _scriptConfs) -> void {
                 Canis::Entity *cube = _app.scene.CreateEntity("Cube");
-                
+
                 Transform *transform = cube->AddComponent<Transform>();
                 transform->position = Vector3(0.0f);
-                
+
                 Model* model = cube->AddComponent<Model>();
                 model->modelId = AssetManager::LoadModel("assets/defaults/models/cube.glb");
 
@@ -7152,6 +7023,20 @@ namespace Canis
                 return;
 
         ComponentConf conf = _conf;
+        if (!conf.Construct) {
+            if (auto add = conf.Add) {
+                conf.Add = [add](Entity& owner) {
+                    ComponentCreateScope creates(owner.scene);
+                    add(owner);
+                };
+            }
+            if (auto decode = conf.Decode) {
+                conf.Decode = [decode](YAML::Node& node, Entity& owner, bool callCreate) {
+                    ComponentCreateScope creates(owner.scene, callCreate);
+                    decode(node, owner, false);
+                };
+            }
+        }
         conf.registeredFromGameCode = m_registeringGameCodeScripts;
         m_scriptRegistry.push_back(conf);
     }

@@ -8,6 +8,12 @@
 
 namespace Canis
 {
+    void Validate(float &_ref)
+    {
+        if (!std::isfinite(_ref))
+            _ref = 0.0f;
+    }
+
     size_t HashCombine(size_t _seed, size_t _value)
     {
         return _seed ^ (_value + 0x9e3779b97f4a7c15ULL + (_seed << 6) + (_seed >> 2));

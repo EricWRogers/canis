@@ -78,7 +78,7 @@ namespace
             r.on_destroy<TrailRenderer>().connect<&Context::Removed<TrailRenderer>>(this);
             r.on_destroy<PointLight>().connect<&Context::Removed<PointLight>>(this);
             r.on_destroy<PrefabInstance>().connect<&Context::Removed<PrefabInstance>>(this);
-            r.on_destroy<RectTransform>().connect<&Context::Removed<RectTransform>>(this);
+            r.on_destroy<RectLayout>().connect<&Context::Removed<RectLayout>>(this);
             r.on_destroy<Rigidbody>().connect<&Context::Removed<Rigidbody>>(this);
             r.on_destroy<SphereCollider>().connect<&Context::Removed<SphereCollider>>(this);
             r.on_destroy<Sprite2D>().connect<&Context::Removed<Sprite2D>>(this);
@@ -121,7 +121,7 @@ namespace
             r.on_destroy<TrailRenderer>().disconnect(this);
             r.on_destroy<PointLight>().disconnect(this);
             r.on_destroy<PrefabInstance>().disconnect(this);
-            r.on_destroy<RectTransform>().disconnect(this);
+            r.on_destroy<RectLayout>().disconnect(this);
             r.on_destroy<Rigidbody>().disconnect(this);
             r.on_destroy<SphereCollider>().disconnect(this);
             r.on_destroy<Sprite2D>().disconnect(this);
@@ -285,9 +285,6 @@ void RegisterSceneBindings(App& app)
                 result.push_back(context->Handle(entity.TryGet()));
             if (auto* transform = entity.TryGetComponent<Transform>())
                 for (auto child : transform->children)
-                    self(self, child, true);
-            if (auto* rect = entity.TryGetComponent<RectTransform>())
-                for (auto child : rect->children)
                     self(self, child, true);
         };
         visit(visit, context->Resolve(id), includeSelf);

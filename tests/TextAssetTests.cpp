@@ -1,4 +1,9 @@
 #include <Canis/Asset.hpp>
+#include <Canis/AssetManager.hpp>
+#include <Canis/App.hpp>
+#include <Canis/Editor.hpp>
+#include <Canis/Yaml.hpp>
+#include <chrono>
 #include <Canis/Window.hpp>
 #include <Canis/ECS/Systems/SpriteRenderer2DSystem.hpp>
 #include <Canis/OpenGL.hpp>
@@ -16,7 +21,7 @@ int main(int argc, char** argv)
     try {
         if (argc > 1) std::filesystem::current_path(argv[1]);
         Window window("SDF font tests",320,240,true);
-        const std::string path="assets/fonts/Colony/FiraSans-Regular.ttf";
+        const std::string path="assets/fonts/Antonio-Bold.ttf";
         FT_Library library; FT_Face face;
         Check(FT_Init_FreeType(&library)==0,"FreeType init failed");
         Check(FT_New_Face(library,path.c_str(),0,&face)==0,"Reference font load failed");
@@ -55,6 +60,35 @@ int main(int argc, char** argv)
         const auto shared=small.GetTexture();small.Free();Check(glIsTexture(shared),"Freeing one font size deleted a shared atlas");
         large.Free();Check(!glIsTexture(shared),"Last atlas owner leaked its texture");
         FT_Done_Face(face);FT_Done_FreeType(library);
+        // A failed font load must not leave a cached, apparently valid asset.
+        const auto retryPath = std::filesystem::temp_directory_path() /
+            ("canis-font-retry-" + std::to_string(std::chrono::steady_clock::now().time_since_epoch().count()) + ".ttf");
+        const auto assetCount = AssetManager::GetAssetLibrary().assets.size();
+        Check(AssetManager::LoadText(retryPath.string(), 32) == -1 &&
+              AssetManager::GetAssetLibrary().assets.size() == assetCount,
+              "Failed font was cached as a valid text asset");
+        std::filesystem::copy_file(path, retryPath);
+        const int retried = AssetManager::LoadText(retryPath.string(), 32);
+        auto* recovered = AssetManager::GetText(retried);
+        Check(recovered && recovered->GetTexture() != 0 && recovered->characters['H'].advance > 0,
+              "Restoring a missing font did not recover its glyphs");
+        Check(AssetManager::LoadText(retryPath.string(), 32) == retried, "Valid font did not reuse its cached asset");
+        AssetManager::Free<TextAsset>(retryPath.string() + "32");
+        std::filesystem::remove(retryPath);
+#if CANIS_EDITOR
+        App app; Editor editor; app.scene.app = &app; app.RegisterDefaults(editor);
+        auto textOwner = app.scene.CreateEntity("New UI Text");
+        auto* conf = app.GetScriptConf(Text::ScriptName);
+        Check(conf && conf->Add, "Text component was not registered");
+        conf->Add(textOwner);
+        const auto& text = textOwner.GetComponent<Text>();
+        auto* defaultFont = AssetManager::GetText(text.assetId);
+        Check(textOwner.HasComponent<RectLayout>() && defaultFont && defaultFont->GetTexture() != 0 &&
+              defaultFont->GetPath() == path, "New Text did not receive a working Antonio Bold font");
+        YAML::Node encoded; conf->Encode(encoded, textOwner);
+        Check(encoded["Canis::Text"]["FontAsset"]["uuid"].as<uint64_t>() == uint64_t(AssetManager::GetMetaFile(path)->uuid),
+              "Default font did not save its restored asset reference");
+#endif
         Check(glGetError()==GL_NO_ERROR,"Font/atlas operations caused an OpenGL error");
         std::cout<<"FONT_SDF_PASS layout metrics, distance data, padded quads, shared atlas lifetime and mixed sprite batches\n";
         return 0;

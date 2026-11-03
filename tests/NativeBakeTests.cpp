@@ -141,6 +141,30 @@ int main()
         auto geometry = Pipeline::Flatten(Pipeline::ReadGltf(baked.models[0]));
         Check(geometry.primitives[0].vertices.size() > 4,
               "Lighting sampling did not subdivide sparse surfaces");
+        Check(geometry.primitives[0].vertices.size() < geometry.primitives[0].indices.size(),
+              "Baked adjacent triangles retained duplicate evaluated vertices");
+        for (auto index : geometry.primitives[0].indices)
+            Check(index < geometry.primitives[0].vertices.size(), "Baked vertex compaction corrupted topology");
+        {
+            auto emissiveMesh = mesh;
+            emissiveMesh.materials.push_back({{"name", "native-emitter"}});
+            emissiveMesh.primitives[0].material = 0;
+            const auto emitterPath = directory / "emissive-floor.gltf";
+            Pipeline::WriteGltf(emissiveMesh, emitterPath);
+            const auto materialPath = directory / "emissive.material";
+            std::ofstream(materialPath) << "color: [1, 1, 1, 1]\nemissionColor: [0.25, 0.5, 1, 1]\nemissionIntensity: 4\n";
+            auto emissiveScene = YAML::Clone(scene);
+            auto node = emissiveScene["Entities"][0];
+            node["Canis::Model"]["ModelAsset"]["path"] = emitterPath.string();
+            node["Canis::Material"]["MaterialAsset"]["path"] = materialPath.string();
+            auto emissionBake = BakeSceneLighting(emissiveScene, directory / "emissive-bake", options);
+            const auto material = Pipeline::ReadGltf(emissionBake.models[0]).json["materials"][0];
+            const auto emission = material["emissiveFactor"];
+            Check(std::abs(emission[0].get<float>() - std::pow(.25f, 2.2f) * 4) < .0001f &&
+                  std::abs(emission[1].get<float>() - std::pow(.5f, 2.2f) * 4) < .0001f &&
+                  emission[2].get<float>() == 4,
+                  "Native material emission tint/strength was omitted from indirect bake input");
+        }
         float brightest = 0;
         for (auto v : geometry.primitives[0].vertices)
         {

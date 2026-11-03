@@ -27,6 +27,7 @@
 #include <Canis/AssetHandle.hpp>
 #include <Canis/PostProcessPipeline.hpp>
 #include <Canis/Blockout.hpp>
+#include <Canis/ComponentClipboard.hpp>
 #if CANIS_EDITOR
 #include <Canis/EditorRelease.hpp>
 #endif
@@ -40,6 +41,7 @@ namespace Canis
     class Window;
     class Camera2D;
     class Entity;
+    struct ScriptConf;
     struct SpriteEditorState;
     struct GameCodeObject;
 
@@ -96,6 +98,8 @@ namespace Canis
         void FocusEntity(Canis::Entity* _entity);
         // Call after a scene command that does not use an edited property widget.
         void NotifySceneChanged() { m_sceneHistoryEditWasActive = true; }
+        void DrawComponentValueMenu(Entity& entity, const ScriptConf& conf);
+        void DrawManagedComponentValueMenu(Entity& entity, uint64_t token);
         void RevealAsset(const std::string& _path);
         void NavigateAssetReference(const std::string& _path);
         void OpenSpriteEditor(const std::string& _texturePath);
@@ -162,6 +166,7 @@ namespace Canis
             return true;
         }
     private:
+        ComponentClipboard m_componentClipboard;
         using InspectorFieldDrawer = std::function<void(Editor&, const char*, const char*, void*)>;
 
         struct AnimationRestoreBinding
@@ -524,6 +529,12 @@ namespace Canis
         bool m_animationPreviewEnabled = true;
         bool m_animationRecordEnabled = false;
         bool m_animationPlaying = false;
+        bool m_animationLoopPreview = true;
+        bool m_animationShowCurves = false;
+        float m_animationPlaybackSpeed = 1.0f;
+        float m_animationTimelineZoom = 1.0f;
+        float m_animationTimelineStart = 0.0f;
+        bool m_animationSnapToFrames = true;
         float m_animationTime = 0.0f;
         UUID m_animationTargetUUID = UUID(0);
         UUID m_animationPreviewTargetUUID = UUID(0);

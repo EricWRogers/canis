@@ -14,7 +14,7 @@ public static class TweenExtensions
     public static Tween TweenFade(this Text target, float end, double seconds) => Tween.Property(target, 8, end, seconds);
     public static Tween TweenColor(this Sprite2D target, Vector4 end, double seconds) => Tween.Property(target, 9, end, seconds);
     public static Tween TweenFade(this Sprite2D target, float end, double seconds) => Tween.Property(target, 10, end, seconds);
-    public static Tween TweenAnchorPos(this RectTransform target, Vector2 end, double seconds) => Tween.Property(target, 11, end, seconds);
+    public static Tween TweenAnchorPos(this RectLayout target, Vector2 end, double seconds) => Tween.Property(target, 11, end, seconds);
     public static Tween TweenFade(this AudioSource target, float end, double seconds) => Tween.Property(target, 12, end, seconds);
     public static Tween TweenFieldOfView(this Camera target, float end, double seconds) => Tween.Property(target, 13, end, seconds);
     public static Tween TweenIntensity(this PointLight target, float end, double seconds) => Tween.Property(target, 14, end, seconds);

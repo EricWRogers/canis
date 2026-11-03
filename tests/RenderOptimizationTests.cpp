@@ -1014,18 +1014,18 @@ static void OverlayDepthIsolation(Window& window) {
     GLuint texture=0;glGenTextures(1,&texture);glBindTexture(GL_TEXTURE_2D,texture);
     const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
-    auto canvas=scene.CreateEntity("Overlay");auto& canvasRect=*canvas.AddComponent<RectTransform>();
-    canvasRect.anchorMin={0,0};canvasRect.anchorMax={1,1};canvasRect.size={0,0};canvasRect.depth=0;
+    auto canvas=scene.CreateEntity("Overlay");auto& canvasRect=*canvas.AddComponent<RectLayout>();
+    canvasRect.anchorMin={0,0};canvasRect.anchorMax={1,1};canvasRect.size={0,0};canvasRect.Spatial().position.z=0;
     auto& settings=*canvas.AddComponent<Canvas>();settings.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;settings.screenSize={320,240};
     auto sprite=[&](const char* name,Entity parent,Vector2 size,Vector2 position,float depth,Color color) {
-        auto e=scene.CreateEntity(name);auto& rect=*e.AddComponent<RectTransform>();rect.SetParent(&parent);
-        rect.position=position;rect.size=size;rect.depth=depth;
+        auto e=scene.CreateEntity(name);auto& rect=*e.AddComponent<RectLayout>();rect.Spatial().SetParent(&parent, false);
+        rect.SetLocalPosition(position);rect.size=size;rect.Spatial().position.z=depth;
         auto& image=*e.AddComponent<Sprite2D>();image.textureHandle.texture.id=texture;image.color=color;return e;
     };
     sprite("Menu background",canvas,{60,60},{-80,0},.1f,{1,0,0,1});
     sprite("Menu foreground",canvas,{20,20},{-80,0},.2f,{0,1,0,1});
     auto world=scene.CreateEntity("World canvas");world.AddComponent<Transform>()->position={.08f,0,-.3f};
-    world.AddComponent<RectTransform>()->depth=0;world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
+    world.AddComponent<RectLayout>();world.AddComponent<Canvas>()->renderMode=CanvasRenderMode::WORLD_SPACE;
     sprite("World label behind wall",world,{.04f,.04f},{0,0},0,{0,0,1,1});
     MeshRenderer3DSystem meshes;meshes.scene=&scene;meshes.window=&window;meshes.Create();
     SpriteRenderer2DSystem ui;ui.scene=&scene;ui.window=&window;ui.Create();
@@ -1047,6 +1047,22 @@ static void OverlayDepthIsolation(Window& window) {
             Check(!(pixel[2]>240 && pixel[0]<10 && pixel[1]<10),"World-space UI lost occlusion behind scene geometry");
         }
     }
+    scene.ClearEditorCameraOverrides();
+    world.GetComponent<Canvas>().depthTest=false;
+    glClear(GL_COLOR_BUFFER_BIT|GL_DEPTH_BUFFER_BIT);meshes.Update(scene.GetRegistry(),1.f/60);
+    const auto clip=scene.GetLastRenderProjection()*scene.GetLastRenderView()*
+        Vector4(world.GetComponent<Transform>().GetGlobalPosition(),1);
+    const int sampleX=int((clip.x/clip.w*.5f+.5f)*320);
+    float beforeSprite=0,afterSprite=0;
+    glReadPixels(sampleX,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&beforeSprite);
+    ui.Update(scene.GetRegistry(),1.f/60);
+    std::array<unsigned char,4> spritePixel{};
+    glReadPixels(sampleX,120,1,1,GL_RGBA,GL_UNSIGNED_BYTE,spritePixel.data());
+    glReadPixels(sampleX,120,1,1,GL_DEPTH_COMPONENT,GL_FLOAT,&afterSprite);
+    Check(spritePixel[2]>240 && spritePixel[0]<10 && spritePixel[1]<10,
+          "World sprite with depthTest=false was hidden by scene geometry");
+    Check(std::abs(beforeSprite-afterSprite)<.000001f,"World sprite overlay changed scene depth");
+    world.GetComponent<Canvas>().depthTest=true;
     window.SetRenderSize(320,120);
     scene.SetEditorCamera2DOverride(glm::ortho(-160.f,160.f,-60.f,60.f,-100.f,100.f),{0,0});
     Check(glm::distance(canvasRect.GetResolvedSize(),Vector2(160,120))<.001f,
@@ -1081,13 +1097,13 @@ static void ScreenUiAfterPostProcessing(Window& window) {
     const unsigned char white[]={255,255,255,255};glTexImage2D(GL_TEXTURE_2D,0,GL_RGBA,1,1,0,GL_RGBA,GL_UNSIGNED_BYTE,white);
     glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MIN_FILTER,GL_NEAREST);glTexParameteri(GL_TEXTURE_2D,GL_TEXTURE_MAG_FILTER,GL_NEAREST);
     auto canvas=[&](unsigned mode) {
-        auto e=scene.CreateEntity("Canvas");auto& rect=*e.AddComponent<RectTransform>();
+        auto e=scene.CreateEntity("Canvas");auto& rect=*e.AddComponent<RectLayout>();
         rect.anchorMin={0,0};rect.anchorMax={1,1};rect.size={0,0};
         auto& c=*e.AddComponent<Canvas>();c.renderMode=mode;c.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;c.screenSize={320,240};return e;
     };
     auto sprite=[&](Entity parent,Vector2 position,Vector2 size,Color color) {
-        auto e=scene.CreateEntity("Sprite");auto& rect=*e.AddComponent<RectTransform>();
-        if(parent)rect.SetParent(parent.TryGet());rect.position=position;rect.size=size;
+        auto e=scene.CreateEntity("Sprite");auto& rect=*e.AddComponent<RectLayout>();
+        if(parent)rect.Spatial().SetParent(parent.TryGet(), false);rect.SetLocalPosition(position);rect.size=size;
         auto& s=*e.AddComponent<Sprite2D>();s.textureHandle.texture.id=texture;s.color=color;return e;
     };
     auto overlay=canvas(CanvasRenderMode::SCREEN_SPACE_OVERLAY);sprite(overlay,{-80,0},{20,20},{0,1,0,1});
@@ -2064,6 +2080,12 @@ static void LightModesAndSpotCones(Window& window) {
     auto car=scene.CreateEntity("Car");car.AddComponent<Transform>();
     auto lamp=scene.CreateEntity("Headlight");lamp.AddComponent<Transform>()->SetParent(car.TryGet());
     auto& spot=*lamp.AddComponent<SpotLight>();spot.intensity=3;spot.range=15;spot.spotAngle=40;spot.innerAngle=20;
+    // Registry order must not let out-of-range points displace the headlight.
+    for (int i=0;i<12;++i) {
+        auto far=scene.CreateEntity("Distant practical");
+        far.AddComponent<Transform>()->position={1000.f+float(i),0,0};
+        auto& light=*far.AddComponent<PointLight>();light.range=5;light.intensity=20;
+    }
     MeshRenderer3DSystem renderer;renderer.scene=&scene;renderer.window=&window;renderer.Create();
     auto draw=[&]() {
         scene.SetVRCamera(Matrix4(1),glm::perspective(glm::radians(70.f),320.f/240.f,.1f,100.f),.1f,100.f);

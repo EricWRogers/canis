@@ -52,7 +52,7 @@ public static class TweenApiChecks
 
         Entity presentation = Entity.Create("Tween presentation properties");
         Model model = presentation.AddComponent<Model>();
-        RectTransform rect = presentation.AddComponent<RectTransform>();
+        RectLayout rect = presentation.AddComponent<RectLayout>();
         AudioSource audio = presentation.AddComponent<AudioSource>();
         Camera camera = presentation.AddComponent<Camera>();
         PointLight light = presentation.AddComponent<PointLight>();

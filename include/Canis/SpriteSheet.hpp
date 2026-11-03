@@ -8,7 +8,7 @@
 namespace Canis
 {
     // Pixel rectangles use the source image's top-left origin. Pivots use the
-    // RectTransform convention: (0,0) is bottom-left, (1,1) is top-right.
+    // RectLayout convention: (0,0) is bottom-left, (1,1) is top-right.
     struct SpriteRegion
     {
         std::string name;
