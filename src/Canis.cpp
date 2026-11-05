@@ -324,6 +324,8 @@ namespace Canis
         node["inputAsset"] = projectConfig.inputAsset;
         node["tags"] = projectConfig.tags;
         node["gameName"] = projectConfig.gameName;
+        node["gameVersion"] = projectConfig.gameVersion;
+        node["assetVersion"] = projectConfig.assetVersion;
         node["executableName"] = projectConfig.executableName;
         node["useFrameLimit"] = projectConfig.useFrameLimit;
         node["frameLimit"] = projectConfig.frameLimit;
@@ -388,6 +390,8 @@ namespace Canis
                 sourceNode["inputAsset"] = projectConfig.inputAsset;
                 sourceNode["tags"] = projectConfig.tags;
                 sourceNode["gameName"] = projectConfig.gameName;
+                sourceNode["gameVersion"] = projectConfig.gameVersion;
+                sourceNode["assetVersion"] = projectConfig.assetVersion;
                 sourceNode["executableName"] = projectConfig.executableName;
                 sourceNode["targetGameWidth"] = projectConfig.targetGameWidth;
                 sourceNode["targetGameHeight"] = projectConfig.targetGameHeight;
@@ -496,6 +500,8 @@ namespace Canis
         projectConfig.inputAsset = node["inputAsset"].as<std::string>(projectConfig.inputAsset);
         projectConfig.tags = node["tags"].as<std::vector<std::string>>(std::vector<std::string>{});
         projectConfig.gameName = node["gameName"].as<std::string>(projectConfig.gameName);
+        projectConfig.gameVersion = node["gameVersion"].as<std::string>(ProjectConfig{}.gameVersion);
+        projectConfig.assetVersion = node["assetVersion"].as<std::string>(ProjectConfig{}.assetVersion);
         projectConfig.executableName = node["executableName"].as<std::string>(projectConfig.executableName);
         projectConfig.useFrameLimit = node["useFrameLimit"].as<bool>(projectConfig.useFrameLimit);
         projectConfig.frameLimit = node["frameLimit"].as<float>(projectConfig.frameLimit);

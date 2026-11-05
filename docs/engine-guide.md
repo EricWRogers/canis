@@ -12,6 +12,12 @@ The project is split into three main outputs:
 
 At runtime the executable starts the engine, loads assets and project settings, then loads the game shared library and calls its exported init/update/shutdown functions.
 
+Project Settings → Project includes editable `game version` and `asset version`
+strings. They are stored as `gameVersion` and `assetVersion` in
+`project_settings/project.canis` and default to `0.0.0` for older projects.
+Game UI can read them through `Canis::GetProjectConfig()`. Saving in the editor
+also updates the workspace settings used for builds and packaged releases.
+
 ## Repository Layout
 
 ```text

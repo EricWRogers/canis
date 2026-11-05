@@ -413,7 +413,12 @@ float RectLayout::GetCanvasOverlayScaleFactor() const
     const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());
     const float screenHeight = static_cast<float>(entity->scene.GetWindow().GetScreenHeight());
 
-    // Preview authored UI as a complete reference canvas in the 2D Scene panel.
+    // Constant-size UI must not auto-fit when the Scene panel is resized.
+    // Editor camera zoom still applies through the rendering projection.
+    if (canvas->scaleMode == CanvasScaleMode::CONSTANT_PIXEL_SIZE)
+        return 1.0f;
+
+    // Preview scalable UI as a complete reference canvas in the 2D Scene panel.
     // Runtime width/height scaling still uses the actual Game viewport.
     if (entity->scene.HasEditorCamera2DOverride())
         return std::min(screenWidth / referenceWidth, screenHeight / referenceHeight);
@@ -435,7 +440,8 @@ Vector2 RectLayout::GetCanvasOverlayLogicalSize() const
         return Vector2(0.0f);
 
     if (entity->scene.HasEditorCamera2DOverride())
-        if (const auto* canvas = FindCanvas(); canvas && canvas->renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY)
+        if (const auto* canvas = FindCanvas(); canvas && canvas->renderMode == CanvasRenderMode::SCREEN_SPACE_OVERLAY &&
+            canvas->scaleMode != CanvasScaleMode::CONSTANT_PIXEL_SIZE)
             return glm::max(canvas->screenSize, Vector2(1));
 
     const float screenWidth = static_cast<float>(entity->scene.GetWindow().GetScreenWidth());

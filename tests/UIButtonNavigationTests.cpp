@@ -22,6 +22,57 @@ int main()
     app.scene.Init(&app, &window, &input);
     Editor editor;
     app.RegisterDefaults(editor);
+    // Text glyphs and sprites are transformed by the same layout model matrix.
+    // Constant-pixel text must keep its glyph dimensions when either viewport resizes.
+    {
+        auto root=app.scene.CreateEntity("Canvas scale regression");
+        auto &rootRect=*root.AddComponent<RectLayout>();
+        rootRect.size={0,0};rootRect.anchorMin={0,0};rootRect.anchorMax={1,1};
+        auto &canvas=*root.AddComponent<Canvas>();
+        canvas.renderMode=CanvasRenderMode::SCREEN_SPACE_OVERLAY;
+        canvas.screenSize={640,480};
+        auto label=app.scene.CreateEntity("Constant pixel label");
+        auto &rect=*label.AddComponent<RectLayout>();
+        label.AddComponent<Text>();
+        auto group=app.scene.CreateEntity("Stretching menu group");
+        auto &groupRect=*group.AddComponent<RectLayout>();
+        groupRect.size={0,0};groupRect.anchorMin={0,0};groupRect.anchorMax={1,1};
+        groupRect.Spatial().SetParent(root.TryGet(),false);
+        rect.Spatial().SetParent(group.TryGet(),false);
+        rect.anchorMin=rect.anchorMax={0,.5f};rect.pivot={0,.5f};
+        rect.SetLocalPosition({54,0});
+        rect.SetLocalScale({1.5f,1.5f});
+        auto glyphWidth=[&] {
+            const auto model=rect.Spatial().GetModelMatrix();
+            return glm::length(Vector3(model*Vector4(24,0,0,0)));
+        };
+        for(bool preview:{false,true}) {
+            if(preview)app.scene.SetEditorCamera2DOverride(Matrix4(1),Vector2(0));
+            else app.scene.ClearEditorCameraOverrides();
+            canvas.scaleMode=CanvasScaleMode::CONSTANT_PIXEL_SIZE;
+            for(auto size:{Vector2(320,240),Vector2(1280,960),Vector2(960,480)}) {
+                window.SetRenderSize(int(size.x),int(size.y));
+                Check(std::abs(glyphWidth()-36.f)<.001f,"Constant-pixel text resized with the viewport");
+                Check(glm::length(rootRect.GetLogicalSize()-size)<.001f,"Constant-pixel canvas used reference dimensions for anchors");
+                Check(glm::length(groupRect.GetLogicalSize()-size)<.001f,"Stretched menu group lost viewport dimensions");
+                Check(std::abs(rect.Spatial().GetGlobalPosition().x+size.x*.5f-54)<.001f,
+                      "Left-anchored text lost its fixed pixel inset");
+                rect.anchorMin=rect.anchorMax={1,0};rect.pivot={1,0};rect.SetLocalPosition({-16,12});
+                const auto position=rect.Spatial().GetGlobalPosition();
+                Check(std::abs(position.x-size.x*.5f+16)<.001f && std::abs(position.y+size.y*.5f-12)<.001f,
+                      "Bottom-right text moved outside the resized canvas");
+                rect.anchorMin=rect.anchorMax={0,.5f};rect.pivot={0,.5f};rect.SetLocalPosition({54,0});
+            }
+            window.SetRenderSize(1280,480);
+            canvas.scaleMode=CanvasScaleMode::SCALE_WITH_SCREEN_WIDTH;
+            Check(std::abs(glyphWidth()-(preview?36.f:72.f))<.001f,"Width-scaled text lost its canvas scaling");
+            canvas.scaleMode=CanvasScaleMode::SCALE_WITH_SCREEN_HEIGHT;
+            Check(std::abs(glyphWidth()-36.f)<.001f,"Height-scaled text lost its canvas scaling");
+        }
+        app.scene.ClearEditorCameraOverrides();
+        window.SetRenderSize(320,240);
+        root.Destroy();
+    }
     auto fadeRoot=app.scene.CreateEntity("UI fade group");
     fadeRoot.AddComponent<RectLayout>()->opacity=.5f;
     auto fadeChild=app.scene.CreateEntity("UI fade child");

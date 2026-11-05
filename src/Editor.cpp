@@ -18785,6 +18785,13 @@ DockSpace         ID=0x49B9F6FE Window=0x1C358F53 Pos=0,44 Size=1280,676 Split=X
                 Canis::SaveProjectConfig();
             detail("Window title shown to players.");
 
+            EditorUI::PropertyLabel("game version");
+            if (ImGui::InputText("##gameVersion", &Canis::GetProjectConfig().gameVersion))
+                Canis::SaveProjectConfig();
+            EditorUI::PropertyLabel("asset version");
+            if (ImGui::InputText("##assetVersion", &Canis::GetProjectConfig().assetVersion))
+                Canis::SaveProjectConfig();
+
             static const char* gpuLabels[] = { "Automatic", "Integrated", "Dedicated" };
             int gpuPreference = NormalizeGpuPreference(Canis::GetProjectConfig().gpuPreference);
             EditorUI::PropertyLabel("preferred GPU");

@@ -48,6 +48,8 @@ namespace Canis
         // separate: game names may contain spaces while executable names must
         // remain suitable for the host platform and build system.
         std::string gameName = "Canis Game";
+        std::string gameVersion = "0.0.0";
+        std::string assetVersion = "0.0.0";
         std::string executableName = "c-engine";
         std::vector<std::string> tags = {};
         //bool fullscreen = false;
