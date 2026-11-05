@@ -45,6 +45,9 @@ namespace Canis
     void EditorRelease::Start()
     {
         namespace fs = std::filesystem;
+#if !CANIS_CSHARP
+        m_csharp = false;
+#endif
         m_error.clear();
         m_output.clear();
         m_finished = m_succeeded = false;
@@ -58,7 +61,7 @@ namespace Canis
             m_error = "Choose a startup scene and a build folder.";
             return;
         }
-        static const char* platforms[] = {"desktop", "web", "desktop-vr", "vr"};
+        static const char* platforms[] = {"desktop", "web", "desktop-vr", "vr", "steam"};
         const auto job = m_root / "build/editor-release/logs";
         std::error_code error;
         fs::create_directories(job, error);
@@ -135,12 +138,18 @@ namespace Canis
         const bool running = m_process != nullptr;
         ImGui::BeginDisabled(running || pickerActive);
         ImGui::SetNextItemWidth(260);
-        ImGui::Combo("Platform", &m_platform, "Desktop\0Web\0Desktop VR\0VR\0");
+        ImGui::Combo("Platform", &m_platform, "Desktop\0Web\0Desktop VR\0VR\0Steam\0");
         const char* descriptions[] = {
             "Desktop player for this computer's OS and architecture.",
             "Browser player: HTML, WebAssembly, data and managed runtime. Requires Emscripten; C# also needs .NET wasm-tools.",
             "PC OpenXR player. Starts in headset mode; requires an OpenXR loader and active headset runtime.",
-            "Standalone Meta Quest / Android. Unavailable: Canis needs an Android lifecycle, OpenXR GLES/Vulkan backend and ARM64 C# host."};
+            "Standalone Meta Quest / Android. Unavailable: Canis needs an Android lifecycle, OpenXR GLES/Vulkan backend and ARM64 C# host.",
+#if defined(__linux__)
+            "Steam Linux release using Valve's Sniper SDK container (Podman or Docker). Produces a versioned ZIP for your Steam depot. The first build downloads the SDK image."
+#else
+            "Steam release for this computer's OS using the native toolchain. Produces a versioned ZIP for your Steam depot."
+#endif
+        };
         ImGui::TextWrapped("%s", descriptions[m_platform]);
         ImGui::Spacing();
         ImGui::SetNextItemWidth(-145);
@@ -158,7 +167,9 @@ namespace Canis
             ImGui::EndCombo();
         }
         ImGui::Checkbox("Development build (native debug symbols)", &m_development);
+#if CANIS_CSHARP
         ImGui::Checkbox("C# scripting (precompile saved scripts)", &m_csharp);
+#endif
 #ifdef __APPLE__
         ImGui::BeginDisabled(true);
 #else
@@ -184,6 +195,8 @@ namespace Canis
         ImGui::TextUnformatted(running ? "Building... You can close this dialog; the build will continue." :
             (m_finished ? (m_succeeded ? "Build complete." : "Build failed. See the log below.") : "Ready to build."));
         if (m_succeeded) ImGui::TextWrapped("Output: %s", m_builtFolder.c_str());
+        if (m_succeeded && m_platform == 4)
+            ImGui::TextWrapped("The build folder contains the ZIP and unpacked depot files. Extract the ZIP into your SteamPipe content folder to upload.");
         if (!m_logPath.empty()) ImGui::TextWrapped("Log: %s", m_logPath.string().c_str());
         ImGui::BeginChild("ReleaseLog", ImVec2(0, -ImGui::GetFrameHeightWithSpacing() - 8), true, ImGuiWindowFlags_HorizontalScrollbar);
         const bool atBottom = ImGui::GetScrollY() >= ImGui::GetScrollMaxY();

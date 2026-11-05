@@ -43,7 +43,11 @@ namespace Canis
         int m_platform = 0;
         int m_jobs = 8;
         bool m_development = false;
+#if CANIS_CSHARP
         bool m_csharp = true;
+#else
+        bool m_csharp = false;
+#endif
 #ifdef __APPLE__
         bool m_steamAudio = false;
 #else
