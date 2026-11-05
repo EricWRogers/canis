@@ -55,7 +55,7 @@ namespace Canis
         }
         if (m_folder.empty() || m_scene.empty())
         {
-            m_error = "Choose a startup scene and a new or empty build folder.";
+            m_error = "Choose a startup scene and a build folder.";
             return;
         }
         static const char* platforms[] = {"desktop", "web", "desktop-vr", "vr"};
@@ -177,7 +177,7 @@ namespace Canis
         ImGui::InputText("##ReleaseFolder", &m_folder);
         ImGui::SameLine();
         if (ImGui::Button("Browse...")) Browse(window);
-        ImGui::TextWrapped("Choose a new or empty build folder. Build saves the active scene and open scripts, then copies all saved runtime assets. Existing files are never overwritten.");
+        ImGui::TextWrapped("Build saves the active scene and open scripts, then copies all saved runtime assets. A successful build replaces the contents of the build folder.");
         ImGui::EndDisabled();
         if (!m_error.empty()) ImGui::TextWrapped("%s", m_error.c_str());
         ImGui::Separator();
