@@ -1,6 +1,6 @@
 #include <Canis/VisibilityBake.hpp>
 #include <Canis/AssetPipeline.hpp>
-#include <zlib.h>
+#include <SDL3/SDL_stdinc.h>
 #include <map>
 #include <fstream>
 #include <tuple>
@@ -54,7 +54,7 @@ namespace Canis
         while (f)
         {
             f.read(bytes, sizeof(bytes));
-            crc = crc32(crc, reinterpret_cast<const Bytef*>(bytes), f.gcount());
+            crc = SDL_crc32(crc, bytes, static_cast<size_t>(f.gcount()));
         }
         return crc;
     }

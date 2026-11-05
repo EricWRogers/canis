@@ -107,16 +107,6 @@ endif()
 target_link_libraries(${CANIS_ENGINE_LIB} PRIVATE Freetype::Freetype)
 target_compile_definitions(${CANIS_ENGINE_LIB} PRIVATE CANIS_HAS_FREETYPE)
 
-# Accelerated, standard CRC-32 for large visibility-bake buffers. Keep the SDL
-# implementation as a portable fallback when zlib is unavailable.
-if(NOT CANIS_PLATFORM_WEB)
-    find_package(ZLIB QUIET)
-    if(ZLIB_FOUND)
-        target_link_libraries(${CANIS_ENGINE_LIB} PRIVATE ZLIB::ZLIB)
-        set_property(SOURCE src/Asset.cpp APPEND PROPERTY COMPILE_DEFINITIONS CANIS_HAS_ZLIB)
-    endif()
-endif()
-
 message(STATUS "CanisEngine: using vendored FreeType submodule")
 
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
@@ -425,14 +415,6 @@ if(NOT CANIS_PLATFORM_WEB)
     target_link_libraries(canis-asset-tool PRIVATE CanisEngine)
 endif()
 
-if(CANIS_PLATFORM_WEB)
-    # Emscripten supplies a wasm zlib port; host libraries cannot be linked here.
-    target_compile_options(CanisEngine PRIVATE "-sUSE_ZLIB=1")
-    target_link_options(CanisEngine PUBLIC "-sUSE_ZLIB=1")
-else()
-    find_package(ZLIB REQUIRED)
-    target_link_libraries(CanisEngine PRIVATE ZLIB::ZLIB)
-endif()
 if(BUILD_TESTING AND NOT CANIS_PLATFORM_WEB)
     add_executable(CanisNativeBakeTests tests/NativeBakeTests.cpp)
     target_link_libraries(CanisNativeBakeTests PRIVATE CanisEngine)

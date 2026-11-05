@@ -189,7 +189,7 @@ namespace Canis
 #if CANIS_HAS_TIFF
                     if (ext == ".tif" || ext == ".tiff")
                     {
-                        TIFF* tif = TIFFOpen(a.path.c_str(), "r");
+                        TIFF* tif = TIFFOpen(a.path.string().c_str(), "r");
                         if (!tif)
                             throw std::runtime_error("Cannot decode TIFF");
                         uint32_t width, height;
@@ -216,13 +216,13 @@ namespace Canis
                     else
 #endif
                     {
-                        auto* data = stbi_load(a.path.c_str(), &w, &h, &c, 4);
+                        auto* data = stbi_load(a.path.string().c_str(), &w, &h, &c, 4);
                         if (!data)
                             throw std::runtime_error("Unsupported referenced texture " + a.path.string());
                         pixels.assign(data, data + size_t(w) * h * 4);
                         stbi_image_free(data);
                     }
-                    if (!stbi_write_png(path.c_str(), w, h, 4, pixels.data(), w * 4))
+                    if (!stbi_write_png(path.string().c_str(), w, h, 4, pixels.data(), w * 4))
                         throw std::runtime_error("Texture write failed");
                 }
                 Pipeline::WriteMeta(path, "TEXTURE");
@@ -316,7 +316,7 @@ namespace Canis
                                             255);
                                 stbi_image_free(rgba);
                                 auto path = dest / "textures" / (textureGuid + "-emission.png");
-                                if (!stbi_write_png(path.c_str(), width, height, 3, rgb.data(), width * 3))
+                                if (!stbi_write_png(path.string().c_str(), width, height, 3, rgb.data(), width * 3))
                                     throw std::runtime_error("Cannot write illumination texture");
                                 Pipeline::WriteMeta(path, "TEXTURE");
                                 p = Relative(path);
@@ -344,7 +344,7 @@ namespace Canis
                                  {"roughness", &rough}, {"metallic", &metal}})
                         {
                             auto target = dest / "textures" / (guid + "-" + suffix + ".png");
-                            stbi_write_png(target.c_str(), w, h, 1, data->data(), w);
+                            stbi_write_png(target.string().c_str(), w, h, 1, data->data(), w);
                             Pipeline::WriteMeta(target, "TEXTURE");
                             out[suffix]["path"] = Relative(target);
                         }
@@ -417,7 +417,7 @@ namespace Canis
             opts.geometry_transform_handling = UFBX_GEOMETRY_TRANSFORM_HANDLING_MODIFY_GEOMETRY;
             opts.generate_missing_normals = true;
             ufbx_error error{};
-            ufbx_scene* raw = ufbx_load_file(a.path.c_str(), &opts, &error);
+            ufbx_scene* raw = ufbx_load_file(a.path.string().c_str(), &opts, &error);
             if (!raw)
             {
                 char text[1024];
